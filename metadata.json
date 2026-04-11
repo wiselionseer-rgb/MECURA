@@ -1,0 +1,9 @@
+{
+  "name": "Mecura Med",
+  "description": "Premium medical cannabis consultation and marketplace platform.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

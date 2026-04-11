@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", ui-serif, Georgia, serif;
+  
+  --color-mecura-bg: #0A0A0F;
+  --color-mecura-surface: #1A1A26;
+  --color-mecura-surface-light: #22222F;
+  --color-mecura-elevated: #2E2E40;
+  --color-mecura-neon: #A6FF00;
+  --color-mecura-neon-hover: #CFFF5A;
+  --color-mecura-gold: #C9A84C;
+  --color-mecura-gold-light: #E8C97A;
+  --color-mecura-green: #3D7A55;
+  --color-mecura-green-dark: #2C5A3E;
+  --color-mecura-pearl: #F0EEE8;
+  --color-mecura-silver: #9A9AB0;
+
+  --animate-shimmer: shimmer 1.5s infinite;
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+
+  --animate-scan: scan 3s linear infinite;
+  @keyframes scan {
+    0% { transform: translateY(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(256px); opacity: 0; }
+  }
+
+  --animate-spin-slow: mecura-spin 15s linear infinite;
+  --animate-spin-reverse: mecura-spin 10s linear infinite reverse;
+  @keyframes mecura-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-mecura-bg text-mecura-pearl font-sans antialiased selection:bg-mecura-neon/30;
+  }
+  
+  /* Hide scrollbar globally for a cleaner app-like feel */
+  * {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+  }
+  
+  *::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
+
+  /* Keep custom scrollbar only where explicitly requested if needed later, but hide by default */
+  .custom-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

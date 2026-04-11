@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "ExchangeRate": {
+      "title": "ExchangeRate",
+      "description": "Stores the current USD to BRL exchange rate.",
+      "type": "object",
+      "properties": {
+        "rate": {
+          "type": "number",
+          "description": "The current exchange rate."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last update."
+        }
+      },
+      "required": ["rate", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/settings/exchangeRate": {
+      "schema": { "$ref": "ExchangeRate" },
+      "description": "The current exchange rate setting."
+    }
+  }
+}
