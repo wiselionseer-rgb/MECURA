@@ -339,7 +339,7 @@ export function AdminDashboardScreen() {
                   <Activity className="w-5 h-5 text-mecura-neon" />
                   <span>Consultas Realizadas</span>
                 </div>
-                <div className="text-3xl font-bold">1.240</div>
+                <div className="text-3xl font-bold">{consultationHistory.length}</div>
                 <div className="text-sm text-green-400 mt-2">+5% vs mês anterior</div>
               </div>
               <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6">

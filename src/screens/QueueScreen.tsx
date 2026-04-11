@@ -6,7 +6,12 @@ import { Hexagon, BellRing, Bell } from 'lucide-react';
 
 export function QueueScreen() {
   const navigate = useNavigate();
-  const { queuePosition, estimatedWaitTime, updateQueue, startConsultation, pagamento_consulta } = useStore();
+  const { queuePosition, estimatedWaitTime, updateQueue, startConsultation, pagamento_consulta, consultationActive, subscribeToQueue } = useStore();
+
+  useEffect(() => {
+    const unsubscribe = subscribeToQueue();
+    return () => unsubscribe();
+  }, [subscribeToQueue]);
 
   useEffect(() => {
     // Block access if payment is not completed
@@ -15,18 +20,10 @@ export function QueueScreen() {
       return;
     }
 
-    // Simulate queue progression
-    if (queuePosition <= 0) return;
-
-    const interval = setInterval(() => {
-      updateQueue(
-        Math.max(0, queuePosition - 1),
-        Math.max(0, estimatedWaitTime - 1.5)
-      );
-    }, 4000); // Every 4 seconds, position drops by 1 for demo purposes
-
-    return () => clearInterval(interval);
-  }, [queuePosition, estimatedWaitTime, updateQueue, pagamento_consulta, navigate]);
+    if (consultationActive) {
+      navigate('/chat');
+    }
+  }, [pagamento_consulta, consultationActive, navigate]);
 
   const isNext = queuePosition === 0;
 

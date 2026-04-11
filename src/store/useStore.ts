@@ -82,10 +82,11 @@ interface AppState {
   inQueue: boolean;
   queuePosition: number;
   estimatedWaitTime: number; // in minutes
-  queue: Array<{ id: string; patientName: string; email: string; joinedAt: Date }>;
-  joinQueue: (patient?: { id: string; patientName: string; email: string }) => void;
+  queue: Array<{ id: string; patientName: string; email: string; joinedAt: Date; status?: string; answers?: any }>;
+  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any }) => void;
   leaveQueue: (patientId: string) => void;
   updateQueue: (position: number, waitTime: number) => void;
+  subscribeToQueue: () => () => void;
   
   // Consultation
   consultationActive: boolean;
@@ -97,7 +98,9 @@ interface AppState {
     summary?: string;
     intensity?: number;
   }>;
-  startConsultation: () => void;
+  activeConsultationId: string | null;
+  setActiveConsultationId: (id: string | null) => void;
+  startConsultation: (patientId?: string) => void;
   endConsultation: () => void;
   setIsConsultationFinished: (status: boolean) => void;
   resetConsultation: () => void;
@@ -106,6 +109,7 @@ interface AppState {
   messages: Message[];
   addMessage: (msg: Omit<Message, 'id' | 'timestamp'>) => void;
   setMessages: (messages: Message[]) => void;
+  subscribeToMessages: (consultationId: string) => () => void;
 
   // Exchange Rate
   exchangeRate: number;
@@ -114,7 +118,7 @@ interface AppState {
   updateExchangeRate: (rate: number) => Promise<void>;
 }
 
-import { doc, getDoc, setDoc, collection, addDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 
@@ -196,33 +200,89 @@ export const useStore = create<AppState>((set, get) => ({
   inQueue: false,
   queuePosition: 0,
   estimatedWaitTime: 0,
-  queue: [
-    { id: 'mock-1', patientName: 'Lucas Neres', email: 'lucas@example.com', joinedAt: new Date(Date.now() - 1000 * 60 * 15) },
-    { id: 'mock-2', patientName: 'Ana Oliveira', email: 'ana@example.com', joinedAt: new Date(Date.now() - 1000 * 60 * 8) },
-    { id: 'mock-3', patientName: 'Carlos Mendes', email: 'carlos@example.com', joinedAt: new Date(Date.now() - 1000 * 60 * 2) },
-  ],
-  joinQueue: (patient) => set((state) => {
+  queue: [],
+  joinQueue: async (patient) => {
+    const state = get();
     const newPatient = patient || { 
-      id: Date.now().toString(), 
+      id: auth.currentUser?.uid || Date.now().toString(), 
       patientName: state.userName || 'Paciente Anônimo', 
-      email: state.userEmail || 'sem-email@mecura.com' 
+      email: state.userEmail || 'sem-email@mecura.com',
+      answers: state.answers // Pass answers to the queue so doctor can see them
     };
-    return { 
-      queue: [...state.queue, { ...newPatient, joinedAt: new Date() }],
-      inQueue: true,
-      queuePosition: state.queue.length + 1,
-      estimatedWaitTime: (state.queue.length + 1) * 15
-    };
-  }),
-  leaveQueue: (patientId) => set((state) => {
-    const newQueue = state.queue.filter(p => p.id !== patientId);
-    return { 
-      queue: newQueue,
-      inQueue: newQueue.length > 0 && state.inQueue,
-      queuePosition: Math.max(0, state.queuePosition - 1)
-    };
-  }),
+    
+    set({ inQueue: true });
+
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'queue', auth.currentUser.uid), {
+          ...newPatient,
+          joinedAt: new Date().toISOString(),
+          status: 'waiting'
+        });
+      } catch (error) {
+        console.error("Error joining queue in Firestore", error);
+      }
+    } else {
+      // Fallback for local
+      set((state) => ({ 
+        queue: [...state.queue, { ...newPatient, joinedAt: new Date() }],
+        queuePosition: state.queue.length + 1,
+        estimatedWaitTime: (state.queue.length + 1) * 15
+      }));
+    }
+  },
+  leaveQueue: async (patientId) => {
+    if (auth.currentUser && patientId === auth.currentUser.uid) {
+      try {
+        await deleteDoc(doc(db, 'queue', patientId));
+      } catch (error) {
+        console.error("Error leaving queue", error);
+      }
+    }
+    set((state) => {
+      const newQueue = state.queue.filter(p => p.id !== patientId);
+      return { 
+        queue: newQueue,
+        inQueue: newQueue.length > 0 && state.inQueue,
+        queuePosition: Math.max(0, state.queuePosition - 1)
+      };
+    });
+  },
   updateQueue: (position, waitTime) => set({ queuePosition: position, estimatedWaitTime: waitTime }),
+  
+  subscribeToQueue: () => {
+    const q = query(collection(db, 'queue'), orderBy('joinedAt', 'asc'));
+    return onSnapshot(q, (snapshot) => {
+      const queueData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        joinedAt: new Date(doc.data().joinedAt)
+      })) as any[];
+      
+      set({ queue: queueData });
+      
+      // Update position for current user
+      if (auth.currentUser) {
+        const myIndex = queueData.findIndex(p => p.id === auth.currentUser!.uid);
+        if (myIndex !== -1) {
+          set({ 
+            queuePosition: myIndex, // 0 means next
+            estimatedWaitTime: (myIndex + 1) * 15,
+            inQueue: true
+          });
+          
+          // Check if doctor started consultation
+          if (queueData[myIndex].status === 'in-consultation') {
+             // Doctor started it!
+             set({ consultationActive: true, inQueue: false, activeConsultationId: auth.currentUser.uid });
+          }
+        } else {
+           // Not in queue
+           set({ inQueue: false });
+        }
+      }
+    });
+  },
   
   consultationActive: false,
   isConsultationFinished: false,
@@ -249,7 +309,24 @@ export const useStore = create<AppState>((set, get) => ({
       intensity: 5
     }
   ],
-  startConsultation: () => set({ consultationActive: true, inQueue: false }),
+  activeConsultationId: null,
+  setActiveConsultationId: (id) => set({ activeConsultationId: id }),
+  
+  startConsultation: async (patientId?: string) => {
+    set({ consultationActive: true, inQueue: false });
+    if (patientId) {
+      // Doctor starting consultation
+      try {
+        await updateDoc(doc(db, 'queue', patientId), { status: 'in-consultation' });
+        set({ activeConsultationId: patientId });
+      } catch (e) {
+        console.error("Error updating queue status", e);
+      }
+    } else if (auth.currentUser) {
+      // Patient starting
+      set({ activeConsultationId: auth.currentUser.uid });
+    }
+  },
   endConsultation: async () => {
     const state = get();
     const newConsultation = {
@@ -262,9 +339,10 @@ export const useStore = create<AppState>((set, get) => ({
     };
 
     // Save to Firestore if user is logged in
-    if (auth.currentUser) {
+    const consultationId = state.activeConsultationId || auth.currentUser?.uid;
+    if (consultationId) {
       try {
-        const historyRef = collection(db, 'users', auth.currentUser.uid, 'consultations');
+        const historyRef = collection(db, 'users', consultationId, 'consultations');
         await addDoc(historyRef, {
           ...newConsultation,
           date: newConsultation.date.toISOString(),
@@ -274,6 +352,11 @@ export const useStore = create<AppState>((set, get) => ({
           }))
         });
         console.log('Consultation history saved to Firestore');
+        
+        // Clean up active consultation
+        await deleteDoc(doc(db, 'queue', consultationId));
+        // Note: deleting a document doesn't delete its subcollections in Firestore, 
+        // but for this prototype it's fine.
       } catch (error) {
         console.error('Error saving consultation history:', error);
       }
@@ -282,6 +365,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => ({ 
       consultationActive: false, 
       isConsultationFinished: true,
+      activeConsultationId: null,
       consultationHistory: [
         ...state.consultationHistory,
         newConsultation
@@ -298,9 +382,40 @@ export const useStore = create<AppState>((set, get) => ({
   }),
   
   messages: [],
-  addMessage: (msg) => set((state) => ({
-    messages: [...state.messages, { ...msg, id: Date.now().toString(), timestamp: new Date() }]
-  })),
+  addMessage: async (msg) => {
+    const state = get();
+    const newMessage = { ...msg, id: Date.now().toString(), timestamp: new Date() };
+    
+    // Optimistic update
+    set((state) => ({
+      messages: [...state.messages, newMessage]
+    }));
+
+    // Save to Firestore if in an active consultation
+    const consultationId = state.activeConsultationId || auth.currentUser?.uid;
+    if (consultationId) {
+      try {
+        const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
+        await setDoc(doc(messagesRef, newMessage.id), {
+          ...newMessage,
+          timestamp: newMessage.timestamp.toISOString()
+        });
+      } catch (error) {
+        console.error("Error sending message", error);
+      }
+    }
+  },
+  
+  subscribeToMessages: (consultationId: string) => {
+    const q = query(collection(db, 'active_consultations', consultationId, 'messages'), orderBy('timestamp', 'asc'));
+    return onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        timestamp: new Date(doc.data().timestamp)
+      })) as Message[];
+      set({ messages: msgs });
+    });
+  },
   setMessages: (messages) => set({ messages }),
 
   exchangeRate: 5.0,

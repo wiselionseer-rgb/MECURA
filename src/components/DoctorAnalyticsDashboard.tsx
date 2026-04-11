@@ -19,7 +19,7 @@ const weeklyData = [
 ];
 
 export function DoctorAnalyticsDashboard() {
-  const { allAppointments, confirmAppointment, cancelAppointment } = useStore();
+  const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   
   // Generate week days
@@ -77,8 +77,8 @@ export function DoctorAnalyticsDashboard() {
                 <CheckCircle className="w-6 h-6 text-green-400" />
               </div>
               <div>
-                <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Realizadas (Mês)</p>
-                <h3 className="text-2xl font-bold text-white">156</h3>
+                <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Realizadas (Total)</p>
+                <h3 className="text-2xl font-bold text-white">{consultationHistory.length}</h3>
               </div>
             </div>
           </div>

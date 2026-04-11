@@ -9,11 +9,18 @@ import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate } = useStore();
+  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeConsultationId) {
+      const unsubscribe = subscribeToMessages(activeConsultationId);
+      return () => unsubscribe();
+    }
+  }, [activeConsultationId, subscribeToMessages]);
 
   const handleGeneratePDF = () => {
     generatePrescriptionPDF(userName, messages);

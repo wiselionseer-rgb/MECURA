@@ -50,7 +50,7 @@ import { NotificationToast } from '../components/NotificationToast';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function DoctorDashboardScreen() {
-  const { userName, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation } = useStore();
+  const { userName, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, subscribeToMessages } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -75,10 +75,21 @@ export function DoctorDashboardScreen() {
 
   const pendingCount = allAppointments.filter(app => app.status === 'pending').length;
 
+  useEffect(() => {
+    const unsubscribeQueue = subscribeToQueue();
+    return () => unsubscribeQueue();
+  }, [subscribeToQueue]);
+
+  useEffect(() => {
+    if (currentPatient?.id) {
+      const unsubscribeMessages = subscribeToMessages(currentPatient.id);
+      return () => unsubscribeMessages();
+    }
+  }, [currentPatient?.id, subscribeToMessages]);
+
   const handleStartConsultation = (patient: any) => {
     setCurrentPatient(patient);
-    startConsultation();
-    leaveQueue(patient.id);
+    startConsultation(patient.id);
   };
 
   const handleNotifyNext = (patient: any) => {
@@ -340,6 +351,8 @@ export function DoctorDashboardScreen() {
     setExpandAnalysis(true);
     if (analysisResult) return; // Already generated
     
+    const patientAnswers = currentPatient?.answers || answers;
+    
     setIsAnalyzing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -351,17 +364,17 @@ export function DoctorDashboardScreen() {
         Lembre-se: esta análise é um suporte à decisão médica. O médico definirá o tratamento final.
         
         Dados do Paciente:
-        - Objetivos: ${answers?.objectives?.join(', ') || 'Não informados'}
-        - Intensidade do sintoma: ${answers?.intensity || 'Não informada'}/10
-        - Duração: ${answers?.duration || 'Não informada'}
-        - Descrição: ${answers?.description || 'Não informada'}
-        - Altura: ${answers?.height || 'Não informada'}m
-        - Peso: ${answers?.weight || 'Não informada'}kg
-        - Sexo: ${answers?.sex || 'Não informada'}
-        - Tratamento Atual: ${answers?.tratamento_atual ? 'Sim' : 'Não'}
-        - Uso de Remédios: ${answers?.remedios ? 'Sim' : 'Não'}
-        - Doença Crônica: ${answers?.doenca_cronica ? 'Sim' : 'Não'}
-        - Já usou Cannabis: ${answers?.cannabis ? 'Sim' : 'Não'}
+        - Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
+        - Intensidade do sintoma: ${patientAnswers?.intensity || 'Não informada'}/10
+        - Duração: ${patientAnswers?.duration || 'Não informada'}
+        - Descrição: ${patientAnswers?.description || 'Não informada'}
+        - Altura: ${patientAnswers?.height || 'Não informada'}m
+        - Peso: ${patientAnswers?.weight || 'Não informada'}kg
+        - Sexo: ${patientAnswers?.sex || 'Não informada'}
+        - Tratamento Atual: ${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}
+        - Uso de Remédios: ${patientAnswers?.remedios ? 'Sim' : 'Não'}
+        - Doença Crônica: ${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}
+        - Já usou Cannabis: ${patientAnswers?.cannabis ? 'Sim' : 'Não'}
         
         IMPORTANTE: Você DEVE recomendar APENAS os medicamentos listados abaixo, escolhendo os mais adequados para a condição do paciente:
         
@@ -1176,8 +1189,8 @@ export function DoctorDashboardScreen() {
               <Activity className="w-4 h-4" /> Objetivos Principais
             </h3>
             <div className="flex flex-wrap gap-2">
-              {answers?.objectives?.length ? (
-                answers.objectives.map((obj: string, i: number) => (
+              {(currentPatient?.answers?.objectives || answers?.objectives)?.length ? (
+                (currentPatient?.answers?.objectives || answers.objectives).map((obj: string, i: number) => (
                   <span key={i} className="px-4 py-2 bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon rounded-lg text-base font-medium shadow-[0_0_10px_rgba(166,255,0,0.05)]">
                     {obj}
                   </span>
@@ -1196,16 +1209,16 @@ export function DoctorDashboardScreen() {
             <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-6 space-y-4">
               <div className="flex justify-between items-center border-b border-mecura-elevated/50 pb-4">
                 <span className="text-base text-mecura-silver">Intensidade</span>
-                <span className="text-base font-bold text-white bg-mecura-surface-light px-3 py-1.5 rounded-md">{answers?.intensity || '-'} / 10</span>
+                <span className="text-base font-bold text-white bg-mecura-surface-light px-3 py-1.5 rounded-md">{(currentPatient?.answers?.intensity || answers?.intensity) || '-'} / 10</span>
               </div>
               <div className="flex justify-between items-center border-b border-mecura-elevated/50 pb-4">
                 <span className="text-base text-mecura-silver">Duração</span>
-                <span className="text-base font-bold text-white capitalize">{answers?.duration || 'Não informada'}</span>
+                <span className="text-base font-bold text-white capitalize">{(currentPatient?.answers?.duration || answers?.duration) || 'Não informada'}</span>
               </div>
               <div className="pt-1">
                 <span className="text-sm text-mecura-silver block mb-2">Descrição Adicional</span>
                 <p className="text-base text-mecura-pearl leading-relaxed bg-mecura-surface-light/50 p-4 rounded-xl border border-mecura-elevated/50">
-                  {answers?.description || "Nenhuma descrição adicional fornecida."}
+                  {(currentPatient?.answers?.description || answers?.description) || "Nenhuma descrição adicional fornecida."}
                 </p>
               </div>
             </div>
@@ -1219,15 +1232,15 @@ export function DoctorDashboardScreen() {
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
                 <span className="text-sm text-mecura-silver mb-2">Altura</span>
-                <span className="text-lg font-bold text-white">{answers?.height ? `${answers.height}m` : '-'}</span>
+                <span className="text-lg font-bold text-white">{(currentPatient?.answers?.height || answers?.height) ? `${(currentPatient?.answers?.height || answers?.height)}m` : '-'}</span>
               </div>
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
                 <span className="text-sm text-mecura-silver mb-2">Peso</span>
-                <span className="text-lg font-bold text-white">{answers?.weight ? `${answers.weight}kg` : '-'}</span>
+                <span className="text-lg font-bold text-white">{(currentPatient?.answers?.weight || answers?.weight) ? `${(currentPatient?.answers?.weight || answers?.weight)}kg` : '-'}</span>
               </div>
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
                 <span className="text-sm text-mecura-silver mb-2">Sexo</span>
-                <span className="text-lg font-bold text-white">{answers?.sex || '-'}</span>
+                <span className="text-lg font-bold text-white">{(currentPatient?.answers?.sex || answers?.sex) || '-'}</span>
               </div>
             </div>
           </section>
@@ -1240,19 +1253,19 @@ export function DoctorDashboardScreen() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
                 <span className="text-sm text-mecura-silver block mb-2">Tratamento Atual</span>
-                <span className={`text-base font-bold ${answers?.tratamento_atual ? 'text-mecura-neon' : 'text-white'}`}>{answers?.tratamento_atual ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'Sim' : 'Não'}</span>
               </div>
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
                 <span className="text-sm text-mecura-silver block mb-2">Uso de Remédios</span>
-                <span className={`text-base font-bold ${answers?.remedios ? 'text-mecura-neon' : 'text-white'}`}>{answers?.remedios ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.remedios || answers?.remedios) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.remedios || answers?.remedios) ? 'Sim' : 'Não'}</span>
               </div>
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
                 <span className="text-sm text-mecura-silver block mb-2">Doença Crônica</span>
-                <span className={`text-base font-bold ${answers?.doenca_cronica ? 'text-mecura-neon' : 'text-white'}`}>{answers?.doenca_cronica ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'Sim' : 'Não'}</span>
               </div>
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
                 <span className="text-sm text-mecura-silver block mb-2">Já usou Cannabis</span>
-                <span className={`text-base font-bold ${answers?.cannabis ? 'text-mecura-neon' : 'text-white'}`}>{answers?.cannabis ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'Sim' : 'Não'}</span>
               </div>
             </div>
           </section>
