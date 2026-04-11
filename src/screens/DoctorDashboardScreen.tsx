@@ -355,7 +355,11 @@ export function DoctorDashboardScreen() {
     
     setIsAnalyzing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Chave da API do Gemini não encontrada. Verifique as variáveis de ambiente.");
+      }
+      const ai = new GoogleGenAI({ apiKey });
       
       const prompt = `
         Atue como um especialista em medicina canabinoide e prescrição médica.
@@ -402,7 +406,7 @@ export function DoctorDashboardScreen() {
       while (retries > 0) {
         try {
           response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: prompt,
           });
           break;
@@ -421,9 +425,9 @@ export function DoctorDashboardScreen() {
       } else {
         setAnalysisResult("Não foi possível gerar a análise. Tente novamente.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao gerar análise:", error);
-      setAnalysisResult("Ocorreu um erro ao conectar com a IA. Verifique as configurações e tente novamente.");
+      setAnalysisResult(`Ocorreu um erro ao conectar com a IA: ${error.message || 'Erro desconhecido'}. Verifique as configurações e tente novamente.`);
     } finally {
       setIsAnalyzing(false);
     }
