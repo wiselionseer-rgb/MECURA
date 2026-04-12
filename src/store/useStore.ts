@@ -206,8 +206,9 @@ export const useStore = create<AppState>((set, get) => ({
   queue: [],
   joinQueue: async (patient) => {
     const state = get();
+    const currentUserId = auth.currentUser?.uid || `anon_${Date.now()}`;
     const newPatient = patient || { 
-      id: auth.currentUser?.uid || Date.now().toString(), 
+      id: currentUserId, 
       patientName: state.userName || 'Paciente Anônimo', 
       email: state.userEmail || 'sem-email@mecura.com',
       answers: state.answers // Pass answers to the queue so doctor can see them
@@ -215,18 +216,16 @@ export const useStore = create<AppState>((set, get) => ({
     
     set({ inQueue: true });
 
-    if (auth.currentUser) {
-      try {
-        await setDoc(doc(db, 'queue', auth.currentUser.uid), {
-          ...newPatient,
-          joinedAt: new Date().toISOString(),
-          status: 'waiting'
-        });
-      } catch (error) {
-        console.error("Error joining queue in Firestore", error);
-      }
-    } else {
-      // Fallback for local
+    try {
+      // Always try to write to Firestore, even if anonymous (using the generated ID)
+      await setDoc(doc(db, 'queue', currentUserId), {
+        ...newPatient,
+        joinedAt: new Date().toISOString(),
+        status: 'waiting'
+      });
+    } catch (error) {
+      console.error("Error joining queue in Firestore", error);
+      // Fallback for local if Firestore fails
       set((state) => ({ 
         queue: [...state.queue, { ...newPatient, joinedAt: new Date() }],
         queuePosition: state.queue.length + 1,
@@ -264,9 +263,10 @@ export const useStore = create<AppState>((set, get) => ({
       
       set({ queue: queueData });
       
-      // Update position for current user
-      if (auth.currentUser) {
-        const myIndex = queueData.findIndex(p => p.id === auth.currentUser!.uid);
+      // Update position for current user (if they are a patient)
+      const currentUserId = auth.currentUser?.uid;
+      if (currentUserId) {
+        const myIndex = queueData.findIndex(p => p.id === currentUserId);
         if (myIndex !== -1) {
           set({ 
             queuePosition: myIndex, // 0 means next
@@ -277,11 +277,29 @@ export const useStore = create<AppState>((set, get) => ({
           // Check if doctor started consultation
           if (queueData[myIndex].status === 'in-consultation') {
              // Doctor started it!
-             set({ consultationActive: true, inQueue: false, activeConsultationId: auth.currentUser.uid });
+             set({ consultationActive: true, inQueue: false, activeConsultationId: currentUserId });
           }
         } else {
-           // Not in queue
-           set({ inQueue: false });
+           // Not in queue (might be a doctor or just not in queue)
+           // We don't want to force inQueue: false here if they are a doctor viewing the dashboard
+           // But for a patient, if they aren't in the queue data, they aren't in the queue.
+           // We'll rely on the local state `inQueue` being set when they join.
+        }
+      } else {
+        // Handle anonymous users based on their local state
+        const state = get();
+        if (state.inQueue) {
+          // Find their position based on their generated ID if possible, or just rely on local state
+          const myIndex = queueData.findIndex(p => p.patientName === state.userName);
+          if (myIndex !== -1) {
+            set({ 
+              queuePosition: myIndex,
+              estimatedWaitTime: (myIndex + 1) * 15
+            });
+            if (queueData[myIndex].status === 'in-consultation') {
+               set({ consultationActive: true, inQueue: false, activeConsultationId: queueData[myIndex].id });
+            }
+          }
         }
       }
     });
