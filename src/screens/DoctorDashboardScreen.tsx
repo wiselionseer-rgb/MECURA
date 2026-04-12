@@ -51,7 +51,7 @@ import { NotificationToast } from '../components/NotificationToast';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function DoctorDashboardScreen() {
-  const { userName, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, subscribeToMessages } = useStore();
+  const { userName, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, subscribeToMessages, subscribeToAppointments } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -78,8 +78,12 @@ export function DoctorDashboardScreen() {
 
   useEffect(() => {
     const unsubscribeQueue = subscribeToQueue();
-    return () => unsubscribeQueue();
-  }, [subscribeToQueue]);
+    const unsubscribeAppointments = subscribeToAppointments();
+    return () => {
+      unsubscribeQueue();
+      unsubscribeAppointments();
+    };
+  }, [subscribeToQueue, subscribeToAppointments]);
 
   useEffect(() => {
     console.log("Current patient changed:", currentPatient);
@@ -140,7 +144,7 @@ export function DoctorDashboardScreen() {
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages]);
 
   // Removed local mock queue to use store's queue

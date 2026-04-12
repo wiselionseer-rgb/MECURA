@@ -7,20 +7,29 @@ import { format, addDays, startOfWeek, addWeeks, subWeeks, isSameDay } from 'dat
 import { ptBR } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
 
-// Mock Data for chart
-const weeklyData = [
-  { name: 'Seg', consultas: 12, canceladas: 1 },
-  { name: 'Ter', consultas: 15, canceladas: 2 },
-  { name: 'Qua', consultas: 10, canceladas: 0 },
-  { name: 'Qui', consultas: 18, canceladas: 3 },
-  { name: 'Sex', consultas: 14, canceladas: 1 },
-  { name: 'Sáb', consultas: 8, canceladas: 0 },
-  { name: 'Dom', consultas: 0, canceladas: 0 },
-];
-
 export function DoctorAnalyticsDashboard() {
   const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Calculate dynamic weekly data
+  const weeklyData = [
+    { name: 'Seg', consultas: 0, canceladas: 0 },
+    { name: 'Ter', consultas: 0, canceladas: 0 },
+    { name: 'Qua', consultas: 0, canceladas: 0 },
+    { name: 'Qui', consultas: 0, canceladas: 0 },
+    { name: 'Sex', consultas: 0, canceladas: 0 },
+    { name: 'Sáb', consultas: 0, canceladas: 0 },
+    { name: 'Dom', consultas: 0, canceladas: 0 },
+  ];
+
+  allAppointments.forEach(app => {
+    const date = new Date(app.date);
+    const dayIndex = (date.getDay() + 6) % 7; // 0 for Seg, 6 for Dom
+    if (dayIndex >= 0 && dayIndex < 7) {
+      if (app.status === 'confirmed') weeklyData[dayIndex].consultas++;
+      if (app.status === 'cancelled') weeklyData[dayIndex].canceladas++;
+    }
+  });
   
   // Generate week days
   const startDate = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -65,7 +74,7 @@ export function DoctorAnalyticsDashboard() {
               </div>
               <div>
                 <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Total de Pacientes</p>
-                <h3 className="text-2xl font-bold text-white">1.248</h3>
+                <h3 className="text-2xl font-bold text-white">{new Set(allAppointments.map(a => a.patientName)).size}</h3>
               </div>
             </div>
           </div>
@@ -78,7 +87,7 @@ export function DoctorAnalyticsDashboard() {
               </div>
               <div>
                 <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Realizadas (Total)</p>
-                <h3 className="text-2xl font-bold text-white">{consultationHistory.length}</h3>
+                <h3 className="text-2xl font-bold text-white">{allAppointments.filter(a => a.status === 'confirmed').length}</h3>
               </div>
             </div>
           </div>

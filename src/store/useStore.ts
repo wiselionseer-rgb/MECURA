@@ -87,6 +87,7 @@ interface AppState {
   leaveQueue: (patientId: string) => void;
   updateQueue: (position: number, waitTime: number) => void;
   subscribeToQueue: () => () => void;
+  subscribeToAppointments: () => () => void;
   
   // Consultation
   consultationActive: boolean;
@@ -161,16 +162,16 @@ export const useStore = create<AppState>((set, get) => ({
   setConsultationStatus: (status) => set({ consultationStatus: status }),
   
   allAppointments: [
-    { id: '1', patientName: 'Ana Oliveira', date: '2026-04-05', time: '09:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
-    { id: '2', patientName: 'Carlos Mendes', date: '2026-04-05', time: '10:00', status: 'confirmed' as const, type: 'Retorno' },
-    { id: '3', patientName: 'Lucas Neres', date: '2026-04-05', time: '11:30', status: 'confirmed' as const, type: 'Acompanhamento' },
-    { id: '4', patientName: 'Mariana Costa', date: '2026-04-05', time: '14:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
-    { id: '5', patientName: 'Roberto Silva', date: '2026-04-05', time: '15:30', status: 'confirmed' as const, type: 'Retorno' },
-    { id: '6', patientName: 'Juliana Lima', date: '2026-04-05', time: '16:45', status: 'confirmed' as const, type: 'Acompanhamento' },
-    { id: '7', patientName: 'Pedro Santos', date: '2026-04-01', time: '09:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
-    { id: '8', patientName: 'Fernanda Costa', date: '2026-04-01', time: '10:15', status: 'confirmed' as const, type: 'Retorno' },
-    { id: '9', patientName: 'Rafael Souza', date: '2026-04-01', time: '14:25', status: 'confirmed' as const, type: 'Acompanhamento' },
-    { id: '10', patientName: 'Camila Alves', date: '2026-04-01', time: '16:05', status: 'confirmed' as const, type: 'Primeira Consulta' },
+    { id: '1', patientName: 'Ana Oliveira', date: '2026-04-11', time: '09:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
+    { id: '2', patientName: 'Carlos Mendes', date: '2026-04-11', time: '10:00', status: 'confirmed' as const, type: 'Retorno' },
+    { id: '3', patientName: 'Lucas Neres', date: '2026-04-11', time: '11:30', status: 'confirmed' as const, type: 'Acompanhamento' },
+    { id: '4', patientName: 'Mariana Costa', date: '2026-04-11', time: '14:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
+    { id: '5', patientName: 'Roberto Silva', date: '2026-04-11', time: '15:30', status: 'confirmed' as const, type: 'Retorno' },
+    { id: '6', patientName: 'Juliana Lima', date: '2026-04-11', time: '16:45', status: 'confirmed' as const, type: 'Acompanhamento' },
+    { id: '7', patientName: 'Pedro Santos', date: '2026-04-11', time: '09:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
+    { id: '8', patientName: 'Fernanda Costa', date: '2026-04-11', time: '10:15', status: 'confirmed' as const, type: 'Retorno' },
+    { id: '9', patientName: 'Rafael Souza', date: '2026-04-11', time: '14:25', status: 'confirmed' as const, type: 'Acompanhamento' },
+    { id: '10', patientName: 'Camila Alves', date: '2026-04-11', time: '16:05', status: 'confirmed' as const, type: 'Primeira Consulta' },
   ],
   addAppointment: (appointment) => set((state) => ({
     allAppointments: [...state.allAppointments, { ...appointment, id: Date.now().toString(), status: 'pending' as const }]
@@ -281,6 +282,22 @@ export const useStore = create<AppState>((set, get) => ({
            set({ inQueue: false });
         }
       }
+    });
+  },
+  
+  subscribeToAppointments: () => {
+    console.log("Subscribing to appointments collection...");
+    const q = query(collection(db, 'appointments'));
+    return onSnapshot(q, (snapshot) => {
+      console.log("Appointments snapshot received, size:", snapshot.size);
+      const appointmentsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any[];
+      console.log("Appointments data:", appointmentsData);
+      set({ allAppointments: appointmentsData });
+    }, (error) => {
+      console.error("Error subscribing to appointments:", error);
     });
   },
   
