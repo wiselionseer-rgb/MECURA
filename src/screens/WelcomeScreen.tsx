@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { ChevronLeft, ShieldCheck, MessageSquare, FileText, Package, Activity, ChevronRight, Sparkles, User, Settings, Stethoscope, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useAdminStore } from '../store/useAdminStore';
+import { auth } from '../firebase';
 
 export function WelcomeScreen() {
   const navigate = useNavigate();
@@ -15,6 +16,16 @@ export function WelcomeScreen() {
   const [loginType, setLoginType] = useState<'admin' | 'doctor' | null>(null);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  useEffect(() => {
+    // Auto redirect to dashboard if user is already logged in
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        navigate('/dashboard');
+      }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
 
   const handleNext = () => {
     if (step === 1) {

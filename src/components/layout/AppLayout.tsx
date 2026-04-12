@@ -1,12 +1,74 @@
-import { useLocation, Outlet } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { User, Flame } from 'lucide-react';
 import { NotificationToast } from '../NotificationToast';
+import { useStore } from '../../store/useStore';
+import { auth } from '../../firebase';
+
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 
 export function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { userName, resetConsultation } = useStore();
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Show gamification header only on specific screens
   const showGamificationHeader = ['/queue', '/chat', '/prescription'].includes(location.pathname);
+
+  const resetTimeout = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      // Inactivity timeout reached
+      if (auth.currentUser) {
+        navigate('/dashboard');
+      } else {
+        resetConsultation();
+        navigate('/');
+      }
+    }, INACTIVITY_TIMEOUT);
+  };
+
+  useEffect(() => {
+    // Set up event listeners for user activity
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    const handleActivity = () => {
+      resetTimeout();
+    };
+
+    events.forEach(event => {
+      document.addEventListener(event, handleActivity);
+    });
+
+    // Initial setup
+    resetTimeout();
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      events.forEach(event => {
+        document.removeEventListener(event, handleActivity);
+      });
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    // Check if user has state or is logged in
+    const isPublicRoute = location.pathname === '/' || location.pathname === '/onboarding';
+    
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (!isPublicRoute && !user && !userName) {
+        // User refreshed the page and lost state, and is not logged in
+        navigate('/');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [location.pathname, userName, navigate]);
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center sm:p-4">
