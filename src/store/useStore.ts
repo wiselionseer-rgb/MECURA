@@ -85,7 +85,17 @@ interface AppState {
   inQueue: boolean;
   queuePosition: number;
   estimatedWaitTime: number; // in minutes
-  queue: Array<{ id: string; patientName: string; email: string; joinedAt: Date; status?: string; answers?: any }>;
+  queue: Array<{ 
+    id: string; 
+    patientName: string; 
+    email: string; 
+    joinedAt: Date; 
+    status?: string; 
+    answers?: any;
+    hasUnread?: boolean;
+    lastMessageAt?: string;
+    lastMessageText?: string;
+  }>;
   joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any }) => void;
   leaveQueue: (patientId: string) => void;
   updateQueue: (position: number, waitTime: number) => void;
@@ -288,19 +298,18 @@ export const useStore = create<AppState>((set, get) => ({
           if (queueData[myIndex].status === 'in-consultation') {
              // Doctor started it!
              set({ consultationActive: true, inQueue: false, activeConsultationId: currentUserId });
+          } else if (queueData[myIndex].status === 'finished') {
+             set({ isConsultationFinished: true, activeConsultationId: currentUserId });
           }
         } else {
-           // Not in queue (might be a doctor or just not in queue)
-           // We don't want to force inQueue: false here if they are a doctor viewing the dashboard
-           // But for a patient, if they aren't in the queue data, they aren't in the queue.
-           // We'll rely on the local state `inQueue` being set when they join.
+           // Not in queue
         }
       } else {
         // Handle anonymous users based on their local state
         const state = get();
-        if (state.inQueue) {
+        if (state.inQueue || state.consultationActive || state.isConsultationFinished) {
           // Find their position based on their generated ID if possible, or just rely on local state
-          const myIndex = queueData.findIndex(p => p.patientName === state.userName);
+          const myIndex = queueData.findIndex(p => p.id === state.patientId);
           if (myIndex !== -1) {
             set({ 
               queuePosition: myIndex,
@@ -308,6 +317,8 @@ export const useStore = create<AppState>((set, get) => ({
             });
             if (queueData[myIndex].status === 'in-consultation') {
                set({ consultationActive: true, inQueue: false, activeConsultationId: queueData[myIndex].id });
+            } else if (queueData[myIndex].status === 'finished') {
+               set({ isConsultationFinished: true, activeConsultationId: queueData[myIndex].id });
             }
           }
         }
@@ -364,14 +375,25 @@ export const useStore = create<AppState>((set, get) => ({
     if (patientId) {
       // Doctor starting consultation
       try {
-        await updateDoc(doc(db, 'queue', patientId), { status: 'in-consultation' });
+        const state = get();
+        const patient = state.queue.find(p => p.id === patientId);
+        
+        const updates: any = { hasUnread: false };
+        if (patient && patient.status === 'waiting') {
+          updates.status = 'in-consultation';
+        }
+        
+        await updateDoc(doc(db, 'queue', patientId), updates);
         set({ activeConsultationId: patientId });
       } catch (e) {
         console.error("Error updating queue status", e);
       }
-    } else if (auth.currentUser) {
-      // Patient starting
-      set({ activeConsultationId: auth.currentUser.uid });
+    } else {
+      const currentId = auth.currentUser?.uid || get().patientId;
+      if (currentId) {
+        // Patient starting
+        set({ activeConsultationId: currentId });
+      }
     }
   },
   endConsultation: async () => {
@@ -400,18 +422,12 @@ export const useStore = create<AppState>((set, get) => ({
         });
         console.log('Consultation history saved to Firestore');
         
-        // Clean up active consultation
-        await deleteDoc(doc(db, 'queue', consultationId));
-        
-        // Delete messages from active_consultations
-        const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
-        const snapshot = await getDocs(messagesRef);
-        snapshot.forEach(async (doc) => {
-          await deleteDoc(doc.ref);
+        // Clean up active consultation - change status to finished instead of deleting
+        await updateDoc(doc(db, 'queue', consultationId), {
+          status: 'finished'
         });
         
-        // Note: deleting a document doesn't delete its subcollections in Firestore, 
-        // but for this prototype it's fine.
+        // We no longer delete messages from active_consultations to preserve chat history
       } catch (error) {
         console.error('Error saving consultation history:', error);
       }
@@ -447,13 +463,21 @@ export const useStore = create<AppState>((set, get) => ({
     }));
 
     // Save to Firestore if in an active consultation
-    const consultationId = state.activeConsultationId || auth.currentUser?.uid;
+    const consultationId = state.activeConsultationId || auth.currentUser?.uid || state.patientId;
     if (consultationId) {
       try {
         const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
         await setDoc(doc(messagesRef, newMessage.id), {
           ...newMessage,
           timestamp: newMessage.timestamp.toISOString()
+        });
+        
+        // Update queue document for WhatsApp-like behavior
+        const queueRef = doc(db, 'queue', consultationId);
+        await updateDoc(queueRef, {
+          lastMessageAt: newMessage.timestamp.toISOString(),
+          lastMessageText: newMessage.text || (newMessage.type === 'product' ? 'Produto prescrito' : 'Mensagem'),
+          hasUnread: newMessage.sender === 'user' // Only mark unread if patient sent it
         });
       } catch (error) {
         console.error("Error sending message", error);

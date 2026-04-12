@@ -32,7 +32,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { setDoc, doc } from 'firebase/firestore';
+import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
   LineChart, 
@@ -72,11 +72,44 @@ export function DoctorDashboardScreen() {
   const [selectedProduct, setSelectedProduct] = useState<CBDProduct | null>(null);
   const [dosageInput, setDosageInput] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string} | null>(null);
+  const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const pendingCount = allAppointments.filter(app => app.status === 'pending').length;
+
+  const playNotificationSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+      oscillator.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.1); // Drop to A4
+      
+      gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.3);
+    } catch (e) {
+      console.error("Audio play failed", e);
+    }
+  };
+
+  useEffect(() => {
+    const currentUnreadCount = queue.filter(p => p.hasUnread).length;
+    if (currentUnreadCount > prevUnreadCount) {
+      playNotificationSound();
+    }
+    setPrevUnreadCount(currentUnreadCount);
+  }, [queue, prevUnreadCount]);
 
   useEffect(() => {
     const unsubscribeQueue = subscribeToQueue();
@@ -92,12 +125,28 @@ export function DoctorDashboardScreen() {
     if (currentPatient?.id) {
       console.log("Subscribing to messages for:", currentPatient.id);
       const unsubscribeMessages = subscribeToMessages(currentPatient.id);
+      
+      // Mark as read when opening
+      if (currentPatient.hasUnread) {
+        updateDoc(doc(db, 'queue', currentPatient.id), { hasUnread: false }).catch(console.error);
+      }
+      
       return () => {
         console.log("Unsubscribing from messages for:", currentPatient.id);
         unsubscribeMessages();
       };
     }
   }, [currentPatient?.id, subscribeToMessages]);
+
+  // Mark as read when new messages arrive while viewing the patient
+  useEffect(() => {
+    if (currentPatient?.id && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.sender === 'user') {
+        updateDoc(doc(db, 'queue', currentPatient.id), { hasUnread: false }).catch(console.error);
+      }
+    }
+  }, [messages, currentPatient?.id]);
 
   const handleStartConsultation = (patient: any) => {
     console.log("Starting consultation for:", patient);
@@ -360,9 +409,7 @@ export function DoctorDashboardScreen() {
       type: 'text'
     });
     endConsultation();
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    setCurrentPatient(null);
   };
 
   const handleGeneratePDF = () => {
@@ -626,45 +673,87 @@ export function DoctorDashboardScreen() {
         
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {queue.length > 0 ? (
-            queue.map((patient, idx) => (
+            [...queue].sort((a, b) => {
+              // 1. Unread messages first
+              if (a.hasUnread && !b.hasUnread) return -1;
+              if (!a.hasUnread && b.hasUnread) return 1;
+              
+              // 2. Most recent message
+              if (a.lastMessageAt && b.lastMessageAt) {
+                return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+              }
+              if (a.lastMessageAt) return -1;
+              if (b.lastMessageAt) return 1;
+              
+              // 3. Status (waiting > in-consultation > finished)
+              const statusWeight = { 'waiting': 0, 'in-consultation': 1, 'finished': 2 };
+              const weightA = statusWeight[a.status as keyof typeof statusWeight] ?? 3;
+              const weightB = statusWeight[b.status as keyof typeof statusWeight] ?? 3;
+              if (weightA !== weightB) return weightA - weightB;
+              
+              // 4. Joined At (oldest first)
+              return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+            }).map((patient, idx) => (
               <div 
                 key={patient.id} 
                 onClick={() => handleStartConsultation(patient)}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 ${
-                  idx === 0 
-                    ? 'bg-gradient-to-br from-mecura-surface to-mecura-surface-light border-mecura-neon/30 shadow-[0_4px_20px_rgba(166,255,0,0.05)]' 
-                    : 'bg-transparent border-transparent hover:bg-mecura-surface/40 hover:border-mecura-elevated'
+                  patient.hasUnread
+                    ? 'bg-mecura-neon/10 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.15)]'
+                    : patient.status === 'finished'
+                      ? 'bg-transparent border-transparent opacity-60 hover:opacity-100 hover:bg-mecura-surface/40 hover:border-mecura-elevated'
+                      : 'bg-transparent border-transparent hover:bg-mecura-surface/40 hover:border-mecura-elevated'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className={`font-semibold text-base ${idx === 0 ? 'text-white' : 'text-mecura-pearl'}`}>{patient.patientName}</h3>
-                  <button 
-                    onClick={() => handleStartConsultation(patient)}
-                    className="text-xs text-mecura-neon hover:underline"
-                  >
-                    Iniciar
-                  </button>
+                  <h3 className={`font-semibold text-base ${patient.hasUnread ? 'text-white' : 'text-mecura-pearl'}`}>{patient.patientName}</h3>
+                  <div className="flex flex-col items-end gap-1">
+                    {patient.lastMessageAt && (
+                      <span className="text-[10px] text-mecura-silver">
+                        {new Date(patient.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                    {patient.hasUnread && (
+                      <span className="w-5 h-5 rounded-full bg-mecura-neon text-black flex items-center justify-center text-[10px] font-bold">
+                        1
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 mb-3">
-                  <div className={`w-2 h-2 rounded-full ${idx === 0 ? 'bg-mecura-neon animate-pulse shadow-[0_0_8px_rgba(166,255,0,0.6)]' : 'bg-mecura-silver'}`} />
-                  <span className={`text-xs font-medium ${idx === 0 ? 'text-mecura-neon' : 'text-mecura-silver'}`}>
-                    {idx === 0 ? 'Aguardando Atendimento' : 'Na fila'}
+                  <div className={`w-2 h-2 rounded-full ${
+                    patient.status === 'waiting' ? 'bg-mecura-neon animate-pulse shadow-[0_0_8px_rgba(166,255,0,0.6)]' : 
+                    patient.status === 'in-consultation' ? 'bg-blue-400' : 'bg-mecura-silver'
+                  }`} />
+                  <span className={`text-xs font-medium ${
+                    patient.status === 'waiting' ? 'text-mecura-neon' : 
+                    patient.status === 'in-consultation' ? 'text-blue-400' : 'text-mecura-silver'
+                  }`}>
+                    {patient.status === 'waiting' ? 'Aguardando Atendimento' : 
+                     patient.status === 'in-consultation' ? 'Em Consulta' : 'Finalizado'}
                   </span>
                 </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleNotifyNext(patient)}
-                    className="text-[10px] bg-mecura-surface-light px-2 py-1 rounded text-mecura-silver hover:text-white transition-colors"
-                  >
-                    Sua vez
-                  </button>
-                  <button 
-                    onClick={() => handleNotifyWait(patient)}
-                    className="text-[10px] bg-mecura-surface-light px-2 py-1 rounded text-mecura-silver hover:text-white transition-colors"
-                  >
-                    5 min
-                  </button>
-                </div>
+                {patient.lastMessageText && (
+                  <p className="text-xs text-mecura-silver truncate mb-3">
+                    {patient.lastMessageText}
+                  </p>
+                )}
+                {patient.status !== 'finished' && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleNotifyNext(patient); }}
+                      className="text-[10px] bg-mecura-surface-light px-2 py-1 rounded text-mecura-silver hover:text-white transition-colors"
+                    >
+                      Sua vez
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleNotifyWait(patient); }}
+                      className="text-[10px] bg-mecura-surface-light px-2 py-1 rounded text-mecura-silver hover:text-white transition-colors"
+                    >
+                      5 min
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           ) : (
