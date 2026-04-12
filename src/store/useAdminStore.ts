@@ -81,7 +81,7 @@ export const useAdminStore = create<AdminState>()(
 
       promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥\n\n• Linha Vibe (Óleos): Desconto progressivo por volume (10% / 20% / 30% OFF ao comprar 2, 4 ou 6 unidades).\n• Chill Vibe Gummy: Desconto ao comprar 10 unidades ($350 vs $390 avulso).\n• Drops by GreenBudz Gummies: Todos os sabores com promoção de 2 pacotes por $49,90 (contra $54 no total avulso).\n• Ignite (Queima de estoque): Leve 3, pague 2 em todos os 4 óleos.',
       setPromotionsText: (text) => set({ promotionsText: text }),
-      catalogUrl: 'https://greenbudz.com/catalog',
+      catalogUrl: 'https://drive.google.com/file/d/1QvJjJlj6gLaljo4-JpOXhStUbwn_yYBA/preview?usp=drive_link',
       setCatalogUrl: (url) => set({ catalogUrl: url }),
     }),
     {
