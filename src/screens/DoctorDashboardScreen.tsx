@@ -32,6 +32,8 @@ import {
   Maximize2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { setDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { 
   LineChart, 
   Line, 

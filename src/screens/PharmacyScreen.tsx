@@ -291,20 +291,18 @@ export function PharmacyScreen() {
                 </div>
               )}
 
-              {catalogUrl && (
-                <motion.a 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  href={catalogUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)] group"
-                >
-                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                  <Gift className="w-5 h-5 relative z-10" />
-                  <span className="relative z-10">Ver Catálogo Completo</span>
-                </motion.a>
-              )}
+              <motion.a 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                href={catalogUrl || 'https://greenbudz.com/catalog'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)] group"
+              >
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                <Gift className="w-5 h-5 relative z-10" />
+                <span className="relative z-10">Ver Catálogo Completo</span>
+              </motion.a>
             </div>
           </motion.div>
         )}
