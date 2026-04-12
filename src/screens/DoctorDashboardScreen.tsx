@@ -82,13 +82,19 @@ export function DoctorDashboardScreen() {
   }, [subscribeToQueue]);
 
   useEffect(() => {
+    console.log("Current patient changed:", currentPatient);
     if (currentPatient?.id) {
+      console.log("Subscribing to messages for:", currentPatient.id);
       const unsubscribeMessages = subscribeToMessages(currentPatient.id);
-      return () => unsubscribeMessages();
+      return () => {
+        console.log("Unsubscribing from messages for:", currentPatient.id);
+        unsubscribeMessages();
+      };
     }
   }, [currentPatient?.id, subscribeToMessages]);
 
   const handleStartConsultation = (patient: any) => {
+    console.log("Starting consultation for:", patient);
     setCurrentPatient(patient);
     startConsultation(patient.id);
   };
@@ -586,7 +592,7 @@ export function DoctorDashboardScreen() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden relative">
         {activeView === 'chat' ? (
           <>
             {/* Queue Panel */}
@@ -608,6 +614,7 @@ export function DoctorDashboardScreen() {
             queue.map((patient, idx) => (
               <div 
                 key={patient.id} 
+                onClick={() => handleStartConsultation(patient)}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 ${
                   idx === 0 
                     ? 'bg-gradient-to-br from-mecura-surface to-mecura-surface-light border-mecura-neon/30 shadow-[0_4px_20px_rgba(166,255,0,0.05)]' 
@@ -654,7 +661,7 @@ export function DoctorDashboardScreen() {
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col bg-[#0A0A0F] relative ${!currentPatient ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`md:flex-1 flex flex-col bg-[#0A0A0F] relative ${!currentPatient ? 'hidden md:flex' : 'flex'}`}>
         {/* Subtle background pattern */}
         <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#A6FF00 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
         
