@@ -345,13 +345,16 @@ export function DoctorDashboardScreen() {
     setShowPrescriptionModal(false);
   };
 
-  const handleFinishConsultation = () => {
-    addMessage({
+  const handleFinishConsultation = async () => {
+    await addMessage({
       text: `Consulta finalizada.\n\n${userName ? userName + ', a' : 'A'}gradeço a confiança em meu trabalho. Lembre-se que o tratamento com cannabis medicinal é uma jornada de adaptação e descoberta. Estarei acompanhando sua evolução de perto.\n\nQualquer dúvida sobre a dosagem, efeitos ou se precisar de suporte, nossa equipe de acolhimento está à disposição 24h por dia aqui no aplicativo.\n\nUm excelente tratamento e conte conosco!`,
       sender: 'doctor',
       type: 'text'
     });
     endConsultation();
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const handleGeneratePDF = () => {

@@ -119,7 +119,7 @@ interface AppState {
   updateExchangeRate: (rate: number) => Promise<void>;
 }
 
-import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 
@@ -330,7 +330,7 @@ export const useStore = create<AppState>((set, get) => ({
   setActiveConsultationId: (id) => set({ activeConsultationId: id }),
   
   startConsultation: async (patientId?: string) => {
-    set({ consultationActive: true, inQueue: false });
+    set({ consultationActive: true, inQueue: false, messages: [] });
     if (patientId) {
       // Doctor starting consultation
       try {
@@ -372,6 +372,14 @@ export const useStore = create<AppState>((set, get) => ({
         
         // Clean up active consultation
         await deleteDoc(doc(db, 'queue', consultationId));
+        
+        // Delete messages from active_consultations
+        const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
+        const snapshot = await getDocs(messagesRef);
+        snapshot.forEach(async (doc) => {
+          await deleteDoc(doc.ref);
+        });
+        
         // Note: deleting a document doesn't delete its subcollections in Firestore, 
         // but for this prototype it's fine.
       } catch (error) {
