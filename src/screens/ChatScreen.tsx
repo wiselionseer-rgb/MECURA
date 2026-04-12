@@ -7,9 +7,11 @@ import { Send, FileText, CheckCheck, Download, ChevronLeft, ShoppingCart, User, 
 import { format } from 'date-fns';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
+import { auth } from '../firebase';
+
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages } = useStore();
+  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
@@ -50,12 +52,23 @@ export function ChatScreen() {
     setPrevMessageCount(messages.length);
   }, [messages, prevMessageCount]);
 
+  const [currentUid, setCurrentUid] = useState<string | null>(auth.currentUser?.uid || null);
+
   useEffect(() => {
-    if (activeConsultationId) {
-      const unsubscribe = subscribeToMessages(activeConsultationId);
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setCurrentUid(user?.uid || null);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    // If patientId is lost due to refresh, fallback to currentUid
+    const consultationId = activeConsultationId || patientId || currentUid;
+    if (consultationId) {
+      const unsubscribe = subscribeToMessages(consultationId);
       return () => unsubscribe();
     }
-  }, [activeConsultationId, subscribeToMessages]);
+  }, [activeConsultationId, patientId, currentUid, subscribeToMessages]);
 
   const handleGeneratePDF = () => {
     generatePrescriptionPDF(userName, messages);

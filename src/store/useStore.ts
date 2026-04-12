@@ -285,7 +285,9 @@ export const useStore = create<AppState>((set, get) => ({
       
       // Update position for current user (if they are a patient)
       const currentUserId = auth.currentUser?.uid;
-      if (currentUserId) {
+      const isDoctorRoute = window.location.pathname.includes('/doctor');
+      
+      if (currentUserId && !isDoctorRoute) {
         const myIndex = queueData.findIndex(p => p.id === currentUserId);
         if (myIndex !== -1) {
           set({ 
@@ -304,7 +306,7 @@ export const useStore = create<AppState>((set, get) => ({
         } else {
            // Not in queue
         }
-      } else {
+      } else if (!isDoctorRoute) {
         // Handle anonymous users based on their local state
         const state = get();
         if (state.inQueue || state.consultationActive || state.isConsultationFinished) {
@@ -374,6 +376,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ consultationActive: true, inQueue: false, messages: [] });
     if (patientId) {
       // Doctor starting consultation
+      set({ activeConsultationId: patientId });
       try {
         const state = get();
         const patient = state.queue.find(p => p.id === patientId);
@@ -384,7 +387,6 @@ export const useStore = create<AppState>((set, get) => ({
         }
         
         await updateDoc(doc(db, 'queue', patientId), updates);
-        set({ activeConsultationId: patientId });
       } catch (e) {
         console.error("Error updating queue status", e);
       }
@@ -463,7 +465,11 @@ export const useStore = create<AppState>((set, get) => ({
     }));
 
     // Save to Firestore if in an active consultation
-    const consultationId = state.activeConsultationId || auth.currentUser?.uid || state.patientId;
+    // For doctor, activeConsultationId is set. For patient, patientId is set.
+    // If patient is logged in and refreshed, patientId might be null, so fallback to auth.currentUser?.uid
+    const consultationId = state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    console.log("addMessage called. consultationId:", consultationId, "msg:", msg);
+    
     if (consultationId) {
       try {
         const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
@@ -471,6 +477,7 @@ export const useStore = create<AppState>((set, get) => ({
           ...newMessage,
           timestamp: newMessage.timestamp.toISOString()
         });
+        console.log("Message saved to active_consultations successfully.");
         
         // Update queue document for WhatsApp-like behavior
         const queueRef = doc(db, 'queue', consultationId);
@@ -479,9 +486,12 @@ export const useStore = create<AppState>((set, get) => ({
           lastMessageText: newMessage.text || (newMessage.type === 'product' ? 'Produto prescrito' : 'Mensagem'),
           hasUnread: newMessage.sender === 'user' // Only mark unread if patient sent it
         });
+        console.log("Queue document updated successfully.");
       } catch (error) {
-        console.error("Error sending message", error);
+        console.error("Error sending message to Firestore:", error);
       }
+    } else {
+      console.warn("addMessage: No consultationId found. Message not saved to Firestore.");
     }
   },
   
@@ -493,6 +503,9 @@ export const useStore = create<AppState>((set, get) => ({
         timestamp: new Date(doc.data().timestamp)
       })) as Message[];
       set({ messages: msgs });
+    }, (error) => {
+      console.error("Error subscribing to messages:", error);
+      handleFirestoreError(error, OperationType.GET, `active_consultations/${consultationId}/messages`);
     });
   },
   setMessages: (messages) => set({ messages }),
