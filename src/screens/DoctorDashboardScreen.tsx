@@ -103,26 +103,32 @@ export function DoctorDashboardScreen() {
     startConsultation(patient.id);
   };
 
-  const handleNotifyNext = (patient: any) => {
+  const handleNotifyNext = async (patient: any) => {
     // In a real app, this would send a push notification or update a status in the DB
-    // For this prototype, we'll just show an alert or simulate a message
-    alert(`Notificação enviada para ${patient.patientName}: Sua vez chegou!`);
-    // We could also add a message to the chat if this is the current user
-    if (patient.patientName === userName) {
-      addMessage({
+    try {
+      await setDoc(doc(db, 'notifications', patient.id), {
         text: "O Dr. Guilherme já está pronto para te atender! Entre na sala de consulta.",
-        sender: 'doctor'
+        timestamp: new Date().toISOString(),
+        type: 'next'
       });
+      alert(`Notificação enviada para ${patient.patientName}: Sua vez chegou!`);
+    } catch (error) {
+      console.error("Error sending notification", error);
+      alert("Erro ao enviar notificação.");
     }
   };
 
-  const handleNotifyWait = (patient: any) => {
-    alert(`Notificação enviada para ${patient.patientName}: Consulta em 5 min.`);
-    if (patient.patientName === userName) {
-      addMessage({
+  const handleNotifyWait = async (patient: any) => {
+    try {
+      await setDoc(doc(db, 'notifications', patient.id), {
         text: "Olá! O Dr. Guilherme está finalizando um atendimento e te chamará em aproximadamente 5 minutos.",
-        sender: 'doctor'
+        timestamp: new Date().toISOString(),
+        type: 'wait'
       });
+      alert(`Notificação enviada para ${patient.patientName}: Consulta em 5 min.`);
+    } catch (error) {
+      console.error("Error sending notification", error);
+      alert("Erro ao enviar notificação.");
     }
   };
 

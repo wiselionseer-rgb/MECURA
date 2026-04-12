@@ -1,11 +1,36 @@
 import { useEffect, useState } from 'react';
 import { useAdminStore } from '../store/useAdminStore';
 import { Bell, X } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 
 export function NotificationToast() {
-  const { notifications } = useAdminStore();
+  const { notifications, addNotification } = useAdminStore();
   const [visibleNotification, setVisibleNotification] = useState<any>(null);
   const [seenNotifications, setSeenNotifications] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          if (change.doc.id === auth.currentUser?.uid) {
+            addNotification({
+              id: change.doc.id,
+              title: 'Nova Notificação',
+              message: data.text,
+              date: data.timestamp
+            });
+          }
+        }
+      });
+    });
+
+    return () => unsubscribe();
+  }, [addNotification]);
 
   useEffect(() => {
     if (notifications.length > 0) {
