@@ -28,6 +28,7 @@ import {
   CheckCircle,
   Download,
   ChevronDown,
+  ChevronLeft,
   Maximize2
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -518,16 +519,16 @@ export function DoctorDashboardScreen() {
   };
 
   return (
-    <div className="flex h-screen bg-[#050508] text-mecura-pearl overflow-hidden font-sans">
+    <div className="flex flex-col md:flex-row h-screen bg-[#050508] text-mecura-pearl overflow-hidden font-sans">
       <NotificationToast />
-      {/* Left Sidebar - Navigation */}
-      <div className="w-20 bg-mecura-surface border-r border-mecura-elevated flex flex-col items-center py-6 gap-8 z-10">
-        <div className="w-10 h-10 rounded-xl bg-mecura-neon/20 flex items-center justify-center border border-mecura-neon/50 shadow-[0_0_15px_rgba(166,255,0,0.2)]">
+      {/* Left Sidebar - Navigation (Bottom bar on mobile) */}
+      <div className="w-full md:w-20 bg-mecura-surface border-t md:border-t-0 md:border-r border-mecura-elevated flex md:flex-col items-center py-2 md:py-6 px-4 md:px-0 gap-4 md:gap-8 z-20 order-last md:order-first overflow-x-auto md:overflow-x-visible">
+        <div className="w-10 h-10 rounded-xl bg-mecura-neon/20 flex items-center justify-center border border-mecura-neon/50 shadow-[0_0_15px_rgba(166,255,0,0.2)] flex-shrink-0 hidden md:flex">
           <span className="font-serif font-bold text-mecura-neon text-xl">m</span>
         </div>
         
-        <nav className="flex flex-col gap-6 flex-1">
-          <button className="p-3 rounded-xl bg-mecura-neon/10 text-mecura-neon relative group">
+        <nav className="flex md:flex-col gap-2 md:gap-6 flex-1 justify-center md:justify-start">
+          <button className="p-3 rounded-xl bg-mecura-neon/10 text-mecura-neon relative group hidden md:block">
             <Users className="w-6 h-6" />
             <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Fila de Pacientes
@@ -538,7 +539,7 @@ export function DoctorDashboardScreen() {
             className={`p-3 rounded-xl transition-colors relative group ${activeView === 'chat' ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-mecura-silver hover:text-white hover:bg-white/5'}`}
           >
             <MessageSquare className="w-6 h-6" />
-            <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+            <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Chat
             </div>
           </button>
@@ -547,7 +548,7 @@ export function DoctorDashboardScreen() {
             className={`p-3 rounded-xl transition-colors relative group ${activeView === 'guide' ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-mecura-silver hover:text-white hover:bg-white/5'}`}
           >
             <BookOpen className="w-6 h-6" />
-            <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+            <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Guia de Produtos
             </div>
           </button>
@@ -559,14 +560,14 @@ export function DoctorDashboardScreen() {
             {pendingCount > 0 && (
               <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-mecura-surface" />
             )}
-            <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+            <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Dashboard Analítico
             </div>
           </button>
         </nav>
 
-        <div className="flex flex-col gap-4">
-          <button className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors">
+        <div className="flex md:flex-col gap-2 md:gap-4 items-center">
+          <button className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors hidden md:block">
             <Settings className="w-6 h-6" />
           </button>
           <button 
@@ -574,29 +575,33 @@ export function DoctorDashboardScreen() {
             className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors relative group"
           >
             <LogOut className="w-6 h-6" />
-            <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+            <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Sair
             </div>
           </button>
-          <div className="w-10 h-10 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated">
+          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated hidden md:block">
             <img src="https://images.unsplash.com/photo-1594824436998-dd40e4f69d1b?q=80&w=100&auto=format&fit=crop" alt="Doctor" referrerPolicy="no-referrer" />
           </div>
         </div>
       </div>
 
-      {/* Queue Panel */}
-      <div className="w-80 bg-[#0A0A0F] border-r border-mecura-elevated flex flex-col z-0 shadow-lg">
-        <div className="p-6 border-b border-mecura-elevated bg-mecura-surface/20">
-          <h2 className="text-xl font-bold text-white mb-4 tracking-tight">Fila de Atendimento</h2>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
-            <input 
-              type="text" 
-              placeholder="Buscar paciente..." 
-              className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
-            />
-          </div>
-        </div>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {activeView === 'chat' ? (
+          <>
+            {/* Queue Panel */}
+            <div className={`w-full md:w-80 bg-[#0A0A0F] border-r border-mecura-elevated flex flex-col z-0 shadow-lg ${currentPatient ? 'hidden md:flex' : 'flex'}`}>
+              <div className="p-6 border-b border-mecura-elevated bg-mecura-surface/20">
+                <h2 className="text-xl font-bold text-white mb-4 tracking-tight">Fila de Atendimento</h2>
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
+                  <input 
+                    type="text" 
+                    placeholder="Buscar paciente..." 
+                    className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
+                  />
+                </div>
+              </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {queue.length > 0 ? (
@@ -648,56 +653,68 @@ export function DoctorDashboardScreen() {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      {activeView === 'chat' ? (
-        <div className="flex-1 flex flex-col bg-[#0A0A0F] relative">
-          {/* Subtle background pattern */}
-          <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#A6FF00 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+      {/* Chat Area */}
+      <div className={`flex-1 flex flex-col bg-[#0A0A0F] relative ${!currentPatient ? 'hidden md:flex' : 'flex'}`}>
+        {/* Subtle background pattern */}
+        <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#A6FF00 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+        
+        {/* Back button for mobile */}
+        {currentPatient && (
+          <div className="md:hidden p-4 border-b border-mecura-elevated bg-[#0A0A0F] flex items-center">
+            <button 
+              onClick={() => setCurrentPatient(null)}
+              className="text-mecura-silver hover:text-white flex items-center gap-2"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Voltar para Fila
+            </button>
+          </div>
+        )}
           
           {/* Chat Header */}
-          <div className="h-20 border-b border-mecura-elevated flex items-center justify-between px-8 bg-[#0A0A0F]/80 backdrop-blur-md z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated flex items-center justify-center">
-                <User className="w-6 h-6 text-mecura-silver" />
+          <div className="h-16 md:h-20 border-b border-mecura-elevated flex items-center justify-between px-4 md:px-8 bg-[#0A0A0F]/80 backdrop-blur-md z-10">
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated flex items-center justify-center">
+                <User className="w-5 h-5 md:w-6 md:h-6 text-mecura-silver" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">{userName || 'Paciente Atual'}</h2>
-                <p className="text-xs text-mecura-silver font-medium flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.5)]" /> Online agora
+                <h2 className="text-base md:text-lg font-bold text-white tracking-tight truncate max-w-[150px] md:max-w-xs">{userName || 'Paciente Atual'}</h2>
+                <p className="text-[10px] md:text-xs text-mecura-silver font-medium flex items-center gap-1.5 mt-0.5">
+                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.5)]" /> Online agora
                 </p>
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
               <button 
                 onClick={() => setShowHistoryModal(true)}
-                className="px-4 py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-2 text-white"
+                className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
               >
-                <FileText className="w-4 h-4 text-mecura-silver" /> Histórico
+                <FileText className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Histórico</span>
               </button>
               <button 
                 onClick={() => setShowPrescriptionModal(true)}
-                className="px-5 py-2.5 bg-mecura-neon text-black rounded-xl text-sm font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(166,255,0,0.15)]"
+                className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-neon text-black rounded-xl text-xs md:text-sm font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1 md:gap-2 shadow-[0_0_20px_rgba(166,255,0,0.15)] whitespace-nowrap"
               >
-                <PlusCircle className="w-4 h-4" /> Prescrever
+                <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
               </button>
               <button 
                 onClick={handleGeneratePDF}
-                className="px-5 py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-2 text-white"
+                className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
               >
-                <Download className="w-4 h-4 text-mecura-silver" /> Gerar PDF
+                <Download className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">PDF</span>
               </button>
               <button 
                 onClick={handleFinishConsultation}
-                className="px-5 py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-2"
+                className="px-3 md:px-5 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
               >
-                <CheckCircle className="w-4 h-4" /> Finalizar
+                <CheckCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Finalizar</span>
               </button>
             </div>
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-8 space-y-8 z-0">
-            <div className="flex justify-center mb-8">
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 z-0">
+            <div className="flex justify-center mb-6 md:mb-8">
               <span className="text-xs font-medium text-mecura-silver bg-mecura-surface/50 px-4 py-1.5 rounded-full border border-mecura-elevated backdrop-blur-sm">
                 Consulta iniciada hoje
               </span>
@@ -710,12 +727,12 @@ export function DoctorDashboardScreen() {
                   className={`flex flex-col ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}
                 >
                   {msg.type === 'product' && msg.productData ? (
-                    <div className="w-[85%] max-w-2xl bg-[#F3F4F6] rounded-xl overflow-hidden mb-2 shadow-sm relative group">
-                      <div className="p-5 flex flex-col">
+                    <div className="w-[95%] md:w-[85%] max-w-2xl bg-[#F3F4F6] rounded-xl overflow-hidden mb-2 shadow-sm relative group">
+                      <div className="p-4 md:p-5 flex flex-col">
                         {/* Top Section */}
-                        <div className="flex gap-4 mb-4">
+                        <div className="flex flex-col md:flex-row gap-4 mb-4">
                           {/* Image */}
-                          <div className="w-20 h-28 bg-white rounded-lg p-2 flex-shrink-0 flex items-center justify-center relative shadow-sm">
+                          <div className="w-full md:w-20 h-32 md:h-28 bg-white rounded-lg p-2 flex-shrink-0 flex items-center justify-center relative shadow-sm">
                             <img 
                               src={msg.productData.image || "https://placehold.co/400x400/f8fafc/0f172a?text=CBD"} 
                               alt={msg.productData.name} 
@@ -1045,18 +1062,19 @@ export function DoctorDashboardScreen() {
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Digite sua mensagem para o paciente..." 
-                className="flex-1 h-14 bg-mecura-surface border border-mecura-elevated rounded-full px-6 text-white focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface-light transition-all text-[15px]"
+                className="flex-1 h-12 md:h-14 bg-mecura-surface border border-mecura-elevated rounded-full px-4 md:px-6 text-white focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface-light transition-all text-sm md:text-[15px]"
               />
               <button 
                 onClick={handleSend}
                 disabled={!inputText.trim() && !pendingAttachment}
-                className="w-14 h-14 rounded-full bg-mecura-neon text-black flex items-center justify-center hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] disabled:opacity-50 disabled:shadow-none hover:scale-105 active:scale-95"
+                className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-mecura-neon text-black flex items-center justify-center hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] disabled:opacity-50 disabled:shadow-none hover:scale-105 active:scale-95 flex-shrink-0"
               >
-                <Send className="w-5 h-5 ml-1" />
+                <Send className="w-4 h-4 md:w-5 md:h-5 ml-1" />
               </button>
             </div>
           </div>
         </div>
+        </>
       ) : activeView === 'guide' ? (
         <CBDGuideView />
       ) : (
@@ -1064,10 +1082,10 @@ export function DoctorDashboardScreen() {
       )}
 
       {/* Right Sidebar - Patient Record (Anamnese) */}
-      <div className="w-96 bg-[#0A0A0F] border-l border-mecura-elevated flex flex-col shadow-[-10px_0_30px_rgba(0,0,0,0.2)] z-10">
-        <div className="p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex justify-between items-center">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2 tracking-tight">
-            <ClipboardList className="w-5 h-5 text-mecura-neon" />
+      <div className={`w-full md:w-96 bg-[#0A0A0F] border-t md:border-t-0 md:border-l border-mecura-elevated flex flex-col shadow-[-10px_0_30px_rgba(0,0,0,0.2)] z-10 ${!currentPatient ? 'hidden md:flex' : 'flex md:flex'}`}>
+        <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex justify-between items-center">
+          <h2 className="text-base md:text-lg font-bold text-white flex items-center gap-2 tracking-tight">
+            <ClipboardList className="w-4 h-4 md:w-5 md:h-5 text-mecura-neon" />
             Ficha do Paciente
           </h2>
         </div>
@@ -1274,6 +1292,7 @@ export function DoctorDashboardScreen() {
             </div>
           </section>
         </div>
+      </div>
       </div>
 
       {/* AI Analysis Modal */}
@@ -1596,9 +1615,9 @@ export function DoctorDashboardScreen() {
                   </div>
                 </div>
               )}
-            </div>
           </div>
-        )}
+        </div>
+      )}
 
       {/* History Modal */}
       <AnimatePresence>
