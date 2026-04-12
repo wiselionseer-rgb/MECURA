@@ -79,6 +79,9 @@ interface AppState {
   cancelAppointment: (id: string) => void;
   
   // Queue System
+  patientId: string | null;
+  setPatientId: (id: string) => void;
+  
   inQueue: boolean;
   queuePosition: number;
   estimatedWaitTime: number; // in minutes
@@ -200,13 +203,20 @@ export const useStore = create<AppState>((set, get) => ({
     )
   })),
   
+  patientId: null,
+  setPatientId: (id) => set({ patientId: id }),
+  
   inQueue: false,
   queuePosition: 0,
   estimatedWaitTime: 0,
   queue: [],
   joinQueue: async (patient) => {
     const state = get();
-    const currentUserId = auth.currentUser?.uid || `anon_${Date.now()}`;
+    const currentUserId = auth.currentUser?.uid || state.patientId || `anon_${Date.now()}`;
+    
+    // Save the generated or existing ID
+    set({ patientId: currentUserId });
+    
     const newPatient = patient || { 
       id: currentUserId, 
       patientName: state.userName || 'Paciente Anônimo', 

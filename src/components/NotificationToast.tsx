@@ -1,28 +1,31 @@
 import { useEffect, useState } from 'react';
 import { useAdminStore } from '../store/useAdminStore';
+import { useStore } from '../store/useStore';
 import { Bell, X } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
 export function NotificationToast() {
   const { notifications, addNotification } = useAdminStore();
+  const { patientId } = useStore();
   const [visibleNotification, setVisibleNotification] = useState<any>(null);
   const [seenNotifications, setSeenNotifications] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const currentId = auth.currentUser?.uid || patientId;
+    if (!currentId) return;
 
     const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const data = change.doc.data();
-          if (change.doc.id === auth.currentUser?.uid) {
+          if (change.doc.id === currentId) {
             addNotification({
-              id: change.doc.id,
-              title: 'Nova Notificação',
+              id: change.doc.id + '_' + Date.now(), // Ensure unique ID for local state
+              title: data.type === 'next' ? 'Sua vez chegou!' : 'Aviso do Médico',
               message: data.text,
-              date: data.timestamp
+              date: new Date(data.timestamp).toISOString()
             });
           }
         }
@@ -30,7 +33,7 @@ export function NotificationToast() {
     });
 
     return () => unsubscribe();
-  }, [addNotification]);
+  }, [addNotification, patientId]);
 
   useEffect(() => {
     if (notifications.length > 0) {
