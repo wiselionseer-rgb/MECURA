@@ -8,7 +8,7 @@ import { useAdminStore } from '../store/useAdminStore';
 export function WelcomeScreen() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const { hasCompletedOnboarding } = useStore();
+  const { hasCompletedOnboarding, reset } = useStore();
   const { doctors } = useAdminStore();
   
   const [showProfessionalModal, setShowProfessionalModal] = useState(false);
@@ -20,6 +20,7 @@ export function WelcomeScreen() {
     if (step === 1) {
       setStep(2);
     } else {
+      reset();
       navigate('/onboarding');
     }
   };

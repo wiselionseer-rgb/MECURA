@@ -117,6 +117,8 @@ interface AppState {
   setExchangeRate: (rate: number) => void;
   subscribeToExchangeRate: () => () => void;
   updateExchangeRate: (rate: number) => Promise<void>;
+  
+  reset: () => void;
 }
 
 import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
@@ -474,4 +476,29 @@ export const useStore = create<AppState>((set, get) => ({
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
+  
+  reset: () => set({
+    userName: '',
+    userEmail: '',
+    userPhone: '',
+    userCpf: '',
+    userTier: 'Essencial',
+    onboardingStep: 0,
+    hasCompletedOnboarding: false,
+    healthStreak: 0,
+    answers: { objectives: [] },
+    pagamento_consulta: false,
+    pagamento_premium: false,
+    selectedOffer: null,
+    scheduledConsultation: null,
+    consultationStatus: 'pending',
+    inQueue: false,
+    queuePosition: 0,
+    estimatedWaitTime: 0,
+    queue: [],
+    consultationActive: false,
+    isConsultationFinished: false,
+    activeConsultationId: null,
+    messages: []
+  }),
 }));

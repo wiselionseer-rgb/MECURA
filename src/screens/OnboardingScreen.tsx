@@ -88,7 +88,7 @@ const STEPS = [
       userName, setUserName, 
       userEmail, setUserEmail,
       userPhone, setUserPhone,
-      setOnboardingStep, setHasCompletedOnboarding, incrementStreak, answers, setAnswer 
+      setOnboardingStep, setHasCompletedOnboarding, incrementStreak, answers, setAnswer, reset 
     } = useStore();
     const [currentStep, setCurrentStep] = useState(0);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,6 +122,7 @@ const STEPS = [
             // Check if user has completed onboarding
             const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
             if (userDoc.exists()) {
+              reset();
               const data = userDoc.data();
               if (data.name) setUserName(data.name);
               if (data.phone) setUserPhone(data.phone);
