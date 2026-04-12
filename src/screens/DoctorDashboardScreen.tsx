@@ -355,7 +355,7 @@ export function DoctorDashboardScreen() {
   };
 
   const handleGeneratePDF = () => {
-    generatePrescriptionPDF(userName || 'Paciente', messages);
+    generatePrescriptionPDF(currentPatient?.patientName || userName || 'Paciente', messages);
   };
 
   const handleGenerateAnalysis = async () => {
