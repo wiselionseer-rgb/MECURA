@@ -143,9 +143,9 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [messages]);
+  // useEffect(() => {
+  //   messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+  // }, [messages]);
 
   // Removed local mock queue to use store's queue
 
