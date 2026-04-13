@@ -73,6 +73,8 @@ export function DoctorDashboardScreen() {
   const [dosageInput, setDosageInput] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string} | null>(null);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
+  const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
+  const [queueSearchTerm, setQueueSearchTerm] = useState('');
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -666,14 +668,42 @@ export function DoctorDashboardScreen() {
                   <input 
                     type="text" 
                     placeholder="Buscar paciente..." 
+                    value={queueSearchTerm}
+                    onChange={(e) => setQueueSearchTerm(e.target.value)}
                     className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
                   />
+                </div>
+                <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+                  <button 
+                    onClick={() => setQueueFilter('all')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'all' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                  >
+                    Todos
+                  </button>
+                  <button 
+                    onClick={() => setQueueFilter('waiting')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'waiting' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                  >
+                    Aguardando
+                  </button>
+                  <button 
+                    onClick={() => setQueueFilter('in-consultation')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'in-consultation' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                  >
+                    Em Atendimento
+                  </button>
+                  <button 
+                    onClick={() => setQueueFilter('finished')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'finished' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                  >
+                    Concluído
+                  </button>
                 </div>
               </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {queue.length > 0 ? (
-            [...queue].sort((a, b) => {
+          {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && p.patientName.toLowerCase().includes(queueSearchTerm.toLowerCase())).length > 0 ? (
+            [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && p.patientName.toLowerCase().includes(queueSearchTerm.toLowerCase())).sort((a, b) => {
               // 1. Unread messages first
               if (a.hasUnread && !b.hasUnread) return -1;
               if (!a.hasUnread && b.hasUnread) return 1;
@@ -835,10 +865,10 @@ export function DoctorDashboardScreen() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex flex-col ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}
+                  className={`flex flex-col w-full ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}
                 >
                   {msg.type === 'product' && msg.productData ? (
-                    <div className="w-[95%] md:w-[85%] max-w-2xl bg-[#F3F4F6] rounded-xl overflow-hidden mb-2 shadow-sm relative group">
+                    <div className={`w-[95%] md:w-[85%] max-w-2xl rounded-xl overflow-hidden mb-2 shadow-sm relative group ${msg.sender === 'doctor' ? 'bg-mecura-neon/10 border border-mecura-neon/20' : 'bg-[#F3F4F6]'}`}>
                       <div className="p-4 md:p-5 flex flex-col">
                         {/* Top Section */}
                         <div className="flex flex-col md:flex-row gap-4 mb-4">
@@ -871,8 +901,8 @@ export function DoctorDashboardScreen() {
 
                           {/* Details */}
                           <div className="flex-1 flex flex-col">
-                            <h3 className="text-black font-bold text-base leading-tight mb-2">{msg.productData.name}</h3>
-                            <ul className="text-gray-600 text-xs space-y-1 mb-2">
+                            <h3 className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} font-bold text-base leading-tight mb-2`}>{msg.productData.name}</h3>
+                            <ul className={`${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-600'} text-xs space-y-1 mb-2`}>
                               {msg.productData.details.map((detail, idx) => (
                                 <li key={idx} className="flex items-center gap-1.5">
                                   <span className="w-1 h-1 rounded-full bg-gray-400" />
@@ -881,7 +911,7 @@ export function DoctorDashboardScreen() {
                               ))}
                             </ul>
                             {msg.productData.italicText && (
-                              <p className="text-gray-500 text-xs italic mt-1">
+                              <p className={`${msg.sender === 'doctor' ? 'text-mecura-silver' : 'text-gray-500'} text-xs italic mt-1`}>
                                 {msg.productData.italicText}
                               </p>
                             )}
@@ -889,9 +919,9 @@ export function DoctorDashboardScreen() {
                         </div>
 
                         {/* Middle Section: Brand & Origin */}
-                        <div className="flex justify-between items-center border-t border-b border-gray-200 py-3 mb-4">
-                          <span className="text-sm font-medium text-gray-700">® {msg.productData.brand}</span>
-                          <span className="text-sm text-gray-700 flex items-center gap-1">
+                        <div className={`flex justify-between items-center border-t border-b ${msg.sender === 'doctor' ? 'border-mecura-neon/20' : 'border-gray-200'} py-3 mb-4`}>
+                          <span className={`text-sm font-medium ${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-700'}`}>® {msg.productData.brand}</span>
+                          <span className={`text-sm ${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-700'} flex items-center gap-1`}>
                             🇺🇸 {msg.productData.origin}
                           </span>
                         </div>
@@ -901,14 +931,14 @@ export function DoctorDashboardScreen() {
                           <h4 className="text-[#58D68D] font-bold text-sm mb-2">
                             Iniciar tratamento com:
                           </h4>
-                          <ul className="text-black text-sm space-y-1 mb-4">
+                          <ul className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} text-sm space-y-1 mb-4`}>
                             {msg.productData.dosage.map((dose, idx) => (
                               <li key={idx}>
                                 {dose}
                               </li>
                             ))}
                           </ul>
-                          <p className="text-gray-500 text-xs leading-relaxed">
+                          <p className={`${msg.sender === 'doctor' ? 'text-mecura-silver' : 'text-gray-500'} text-xs leading-relaxed`}>
                             {msg.productData.description}
                           </p>
                         </div>

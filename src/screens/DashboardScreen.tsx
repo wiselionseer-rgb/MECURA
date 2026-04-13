@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useStore } from '../store/useStore';
+import { auth } from '../firebase';
 import { motion } from 'motion/react';
 import { 
   User, 
@@ -46,7 +47,7 @@ const itemVariants = {
 
 export function DashboardScreen() {
   const navigate = useNavigate();
-  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished } = useStore();
+  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation } = useStore();
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
 
   return (
@@ -78,7 +79,11 @@ export function DashboardScreen() {
         <motion.button 
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => navigate('/')}
+          onClick={async () => {
+            await auth.signOut();
+            resetConsultation();
+            navigate('/');
+          }}
           className="text-[#8A8A9E] flex items-center gap-1.5 font-medium text-sm hover:text-white transition-colors"
         >
           <LogOut className="w-4 h-4" />

@@ -33,12 +33,16 @@ import { PharmacyScreen } from './screens/PharmacyScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
-  const { subscribeToExchangeRate } = useStore();
+  const { subscribeToExchangeRate, subscribeToAppointments } = useStore();
 
   useEffect(() => {
-    const unsubscribe = subscribeToExchangeRate();
-    return () => unsubscribe();
-  }, [subscribeToExchangeRate]);
+    const unsubscribeExchange = subscribeToExchangeRate();
+    const unsubscribeAppointments = subscribeToAppointments();
+    return () => {
+      unsubscribeExchange();
+      unsubscribeAppointments();
+    };
+  }, [subscribeToExchangeRate, subscribeToAppointments]);
 
   return (
     <ErrorBoundary>

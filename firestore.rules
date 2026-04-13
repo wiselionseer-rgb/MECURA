@@ -14,29 +14,8 @@ service cloud.firestore {
       );
     }
 
-    match /settings/exchangeRate {
-      allow read: if true;
-      allow write: if isAdmin() || true; // Keeping true for now to ensure update works during testing
-    }
-    
-    match /queue/{patientId} {
-      allow read, write: if true;
-    }
-    
-    match /active_consultations/{consultationId}/{document=**} {
-      allow read, write: if true;
-    }
-    
-    match /notifications/{notificationId} {
-      allow read, write: if true;
-    }
-    
-    match /users/{userId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
-    }
-
     match /{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
   }
 }

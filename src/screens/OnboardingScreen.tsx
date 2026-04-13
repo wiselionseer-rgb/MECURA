@@ -297,14 +297,14 @@ const STEPS = [
               <Input 
                 placeholder="Seu melhor e-mail" 
                 value={userEmail} 
-                onChange={(e) => setUserEmail(e.target.value)} 
+                onChange={(e) => { setUserEmail(e.target.value); setAuthError(''); }} 
                 type="email" 
                 autoCapitalize="none"
               />
               <Input 
                 placeholder="Sua senha" 
                 value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
+                onChange={(e) => { setPassword(e.target.value); setAuthError(''); }} 
                 type="password" 
               />
               

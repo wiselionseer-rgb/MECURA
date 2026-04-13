@@ -3,13 +3,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Check, X, Bell } from 'lucide-react';
-import { format, addDays, startOfWeek, addWeeks, subWeeks, isSameDay } from 'date-fns';
+import { format, addDays, startOfWeek, addWeeks, subWeeks, isSameDay, parseISO, isPast, isFuture, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
 
 export function DoctorAnalyticsDashboard() {
   const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const today = new Date();
   
   // Calculate dynamic weekly data
   const weeklyData = [
@@ -23,7 +24,7 @@ export function DoctorAnalyticsDashboard() {
   ];
 
   allAppointments.forEach(app => {
-    const date = new Date(app.date);
+    const date = parseISO(app.date);
     const dayIndex = (date.getDay() + 6) % 7; // 0 for Seg, 6 for Dom
     if (dayIndex >= 0 && dayIndex < 7) {
       if (app.status === 'confirmed') weeklyData[dayIndex].consultas++;
@@ -32,7 +33,7 @@ export function DoctorAnalyticsDashboard() {
   });
   
   // Generate week days
-  const startDate = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const startDate = currentDate;
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startDate, i));
 
   const nextWeek = () => setCurrentDate(addWeeks(currentDate, 1));
@@ -43,6 +44,13 @@ export function DoctorAnalyticsDashboard() {
   ).sort((a, b) => a.time.localeCompare(b.time));
 
   const pendingCount = allAppointments.filter(app => app.status === 'pending').length;
+
+  // Accurate Counters
+  const confirmedAppointments = allAppointments.filter(a => a.status === 'confirmed');
+  const realizadasCount = confirmedAppointments.filter(a => isPast(parseISO(a.date)) || isSameDay(parseISO(a.date), today)).length;
+  const agendadasCount = confirmedAppointments.filter(a => isFuture(parseISO(a.date)) && !isSameDay(parseISO(a.date), today)).length;
+  const canceladasMesCount = allAppointments.filter(a => a.status === 'cancelled' && isSameMonth(parseISO(a.date), today)).length;
+
 
   return (
     <div className="flex-1 flex flex-col bg-[#0A0A0F] h-full overflow-y-auto custom-scrollbar relative">
@@ -87,7 +95,7 @@ export function DoctorAnalyticsDashboard() {
               </div>
               <div>
                 <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Realizadas (Total)</p>
-                <h3 className="text-2xl font-bold text-white">{allAppointments.filter(a => a.status === 'confirmed').length}</h3>
+                <h3 className="text-2xl font-bold text-white">{realizadasCount}</h3>
               </div>
             </div>
           </div>
@@ -100,7 +108,7 @@ export function DoctorAnalyticsDashboard() {
               </div>
               <div>
                 <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Agendadas</p>
-                <h3 className="text-2xl font-bold text-white">{allAppointments.filter(a => a.status === 'confirmed').length}</h3>
+                <h3 className="text-2xl font-bold text-white">{agendadasCount}</h3>
               </div>
             </div>
           </div>
@@ -113,7 +121,7 @@ export function DoctorAnalyticsDashboard() {
               </div>
               <div>
                 <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Canceladas (Mês)</p>
-                <h3 className="text-2xl font-bold text-white">{allAppointments.filter(a => a.status === 'cancelled').length}</h3>
+                <h3 className="text-2xl font-bold text-white">{canceladasMesCount}</h3>
               </div>
             </div>
           </div>
