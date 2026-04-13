@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -8,9 +8,14 @@ import { ptBR } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
 
 export function DoctorAnalyticsDashboard() {
-  const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory } = useStore();
+  const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory, queue, subscribeToQueue } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const today = new Date();
+
+  useEffect(() => {
+    const unsubscribe = subscribeToQueue();
+    return () => unsubscribe();
+  }, [subscribeToQueue]);
   
   // Calculate dynamic weekly data
   const weeklyData = [
@@ -31,6 +36,16 @@ export function DoctorAnalyticsDashboard() {
       if (app.status === 'cancelled') weeklyData[dayIndex].canceladas++;
     }
   });
+
+  queue.forEach(p => {
+    if (p.status === 'finished' && p.joinedAt) {
+      const date = new Date(p.joinedAt);
+      const dayIndex = (date.getDay() + 6) % 7;
+      if (dayIndex >= 0 && dayIndex < 7) {
+        weeklyData[dayIndex].consultas++;
+      }
+    }
+  });
   
   // Generate week days
   const startDate = currentDate;
@@ -45,11 +60,17 @@ export function DoctorAnalyticsDashboard() {
 
   const pendingCount = allAppointments.filter(app => app.status === 'pending').length;
 
-  // Accurate Counters
+  // Accurate Counters - Combining Appointments and Queue
   const confirmedAppointments = allAppointments.filter(a => a.status === 'confirmed');
-  const realizadasCount = confirmedAppointments.filter(a => isPast(parseISO(a.date)) || isSameDay(parseISO(a.date), today)).length;
-  const agendadasCount = confirmedAppointments.filter(a => isFuture(parseISO(a.date)) && !isSameDay(parseISO(a.date), today)).length;
+  const realizadasCount = confirmedAppointments.filter(a => isPast(parseISO(a.date)) || isSameDay(parseISO(a.date), today)).length + queue.filter(p => p.status === 'finished').length;
+  const agendadasCount = confirmedAppointments.filter(a => isFuture(parseISO(a.date)) && !isSameDay(parseISO(a.date), today)).length + queue.filter(p => p.status === 'waiting').length;
   const canceladasMesCount = allAppointments.filter(a => a.status === 'cancelled' && isSameMonth(parseISO(a.date), today)).length;
+  
+  // Total Patients: Unique patients from appointments + patients in queue
+  const totalPatients = new Set([
+    ...allAppointments.map(a => a.patientName),
+    ...queue.map(p => p.patientName)
+  ]).size;
 
 
   return (
@@ -82,7 +103,7 @@ export function DoctorAnalyticsDashboard() {
               </div>
               <div>
                 <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Total de Pacientes</p>
-                <h3 className="text-2xl font-bold text-white">{new Set(allAppointments.map(a => a.patientName)).size}</h3>
+                <h3 className="text-2xl font-bold text-white">{totalPatients}</h3>
               </div>
             </div>
           </div>

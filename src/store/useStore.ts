@@ -176,42 +176,54 @@ export const useStore = create<AppState>((set, get) => ({
   consultationStatus: 'pending',
   setConsultationStatus: (status) => set({ consultationStatus: status }),
   
-  allAppointments: [
-    { id: '1', patientName: 'Ana Oliveira', date: '2026-04-11', time: '09:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
-    { id: '2', patientName: 'Carlos Mendes', date: '2026-04-11', time: '10:00', status: 'confirmed' as const, type: 'Retorno' },
-    { id: '3', patientName: 'Lucas Neres', date: '2026-04-11', time: '11:30', status: 'confirmed' as const, type: 'Acompanhamento' },
-    { id: '4', patientName: 'Mariana Costa', date: '2026-04-11', time: '14:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
-    { id: '5', patientName: 'Roberto Silva', date: '2026-04-11', time: '15:30', status: 'confirmed' as const, type: 'Retorno' },
-    { id: '6', patientName: 'Juliana Lima', date: '2026-04-11', time: '16:45', status: 'confirmed' as const, type: 'Acompanhamento' },
-    { id: '7', patientName: 'Pedro Santos', date: '2026-04-11', time: '09:00', status: 'confirmed' as const, type: 'Primeira Consulta' },
-    { id: '8', patientName: 'Fernanda Costa', date: '2026-04-11', time: '10:15', status: 'confirmed' as const, type: 'Retorno' },
-    { id: '9', patientName: 'Rafael Souza', date: '2026-04-11', time: '14:25', status: 'confirmed' as const, type: 'Acompanhamento' },
-    { id: '10', patientName: 'Camila Alves', date: '2026-04-11', time: '16:05', status: 'confirmed' as const, type: 'Primeira Consulta' },
-  ],
-  addAppointment: (appointment) => set((state) => ({
-    allAppointments: [...state.allAppointments, { ...appointment, id: Date.now().toString(), status: 'pending' as const }]
-  })),
-  confirmAppointment: (id) => set((state) => {
-    const updatedAppointments = state.allAppointments.map((app) => 
-      app.id === id ? { ...app, status: 'confirmed' as const } : app
-    );
-    const confirmedApp = updatedAppointments.find(app => app.id === id);
-    
-    // If the confirmed appointment is for the current user, update the global status
-    if (confirmedApp && confirmedApp.patientName === state.userName) {
-      return { 
-        allAppointments: updatedAppointments,
-        consultationStatus: 'confirmed'
-      };
+  allAppointments: [],
+  addAppointment: async (appointment) => {
+    try {
+      const docRef = await addDoc(collection(db, 'appointments'), {
+        ...appointment,
+        status: 'pending' as const
+      });
+      set((state) => ({
+        allAppointments: [...state.allAppointments, { ...appointment, id: docRef.id, status: 'pending' as const }]
+      }));
+    } catch (error) {
+      console.error("Error adding appointment to Firestore:", error);
     }
-    
-    return { allAppointments: updatedAppointments };
-  }),
-  cancelAppointment: (id) => set((state) => ({
-    allAppointments: state.allAppointments.map((app) => 
-      app.id === id ? { ...app, status: 'cancelled' as const } : app
-    )
-  })),
+  },
+  confirmAppointment: async (id) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { status: 'confirmed' });
+      set((state) => {
+        const updatedAppointments = state.allAppointments.map((app) => 
+          app.id === id ? { ...app, status: 'confirmed' as const } : app
+        );
+        const confirmedApp = updatedAppointments.find(app => app.id === id);
+        
+        if (confirmedApp && confirmedApp.patientName === state.userName) {
+          return { 
+            allAppointments: updatedAppointments,
+            consultationStatus: 'confirmed'
+          };
+        }
+        
+        return { allAppointments: updatedAppointments };
+      });
+    } catch (error) {
+      console.error("Error confirming appointment in Firestore:", error);
+    }
+  },
+  cancelAppointment: async (id) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { status: 'cancelled' });
+      set((state) => ({
+        allAppointments: state.allAppointments.map((app) => 
+          app.id === id ? { ...app, status: 'cancelled' as const } : app
+        )
+      }));
+    } catch (error) {
+      console.error("Error cancelling appointment in Firestore:", error);
+    }
+  },
   
   patientId: null,
   setPatientId: (id) => set({ patientId: id }),
