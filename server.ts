@@ -16,6 +16,12 @@ async function startServer() {
     accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN || ''
   });
 
+  console.log("-----------------------------------------");
+  console.log("🛰️ STATUS DA CONFIGURAÇÃO:");
+  console.log("Mercado Pago Token:", process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Carregado" : "❌ AUSENTE");
+  console.log("Gemini API Key:", process.env.GEMINI_API_KEY ? "✅ Carregado" : "❌ AUSENTE");
+  console.log("-----------------------------------------");
+
   // API Routes
   app.post("/api/create-preference", async (req, res) => {
     // ... (mantido para compatibilidade, se necessário)
