@@ -20,7 +20,10 @@ export function CheckoutScreen() {
   const [step, setStep] = useState<'discount' | 'checkout'>('discount');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [pixData, setPixData] = useState<{ id: string, qr_code: string, qr_code_base64: string } | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const pollingInterval = React.useRef<NodeJS.Timeout | null>(null);
+
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
@@ -49,13 +52,15 @@ export function CheckoutScreen() {
     setIsLoading(true);
 
     localStorage.setItem('last_offer', selectedOffer);
+    setPixData(null);
+    setPaymentStatus(null);
 
     try {
       if (appliedCoupon?.ownerId) {
         await incrementBonus(50, appliedCoupon.ownerId);
       }
 
-      const response = await fetch('/api/create-preference', {
+      const response = await fetch('/api/create-pix-payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -63,14 +68,19 @@ export function CheckoutScreen() {
         body: JSON.stringify({
           title: selectedOffer === 'basic' ? 'Consulta Essencial Mecura' : 'Acompanhamento Premium Mecura',
           price: finalPrice,
+          email: 'paciente@mercura.com',
+          firstName: userName.split(' ')[0] || 'Paciente',
+          lastName: userName.split(' ').slice(1).join(' ') || 'Mecura',
         }),
       });
 
       const data = await response.json();
 
-      if (data.init_point) {
-        // Redireciona para o Mercado Pago
-        window.location.href = data.init_point;
+      if (data.qr_code) {
+        setPixData(data);
+        setIsLoading(false);
+        // Iniciar polling
+        startPolling(data.id);
       } else {
         throw new Error(data.error || 'Erro ao criar pagamento');
       }
@@ -80,6 +90,42 @@ export function CheckoutScreen() {
       setIsLoading(false);
     }
   };
+
+  const startPolling = (paymentId: string) => {
+    if (pollingInterval.current) clearInterval(pollingInterval.current);
+    
+    pollingInterval.current = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/payment-status/${paymentId}`);
+        const data = await response.json();
+        
+        if (data.status === 'approved') {
+          clearInterval(pollingInterval.current!);
+          setPaymentStatus('approved');
+          handleSuccess();
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 3000);
+  };
+
+  const handleSuccess = () => {
+    setPagamentoConsulta(true);
+    if (selectedOffer === 'basic') {
+      joinQueue();
+      navigate('/queue');
+    } else {
+      setPagamentoPremium(true);
+      navigate('/scheduling');
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (pollingInterval.current) clearInterval(pollingInterval.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!selectedOffer) {
@@ -107,7 +153,53 @@ export function CheckoutScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-40 pt-4">
-        {step === 'discount' ? (
+        {pixData ? (
+          <div className="flex flex-col items-center pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-xl ${selectedOffer === 'basic' ? 'bg-[#A6FF0033]' : 'bg-[#D4AF3733]'}`}>
+               <PixIcon className={`w-10 h-10 ${selectedOffer === 'basic' ? 'text-[#A6FF00]' : 'text-[#D4AF37]'}`} />
+            </div>
+
+            <h2 className="text-2xl font-bold text-center text-white mb-2">Escaneie o QR Code</h2>
+            <p className="text-mecura-silver text-center text-sm mb-8 px-4">Pague via Pix agora para liberar seu acesso imediatamente dentro do app.</p>
+
+            <div className="bg-white p-4 rounded-3xl mb-8 shadow-2xl relative group">
+              <img 
+                src={`data:image/png;base64,${pixData.qr_code_base64}`} 
+                alt="Pix QR Code" 
+                className="w-56 h-56 mx-auto"
+              />
+              <div className="absolute inset-0 border-4 border-mecura-neon/20 rounded-3xl animate-pulse -z-10" />
+            </div>
+
+            <div className="w-full bg-[#1A1A24] rounded-3xl p-6 border border-[#2A2A3A] mb-8">
+              <p className="text-mecura-silver text-[10px] uppercase font-bold tracking-widest text-center mb-3">Código Pix Copia e Cola</p>
+              <div className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex items-center gap-3">
+                <span className="text-[11px] text-mecura-silver truncate font-mono text-left flex-1">{pixData.qr_code}</span>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(pixData.qr_code);
+                    alert("Copiado!");
+                  }}
+                  className="bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon p-2.5 rounded-lg transition-colors"
+                >
+                  <Ticket className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 py-4 bg-mecura-neon/5 px-6 rounded-full border border-mecura-neon/10">
+              <div className="w-2.5 h-2.5 bg-mecura-neon rounded-full animate-pulse shadow-[0_0_8px_#A6FF00]" />
+              <span className="text-mecura-neon text-sm font-bold tracking-tight uppercase">Aguardando confirmação...</span>
+            </div>
+
+            <button 
+              onClick={() => setPixData(null)}
+              className="mt-8 text-mecura-silver text-sm font-medium hover:text-white transition-colors underline underline-offset-4 opacity-70"
+            >
+              Escolher outro pagamento
+            </button>
+          </div>
+        ) : step === 'discount' ? (
           <div className="flex flex-col items-center text-center pt-8">
             <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-8 shadow-[0_0_30px_rgba(0,0,0,0.4)] relative ${selectedOffer === 'basic' ? 'bg-[#A6FF00]' : 'bg-gradient-to-br from-[#D4AF37] to-[#AA7B2F]'}`}>
               <Percent className="w-12 h-12 text-[#0A0A0F]" strokeWidth={3} />
@@ -212,11 +304,18 @@ export function CheckoutScreen() {
         <Button 
           className={`w-full h-16 text-lg font-bold tracking-wide ${selectedOffer === 'basic' ? 'bg-[#A6FF00] text-[#0A0A0F] hover:bg-[#8CC600]' : ''}`} 
           variant={selectedOffer === 'premium' ? 'premium' : 'primary'}
-          onClick={() => step === 'discount' ? setStep('checkout') : handlePayment()}
+          onClick={() => {
+            if (pixData) {
+              navigator.clipboard.writeText(pixData.qr_code);
+              alert("Código Pix Copiado!");
+            } else {
+              step === 'discount' ? setStep('checkout') : handlePayment()
+            }
+          }}
           isLoading={isLoading}
           disabled={step === 'checkout' && !paymentMethod}
         >
-          {step === 'discount' ? 'Próximo' : 'Confirmar Pagamento'}
+          {pixData ? 'Copiar Código Pix' : (step === 'discount' ? 'Próximo' : 'Gerar Pix e Iniciar')}
         </Button>
         <button 
           onClick={() => navigate('/dashboard')}
