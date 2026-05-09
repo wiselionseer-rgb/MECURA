@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Download, FileText, CheckCircle2, QrCode } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
+import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function PrescriptionViewScreen() {
   const navigate = useNavigate();
@@ -75,7 +76,10 @@ export function PrescriptionViewScreen() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/90 to-transparent z-30">
-        <Button className="w-full h-14 text-lg font-bold shadow-[0_0_30px_rgba(166,255,0,0.2)] flex items-center justify-center gap-2">
+        <Button 
+          className="w-full h-14 text-lg font-bold shadow-[0_0_30px_rgba(166,255,0,0.2)] flex items-center justify-center gap-2"
+          onClick={() => generatePrescriptionPDF(userName || 'Paciente', messages)}
+        >
           <Download className="w-5 h-5" />
           Baixar Receita em PDF
         </Button>

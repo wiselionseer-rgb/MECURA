@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { auth } from '../firebase';
 import { motion } from 'motion/react';
+import { AdvisorChatWidget } from '../components/AdvisorChatWidget';
+import { ReferralModal } from '../components/ReferralModal';
 import { 
   User, 
   ShoppingCart, 
@@ -27,7 +29,10 @@ import {
   Store,
   Sprout,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Globe,
+  Star,
+  Users
 } from 'lucide-react';
 
 const containerVariants = {
@@ -47,8 +52,36 @@ const itemVariants = {
 
 export function DashboardScreen() {
   const navigate = useNavigate();
-  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation } = useStore();
+  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive } = useStore();
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
+  const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);
+  const [timeLeft, setTimeLeft] = useState(900); // 15 minutes in seconds
+  const [showReferralModal, setShowReferralModal] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    
+    const countInterval = setInterval(() => {
+      setActiveSchedulers(prev => {
+        const change = Math.random() > 0.5 ? 1 : -1;
+        const newValue = prev + change;
+        return newValue >= 6 && newValue <= 28 ? newValue : prev;
+      });
+    }, 5000);
+    
+    return () => {
+      clearInterval(timer);
+      clearInterval(countInterval);
+    };
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#0A0A0F] text-mecura-pearl relative pb-12 font-sans overflow-y-auto overflow-x-hidden">
@@ -126,7 +159,35 @@ export function DashboardScreen() {
               </button>
             </div>
           </motion.div>
-        ) : pagamento_consulta ? (
+        ) : inQueue ? (
+          <motion.div 
+            variants={itemVariants}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="relative bg-gradient-to-br from-[#2A201A] to-[#1A1212] border border-[#FF8A00]/30 rounded-[28px] p-7 overflow-hidden shadow-2xl group cursor-pointer"
+            onClick={() => navigate('/queue')}
+          >
+            <div className="absolute inset-0 bg-gradient-to-tr from-[#FF8A00]/10 via-transparent to-[#FF8A00]/20 opacity-50 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="absolute -right-12 -top-12 w-48 h-48 bg-[#FF8A00]/20 blur-[60px] rounded-full pointer-events-none group-hover:bg-[#FF8A00]/30 transition-colors duration-700" />
+            
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 bg-[#0A0A0F]/50 border border-[#FF8A00]/50 px-3 py-1.5 rounded-full mb-5">
+                <div className="w-2 h-2 rounded-full bg-[#FF8A00] animate-pulse shadow-[0_0_8px_rgba(255,138,0,0.8)]" />
+                <span className="text-[11px] font-bold text-[#FF8A00] uppercase tracking-widest">FILA DE ESPERA</span>
+              </div>
+              
+              <h2 className="text-[26px] font-bold text-white mb-6 leading-[1.15] tracking-tight">
+                Você está na fila<br />para atendimento
+              </h2>
+              
+              <button 
+                className="flex items-center gap-2 text-[#0A0A0F] bg-[#FF8A00] px-6 py-3.5 rounded-full font-bold text-sm hover:bg-[#FF9A26] transition-all shadow-[0_0_20px_rgba(255,138,0,0.25)] group-hover:shadow-[0_0_25px_rgba(255,138,0,0.4)]"
+              >
+                Acompanhar Fila <ChevronRight className="w-4 h-4 ml-1" />
+              </button>
+            </div>
+          </motion.div>
+        ) : pagamento_consulta || consultationActive ? (
           <motion.div 
             variants={itemVariants}
             whileHover={{ scale: 1.02 }}
@@ -216,92 +277,108 @@ export function DashboardScreen() {
           {!pagamento_premium ? (
             <motion.div 
               variants={itemVariants}
-              className="w-full bg-gradient-to-r from-[#1A1A26] to-[#12121A] border border-[#D4AF37]/30 rounded-[24px] p-5 flex flex-col gap-4 shadow-lg relative overflow-hidden"
+              whileHover={{ y: -2 }}
+              className="w-full relative group mt-2"
             >
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#D4AF37]" />
+              {/* Premium Glow effect behind the card */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-[#D4AF37]/20 via-[#F3E5AB]/20 to-[#D4AF37]/20 rounded-[32px] blur-xl opacity-50 group-hover:opacity-100 transition duration-1000 group-hover:duration-200" />
               
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/20 flex items-center justify-center border border-[#D4AF37]/40 flex-shrink-0">
-                  <Rocket className="w-6 h-6 text-[#D4AF37]" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em] mb-1 block">Acompanhamento Premium</span>
-                  <h3 className="text-[19px] font-bold text-white leading-tight">🚀 Dê o próximo passo!</h3>
-                  <p className="text-[13px] text-[#8A8A9E] mt-2 leading-relaxed">
-                    Estruture seu tratamento com segurança e profissionalismo. Tenha acesso a consultas personalizadas, laudo médico e acompanhamento contínuo.
-                  </p>
-                </div>
-              </div>
+              <div className="bg-[#0A0A0F] rounded-[30px] relative z-10 w-full flex flex-col gap-6 border border-[#D4AF37]/20 overflow-hidden shadow-2xl">
+                {/* Header section with background image/gradient */}
+                <div className="relative pt-8 px-6 pb-4 overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[#D4AF37]/20 to-transparent blur-[50px] rounded-full pointer-events-none -translate-y-1/2 translate-x-1/3" />
+                  
+                  <div className="flex justify-between items-start mb-6 align-center relative z-10">
+                    <motion.span 
+                      animate={{ opacity: [1, 0.7, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.15em] bg-gradient-to-r from-[#D4AF37]/10 to-transparent px-3 py-1.5 rounded-full border border-[#D4AF37]/20 shadow-[0_0_15px_rgba(212,175,55,0.15)]"
+                    >
+                      <Star className="w-3 h-3 fill-current" /> EXPERIÊNCIA VIP
+                    </motion.span>
 
-              <div className="space-y-2.5 mt-2">
-                {[
-                  'Consulta individualizada',
-                  'Laudo médico inicial',
-                  'Retorno em 90 dias'
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-md bg-mecura-neon flex items-center justify-center">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#0A0A0F]" />
+                    <div className="flex -space-x-3 pointer-events-none hover:scale-105 transition-transform duration-500">
+                      <div className="w-9 h-9 rounded-full border-[1.5px] border-[#0A0A0F] overflow-hidden shadow-[0_4px_10px_rgba(0,0,0,0.5)] z-30 bg-[#12121A]">
+                        <img src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=150&h=150" alt="Médico 1" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="w-9 h-9 rounded-full border-[1.5px] border-[#0A0A0F] overflow-hidden shadow-[0_4px_10px_rgba(0,0,0,0.5)] z-20 bg-[#12121A] translate-y-1">
+                        <img src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=150&h=150" alt="Médico 2" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="w-9 h-9 rounded-full border-[1.5px] border-[#0A0A0F] overflow-hidden shadow-[0_4px_10px_rgba(0,0,0,0.5)] z-10 bg-gradient-to-br from-[#D4AF37] to-[#F3E5AB] flex items-center justify-center text-[10px] font-black text-[#0A0A0F]">
+                        +
+                      </div>
                     </div>
-                    <span className="text-[14px] font-medium text-white">{item}</span>
                   </div>
-                ))}
+
+                  <h3 className="text-[28px] font-black text-white leading-[1.15] tracking-tight mb-3 drop-shadow-md relative z-10">
+                    Sua saúde com a <br /> Mecura <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB]">Premium</span>
+                  </h3>
+                  <p className="text-[14px] text-[#A1A1AA] leading-relaxed relative z-10 pr-4">
+                    Mais que uma consulta. Obtenha uma <strong className="text-white font-medium">jornada médica e acolhimento jurídico</strong> VIP.
+                  </p>
+                </div>
+
+                {/* Features List */}
+                <div className="px-6 flex flex-col gap-3.5 relative z-10">
+                  {[
+                    { text: <>Consulta <b>por vídeo</b> com especialista</>, icon: Star },
+                    { text: <>Laudo para <b>Anvisa/SUS</b> completo</>, icon: FileText },
+                    { text: <>Suporte jurídico para <b>cultivo próprio</b></>, icon: ShieldCheck },
+                    { text: <>Acompanhamento contínuo por <b>90 dias</b></>, icon: Clock }
+                  ].map((feature, i) => (
+                    <motion.div 
+                      key={i} 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 * i }}
+                      className="flex items-center gap-3.5 group/feature bg-white/[0.02] border border-white/[0.02] hover:border-white/5 hover:bg-white/[0.04] p-3 rounded-2xl transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#D4AF37]/20 to-transparent flex flex-shrink-0 items-center justify-center border border-[#D4AF37]/30 shadow-[0_0_10px_rgba(212,175,55,0.1)] group-hover/feature:shadow-[0_0_15px_rgba(212,175,55,0.2)] transition-shadow">
+                        <feature.icon className="w-3.5 h-3.5 text-[#D4AF37]" strokeWidth={2.5} />
+                      </div>
+                      <span className="text-[13px] text-[#A1A1AA] leading-tight">{feature.text}</span>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Footer Action */}
+                <div className="mt-2 p-6 bg-gradient-to-t from-[#D4AF37]/10 to-transparent border-t border-[#D4AF37]/10 flex flex-col gap-5 relative z-10">
+                  <div className="flex items-center justify-between">
+                    <span className="bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.15)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      {activeSchedulers} Agendando Agora
+                    </span>
+                    <span className="text-[9px] text-[#D4AF37]/80 font-bold uppercase tracking-widest flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-[#D4AF37]/80" /> Garantia 7 dias
+                    </span>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      setSelectedOffer('premium');
+                      navigate('/premium-checkout');
+                    }}
+                    className="w-full relative group/btn rounded-[18px] overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-[#D4AF37] via-[#F3E5AB] to-[#D4AF37] group-hover/btn:scale-105 transition-transform duration-500" />
+                    
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-[150%] group-hover/btn:animate-shimmer skew-x-[-20deg]" />
+                    
+                    <div className="relative flex flex-col items-center gap-1 py-4.5 px-6 bg-[#0A0A0F]/5 border border-[#D4AF37]/50 backdrop-blur-[2px]">
+                      <span className="text-[#0A0A0F] font-black text-[15px] tracking-tight uppercase shadow-sm flex items-center justify-center">
+                        GARANTIR MEU ACOMPANHAMENTO
+                      </span>
+                      <div className="flex items-center gap-2 text-[#0B0B0F]/80 font-bold text-[11px] bg-white/20 border border-white/20 px-3 py-1 rounded-full mt-1">
+                        <span>De <span className="line-through opacity-60">R$ 497</span> por <span className="text-red-700 font-black">R$ 250,00</span></span>
+                        <span className="w-px h-3 bg-black/10 mx-0.5" />
+                        <span className="flex items-center gap-1 text-red-700">
+                          <Clock className="w-3 h-3" /> {formatTime(timeLeft)}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                </div>
               </div>
-
-              <button 
-                onClick={() => setShowPremiumDetails(!showPremiumDetails)}
-                className="flex items-center gap-1.5 text-mecura-neon text-sm font-bold mt-1 hover:opacity-80 transition-opacity"
-              >
-                {showPremiumDetails ? 'Ler menos' : 'Ler mais'} <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${showPremiumDetails ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showPremiumDetails && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="space-y-4 bg-[#0A0A0F]/40 p-4 rounded-2xl border border-[#262636]"
-                >
-                  <p className="text-[13px] text-[#8A8A9E] leading-relaxed">
-                    Você já deu o primeiro passo. Agora é hora de avançar no tratamento.
-                  </p>
-                  <p className="text-[13px] text-[#8A8A9E] leading-relaxed">
-                    Queremos te oferecer um acompanhamento mais profundo e totalmente personalizado para o seu caso. Através de consultas por videochamada, vamos estruturar seu tratamento com segurança, desde o início até a evolução dos resultados. Com o seu laudo médico, você garante muito mais do que um documento — você conquista um documento essencial para entrada em cultivos legais e comprova seu acesso seguro ao tratamento com cannabis medicinal no Brasil. Não pare na receita — sem o laudo, seu acesso ao tratamento fica limitado.
-                  </p>
-                  
-                  <div className="space-y-2">
-                    <span className="text-[13px] font-bold text-mecura-neon">Isso inclui:</span>
-                    <ul className="space-y-2">
-                      {[
-                        'Possibilidade de acesso ao medicamento pelo SUS',
-                        'Importação de produtos autorizados pela Anvisa',
-                        'Base legal para solicitação de cultivo próprio (via judicial)'
-                      ].map((li, idx) => (
-                        <li key={idx} className="text-[12px] text-[#8A8A9E] flex items-start gap-2">
-                          <span className="text-mecura-neon mt-1">•</span>
-                          {li}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  
-                  <p className="text-[12px] text-[#8A8A9E] italic border-t border-[#262636] pt-3">
-                    Hoje, mais de 1.000 famílias já transformaram sua qualidade de vida com esse passo.
-                  </p>
-                </motion.div>
-              )}
-
-              <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  setSelectedOffer('premium');
-                  navigate('/premium-checkout');
-                }}
-                className="w-full bg-[#161622] border border-mecura-neon/40 rounded-2xl p-4 flex flex-col items-start gap-1 hover:bg-[#1A1A26] transition-colors group mt-2 shadow-[0_0_15px_rgba(166,255,0,0.05)]"
-              >
-                <span className="text-[11px] text-[#8A8A9E] font-bold uppercase tracking-wider">Teleconsulta completa:</span>
-                <span className="text-2xl font-bold text-white group-hover:text-mecura-neon transition-colors">R$ 250,00</span>
-              </motion.button>
             </motion.div>
           ) : scheduledConsultation ? (
             <motion.div variants={itemVariants} className="w-full bg-gradient-to-r from-[#1A1A26] to-[#12121A] border border-[#D4AF37]/30 rounded-[24px] p-5 flex flex-col gap-4 shadow-lg relative overflow-hidden">
@@ -406,72 +483,122 @@ export function DashboardScreen() {
             </div>
           </motion.button>
 
-          {/* 4. Mecura Store: Coleção Elite */}
+          {/* 4. Banco de Sementes */}
           <motion.button 
             variants={itemVariants}
             whileHover={{ scale: 1.02, x: 5 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => alert('Em breve!')}
-            className="w-full bg-[#0A0A0F] border border-[#262636] hover:border-mecura-neon/50 hover:shadow-[0_0_20px_rgba(166,255,0,0.1)] transition-all duration-500 rounded-[24px] p-5 flex items-center justify-between group shadow-lg relative overflow-hidden"
+            className="w-full bg-gradient-to-br from-[#1A0B2E] to-[#0A0514] border border-[#B324FF]/30 hover:border-[#B324FF]/60 hover:shadow-[0_0_30px_rgba(179,36,255,0.2)] transition-all duration-500 rounded-[28px] p-1 flex items-center justify-between group shadow-lg relative overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-transparent to-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="flex items-center gap-5 relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-[#161622] flex items-center justify-center border border-[#262636] group-hover:border-mecura-neon/30 group-hover:scale-110 group-hover:bg-mecura-neon/10 transition-all duration-500 rotate-3 group-hover:rotate-0">
-                <Store className="w-5 h-5 text-white group-hover:text-mecura-neon transition-colors" />
+            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=1000')] opacity-20 mix-blend-screen scale-110 group-hover:scale-100 group-hover:opacity-30 transition-all duration-700 bg-cover bg-center" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#B324FF]/0 via-[#B324FF]/10 to-[#B324FF]/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute -right-4 -bottom-4 w-40 h-40 bg-[#B324FF]/30 blur-[40px] rounded-full pointer-events-none group-hover:bg-[#B324FF]/50 transition-colors duration-700" />
+            
+            <div className="w-full h-full bg-[#120A20]/60 backdrop-blur-sm rounded-[24px] p-5 flex items-center justify-between relative z-10 border border-white/5">
+              <div className="flex flex-col md:flex-row items-start md:items-center gap-5 relative z-10 w-full">
+                <div className="w-14 h-14 rounded-2xl bg-[#B324FF]/20 flex items-center justify-center border border-[#B324FF]/40 group-hover:border-[#B324FF] group-hover:scale-110 group-hover:bg-[#B324FF]/30 transition-all duration-500 rotate-3 group-hover:rotate-0 shadow-[0_0_20px_rgba(179,36,255,0.3)] flex-shrink-0">
+                  <Globe className="w-7 h-7 text-[#D980FF] group-hover:text-white transition-colors" />
+                </div>
+                
+                <div className="flex flex-col items-start text-left flex-1 pr-4">
+                  <span className="text-[10px] bg-[#B324FF]/20 border border-[#B324FF]/40 text-[#D980FF] font-black px-2.5 py-1 rounded-full uppercase tracking-[0.15em] mb-2 flex items-center gap-1.5 shadow-[0_0_15px_rgba(179,36,255,0.3)]">
+                    <Sparkles className="w-3 h-3" /> Acesso Premium
+                  </span>
+                  <span className="font-extrabold text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-[#D980FF] transition-all duration-300 text-[18px] md:text-[20px] leading-[1.1] mb-1">
+                    Banco Internacional<br/>de Sementes
+                  </span>
+                  <span className="text-[13px] text-[#A1A1AA] mt-1 group-hover:text-white transition-colors leading-relaxed">
+                    Genéticas <strong className="text-white font-bold">Raras e de Elite</strong> importadas para membros.
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-col items-start text-left">
-                <span className="font-bold text-white group-hover:text-mecura-neon transition-colors text-[17px] leading-tight">Mecura Store: Coleção Elite</span>
-                <span className="text-[12px] text-[#8A8A9E] mt-0.5">Artigos e acessórios exclusivos (Veja Agora)</span>
+              
+              <div className="hidden md:flex flex-shrink-0 relative z-10 w-10 h-10 rounded-full border border-[#B324FF]/40 items-center justify-center bg-[#B324FF]/10 group-hover:bg-[#B324FF] group-hover:border-[#B324FF] transition-all duration-300 shadow-[0_0_15px_rgba(179,36,255,0)] group-hover:shadow-[0_0_20px_rgba(179,36,255,0.4)]">
+                <ChevronRight className="w-5 h-5 text-[#D980FF] group-hover:text-white transition-colors" />
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-[#6A6A7E] group-hover:text-mecura-neon transition-colors relative z-10" />
+            
+            {/* Small right arrow for mobile */}
+            <div className="md:hidden absolute right-5 top-1/2 -translate-y-1/2 z-10">
+               <ChevronRight className="w-5 h-5 text-[#D980FF] group-hover:text-white transition-colors" />
+            </div>
           </motion.button>
 
           {/* 5. Falar com a Equipe Médica */}
           <motion.button 
             variants={itemVariants}
-            whileHover={{ scale: 1.02, x: 5 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => navigate('/chat')}
-            className="w-full bg-[#0A0A0F] border border-[#262636] hover:border-mecura-neon/50 hover:shadow-[0_0_20px_rgba(166,255,0,0.1)] transition-all duration-500 rounded-[24px] p-5 flex items-center justify-between group shadow-lg relative overflow-hidden"
+            whileHover={isConsultationFinished ? { scale: 1.02, x: 5 } : {}}
+            whileTap={isConsultationFinished ? { scale: 0.98 } : {}}
+            onClick={() => {
+              if (isConsultationFinished) {
+                window.open("https://wa.me/5566996280883", "_blank");
+              } else {
+                alert('O suporte médico direto está disponível apenas para pacientes em acompanhamento após a consulta.');
+              }
+            }}
+            className={`w-full bg-[#0A0A0F] border border-[#262636] transition-all duration-500 rounded-[24px] p-5 flex items-center justify-between group shadow-lg relative overflow-hidden ${isConsultationFinished ? 'hover:border-mecura-neon/50 hover:shadow-[0_0_20px_rgba(166,255,0,0.1)] cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
           >
             <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-transparent to-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <div className="flex items-center gap-5 relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-[#161622] flex items-center justify-center border border-[#262636] group-hover:border-mecura-neon/30 group-hover:scale-110 group-hover:bg-mecura-neon/10 transition-all duration-500 -rotate-3 group-hover:rotate-0">
-                <MessageCircle className="w-5 h-5 text-white group-hover:text-mecura-neon transition-colors" />
+              <div className={`w-12 h-12 rounded-2xl bg-[#161622] flex items-center justify-center border border-[#262636] transition-all duration-500 -rotate-3 group-hover:rotate-0 ${isConsultationFinished ? 'group-hover:border-mecura-neon/30 group-hover:bg-mecura-neon/10' : ''}`}>
+                <MessageCircle className={`w-5 h-5 text-white transition-colors ${isConsultationFinished ? 'group-hover:text-mecura-neon' : ''}`} />
               </div>
               <div className="flex flex-col items-start text-left">
-                <span className="font-bold text-white group-hover:text-mecura-neon transition-colors text-[16px] leading-tight">Falar com a Equipe Médica</span>
+                <span className={`font-bold text-white transition-colors text-[16px] leading-tight ${isConsultationFinished ? 'group-hover:text-mecura-neon' : ''}`}>Falar com a Equipe Médica</span>
                 <span className="text-[12px] text-[#8A8A9E] mt-0.5">Tire dúvidas sobre seu tratamento</span>
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-[#6A6A7E] group-hover:text-mecura-neon transition-colors relative z-10" />
+            <ChevronRight className={`w-5 h-5 text-[#6A6A7E] transition-colors relative z-10 ${isConsultationFinished ? 'group-hover:text-mecura-neon' : ''}`} />
           </motion.button>
 
-          {/* 6. Iniciar Nova Consulta */}
-          <motion.button 
-            variants={itemVariants}
-            whileHover={{ scale: 1.02, x: 5 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => {
-              setSelectedOffer('basic');
-              navigate('/checkout');
-            }}
-            className="w-full bg-gradient-to-r from-[#1A2E1A]/60 to-[#162216] border border-mecura-neon/30 hover:border-mecura-neon hover:shadow-[0_0_25px_rgba(166,255,0,0.15)] transition-all duration-300 rounded-[24px] p-5 flex items-center justify-between group shadow-lg relative overflow-hidden"
-          >
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-mecura-neon" />
-            <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/5 to-mecura-neon/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="flex items-center gap-5 relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-mecura-neon/20 flex items-center justify-center border border-mecura-neon/40 group-hover:scale-110 transition-transform duration-300 rotate-3 group-hover:rotate-0">
-                <Stethoscope className="w-5 h-5 text-mecura-neon" />
+          {/* 6. Iniciar Nova Consulta / Retornar à Fila */}
+          {inQueue ? (
+            <motion.button 
+              variants={itemVariants}
+              whileHover={{ scale: 1.02, x: 5 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate('/queue')}
+              className="w-full bg-gradient-to-r from-mecura-neon/10 to-[#162216] border border-mecura-neon/50 hover:border-mecura-neon hover:shadow-[0_0_25px_rgba(166,255,0,0.15)] transition-all duration-300 rounded-[24px] p-5 flex items-center justify-between group shadow-lg relative overflow-hidden animate-pulse"
+            >
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-mecura-neon" />
+              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/10 to-mecura-neon/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="flex items-center gap-5 relative z-10">
+                <div className="w-12 h-12 rounded-2xl bg-mecura-neon/20 flex items-center justify-center border border-mecura-neon/40 group-hover:scale-110 transition-transform duration-300 rotate-3 group-hover:rotate-0">
+                  <Flame className="w-5 h-5 text-mecura-neon" />
+                </div>
+                <div className="flex flex-col items-start text-left">
+                  <span className="font-bold text-mecura-neon text-[17px]">Retornar à Fila</span>
+                  <span className="text-[12px] text-mecura-neon/70 mt-0.5">O médico está te aguardando</span>
+                </div>
               </div>
-              <div className="flex flex-col items-start text-left">
-                <span className="font-bold text-mecura-neon text-[17px]">Iniciar Nova Consulta</span>
-                <span className="text-[12px] text-mecura-neon/70 mt-0.5">Avaliação médica especializada</span>
+              <ChevronRight className="w-5 h-5 text-mecura-neon group-hover:translate-x-1 transition-transform relative z-10" />
+            </motion.button>
+          ) : (
+            <motion.button 
+              variants={itemVariants}
+              whileHover={{ scale: 1.02, x: 5 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                setSelectedOffer('basic');
+                navigate('/checkout');
+              }}
+              className="w-full bg-gradient-to-r from-[#1A2E1A]/60 to-[#162216] border border-mecura-neon/30 hover:border-mecura-neon hover:shadow-[0_0_25px_rgba(166,255,0,0.15)] transition-all duration-300 rounded-[24px] p-5 flex items-center justify-between group shadow-lg relative overflow-hidden"
+            >
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-mecura-neon" />
+              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/5 to-mecura-neon/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="flex items-center gap-5 relative z-10">
+                <div className="w-12 h-12 rounded-2xl bg-mecura-neon/20 flex items-center justify-center border border-mecura-neon/40 group-hover:scale-110 transition-transform duration-300 rotate-3 group-hover:rotate-0">
+                  <Stethoscope className="w-5 h-5 text-mecura-neon" />
+                </div>
+                <div className="flex flex-col items-start text-left">
+                  <span className="font-bold text-mecura-neon text-[17px]">Iniciar Nova Consulta</span>
+                  <span className="text-[12px] text-mecura-neon/70 mt-0.5">Avaliação médica especializada</span>
+                </div>
               </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-mecura-neon group-hover:translate-x-1 transition-transform relative z-10" />
-          </motion.button>
+              <ChevronRight className="w-5 h-5 text-mecura-neon group-hover:translate-x-1 transition-transform relative z-10" />
+            </motion.button>
+          )}
         </div>
 
         {/* Grid Cards */}
@@ -513,6 +640,7 @@ export function DashboardScreen() {
 
         {/* Referral Banner */}
         <motion.div 
+          onClick={() => setShowReferralModal(true)}
           variants={itemVariants}
           whileHover={{ scale: 1.02 }}
           className="flex items-center justify-center gap-3 pt-6 pb-2 cursor-pointer group"
@@ -603,6 +731,9 @@ export function DashboardScreen() {
           </motion.button>
         </div>
       </motion.div>
+      <AdvisorChatWidget />
+      
+      <ReferralModal isOpen={showReferralModal} onClose={() => setShowReferralModal(false)} />
     </div>
   );
 }

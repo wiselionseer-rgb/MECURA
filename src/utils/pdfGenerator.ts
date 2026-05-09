@@ -182,5 +182,6 @@ export const generatePrescriptionPDF = (userName: string, messages: Message[]) =
   doc.setTextColor(150, 150, 150);
   doc.text("Espaço para Assinatura Digital", 105, pageHeight - 68, { align: "center" });
   
-  doc.save(`Receita_${sanitizedUserName.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+  const fileName = `Receita_${sanitizedUserName.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  doc.save(fileName);
 };

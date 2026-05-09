@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAdminStore, Doctor, Coupon, Notification } from '../store/useAdminStore';
+import { useAdminStore, Doctor, Coupon } from '../store/useAdminStore';
+import type { Notification as AdminNotification } from '../store/useAdminStore';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { NotificationToast } from '../components/NotificationToast';
+import { db } from '../firebase';
+import { collection, onSnapshot, collectionGroup, query, where, doc, updateDoc } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
   Tag, 
@@ -27,7 +31,9 @@ import {
   BrainCircuit,
   Calendar,
   Clock,
-  XCircle
+  XCircle,
+  ClipboardList,
+  MessageCircle
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -46,7 +52,89 @@ import { format } from 'date-fns';
 
 export function AdminDashboardScreen() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'metrics' | 'doctors' | 'chat' | 'history' | 'abandonment' | 'coupons' | 'promotions' | 'notifications'>('metrics');
+  const [activeTab, setActiveTab] = useState<'metrics' | 'patients' | 'doctors' | 'chat' | 'history' | 'abandonment' | 'coupons' | 'promotions' | 'notifications' | 'support'>('metrics');
+  
+  const [patients, setPatients] = useState<any[]>([]);
+  const [patientSearchTerm, setPatientSearchTerm] = useState('');
+  const [globalConsultations, setGlobalConsultations] = useState<any[]>([]);
+  
+  const [supportRequests, setSupportRequests] = useState<any[]>([]);
+  const [showSupportToast, setShowSupportToast] = useState<{username: string, id: string} | null>(null);
+
+  useEffect(() => {
+    let isFirstLoad = true;
+    const unsub = onSnapshot(query(collection(db, 'support_requests'), where('status', '==', 'pending')), (snapshot) => {
+      const reqs: any[] = [];
+      snapshot.forEach(doc => reqs.push({id: doc.id, ...doc.data()}));
+      setSupportRequests(reqs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis()));
+
+      if (!isFirstLoad) {
+         snapshot.docChanges().forEach((change) => {
+           if (change.type === 'added') {
+             const data = change.doc.data();
+             const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+             audio.play().catch(() => {});
+             setShowSupportToast({ username: data.userName, id: change.doc.id });
+             setTimeout(() => setShowSupportToast(null), 8000);
+             
+             // Request browser notification
+             if (window.Notification && Notification.permission === 'granted') {
+               new Notification('Ajuda Solicitada!', {
+                 body: `O paciente ${data.userName} solicitou falar com o suporte humano.`
+               });
+             } else if (window.Notification && Notification.permission !== 'denied') {
+               Notification.requestPermission().then(permission => {
+                 if (permission === 'granted') {
+                   new Notification('Ajuda Solicitada!', {
+                     body: `O paciente ${data.userName} solicitou falar com o suporte humano.`
+                   });
+                 }
+               });
+             }
+           }
+         });
+      }
+      isFirstLoad = false;
+    });
+
+    if (window.Notification && Notification.permission !== 'denied' && Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collectionGroup(db, 'consultations'), (snapshot) => {
+      const consultationsData: any[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        consultationsData.push({ 
+          id: doc.id, 
+          userId: doc.ref.parent.parent?.id, // Gets the userId since path is users/{userId}/consultations
+          ...data,
+          date: data.date ? new Date(data.date) : new Date()
+        });
+      });
+      setGlobalConsultations(consultationsData);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const usersData: any[] = [];
+      snapshot.forEach(doc => usersData.push({ id: doc.id, ...doc.data() }));
+      setPatients(usersData);
+    });
+    return () => unsub();
+  }, []);
+
+  const filteredPatients = patients.filter(p => 
+    (p.name && p.name.toLowerCase().includes(patientSearchTerm.toLowerCase())) ||
+    (p.email && p.email.toLowerCase().includes(patientSearchTerm.toLowerCase())) ||
+    (p.phone && p.phone.includes(patientSearchTerm))
+  );
   
   const { 
     doctors, addDoctor, updateDoctor, deleteDoctor,
@@ -205,6 +293,17 @@ export function AdminDashboardScreen() {
             Métricas & Financeiro
           </button>
           <button
+            onClick={() => setActiveTab('patients')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+              activeTab === 'patients' 
+                ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
+                : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
+            }`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            Pacientes (Cadastros)
+          </button>
+          <button
             onClick={() => setActiveTab('doctors')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'doctors' 
@@ -236,6 +335,24 @@ export function AdminDashboardScreen() {
           >
             <History className="w-5 h-5" />
             Histórico de Pacientes
+          </button>
+          <button
+            onClick={() => setActiveTab('support')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
+              activeTab === 'support' 
+                ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
+                : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <MessageCircle className="w-5 h-5" />
+              Suporte a Pacientes
+            </div>
+            {supportRequests.length > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {supportRequests.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('abandonment')}
@@ -329,26 +446,26 @@ export function AdminDashboardScreen() {
               <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6">
                 <div className="flex items-center gap-3 text-[#8A8A9E] mb-2">
                   <DollarSign className="w-5 h-5 text-mecura-neon" />
-                  <span>Receita Total (Mês)</span>
+                  <span>Receita Total Estimada</span>
                 </div>
-                <div className="text-3xl font-bold">R$ 45.200,00</div>
-                <div className="text-sm text-green-400 mt-2">+12% vs mês anterior</div>
+                <div className="text-3xl font-bold">R$ {(globalConsultations.length * 250).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                <div className="text-sm text-green-400 mt-2">Baseado em R$250 por consulta</div>
               </div>
               <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6">
                 <div className="flex items-center gap-3 text-[#8A8A9E] mb-2">
                   <Activity className="w-5 h-5 text-mecura-neon" />
                   <span>Consultas Realizadas</span>
                 </div>
-                <div className="text-3xl font-bold">{consultationHistory.length}</div>
-                <div className="text-sm text-green-400 mt-2">+5% vs mês anterior</div>
+                <div className="text-3xl font-bold">{globalConsultations.length}</div>
+                <div className="text-sm text-mecura-silver mt-2">Atendimentos finalizados</div>
               </div>
               <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6">
                 <div className="flex items-center gap-3 text-[#8A8A9E] mb-2">
                   <Users className="w-5 h-5 text-mecura-neon" />
-                  <span>Novos Pacientes</span>
+                  <span>Pacientes Cadastrados</span>
                 </div>
-                <div className="text-3xl font-bold">385</div>
-                <div className="text-sm text-green-400 mt-2">+18% vs mês anterior</div>
+                <div className="text-3xl font-bold">{patients.length}</div>
+                <div className="text-sm text-mecura-silver mt-2">Total na plataforma</div>
               </div>
               <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6">
                 <div className="flex items-center gap-3 text-[#8A8A9E] mb-2">
@@ -397,6 +514,61 @@ export function AdminDashboardScreen() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'patients' && (
+          <div className="max-w-6xl mx-auto space-y-8">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Pacientes (Cadastros Firebase)</h2>
+            </div>
+            
+            <div className="bg-[#161622] rounded-2xl border border-[#262636] overflow-hidden">
+              <div className="p-6 border-b border-[#262636]">
+                <div className="relative">
+                  <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8A9E]" />
+                  <input
+                    type="text"
+                    placeholder="Buscar pacientes por nome, email ou telefone..."
+                    value={patientSearchTerm}
+                    onChange={(e) => setPatientSearchTerm(e.target.value)}
+                    className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-mecura-neon transition-colors"
+                  />
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-[#0A0A0F] text-[#8A8A9E] text-sm">
+                    <tr>
+                      <th className="p-4 font-medium">Nome do Paciente</th>
+                      <th className="p-4 font-medium">E-mail</th>
+                      <th className="p-4 font-medium">Telefone</th>
+                      <th className="p-4 font-medium">Data de Cadastro</th>
+                      <th className="p-4 font-medium">Status Onboarding</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#262636]">
+                    {filteredPatients.length > 0 ? filteredPatients.map((patient) => (
+                      <tr key={patient.id} className="hover:bg-[#262636]/50 transition-colors">
+                        <td className="p-4 font-bold">{patient.name || 'Sem nome'}</td>
+                        <td className="p-4 text-[#8A8A9E]">{patient.email || 'N/A'}</td>
+                        <td className="p-4 text-[#8A8A9E]">{patient.phone || 'N/A'}</td>
+                        <td className="p-4 text-[#8A8A9E]">{patient.createdAt ? format(new Date(patient.createdAt), 'dd/MM/yyyy HH:mm') : 'N/A'}</td>
+                        <td className="p-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${patient.hasCompletedOnboarding ? 'bg-mecura-neon/10 text-mecura-neon' : 'bg-yellow-500/10 text-yellow-500'}`}>
+                            {patient.hasCompletedOnboarding ? 'Concluído' : 'Pendente'}
+                          </span>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-[#8A8A9E]">Nenhum paciente cadastrado até o momento.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -512,34 +684,60 @@ export function AdminDashboardScreen() {
                   </div>
 
                   <div className="space-y-4">
-                    {consultationHistory
-                      .filter(h => h.patientName.toLowerCase().includes(historySearchTerm.toLowerCase()))
-                      .sort((a, b) => b.date.getTime() - a.date.getTime())
-                      .map((history) => (
-                        <div key={history.id} className="p-5 rounded-2xl bg-[#0A0A0F] border border-[#262636] flex justify-between items-center group">
+                    {(() => {
+                      const groupedKeys = Array.from(new Set(globalConsultations.map(h => h.userId || h.patientName))).filter(Boolean);
+                      
+                      const validPatients = groupedKeys.map(groupKey => {
+                        const patientConsultations = globalConsultations
+                          .filter(h => (h.userId || h.patientName) === groupKey)
+                          .sort((a, b) => b.date.getTime() - a.date.getTime());
+                        const latestConsultation = patientConsultations[0];
+                        const totalMessages = patientConsultations.reduce((acc, curr) => acc + (curr.messages?.length || 0), 0);
+                        const hasPrescription = patientConsultations.some(c => c.messages?.some((m: any) => m.type === 'product' || m.type === 'prescription_notes'));
+                        
+                        const actualPatientData = patients.find(p => p.id === groupKey);
+                        const displayPatientName = actualPatientData?.name || latestConsultation.patientName || 'Paciente';
+
+                        return {
+                          groupKey,
+                          patientName: displayPatientName,
+                          latestConsultation,
+                          totalMessages,
+                          hasPrescription
+                        };
+                      })
+                      .filter(p => !['Paciente Atual', 'Usuário do App', 'Paciente'].includes(p.patientName))
+                      .filter(p => p.hasPrescription) // Show only prescribed patients
+                      .filter(p => p.patientName.toLowerCase().includes(historySearchTerm.toLowerCase()));
+
+                      if (validPatients.length === 0) {
+                        return (
+                          <div className="text-center py-12">
+                            <p className="text-[#8A8A9E]">Nenhum histórico com prescrição encontrado no banco de dados.</p>
+                          </div>
+                        );
+                      }
+
+                      return validPatients.map(patient => (
+                        <div key={patient.groupKey} className="p-5 rounded-2xl bg-[#0A0A0F] border border-[#262636] flex justify-between items-center group">
                           <div>
-                            <h3 className="font-bold text-white text-lg">{history.patientName}</h3>
+                            <h3 className="font-bold text-white text-lg">{patient.patientName}</h3>
                             <div className="flex items-center gap-3 mt-1">
                               <span className="text-xs text-[#8A8A9E] flex items-center gap-1">
-                                <Activity className="w-3 h-3" /> {format(history.date, 'dd/MM/yyyy')}
+                                <Activity className="w-3 h-3" /> Última consulta: {format(patient.latestConsultation.date, 'dd/MM/yyyy')}
                               </span>
                               <span className="text-xs text-[#8A8A9E] flex items-center gap-1">
-                                <MessageSquare className="w-3 h-3" /> {history.messages.length} mensagens
+                                <MessageSquare className="w-3 h-3" /> {patient.totalMessages} mensagens no total
                               </span>
                             </div>
                           </div>
-                          <Button variant="outline" size="sm" onClick={() => setSelectedHistoryItem(history)}>
+                          <Button variant="outline" size="sm" onClick={() => setSelectedHistoryItem(patient.latestConsultation)}>
                             <Eye className="w-4 h-4 mr-2" />
                             Ver Prontuário
                           </Button>
                         </div>
-                      ))}
-                    
-                    {consultationHistory.filter(h => h.patientName.toLowerCase().includes(historySearchTerm.toLowerCase())).length === 0 && (
-                      <div className="text-center py-12">
-                        <p className="text-[#8A8A9E]">Nenhum histórico encontrado.</p>
-                      </div>
-                    )}
+                      ));
+                    })()}
                   </div>
                 </>
               ) : (
@@ -552,8 +750,8 @@ export function AdminDashboardScreen() {
                     <div className="h-[200px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart
-                          data={consultationHistory
-                            .filter(h => h.patientName === selectedHistoryItem.patientName)
+                          data={globalConsultations
+                            .filter(h => (h.userId || h.patientName) === (selectedHistoryItem.userId || selectedHistoryItem.patientName))
                             .sort((a, b) => a.date.getTime() - b.date.getTime())
                             .map(h => ({
                               date: format(h.date, 'dd/MM'),
@@ -862,7 +1060,67 @@ export function AdminDashboardScreen() {
             </div>
           </div>
         )}
+        {activeTab === 'support' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Solicitações de Suporte (Humanos)</h2>
+            </div>
+            {supportRequests.length === 0 ? (
+              <div className="bg-[#161622] border border-[#262636] rounded-2xl p-8 text-center text-[#8A8A9E]">
+                Nenhuma solicitação de suporte no momento.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {supportRequests.map(req => (
+                  <div key={req.id} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-lg">{req.userName}</div>
+                      <div className="text-sm text-[#8A8A9E] mb-2">{req.email || "Sem e-mail"}</div>
+                      <div className="text-xs text-[#8A8A9E]">Solicitado em: {req.createdAt ? new Date(req.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Agora mesmo'}</div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Button onClick={() => {
+                        window.open(`https://wa.me/5566996280883?text=Olá ${encodeURIComponent(req.userName)}, recebemos sua solicitação de suporte na Mecura. Como podemos ajudar?`, '_blank');
+                      }} className="bg-[#25D366] hover:bg-[#20BE5C] text-white">
+                        Chamar no WhatsApp
+                      </Button>
+                      <Button variant="outline" onClick={async () => {
+                        await updateDoc(doc(db, 'support_requests', req.id), { status: 'resolved' });
+                      }}>
+                        Marcar como Resolvido
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Toast de Notificação */}
+      <AnimatePresence>
+        {showSupportToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -50, scale: 0.9 }}
+            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-3"
+          >
+            <Bell className="w-6 h-6 animate-pulse" />
+            <div>
+              <span className="font-bold block text-sm">AJUDA SOLICITADA!</span>
+              <span className="text-sm">O paciente <strong>{showSupportToast.username}</strong> quer falar com um humano.</span>
+            </div>
+            <button 
+              onClick={() => setShowSupportToast(null)}
+              className="ml-4 p-1 hover:bg-white/20 rounded-full transition-colors"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modals */}
       {showAddDoctor && (

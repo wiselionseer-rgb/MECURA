@@ -237,7 +237,14 @@ export const useStore = create<AppState>((set, get) => ({
     const currentUserId = auth.currentUser?.uid || state.patientId || `anon_${Date.now()}`;
     
     // Save the generated or existing ID
-    set({ patientId: currentUserId });
+    set({ 
+      patientId: currentUserId,
+      inQueue: true,
+      isConsultationFinished: false,
+      consultationActive: false,
+      pagamento_consulta: true,
+      messages: []
+    });
     
     const newPatient = patient || { 
       id: currentUserId, 
@@ -246,9 +253,18 @@ export const useStore = create<AppState>((set, get) => ({
       answers: state.answers // Pass answers to the queue so doctor can see them
     };
     
-    set({ inQueue: true });
-
     try {
+      // Clear previous messages from active_consultations to prevent leaking previous session
+      try {
+        const msgsRef = collection(db, 'active_consultations', currentUserId, 'messages');
+        const msgsSnap = await getDocs(msgsRef);
+        msgsSnap.forEach((docSnap) => {
+           deleteDoc(doc(msgsRef, docSnap.id));
+        });
+      } catch (err) {
+        console.warn("Could not delete old messages:", err);
+      }
+
       // Always try to write to Firestore, even if anonymous (using the generated ID)
       await setDoc(doc(db, 'queue', currentUserId), {
         ...newPatient,
@@ -302,18 +318,21 @@ export const useStore = create<AppState>((set, get) => ({
       if (currentUserId && !isDoctorRoute) {
         const myIndex = queueData.findIndex(p => p.id === currentUserId);
         if (myIndex !== -1) {
-          set({ 
-            queuePosition: myIndex, // 0 means next
-            estimatedWaitTime: (myIndex + 1) * 15,
-            inQueue: true
-          });
-          
           // Check if doctor started consultation
           if (queueData[myIndex].status === 'in-consultation') {
              // Doctor started it!
-             set({ consultationActive: true, inQueue: false, activeConsultationId: currentUserId });
+             set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: currentUserId });
           } else if (queueData[myIndex].status === 'finished') {
-             set({ isConsultationFinished: true, activeConsultationId: currentUserId });
+             set({ isConsultationFinished: true, consultationActive: false, inQueue: false, activeConsultationId: currentUserId });
+          } else {
+             set({ 
+               queuePosition: myIndex, // 0 means next
+               estimatedWaitTime: (myIndex + 1) * 15,
+               inQueue: true,
+               isConsultationFinished: false,
+               consultationActive: false,
+               pagamento_consulta: true
+             });
           }
         } else {
            // Not in queue
@@ -325,14 +344,19 @@ export const useStore = create<AppState>((set, get) => ({
           // Find their position based on their generated ID if possible, or just rely on local state
           const myIndex = queueData.findIndex(p => p.id === state.patientId);
           if (myIndex !== -1) {
-            set({ 
-              queuePosition: myIndex,
-              estimatedWaitTime: (myIndex + 1) * 15
-            });
             if (queueData[myIndex].status === 'in-consultation') {
-               set({ consultationActive: true, inQueue: false, activeConsultationId: queueData[myIndex].id });
+               set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: queueData[myIndex].id });
             } else if (queueData[myIndex].status === 'finished') {
-               set({ isConsultationFinished: true, activeConsultationId: queueData[myIndex].id });
+               set({ isConsultationFinished: true, consultationActive: false, inQueue: false, activeConsultationId: queueData[myIndex].id });
+            } else {
+               set({ 
+                 queuePosition: myIndex,
+                 estimatedWaitTime: (myIndex + 1) * 15,
+                 inQueue: true,
+                 isConsultationFinished: false,
+                 consultationActive: false,
+                 pagamento_consulta: true
+               });
             }
           }
         }
@@ -426,7 +450,25 @@ export const useStore = create<AppState>((set, get) => ({
     if (consultationId) {
       try {
         const historyRef = collection(db, 'users', consultationId, 'consultations');
-        await addDoc(historyRef, {
+        
+        // Remove undefined fields
+        const sanitizeForFirestore = (obj: any): any => {
+          if (obj === undefined) return null;
+          if (Array.isArray(obj)) return obj.map(sanitizeForFirestore).filter(v => v !== undefined);
+          if (obj !== null && typeof obj === 'object') {
+            if (obj instanceof Date) return obj;
+            const newObj: any = {};
+            for (const key in obj) {
+              if (obj[key] !== undefined) {
+                newObj[key] = sanitizeForFirestore(obj[key]);
+              }
+            }
+            return newObj;
+          }
+          return obj;
+        };
+
+        const sanitizedPayload = sanitizeForFirestore({
           ...newConsultation,
           date: newConsultation.date.toISOString(),
           messages: newConsultation.messages.map(m => ({
@@ -434,6 +476,8 @@ export const useStore = create<AppState>((set, get) => ({
             timestamp: m.timestamp.toISOString()
           }))
         });
+
+        await addDoc(historyRef, sanitizedPayload);
         console.log('Consultation history saved to Firestore');
         
         // Clean up active consultation - change status to finished instead of deleting
@@ -485,10 +529,30 @@ export const useStore = create<AppState>((set, get) => ({
     if (consultationId) {
       try {
         const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
-        await setDoc(doc(messagesRef, newMessage.id), {
+        
+        // Remove undefined fields
+        const sanitizeForFirestore = (obj: any): any => {
+          if (obj === undefined) return null;
+          if (Array.isArray(obj)) return obj.map(sanitizeForFirestore).filter(v => v !== undefined);
+          if (obj !== null && typeof obj === 'object') {
+            if (obj instanceof Date) return obj;
+            const newObj: any = {};
+            for (const key in obj) {
+              if (obj[key] !== undefined) {
+                newObj[key] = sanitizeForFirestore(obj[key]);
+              }
+            }
+            return newObj;
+          }
+          return obj;
+        };
+
+        const payload = sanitizeForFirestore({
           ...newMessage,
           timestamp: newMessage.timestamp.toISOString()
         });
+
+        await setDoc(doc(messagesRef, newMessage.id), payload);
         console.log("Message saved to active_consultations successfully.");
         
         // Update queue document for WhatsApp-like behavior

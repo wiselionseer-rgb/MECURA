@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { User, Flame } from 'lucide-react';
+import { User, Store } from 'lucide-react';
 import { NotificationToast } from '../NotificationToast';
 import { useStore } from '../../store/useStore';
 import { auth } from '../../firebase';
@@ -10,11 +10,17 @@ const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userName, resetConsultation } = useStore();
+  const { userName, resetConsultation, subscribeToQueue } = useStore();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Show gamification header only on specific screens
   const showGamificationHeader = ['/queue', '/chat', '/prescription'].includes(location.pathname);
+
+  // Global queue subscription
+  useEffect(() => {
+    const unsubscribe = subscribeToQueue();
+    return () => unsubscribe();
+  }, [subscribeToQueue]);
 
   const resetTimeout = () => {
     if (timeoutRef.current) {
@@ -88,9 +94,9 @@ export function AppLayout() {
                 <p className="text-sm font-bold text-mecura-neon">5.200 pts</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 bg-mecura-surface px-3 py-1.5 rounded-full border border-mecura-elevated">
-              <Flame className="w-4 h-4 text-mecura-neon" />
-              <span className="text-xs font-bold text-mecura-pearl">3 dias</span>
+            <div className="flex items-center gap-1.5 bg-mecura-surface px-3 py-1.5 rounded-full border border-mecura-elevated cursor-pointer hover:bg-mecura-elevated transition-colors" onClick={() => navigate('/dashboard')}>
+              <Store className="w-4 h-4 text-mecura-neon" />
+              <span className="text-xs font-bold text-mecura-pearl">Área do Paciente</span>
             </div>
           </div>
         )}

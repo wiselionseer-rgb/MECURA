@@ -154,6 +154,23 @@ export function DoctorDashboardScreen() {
     console.log("Starting consultation for:", patient);
     setCurrentPatient(patient);
     startConsultation(patient.id);
+    
+    // Auto-greeting if the patient was just waiting
+    if (patient.status === 'waiting') {
+      setTimeout(() => {
+        const objectivesStr = patient.answers?.objectives?.length > 0 
+          ? patient.answers.objectives.join(", ") 
+          : "suas queixas e histórico";
+          
+        const greetingMsg = `Olá ${patient.patientName.split(' ')[0]}, sou o Dr. Guilherme. Analisei sua queixa de ${objectivesStr}. Como você está se sentindo hoje?`;
+        
+        addMessage({
+          text: greetingMsg,
+          sender: 'doctor',
+          type: 'text'
+        });
+      }, 1000);
+    }
   };
 
   const handleNotifyNext = async (patient: any) => {
@@ -673,7 +690,7 @@ export function DoctorDashboardScreen() {
                     className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
                   />
                 </div>
-                <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex flex-wrap gap-2 mt-4 pb-2">
                   <button 
                     onClick={() => setQueueFilter('all')}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'all' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
@@ -862,7 +879,7 @@ export function DoctorDashboardScreen() {
             </div>
             
             <div>
-              {messages.map((msg) => (
+              {messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()).map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex flex-col w-full ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}

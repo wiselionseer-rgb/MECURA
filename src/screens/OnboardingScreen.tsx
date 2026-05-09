@@ -25,10 +25,12 @@ const OBJECTIVES_MAIN = [
 ];
 
 const OBJECTIVES_OTHER = [
-  'TDAH', 'Depressão', 'Fibromialgia', 'Parkinson', 'Burnout', 'Epilepsia',
+  'TDAH', 'Depressão', 'Fibromialgia', 'Parkinson', 'Burnout', 'Síndrome de Epilepsia',
   'Alzheimer', 'Redução de Vícios', 'Autismo (TEA)', 'Obesidade', 'Bruxismo',
   'Menopausa', 'Câncer (suporte)', 'Esclerose Múltipla', 'Asma', 'Demência',
-  'Glaucoma', 'Cuidados Paliativos', 'Anorexia', 'Outros'
+  'Glaucoma', 'Cuidados Paliativos', 'Anorexia', 
+  'Endometriose', 'Doença de Crohn / Colite', 'Artrite / Artrose', 'Psoríase / Dermatite',
+  'Hérnia de Disco / Coluna', 'Dores Neuropáticas', 'Síndrome das Pernas Inquietas', 'Outros'
 ];
 
 const SOCIAL_QUESTIONS = [

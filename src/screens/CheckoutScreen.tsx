@@ -54,8 +54,13 @@ export function CheckoutScreen() {
     }, 2000);
   };
 
+  React.useEffect(() => {
+    if (!selectedOffer) {
+      navigate('/dashboard');
+    }
+  }, [selectedOffer, navigate]);
+
   if (!selectedOffer) {
-    navigate('/dashboard');
     return null;
   }
 

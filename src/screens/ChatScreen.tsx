@@ -11,7 +11,7 @@ import { auth } from '../firebase';
 
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId } = useStore();
+  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId, isConsultationFinished } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
@@ -505,25 +505,27 @@ export function ChatScreen() {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-mecura-bg border-t border-mecura-elevated absolute bottom-0 left-0 right-0 z-20">
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Escreva sua mensagem..."
-            className="flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border border-mecura-elevated focus:border-mecura-neon/50 transition-colors"
-          />
-          <button 
-            onClick={handleSend}
-            disabled={!inputText.trim()}
-            className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)]"
-          >
-            <Send className="w-5 h-5 ml-1" />
-          </button>
+      {!isConsultationFinished && (
+        <div className="p-4 bg-mecura-bg border-t border-mecura-elevated absolute bottom-0 left-0 right-0 z-20">
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Escreva sua mensagem..."
+              className="flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border border-mecura-elevated focus:border-mecura-neon/50 transition-colors"
+            />
+            <button 
+              onClick={handleSend}
+              disabled={!inputText.trim()}
+              className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)]"
+            >
+              <Send className="w-5 h-5 ml-1" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
