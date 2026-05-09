@@ -32,16 +32,20 @@ async function deploy() {
     console.log('📦 Enviando pasta dist (Frontend)...');
     await sftp.uploadDir(path.join(process.cwd(), 'dist'), remotePath);
     
-    // O servidor Node.js só vai funcionar se seu plano Hostinger suportar Node.js
     console.log('⚙️ Enviando arquivos do servidor (Backend)...');
     try {
-      await sftp.put(path.join(process.cwd(), 'server.ts'), `${remotePath}/server.ts`);
+      // Enviamos o server.js (compilado pelo esbuild no npm run build)
+      await sftp.put(path.join(process.cwd(), 'server.js'), `${remotePath}/server.js`);
       await sftp.put(path.join(process.cwd(), 'package.json'), `${remotePath}/package.json`);
     } catch (e) {
-      console.log('⚠️ Aviso: Não foi possível enviar arquivos do servidor. Se seu plano for apenas estático, ignore este aviso.');
+      console.log('⚠️ Aviso: Não foi possível enviar arquivos do servidor.', e.message);
     }
     
     console.log('✅ Deploy concluído com sucesso!');
+    console.log('\n📌 LEMBRETE:');
+    console.log('1. Verifique se o seu arquivo .env está configurado na Hostinger.');
+    console.log('2. As chaves MERCADO_PAGO_ACCESS_TOKEN e GEMINI_API_KEY são obrigatórias para o funcionamento.');
+    console.log('3. Certifique-se que o "Entry File" no painel Node.js da Hostinger é server.js');
   } catch (err) {
     console.error('❌ Erro durante o deploy:', err.message);
   } finally {

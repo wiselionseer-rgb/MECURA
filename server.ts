@@ -12,23 +12,25 @@ async function startServer() {
   app.use(express.json());
 
   // Mercado Pago Configuration
-  const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
+  const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
+  const geminiKey = process.env.GEMINI_API_KEY || "";
+
   const client = new MercadoPagoConfig({
     accessToken: mpToken
   });
 
   console.log("-----------------------------------------");
-  console.log("🛰️ STATUS DA CONFIGURAÇÃO:");
-  console.log("Mercado Pago Token:", mpToken ? `✅ Carregado (${mpToken.substring(0, 10)}...)` : "❌ AUSENTE");
-  console.log("Gemini API Key:", process.env.GEMINI_API_KEY ? "✅ Carregado" : "❌ AUSENTE");
+  console.log("🛰️ MONITORAMENTO DE CONFIGURAÇÃO:");
+  console.log("Mercado Pago:", mpToken ? `✅ ATIVO (${mpToken.substring(0, 15)}...)` : "❌ AUSENTE");
+  console.log("Gemini IA:", geminiKey ? `✅ ATIVO (${geminiKey.substring(0, 10)}...)` : "❌ AUSENTE");
+  console.log("CWD:", process.cwd());
   console.log("-----------------------------------------");
 
   // API Routes
   app.post("/api/create-preference", async (req, res) => {
-    // ... (mantido para compatibilidade, se necessário)
     try {
       const { title, price, quantity = 1 } = req.body;
-      if (!mpToken) throw new Error("Token MP não configurado");
+      if (!mpToken) return res.status(500).json({ error: "Credencial Mercado Pago (Access Token) não encontrada no servidor Hostinger." });
       const preference = new Preference(client);
       const result = await preference.create({
         body: {
