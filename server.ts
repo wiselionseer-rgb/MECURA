@@ -12,13 +12,14 @@ async function startServer() {
   app.use(express.json());
 
   // Mercado Pago Configuration
+  const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
   const client = new MercadoPagoConfig({
-    accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN || ''
+    accessToken: mpToken
   });
 
   console.log("-----------------------------------------");
   console.log("🛰️ STATUS DA CONFIGURAÇÃO:");
-  console.log("Mercado Pago Token:", process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Carregado" : "❌ AUSENTE");
+  console.log("Mercado Pago Token:", mpToken ? `✅ Carregado (${mpToken.substring(0, 10)}...)` : "❌ AUSENTE");
   console.log("Gemini API Key:", process.env.GEMINI_API_KEY ? "✅ Carregado" : "❌ AUSENTE");
   console.log("-----------------------------------------");
 
@@ -27,6 +28,7 @@ async function startServer() {
     // ... (mantido para compatibilidade, se necessário)
     try {
       const { title, price, quantity = 1 } = req.body;
+      if (!mpToken) throw new Error("Token MP não configurado");
       const preference = new Preference(client);
       const result = await preference.create({
         body: {
@@ -44,8 +46,9 @@ async function startServer() {
         }
       });
       res.json({ id: result.id, init_point: result.init_point });
-    } catch (error) {
-      res.status(500).json({ error: "Falha ao criar preferência." });
+    } catch (error: any) {
+      console.error("Erro MP Preference:", error.message);
+      res.status(500).json({ error: "Falha ao criar preferência.", details: error.message });
     }
   });
 
@@ -54,9 +57,11 @@ async function startServer() {
     try {
       const { title, price, email, firstName, lastName } = req.body;
 
-      if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
-        return res.status(500).json({ error: "Configuração do Mercado Pago ausente." });
+      if (!mpToken) {
+        return res.status(500).json({ error: "Configuração do Mercado Pago ausente no servidor." });
       }
+
+      console.log(`Tentando criar pagamento Pix: R$${price} para ${email}`);
 
       const payment = new Payment(client);
       const result = await payment.create({
@@ -65,14 +70,21 @@ async function startServer() {
           description: title,
           payment_method_id: 'pix',
           payer: {
-            email: email || 'paciente@exemplo.com',
+            email: email || 'paciente@mercura.com',
             first_name: firstName || 'Paciente',
             last_name: lastName || 'Mecura',
+            // Alguns planos de produção exigem identificação
+            identification: {
+              type: 'CPF',
+              number: '00000000000' // Placeholder se não enviado
+            }
           },
           // Opcional: Webhook para receber confirmação automática
-          notification_url: `${process.env.APP_URL}/api/webhook`,
+          notification_url: process.env.APP_URL ? `${process.env.APP_URL}/api/webhook` : undefined,
         }
       });
+
+      console.log("Pagamento Pix criado com sucesso!", result.id);
 
       // Retorna os dados do QR Code e o ID para consulta
       res.json({
@@ -81,9 +93,14 @@ async function startServer() {
         qr_code: result.point_of_interaction?.transaction_data?.qr_code,
         qr_code_base64: result.point_of_interaction?.transaction_data?.qr_code_base64,
       });
-    } catch (error) {
-      console.error("Erro ao criar pagamento Pix:", error);
-      res.status(500).json({ error: "Erro ao gerar o Pix. Tente novamente." });
+    } catch (error: any) {
+      console.error("ERRO DETALHADO MERCADO PAGO:", error);
+      // Extrair mensagem de erro específica do MP se disponível
+      const mpError = error.cause?.[0]?.description || error.message;
+      res.status(500).json({ 
+        error: "Erro ao gerar o Pix via Mercado Pago.", 
+        details: mpError 
+      });
     }
   });
 

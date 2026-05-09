@@ -81,11 +81,12 @@ export function PremiumCheckoutScreen() {
         setIsLoading(false);
         startPolling(data.id);
       } else {
-        throw new Error(data.error || 'Erro ao criar pagamento');
+        const errorMsg = data.details ? `${data.error}: ${data.details}` : (data.error || 'Erro ao criar pagamento');
+        throw new Error(errorMsg);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Payment error:", error);
-      alert("Houve um erro ao processar seu pagamento. Por favor, tente novamente.");
+      alert(error.message || "Houve um erro ao processar seu pagamento. Por favor, tente novamente.");
       setIsLoading(false);
     }
   };
