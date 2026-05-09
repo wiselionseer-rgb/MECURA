@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from '@google/genai';
 import Markdown from 'react-markdown';
 import { 
   Users, 
@@ -443,12 +442,6 @@ export function DoctorDashboardScreen() {
     
     setIsAnalyzing(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("Chave da API do Gemini não encontrada. Verifique as variáveis de ambiente.");
-      }
-      const ai = new GoogleGenAI({ apiKey });
-      
       const prompt = `
         Atue como um especialista em medicina canabinoide e prescrição médica.
         Com base nos seguintes dados do paciente, forneça uma análise clínica aprofundada indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
@@ -489,33 +482,24 @@ export function DoctorDashboardScreen() {
         IMPORTANTE: Destaque em **negrito** todos os nomes de medicamentos, doenças, dosagens e horários para facilitar a leitura rápida do médico. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
       `;
 
-      let response;
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-          });
-          break;
-        } catch (error: any) {
-          if (error.status === 429 && retries > 1) {
-            retries--;
-            await new Promise(resolve => setTimeout(resolve, 2000 * (4 - retries)));
-          } else {
-            throw error;
-          }
-        }
-      }
+      const response = await fetch('/api/analyze-clinical', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = await response.json();
       
-      if (response && response.text) {
-        setAnalysisResult(response.text);
+      if (data.text) {
+        setAnalysisResult(data.text);
       } else {
-        setAnalysisResult("Não foi possível gerar a análise. Tente novamente.");
+        setAnalysisResult(data.error || "Não foi possível gerar a análise. Tente novamente.");
       }
     } catch (error: any) {
       console.error("Erro ao gerar análise:", error);
-      setAnalysisResult(`Ocorreu um erro ao conectar com a IA: ${error.message || 'Erro desconhecido'}. Verifique as configurações e tente novamente.`);
+      setAnalysisResult(`Ocorreu um erro ao conectar com o servidor: ${error.message || 'Erro desconhecido'}. Verifique as configurações e tente novamente.`);
     } finally {
       setIsAnalyzing(false);
     }

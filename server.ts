@@ -92,6 +92,33 @@ async function startServer() {
     }
   });
 
+  // ROTA: Análise Clínica com IA (Gemini)
+  app.post("/api/analyze-clinical", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      const apiKey = process.env.GEMINI_API_KEY;
+
+      if (!apiKey) {
+        return res.status(500).json({ error: "Chave da API do Gemini não configurada no servidor." });
+      }
+
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text();
+
+      res.json({ text: responseText });
+    } catch (error: any) {
+      console.error("Erro na análise clínica IA:", error);
+      res.status(500).json({ 
+        error: "Erro ao processar análise clínica com IA.",
+        details: error.message 
+      });
+    }
+  });
+
   app.post("/api/webhook", async (req, res) => {
     // Mercado Pago envia notificações via POST
     const { action, data, type } = req.body;
