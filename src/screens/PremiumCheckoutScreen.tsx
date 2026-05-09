@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
-import { useAdminStore } from '../store/useAdminStore';
+import { useAdminStore, Coupon } from '../store/useAdminStore';
+import { auth } from '../firebase';
 import { ChevronLeft, CreditCard, Percent, Lock } from 'lucide-react';
 
 // Custom Pix Icon to match the print
@@ -14,14 +15,14 @@ const PixIcon = ({ className }: { className?: string }) => (
 
 export function PremiumCheckoutScreen() {
   const navigate = useNavigate();
-  const { userName, setPagamentoPremium } = useStore();
+  const { userName, setPagamentoPremium, incrementBonus } = useStore();
   const { coupons } = useAdminStore();
   const [step, setStep] = useState<'discount' | 'checkout'>('discount');
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
 
   const [couponCode, setCouponCode] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<{code: string, discount: number} | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
 
   const basePrice = 250.00;
@@ -29,23 +30,55 @@ export function PremiumCheckoutScreen() {
 
   const handleApplyCoupon = () => {
     setCouponError('');
+    const currentUserId = auth.currentUser?.uid;
     const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
+    
     if (coupon) {
+      if (coupon.ownerId && coupon.ownerId === currentUserId) {
+        setCouponError('Você não pode usar seu próprio cupom de indicação.');
+        return;
+      }
       setAppliedCoupon(coupon);
     } else {
       setCouponError('Cupom inválido ou expirado.');
     }
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (!paymentMethod) return;
     setIsLoading(true);
-    // Simulate payment processing
-    setTimeout(() => {
+
+    localStorage.setItem('last_offer', 'premium');
+
+    try {
+      if (appliedCoupon?.ownerId) {
+        await incrementBonus(50, appliedCoupon.ownerId);
+      }
+
+      const response = await fetch('/api/create-preference', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'Acompanhamento Premium Mecura',
+          price: finalPrice,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.init_point) {
+        // Redireciona para o Mercado Pago
+        window.location.href = data.init_point;
+      } else {
+        throw new Error(data.error || 'Erro ao criar pagamento');
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      alert("Houve um erro ao processar seu pagamento. Por favor, tente novamente.");
       setIsLoading(false);
-      setPagamentoPremium(true);
-      navigate('/scheduling');
-    }, 2000);
+    }
   };
 
   return (
@@ -134,16 +167,6 @@ export function PremiumCheckoutScreen() {
               </h3>
 
               <div className="space-y-3">
-                <button
-                  onClick={() => setPaymentMethod('card')}
-                  className={`w-full flex items-center gap-4 p-4 rounded-xl bg-[#0A0A0F] border-2 transition-all ${
-                    paymentMethod === 'card' ? 'border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.15)]' : 'border-transparent'
-                  }`}
-                >
-                  <CreditCard className={`w-8 h-8 ${paymentMethod === 'card' ? 'text-[#D4AF37]' : 'text-mecura-silver'}`} />
-                  <span className="font-medium text-lg text-mecura-pearl">Cartão de crédito</span>
-                </button>
-
                 <button
                   onClick={() => setPaymentMethod('pix')}
                   className={`w-full flex items-center gap-4 p-4 rounded-xl bg-[#0A0A0F] border-2 transition-all ${

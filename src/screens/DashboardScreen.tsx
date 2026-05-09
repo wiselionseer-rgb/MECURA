@@ -52,7 +52,28 @@ const itemVariants = {
 
 export function DashboardScreen() {
   const navigate = useNavigate();
-  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive } = useStore();
+  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue } = useStore();
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get('payment');
+    
+    if (paymentStatus === 'success') {
+      if (!pagamento_consulta) {
+        setPagamentoConsulta(true);
+        // Se era a consulta básica, entra na fila
+        const isBasic = localStorage.getItem('last_offer') === 'basic';
+        if (isBasic) {
+           joinQueue();
+        } else {
+           setPagamentoPremium(true);
+        }
+      }
+      // Limpa os parâmetros da URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue]);
+
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
   const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);
   const [timeLeft, setTimeLeft] = useState(900); // 15 minutes in seconds

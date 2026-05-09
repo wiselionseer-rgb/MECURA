@@ -725,21 +725,25 @@ export function DoctorDashboardScreen() {
               if (a.hasUnread && !b.hasUnread) return -1;
               if (!a.hasUnread && b.hasUnread) return 1;
               
-              // 2. Most recent message
-              if (a.lastMessageAt && b.lastMessageAt) {
-                return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
-              }
-              if (a.lastMessageAt) return -1;
-              if (b.lastMessageAt) return 1;
-              
-              // 3. Status (waiting > in-consultation > finished)
-              const statusWeight = { 'waiting': 0, 'in-consultation': 1, 'finished': 2 };
+              // 2. Status priority (in-consultation > waiting > finished)
+              const statusWeight = { 'in-consultation': 0, 'waiting': 1, 'finished': 2 };
               const weightA = statusWeight[a.status as keyof typeof statusWeight] ?? 3;
               const weightB = statusWeight[b.status as keyof typeof statusWeight] ?? 3;
               if (weightA !== weightB) return weightA - weightB;
-              
-              // 4. Joined At (oldest first)
-              return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+
+              // 3. Within same status
+              if (a.status === 'finished') {
+                // For finished, most recent (lastMessageAt) first
+                if (a.lastMessageAt && b.lastMessageAt) {
+                  return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+                }
+                if (a.lastMessageAt) return -1;
+                if (b.lastMessageAt) return 1;
+                return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
+              } else {
+                // For active/waiting, oldest joined first
+                return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+              }
             }).map((patient, idx) => (
               <div 
                 key={patient.id} 

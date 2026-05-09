@@ -104,7 +104,10 @@ interface AppState {
   
   // Consultation
   consultationActive: boolean;
-  isConsultationFinished: boolean;  consultationHistory: Array<{
+  isConsultationFinished: boolean;
+  bonusBalance: number;
+  incrementBonus: (amount: number, userId?: string) => Promise<void>;
+  consultationHistory: Array<{
     id: string;
     patientName: string;
     date: Date;
@@ -382,6 +385,36 @@ export const useStore = create<AppState>((set, get) => ({
   
   consultationActive: false,
   isConsultationFinished: false,
+  bonusBalance: 0,
+  incrementBonus: async (amount: number, userId?: string) => {
+    const targetId = userId || auth.currentUser?.uid || get().patientId;
+    if (!targetId) return;
+
+    try {
+      // In a real app, we'd use a transaction. For this demo, we'll try to get and update.
+      const userRef = doc(db, 'users', targetId);
+      const userSnap = await getDoc(userRef);
+      let currentBonus = 0;
+      
+      if (userSnap.exists()) {
+        currentBonus = userSnap.data().bonusBalance || 0;
+      }
+      
+      const newBonus = currentBonus + amount;
+      await setDoc(userRef, { bonusBalance: newBonus }, { merge: true });
+      
+      // If updating self, update local state
+      if (targetId === (auth.currentUser?.uid || get().patientId)) {
+        set({ bonusBalance: newBonus });
+      }
+    } catch (error) {
+      console.error("Error incrementing bonus:", error);
+      // Fallback to local if not logged in/no firestore access
+      if (targetId === (auth.currentUser?.uid || get().patientId)) {
+        set((state) => ({ bonusBalance: state.bonusBalance + amount }));
+      }
+    }
+  },
   consultationHistory: [
     {
       id: 'h1',

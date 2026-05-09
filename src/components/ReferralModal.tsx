@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Gift, Check, Share2, Copy, Users, TrendingUp, Sparkles } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { useAdminStore } from '../store/useAdminStore';
+import { auth } from '../firebase';
 
 interface ReferralModalProps {
   isOpen: boolean;
@@ -9,23 +11,36 @@ interface ReferralModalProps {
 }
 
 export function ReferralModal({ isOpen, onClose }: ReferralModalProps) {
-  const { userName } = useStore();
+  const { userName, bonusBalance, patientId } = useStore();
+  const { addCoupon, coupons } = useAdminStore();
   const [copied, setCopied] = useState(false);
   const [referralCode, setReferralCode] = useState('');
-  const [bonus, setBonus] = useState(0);
-  const [invited, setInvited] = useState(0);
+  const initialized = useRef(false);
 
   useEffect(() => {
-    if (isOpen) {
-      // Simulate generating a unique code based on name or random
+    if (isOpen && !initialized.current) {
+      if (referralCode) return; // Prevent re-generating
+      
+      const currentUserId = patientId || auth.currentUser?.uid || 'anonymous';
+      
       const prefix = userName ? userName.split(' ')[0].toUpperCase() : 'MECURA';
       const randomScore = Math.floor(1000 + Math.random() * 9000);
-      setReferralCode(`${prefix}${randomScore}`);
+      const newCode = `${prefix}${randomScore}`;
+      setReferralCode(newCode);
       
-      // We can mock that they have 1 invited friend and 50 reais for demonstration purposes, 
-      // or just 0 to start. Let's start with 0.
+      const existing = coupons.find(c => c.code === newCode);
+      if (!existing) {
+        addCoupon({
+          id: `ref_${Date.now()}`,
+          code: newCode,
+          discount: 50,
+          active: true,
+          ownerId: currentUserId
+        });
+      }
+      initialized.current = true;
     }
-  }, [isOpen, userName]);
+  }, [isOpen, userName, addCoupon, coupons, referralCode, patientId]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(referralCode);
@@ -50,6 +65,8 @@ export function ReferralModal({ isOpen, onClose }: ReferralModalProps) {
       handleCopy();
     }
   };
+
+  const invited = Math.floor(bonusBalance / 50);
 
   return (
     <AnimatePresence>
@@ -123,7 +140,7 @@ export function ReferralModal({ isOpen, onClose }: ReferralModalProps) {
                    <div className="absolute inset-0 bg-gradient-to-b from-mecura-neon/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                    <Sparkles className="w-6 h-6 text-mecura-neon mb-2" />
                    <span className="text-[11px] text-mecura-neon/70 font-bold uppercase tracking-wider mb-0.5">Seus Bônus</span>
-                   <span className="text-2xl font-black text-mecura-neon">R$ {bonus}</span>
+                   <span className="text-2xl font-black text-mecura-neon">R$ {bonusBalance}</span>
                 </div>
               </div>
               

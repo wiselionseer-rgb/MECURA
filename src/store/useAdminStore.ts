@@ -14,6 +14,7 @@ export interface Coupon {
   code: string;
   discount: number;
   active: boolean;
+  ownerId?: string; // ID of the patient who owns this referral coupon
 }
 
 export interface Notification {
