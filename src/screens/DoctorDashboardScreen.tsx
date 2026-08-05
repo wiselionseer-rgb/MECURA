@@ -74,6 +74,7 @@ export function DoctorDashboardScreen() {
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queueSearchTerm, setQueueSearchTerm] = useState('');
+  const [mobileTab, setMobileTab] = useState<'chat' | 'ficha' | 'actions'>('chat');
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -657,12 +658,14 @@ export function DoctorDashboardScreen() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden relative">
-        {activeView === 'chat' ? (
-          <>
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full min-h-0">
+        {activeView === 'guide' && <CBDGuideView />}
+        {activeView === 'analytics' && <DoctorAnalyticsDashboard />}
+        {activeView === 'chat' && 
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative w-full h-full min-h-0">
             {/* Queue Panel */}
-            <div className={`w-full md:w-80 bg-[#0A0A0F] border-r border-mecura-elevated flex flex-col z-0 shadow-lg ${currentPatient ? 'hidden md:flex' : 'flex'}`}>
-              <div className="p-6 border-b border-mecura-elevated bg-mecura-surface/20">
+            <div className={`w-full md:w-80 bg-[#0A0A0F] border-r border-mecura-elevated flex flex-col z-0 shadow-lg h-full min-h-0 flex-1 md:flex-none ${currentPatient ? 'hidden md:flex' : 'flex'}`}>
+              <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex-shrink-0">
                 <h2 className="text-xl font-bold text-white mb-4 tracking-tight">Fila de Atendimento</h2>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
@@ -671,7 +674,7 @@ export function DoctorDashboardScreen() {
                     placeholder="Buscar paciente..." 
                     value={queueSearchTerm}
                     onChange={(e) => setQueueSearchTerm(e.target.value)}
-                    className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
+                    className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-base md:text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
                   />
                 </div>
                 <div className="flex flex-wrap gap-2 mt-4 pb-2">
@@ -702,7 +705,7 @@ export function DoctorDashboardScreen() {
                 </div>
               </div>
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 custom-scrollbar">
           {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && p.patientName.toLowerCase().includes(queueSearchTerm.toLowerCase())).length > 0 ? (
             [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && p.patientName.toLowerCase().includes(queueSearchTerm.toLowerCase())).sort((a, b) => {
               // 1. Unread messages first
@@ -800,66 +803,148 @@ export function DoctorDashboardScreen() {
       </div>
 
       {/* Chat Area */}
-      <div className={`md:flex-1 flex flex-col bg-[#0A0A0F] relative ${!currentPatient ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col bg-[#0A0A0F] relative h-full min-h-0 w-full ${!currentPatient ? 'hidden md:flex' : mobileTab === 'chat' || mobileTab === 'actions' ? 'flex' : 'hidden md:flex'}`}>
         {/* Subtle background pattern */}
         <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#A6FF00 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
         
-        {/* Back button for mobile */}
+        {/* Mobile Navigation Header & Tabs */}
         {currentPatient && (
-          <div className="md:hidden p-4 border-b border-mecura-elevated bg-[#0A0A0F] flex items-center">
-            <button 
-              onClick={() => setCurrentPatient(null)}
-              className="text-mecura-silver hover:text-white flex items-center gap-2"
-            >
-              <ChevronLeft className="w-5 h-5" />
-              Voltar para Fila
-            </button>
+          <div className="md:hidden flex-shrink-0 bg-[#0A0A0F] z-20">
+            <div className="p-3 border-b border-mecura-elevated flex items-center justify-between">
+              <button 
+                onClick={() => setCurrentPatient(null)}
+                className="text-mecura-silver hover:text-white flex items-center gap-1.5 text-sm font-medium"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Fila
+              </button>
+              <span className="text-white font-bold text-sm truncate max-w-[180px]">{currentPatient.patientName}</span>
+              <span className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
+            </div>
+
+            <div className="flex border-b border-mecura-elevated bg-mecura-surface/80 p-2 gap-2">
+              <button
+                onClick={() => setMobileTab('chat')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'chat' ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.25)]' : 'bg-mecura-surface text-mecura-silver border border-mecura-elevated'}`}
+              >
+                <MessageSquare className="w-4 h-4" /> Chat
+              </button>
+              <button
+                onClick={() => setMobileTab('ficha')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'ficha' ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.25)]' : 'bg-mecura-surface text-mecura-silver border border-mecura-elevated'}`}
+              >
+                <ClipboardList className="w-4 h-4" /> Ficha & IA
+              </button>
+              <button
+                onClick={() => setMobileTab('actions')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'actions' ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.25)]' : 'bg-mecura-surface text-mecura-silver border border-mecura-elevated'}`}
+              >
+                <PlusCircle className="w-4 h-4" /> Ações
+              </button>
+            </div>
           </div>
         )}
-          
-          {/* Chat Header */}
-          <div className="h-16 md:h-20 border-b border-mecura-elevated flex items-center justify-between px-4 md:px-8 bg-[#0A0A0F]/80 backdrop-blur-md z-10">
-            <div className="flex items-center gap-3 md:gap-4">
-              <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated flex items-center justify-center">
-                <User className="w-5 h-5 md:w-6 md:h-6 text-mecura-silver" />
+
+        {/* Mobile Actions Hub view */}
+        {currentPatient && mobileTab === 'actions' ? (
+          <div className="md:hidden flex-1 bg-[#0A0A0F] p-4 md:p-6 space-y-4 overflow-y-auto min-h-0 custom-scrollbar">
+            <h3 className="text-white font-bold text-lg mb-2">Ações Rápidas de Atendimento</h3>
+            <button
+              onClick={() => { setShowPrescriptionModal(true); }}
+              className="w-full p-4 bg-mecura-surface border border-mecura-neon/30 rounded-2xl flex items-center gap-4 text-left hover:border-mecura-neon transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center text-mecura-neon flex-shrink-0">
+                <PlusCircle className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-base md:text-lg font-bold text-white tracking-tight truncate max-w-[150px] md:max-w-xs">{userName || 'Paciente Atual'}</h2>
-                <p className="text-[10px] md:text-xs text-mecura-silver font-medium flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.5)]" /> Online agora
-                </p>
+                <h4 className="text-white font-bold text-base">Prescrever Medicamento</h4>
+                <p className="text-xs text-mecura-silver">Buscar no guia ou criar receita personalizada</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => { setShowHistoryModal(true); }}
+              className="w-full p-4 bg-mecura-surface border border-mecura-elevated rounded-2xl flex items-center gap-4 text-left hover:border-mecura-neon/50 transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 flex-shrink-0">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-white font-bold text-base">Histórico de Consultas</h4>
+                <p className="text-xs text-mecura-silver">Ver atendimentos e gráficos anteriores</p>
+              </div>
+            </button>
+
+            <button
+              onClick={handleGeneratePDF}
+              className="w-full p-4 bg-mecura-surface border border-mecura-elevated rounded-2xl flex items-center gap-4 text-left hover:border-mecura-neon/50 transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 flex-shrink-0">
+                <Download className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-white font-bold text-base">Baixar PDF da Receita</h4>
+                <p className="text-xs text-mecura-silver">Gerar documento em PDF formatado</p>
+              </div>
+            </button>
+
+            <button
+              onClick={handleFinishConsultation}
+              className="w-full p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-4 text-left hover:bg-red-500/20 transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 flex-shrink-0">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-red-400 font-bold text-base">Finalizar Consulta</h4>
+                <p className="text-xs text-mecura-silver">Encerrar atendimento e enviar orientações finais</p>
+              </div>
+            </button>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col h-full overflow-hidden min-h-0">
+            <div className="h-16 md:h-20 border-b border-mecura-elevated flex items-center justify-between px-4 md:px-8 bg-[#0A0A0F]/80 backdrop-blur-md z-10 flex-shrink-0">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated flex items-center justify-center flex-shrink-0">
+                  <User className="w-5 h-5 md:w-6 md:h-6 text-mecura-silver" />
+                </div>
+                <div>
+                  <h2 className="text-base md:text-lg font-bold text-white tracking-tight truncate max-w-[150px] md:max-w-xs">{currentPatient?.patientName || userName || 'Paciente Atual'}</h2>
+                  <p className="text-[10px] md:text-xs text-mecura-silver font-medium flex items-center gap-1.5 mt-0.5">
+                    <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.5)]" /> Online agora
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+                <button 
+                  onClick={() => setShowHistoryModal(true)}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
+                >
+                  <FileText className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Histórico</span>
+                </button>
+                <button 
+                  onClick={() => setShowPrescriptionModal(true)}
+                  className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-neon text-black rounded-xl text-xs md:text-sm font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1 md:gap-2 shadow-[0_0_20px_rgba(166,255,0,0.15)] whitespace-nowrap"
+                >
+                  <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
+                </button>
+                <button 
+                  onClick={handleGeneratePDF}
+                  className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
+                >
+                  <Download className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">PDF</span>
+                </button>
+                <button 
+                  onClick={handleFinishConsultation}
+                  className="px-3 md:px-5 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                >
+                  <CheckCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Finalizar</span>
+                </button>
               </div>
             </div>
-            <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
-              <button 
-                onClick={() => setShowHistoryModal(true)}
-                className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
-              >
-                <FileText className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Histórico</span>
-              </button>
-              <button 
-                onClick={() => setShowPrescriptionModal(true)}
-                className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-neon text-black rounded-xl text-xs md:text-sm font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1 md:gap-2 shadow-[0_0_20px_rgba(166,255,0,0.15)] whitespace-nowrap"
-              >
-                <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
-              </button>
-              <button 
-                onClick={handleGeneratePDF}
-                className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
-              >
-                <Download className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">PDF</span>
-              </button>
-              <button 
-                onClick={handleFinishConsultation}
-                className="px-3 md:px-5 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
-              >
-                <CheckCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Finalizar</span>
-              </button>
-            </div>
-          </div>
 
-          {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 z-0">
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 z-0 min-h-0 custom-scrollbar">
             <div className="flex justify-center mb-6 md:mb-8">
               <span className="text-xs font-medium text-mecura-silver bg-mecura-surface/50 px-4 py-1.5 rounded-full border border-mecura-elevated backdrop-blur-sm">
                 Consulta iniciada hoje
@@ -1208,7 +1293,7 @@ export function DoctorDashboardScreen() {
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Digite sua mensagem para o paciente..." 
-                className="flex-1 h-12 md:h-14 bg-mecura-surface border border-mecura-elevated rounded-full px-4 md:px-6 text-white focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface-light transition-all text-sm md:text-[15px]"
+                className="flex-1 h-12 md:h-14 bg-mecura-surface border border-mecura-elevated rounded-full px-4 md:px-6 text-white focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface-light transition-all text-base md:text-[15px]"
               />
               <button 
                 onClick={handleSend}
@@ -1220,23 +1305,57 @@ export function DoctorDashboardScreen() {
             </div>
           </div>
         </div>
-        </>
-      ) : activeView === 'guide' ? (
-        <CBDGuideView />
-      ) : (
-        <DoctorAnalyticsDashboard />
       )}
+      </div>
 
       {/* Right Sidebar - Patient Record (Anamnese) */}
-      <div className={`w-full md:w-96 bg-[#0A0A0F] border-t md:border-t-0 md:border-l border-mecura-elevated flex flex-col shadow-[-10px_0_30px_rgba(0,0,0,0.2)] z-10 ${!currentPatient ? 'hidden md:flex' : 'flex md:flex'}`}>
-        <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex justify-between items-center">
+      <div className={`w-full md:w-96 bg-[#0A0A0F] border-t md:border-t-0 md:border-l border-mecura-elevated flex flex-col shadow-[-10px_0_30px_rgba(0,0,0,0.2)] z-10 h-full min-h-0 flex-1 md:flex-none ${!currentPatient ? 'hidden md:flex' : mobileTab === 'ficha' ? 'flex' : 'hidden md:flex'}`}>
+        {/* Mobile Navigation Header & Tabs */}
+        {currentPatient && (
+          <div className="md:hidden flex-shrink-0 bg-[#0A0A0F] z-20">
+            <div className="p-3 border-b border-mecura-elevated flex items-center justify-between">
+              <button 
+                onClick={() => setCurrentPatient(null)}
+                className="text-mecura-silver hover:text-white flex items-center gap-1.5 text-sm font-medium"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Fila
+              </button>
+              <span className="text-white font-bold text-sm truncate max-w-[180px]">{currentPatient.patientName}</span>
+              <span className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
+            </div>
+
+            <div className="flex border-b border-mecura-elevated bg-mecura-surface/80 p-2 gap-2">
+              <button
+                onClick={() => setMobileTab('chat')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'chat' ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.25)]' : 'bg-mecura-surface text-mecura-silver border border-mecura-elevated'}`}
+              >
+                <MessageSquare className="w-4 h-4" /> Chat
+              </button>
+              <button
+                onClick={() => setMobileTab('ficha')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'ficha' ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.25)]' : 'bg-mecura-surface text-mecura-silver border border-mecura-elevated'}`}
+              >
+                <ClipboardList className="w-4 h-4" /> Ficha & IA
+              </button>
+              <button
+                onClick={() => setMobileTab('actions')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'actions' ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.25)]' : 'bg-mecura-surface text-mecura-silver border border-mecura-elevated'}`}
+              >
+                <PlusCircle className="w-4 h-4" /> Ações
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex justify-between items-center flex-shrink-0">
           <h2 className="text-base md:text-lg font-bold text-white flex items-center gap-2 tracking-tight">
             <ClipboardList className="w-4 h-4 md:w-5 md:h-5 text-mecura-neon" />
             Ficha do Paciente
           </h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 custom-scrollbar min-h-0">
           {/* AI Analysis Button */}
           <div className="space-y-4">
             <div 
@@ -1439,6 +1558,8 @@ export function DoctorDashboardScreen() {
           </section>
         </div>
       </div>
+    </div>
+        }
       </div>
 
       {/* AI Analysis Modal */}

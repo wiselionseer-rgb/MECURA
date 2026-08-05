@@ -42,6 +42,20 @@
 @layer base {
   body {
     @apply bg-mecura-bg text-mecura-pearl font-sans antialiased selection:bg-mecura-neon/30;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Prevent iOS Safari auto-zoom on input focus */
+  @media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="search"],
+    input[type="number"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
   }
   
   /* Hide scrollbar globally for a cleaner app-like feel */
