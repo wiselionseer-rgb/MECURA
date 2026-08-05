@@ -3,7 +3,7 @@ import path from "node:path";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 async function startServer() {
   const app = express();
@@ -118,27 +118,42 @@ async function startServer() {
   });
 
   // ROTA: Análise Clínica com IA (Gemini)
+  app.get("/api/test-env", (req, res) => {
+    res.json({ 
+      mp: process.env.MERCADO_PAGO_ACCESS_TOKEN || "MISSING",
+      gemini: process.env.GEMINI_API_KEY || "MISSING"
+    });
+  });
+
   app.post("/api/analyze-clinical", async (req, res) => {
     try {
       const { prompt } = req.body;
       const apiKey = process.env.GEMINI_API_KEY;
 
-      if (!apiKey) {
-        return res.status(500).json({ error: "Chave da API do Gemini não configurada no servidor." });
+      if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+        return res.status(500).json({ error: "Chave da API do Gemini não configurada no servidor. Por favor, configure sua GEMINI_API_KEY." });
       }
 
-      const { GoogleGenerativeAI } = await import("@google/generative-ai");
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // Initialize the modern @google/genai SDK
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: prompt,
+      });
 
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-
-      res.json({ text: responseText });
+      res.json({ text: response.text });
     } catch (error: any) {
       console.error("Erro na análise clínica IA:", error);
+      
+      let errorMsg = "Erro ao processar análise clínica com IA.";
+      if (error.message?.includes("API key not valid") || error.status === 400) {
+        errorMsg = "A chave da API do Gemini informada não é válida. Por favor, verifique a sua configuração (GEMINI_API_KEY).";
+      }
+
       res.status(500).json({ 
-        error: "Erro ao processar análise clínica com IA.",
+        error: errorMsg,
         details: error.message 
       });
     }

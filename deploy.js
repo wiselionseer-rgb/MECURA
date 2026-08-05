@@ -37,6 +37,8 @@ async function deploy() {
       // Enviamos o server.js (compilado pelo esbuild no npm run build)
       await sftp.put(path.join(process.cwd(), 'server.js'), `${remotePath}/server.js`);
       await sftp.put(path.join(process.cwd(), 'package.json'), `${remotePath}/package.json`);
+      // Enviar o arquivo .env para que o servidor tenha as chaves de API
+      await sftp.put(path.join(process.cwd(), '.env'), `${remotePath}/.env`);
     } catch (e) {
       console.log('⚠️ Aviso: Não foi possível enviar arquivos do servidor.', e.message);
     }
