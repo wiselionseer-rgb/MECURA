@@ -13,7 +13,7 @@ async function startServer() {
 
   // Mercado Pago Configuration
   const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
-  const geminiKey = process.env.GEMINI_API_KEY || "";
+  const geminiKey = process.env.GEMINI_API_KEY || "AIzaSyBpDqU6Gqk-Sb8PmY4M7gpVp8qAUMNZaIM";
 
   const client = new MercadoPagoConfig({
     accessToken: mpToken
@@ -128,8 +128,8 @@ async function startServer() {
   app.post("/api/analyze-clinical", async (req, res) => {
     try {
       const { prompt } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY;
-
+      const apiKey = process.env.GEMINI_API_KEY || "AIzaSyBpDqU6Gqk-Sb8PmY4M7gpVp8qAUMNZaIM";
+      
       if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
         return res.status(500).json({ error: "Chave da API do Gemini não configurada no servidor. Por favor, configure sua GEMINI_API_KEY." });
       }
