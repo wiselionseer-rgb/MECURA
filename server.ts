@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config({ override: true });
 
@@ -135,7 +136,6 @@ async function startServer() {
       }
 
       // Initialize the modern @google/genai SDK
-      const { GoogleGenAI } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
