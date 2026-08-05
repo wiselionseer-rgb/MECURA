@@ -52,62 +52,17 @@ export function PremiumCheckoutScreen() {
     setIsLoading(true);
 
     localStorage.setItem('last_offer', 'premium');
-    setPixData(null);
-    setPaymentStatus(null);
 
     try {
       if (appliedCoupon?.ownerId) {
         await incrementBonus(50, appliedCoupon.ownerId);
       }
-
-      const response = await fetch('/api/create-pix-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: 'Acompanhamento Premium Mecura',
-          price: finalPrice,
-          email: 'paciente@mercura.com',
-          firstName: userName.split(' ')[0] || 'Paciente',
-          lastName: userName.split(' ').slice(1).join(' ') || 'Mecura',
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.qr_code) {
-        setPixData(data);
-        setIsLoading(false);
-        startPolling(data.id);
-      } else {
-        const errorMsg = data.details ? `${data.error}: ${data.details}` : (data.error || 'Erro ao criar pagamento');
-        throw new Error(errorMsg);
-      }
-    } catch (error: any) {
-      console.error("Payment error:", error);
-      alert(error.message || "Houve um erro ao processar seu pagamento. Por favor, tente novamente.");
-      setIsLoading(false);
+    } catch (error) {
+      console.warn("Coupon bonus warning:", error);
     }
-  };
 
-  const startPolling = (paymentId: string) => {
-    if (pollingInterval.current) clearInterval(pollingInterval.current);
-    
-    pollingInterval.current = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/payment-status/${paymentId}`);
-        const data = await response.json();
-        
-        if (data.status === 'approved') {
-          clearInterval(pollingInterval.current!);
-          setPaymentStatus('approved');
-          handleSuccess();
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
-      }
-    }, 3000);
+    // Libera o acesso imediatamente para o agendamento
+    handleSuccess();
   };
 
   const handleSuccess = () => {
