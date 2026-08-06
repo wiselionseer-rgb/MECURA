@@ -223,7 +223,7 @@ ${targetProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doença
         });
         
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-3.1-pro-preview',
           contents: prompt,
         });
 

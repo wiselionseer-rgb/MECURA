@@ -145,6 +145,8 @@ interface AppState {
 import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
+import { useAdminStore } from './useAdminStore';
+import { playNotificationSound } from '../utils/sound';
 
 export const useStore = create<AppState>((set, get) => ({
   userName: '',
@@ -318,19 +320,60 @@ export const useStore = create<AppState>((set, get) => ({
   updateQueue: (position, waitTime) => set({ queuePosition: position, estimatedWaitTime: waitTime }),
   
   subscribeToQueue: () => {
+    let isInitialLoadQueue = true;
+    let prevUnreadStates: Record<string, boolean> = {};
+
     const q = query(collection(db, 'queue'), orderBy('joinedAt', 'asc'));
     return onSnapshot(q, (snapshot) => {
-      const queueData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        joinedAt: new Date(doc.data().joinedAt)
-      })) as any[];
+      const isDoctorRoute = window.location.pathname.includes('/doctor');
+      const isAdminRoute = window.location.pathname.includes('/admin');
+
+      if (!isInitialLoadQueue && (isDoctorRoute || isAdminRoute)) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            if (data.status === 'waiting') {
+               useAdminStore.getState().addNotification({
+                 id: 'q_' + change.doc.id + '_' + Date.now(),
+                 title: 'Novo Paciente na Fila',
+                 message: `${data.patientName || 'Um paciente'} entrou na fila.`,
+                 date: new Date().toISOString()
+               });
+               playNotificationSound();
+            }
+          }
+        });
+      }
+
+      const queueData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        
+        if (!isInitialLoadQueue && isDoctorRoute) {
+          if (data.hasUnread && !prevUnreadStates[doc.id]) {
+            useAdminStore.getState().addNotification({
+              id: 'msg_' + doc.id + '_' + Date.now(),
+              title: 'Nova Mensagem',
+              message: `${data.patientName || 'Um paciente'} enviou uma mensagem.`,
+              date: new Date().toISOString()
+            });
+            playNotificationSound();
+          }
+        }
+        prevUnreadStates[doc.id] = !!data.hasUnread;
+
+        return {
+          id: doc.id,
+          ...data,
+          joinedAt: new Date(data.joinedAt)
+        };
+      }) as any[];
+      
+      isInitialLoadQueue = false;
       
       set({ queue: queueData });
       
       // Update position for current user (if they are a patient)
       const currentUserId = auth.currentUser?.uid;
-      const isDoctorRoute = window.location.pathname.includes('/doctor');
       
       if (currentUserId && !isDoctorRoute) {
         const myIndex = queueData.findIndex(p => p.id === currentUserId);

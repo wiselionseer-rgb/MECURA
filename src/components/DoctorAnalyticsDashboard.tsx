@@ -78,112 +78,112 @@ export function DoctorAnalyticsDashboard() {
       {/* Background pattern */}
       <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#A6FF00 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
       
-      <div className="p-8 max-w-7xl mx-auto w-full z-10 space-y-8">
+      <div className="p-8 max-w-7xl mx-auto w-full z-10 space-y-12">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Dashboard Analítico</h2>
-            <p className="text-sm text-mecura-silver mt-1">Visão geral de atendimentos e agenda</p>
+            <h2 className="text-3xl font-bold text-white tracking-tight">Dashboard Analítico</h2>
+            <p className="text-sm text-mecura-silver mt-2 max-w-md leading-relaxed">Visão geral de desempenho, fluxo de pacientes e acompanhamento de agenda em tempo real.</p>
           </div>
           {pendingCount > 0 && (
-            <div className="flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/30 px-4 py-2 rounded-xl animate-pulse">
-              <Bell className="w-4 h-4 text-mecura-neon" />
-              <span className="text-sm font-bold text-mecura-neon">{pendingCount} novos agendamentos pendentes</span>
-            </div>
+            <button 
+              onClick={() => {
+                const firstPending = allAppointments.find(app => app.status === 'pending');
+                if (firstPending && firstPending.date) {
+                  setCurrentDate(parseISO(firstPending.date));
+                }
+                document.getElementById('agenda-section')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="group relative flex items-center gap-4 bg-[#161622] hover:bg-[#1A1A26] border border-mecura-neon/30 hover:border-mecura-neon px-6 py-3 rounded-xl transition-all duration-500 overflow-hidden shadow-[0_0_20px_rgba(166,255,0,0.1)] hover:shadow-[0_0_30px_rgba(166,255,0,0.2)]"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/5 to-mecura-neon/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              <div className="relative flex items-center justify-center w-10 h-10 rounded-full bg-mecura-neon/10 border border-mecura-neon/20 group-hover:bg-mecura-neon/20 group-hover:scale-110 transition-all duration-300">
+                <Bell className="w-5 h-5 text-mecura-neon relative z-10 group-hover:rotate-12 transition-transform duration-300" />
+                <span className="absolute inset-0 bg-mecura-neon opacity-40 blur-md rounded-full animate-pulse" />
+              </div>
+              <div className="flex flex-col items-start relative z-10">
+                <span className="text-[11px] uppercase tracking-[0.2em] font-bold text-mecura-neon/70">Atenção Necessária</span>
+                <span className="text-sm font-bold text-white group-hover:text-mecura-neon transition-colors">
+                  {pendingCount} {pendingCount === 1 ? 'Agendamento Pendente' : 'Agendamentos Pendentes'}
+                </span>
+              </div>
+            </button>
           )}
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-mecura-surface border border-mecura-elevated rounded-2xl p-5 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-mecura-neon/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20">
-                <Users className="w-6 h-6 text-mecura-neon" />
-              </div>
-              <div>
-                <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Total de Pacientes</p>
-                <h3 className="text-2xl font-bold text-white">{totalPatients}</h3>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-[#0A0A0F] border border-[#1A1A24] rounded-xl p-6 transition-colors hover:border-mecura-elevated">
+            <div className="flex justify-between items-start mb-4">
+              <p className="text-mecura-silver text-xs font-semibold uppercase tracking-[0.15em]">Total de Pacientes</p>
+              <Users className="w-5 h-5 text-mecura-silver/50" />
             </div>
+            <h3 className="text-4xl font-light text-white tracking-tight">{totalPatients}</h3>
           </div>
 
-          <div className="bg-mecura-surface border border-mecura-elevated rounded-2xl p-5 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-                <CheckCircle className="w-6 h-6 text-green-400" />
-              </div>
-              <div>
-                <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Realizadas (Total)</p>
-                <h3 className="text-2xl font-bold text-white">{realizadasCount}</h3>
-              </div>
+          <div className="bg-[#0A0A0F] border border-[#1A1A24] rounded-xl p-6 transition-colors hover:border-mecura-elevated">
+            <div className="flex justify-between items-start mb-4">
+              <p className="text-mecura-silver text-xs font-semibold uppercase tracking-[0.15em]">Consultas Realizadas</p>
+              <CheckCircle className="w-5 h-5 text-mecura-silver/50" />
             </div>
+            <h3 className="text-4xl font-light text-white tracking-tight">{realizadasCount}</h3>
           </div>
 
-          <div className="bg-mecura-surface border border-mecura-elevated rounded-2xl p-5 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-                <Clock className="w-6 h-6 text-blue-400" />
-              </div>
-              <div>
-                <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Agendadas</p>
-                <h3 className="text-2xl font-bold text-white">{agendadasCount}</h3>
-              </div>
+          <div className="bg-[#0A0A0F] border border-[#1A1A24] rounded-xl p-6 transition-colors hover:border-mecura-elevated relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-1 h-full bg-blue-500/20" />
+            <div className="flex justify-between items-start mb-4">
+              <p className="text-mecura-silver text-xs font-semibold uppercase tracking-[0.15em]">Agendadas</p>
+              <Clock className="w-5 h-5 text-blue-500/50" />
             </div>
+            <h3 className="text-4xl font-light text-white tracking-tight">{agendadasCount}</h3>
           </div>
 
-          <div className="bg-mecura-surface border border-mecura-elevated rounded-2xl p-5 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center border border-red-500/20">
-                <XCircle className="w-6 h-6 text-red-400" />
-              </div>
-              <div>
-                <p className="text-mecura-silver text-xs font-medium uppercase tracking-wider mb-1">Canceladas (Mês)</p>
-                <h3 className="text-2xl font-bold text-white">{canceladasMesCount}</h3>
-              </div>
+          <div className="bg-[#0A0A0F] border border-[#1A1A24] rounded-xl p-6 transition-colors hover:border-mecura-elevated relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-1 h-full bg-red-500/20" />
+            <div className="flex justify-between items-start mb-4">
+              <p className="text-mecura-silver text-xs font-semibold uppercase tracking-[0.15em]">Canceladas (Mês)</p>
+              <XCircle className="w-5 h-5 text-red-500/50" />
             </div>
+            <h3 className="text-4xl font-light text-white tracking-tight">{canceladasMesCount}</h3>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Chart Section */}
-          <div className="lg:col-span-2 bg-mecura-surface border border-mecura-elevated rounded-2xl p-6">
-            <div className="flex justify-between items-center mb-6">
+          <div className="lg:col-span-2 bg-[#0A0A0F] border border-[#1A1A24] rounded-xl p-8">
+            <div className="flex justify-between items-end mb-8">
               <div>
-                <h3 className="text-lg font-bold text-white">Consultas por Dia</h3>
-                <p className="text-xs text-mecura-silver">Visão semanal de atendimentos</p>
+                <h3 className="text-lg font-bold text-white tracking-wide">Consultas por Dia</h3>
+                <p className="text-sm text-mecura-silver mt-1">Visão semanal de atendimentos confirmados e cancelados</p>
               </div>
-              <select className="bg-[#0A0A0F] border border-mecura-elevated text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-mecura-neon/50">
-                <option>Esta Semana</option>
-                <option>Semana Passada</option>
-                <option>Este Mês</option>
+              <select className="bg-transparent border-b border-mecura-elevated text-mecura-silver text-sm pb-1 focus:outline-none focus:border-mecura-neon hover:text-white transition-colors cursor-pointer">
+                <option className="bg-[#0A0A0F]">Esta Semana</option>
+                <option className="bg-[#0A0A0F]">Semana Passada</option>
+                <option className="bg-[#0A0A0F]">Este Mês</option>
               </select>
             </div>
             
-            <div className="h-72 w-full">
+            <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1A1A24" vertical={false} />
-                  <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="name" stroke="#8A8A9E" fontSize={12} tickLine={false} axisLine={false} dy={10} />
+                  <YAxis stroke="#8A8A9E" fontSize={12} tickLine={false} axisLine={false} dx={-10} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0A0A0F', borderColor: '#1A1A24', borderRadius: '8px', color: '#fff' }}
+                    contentStyle={{ backgroundColor: '#161622', border: '1px solid #262636', borderRadius: '8px', color: '#fff', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}
                     itemStyle={{ color: '#A6FF00' }}
                     cursor={{ fill: '#1A1A24', opacity: 0.4 }}
                   />
-                  <Bar dataKey="consultas" name="Realizadas" fill="#A6FF00" radius={[4, 4, 0, 0]} barSize={32} />
-                  <Bar dataKey="canceladas" name="Canceladas" fill="#EF4444" radius={[4, 4, 0, 0]} barSize={32} />
+                  <Bar dataKey="consultas" name="Realizadas" fill="#A6FF00" radius={[2, 2, 0, 0]} barSize={24} />
+                  <Bar dataKey="canceladas" name="Canceladas" fill="#EF4444" radius={[2, 2, 0, 0]} barSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           {/* Calendar & Schedule */}
-          <div className="bg-mecura-surface border border-mecura-elevated rounded-2xl p-6 flex flex-col">
-            <div className="flex justify-between items-center mb-6">
+          <div id="agenda-section" className="bg-[#0A0A0F] border border-[#1A1A24] rounded-xl p-8 flex flex-col h-[500px]">
+            <div className="flex justify-between items-center mb-8">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <CalendarIcon className="w-5 h-5 text-mecura-neon" />
                 Agenda

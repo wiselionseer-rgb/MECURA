@@ -55,7 +55,7 @@ export function NotificationToast() {
   if (!visibleNotification) return null;
 
   return (
-    <div className="absolute top-4 left-4 right-4 z-50 animate-in slide-in-from-top-4 fade-in duration-300">
+    <div className="fixed top-4 right-4 z-[100] w-full max-w-sm animate-in slide-in-from-top-4 fade-in duration-300">
       <div className="bg-[#161622] border border-mecura-neon/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(166,255,0,0.15)] flex gap-3">
         <div className="w-10 h-10 rounded-full bg-mecura-neon/10 flex items-center justify-center shrink-0">
           <Bell className="w-5 h-5 text-mecura-neon" />

@@ -477,43 +477,42 @@ export function DoctorDashboardScreen() {
     setIsAnalyzing(true);
     try {
       const prompt = `
-        Atue como um especialista em medicina canabinoide e prescrição médica.
-        Com base nos seguintes dados do paciente, forneça uma análise clínica aprofundada indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
-        Inclua base científica e estudos relevantes.
-        Lembre-se: esta análise é um suporte à decisão médica. O médico definirá o tratamento final.
+        Atue como um Especialista Sênior em Medicina Canabinoide e Prescrição Médica de Alto Nível.
+        Sua missão é fornecer uma análise clínica com PRECISÃO MÁXIMA, baseada em protocolos rigorosos e literatura médica atualizada, indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
+        Aplique raciocínio clínico step-by-step considerando a farmacocinética e farmacodinâmica dos canabinoides, garantindo assertividade quase total na sugestão de prescrição.
         
-        Dados do Paciente:
-        - Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
-        - Intensidade do sintoma: ${patientAnswers?.intensity || 'Não informada'}/10
-        - Duração: ${patientAnswers?.duration || 'Não informada'}
-        - Descrição: ${patientAnswers?.description || 'Não informada'}
-        - Altura: ${patientAnswers?.height || 'Não informada'}m
-        - Peso: ${patientAnswers?.weight || 'Não informada'}kg
-        - Sexo: ${patientAnswers?.sex || 'Não informada'}
-        - Tratamento Atual: ${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}
-        - Uso de Remédios: ${patientAnswers?.remedios ? 'Sim' : 'Não'}
-        - Doença Crônica: ${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}
-        - Já usou Cannabis: ${patientAnswers?.cannabis ? 'Sim' : 'Não'}
+        Sua análise deve obrigatoriamente referenciar estudos científicos reais, ensaios clínicos robustos ou consensos médicos internacionais (Medicina Baseada em Evidências).
+        Lembre-se: esta análise é um suporte avançado à decisão clínica do médico.
         
-        IMPORTANTE: Você DEVE recomendar APENAS os medicamentos listados abaixo, escolhendo os mais adequados para a condição do paciente:
+        Dados Clínicos do Paciente:
+        - Queixa Principal / Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
+        - Intensidade do Sintoma: ${patientAnswers?.intensity || 'Não informada'}/10
+        - Cronicidade/Duração: ${patientAnswers?.duration || 'Não informada'}
+        - História da Moléstia (Descrição): ${patientAnswers?.description || 'Não informada'}
+        - Dados Biométricos: Altura ${patientAnswers?.height || 'Não informada'}m, Peso ${patientAnswers?.weight || 'Não informada'}kg, Sexo ${patientAnswers?.sex || 'Não informada'}
+        - Histórico Médico: Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}), Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' : 'Não'}), Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}), Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' : 'Não'})
         
+        DIRETRIZ RESTRITA DE PRESCRIÇÃO:
+        Você DEVE recomendar EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo. Correlacione meticulosamente a fisiopatologia do paciente com o perfil canabinoide (CBD, THC, CBG, CBN) de cada produto.
+        
+        CATÁLOGO OFICIAL DISPONÍVEL:
         ${cbdGuideData.map(cat => `Categoria: ${cat.title}\n${cat.products.map(p => `- ${p.name} (${p.type})`).join('\n')}`).join('\n\n')}
         
-        Formate a resposta em Markdown, com seções claras e visualmente organizadas:
-        1. Avaliação do Quadro Clínico
-        2. Racional Terapêutico (Sistema Endocanabinoide)
-        3. Sugestões de Fitocanabinoides (Proporções CBD/THC/CBG etc.)
-        4. Evidências Científicas e Estudos Base
-        5. Precauções e Interações Medicamentosas
+        Formato de Saída Exigido (Markdown estruturado e clínico):
+        1. Diagnóstico Sindrômico e Avaliação Clínica
+        2. Racional Terapêutico Fisiopatológico (Interação exata com o Sistema Endocanabinoide)
+        3. Protocolo de Titulação e Posologia Sugerida
+        4. Medicina Baseada em Evidências (Citações estruturadas de estudos reais)
+        5. Manejo de Riscos (Interações no citocromo P450 e contraindicações)
         
-        6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Siga rigorosamente esta estrutura sequencial em formato de LISTA, NÃO use tabelas):
-           Para cada medicamento sugerido, crie um bloco de texto com as seguintes linhas exatas:
-           **Medicamento**: (Nome exato da lista acima em negrito)
-           **Indicação/Doença**: (Condição alvo em negrito)
-           **Modo de Uso**: (Posologia e medidas destacadas em negrito, ex: **2 gotas**, **12 em 12 horas**)
-           **Observações**: (Dicas importantes de administração)
+        6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita, NÃO USE TABELAS):
+           Para cada produto sugerido, use EXATAMENTE este bloco:
+           **Medicamento**: (Nome fiel ao catálogo em negrito)
+           **Indicação/Doença**: (Condição primária alvo em negrito)
+           **Modo de Uso**: (Posologia inicial e titulação em negrito, ex: **2 gotas**, **12 em 12 horas**)
+           **Observações**: (Dicas cruciais de biodisponibilidade e administração)
 
-        IMPORTANTE: Destaque em **negrito** todos os nomes de medicamentos, doenças, dosagens e horários para facilitar a leitura rápida do médico. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
+        IMPORTANTE: Destaque em **negrito** todos os fármacos, diagnósticos, enzimas (ex: CYP3A4) e dosagens para escaneabilidade médica de alto rendimento. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
       `;
 
       const response = await fetch('/api/analyze-clinical', {
