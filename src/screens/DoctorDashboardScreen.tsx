@@ -34,7 +34,8 @@ import {
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { requestNotificationPermission } from '../utils/notifications';
+import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification } from '../utils/notifications';
+import { playNotificationSound, initAudioUnlock } from '../utils/sound';
 import { 
   LineChart, 
   Line, 
@@ -709,7 +710,24 @@ export function DoctorDashboardScreen() {
             {/* Queue Panel */}
             <div className={`w-full md:w-80 bg-[#0A0A0F] border-r border-mecura-elevated flex flex-col z-0 shadow-lg h-full min-h-0 flex-1 md:flex-none ${currentPatient ? 'hidden md:flex' : 'flex'}`}>
               <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex-shrink-0">
-                <h2 className="text-xl font-bold text-white mb-4 tracking-tight">Fila de Atendimento</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-white tracking-tight">Fila de Atendimento</h2>
+                  <button
+                    onClick={async () => {
+                      const success = await testNotification();
+                      if (!success) {
+                        alert('Por favor, permita as notificações nas configurações do seu navegador para receber alertas sonoros e pop-ups.');
+                      } else {
+                        alert('Notificação de teste enviada com sucesso!');
+                      }
+                    }}
+                    title="Testar Notificação e Som"
+                    className="p-2 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon hover:bg-mecura-neon/20 transition-all flex items-center gap-1.5 text-xs font-bold"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>Testar Alerta</span>
+                  </button>
+                </div>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
                   <input 

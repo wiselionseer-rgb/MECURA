@@ -1,4 +1,4 @@
-// Service Worker for Mecura PWA Push Notifications & Background Sync
+// Service Worker for Mecura PWA Push Notifications & Background Alerts
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
@@ -7,17 +7,46 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Handle incoming messages from the client to show system banner notifications
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, body, tag, url } = event.data;
+    const options = {
+      body: body || 'Nova notificação de atendimento.',
+      icon: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=192&auto=format&fit=crop',
+      badge: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=96&auto=format&fit=crop',
+      vibrate: [300, 100, 300, 100, 400],
+      tag: tag || 'mecura-alert-' + Date.now(),
+      renotify: true,
+      requireInteraction: true,
+      data: { url: url || '/doctor' }
+    };
+
+    event.waitUntil(
+      self.registration.showNotification(title || 'Mecura - Novo Alerta', options)
+    );
+  }
+});
+
+// Handle Web Push API events
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Mecura - Nova Notificação';
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'Mecura', body: event.data ? event.data.text() : 'Nova mensagem' };
+  }
+
+  const title = data.title || 'Mecura - Notificação de Paciente';
   const options = {
-    body: data.body || 'Você recebeu uma nova atualização no sistema.',
+    body: data.body || 'Você recebeu uma nova atualização no consultório.',
     icon: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=192&auto=format&fit=crop',
     badge: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=96&auto=format&fit=crop',
-    vibrate: [200, 100, 200, 100, 200],
-    tag: 'mecura-alert',
+    vibrate: [300, 100, 300, 100, 400],
+    tag: 'mecura-alert-' + Date.now(),
     renotify: true,
-    data: { url: data.url || '/' }
+    requireInteraction: true,
+    data: { url: data.url || '/doctor' }
   };
 
   event.waitUntil(
@@ -25,8 +54,11 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Click action on system notification
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/doctor';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
@@ -35,7 +67,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/');
+        return clients.openWindow(targetUrl);
       }
     })
   );

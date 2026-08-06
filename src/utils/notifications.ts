@@ -1,61 +1,94 @@
-export const requestNotificationPermission = async () => {
-  if (!('Notification' in window)) {
-    console.log('Este navegador não suporta notificações');
+import { playNotificationSound } from './sound';
+
+let swRegistration: ServiceWorkerRegistration | null = null;
+
+export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return null;
+  }
+  try {
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    swRegistration = registration;
+    return registration;
+  } catch (error) {
+    console.warn('Falha ao registrar Service Worker:', error);
+    return null;
+  }
+};
+
+export const getNotificationPermission = (): NotificationPermission => {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'denied';
+  }
+  return Notification.permission;
+};
+
+export const requestNotificationPermission = async (): Promise<boolean> => {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    console.log('Notificações não são suportadas neste navegador/dispositivo.');
     return false;
   }
-  
+
+  // Ensure service worker is registered
+  await registerServiceWorker();
+
   if (Notification.permission === 'granted') {
-    registerServiceWorker();
     return true;
   }
-  
+
   if (Notification.permission !== 'denied') {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      registerServiceWorker();
-      return true;
+    try {
+      const permission = await Notification.requestPermission();
+      return permission === 'granted';
+    } catch (e) {
+      console.warn('Erro ao solicitar permissão de notificação:', e);
     }
   }
-  
+
   return false;
 };
 
-export const registerServiceWorker = async () => {
-  if ('serviceWorker' in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      console.log('Service Worker registrado com sucesso:', registration.scope);
-      return registration;
-    } catch (error) {
-      console.warn('Falha ao registrar Service Worker:', error);
-    }
-  }
-  return null;
-};
+export const showNativeNotification = async (title: string, message?: string, url: string = '/doctor') => {
+  // Always trigger sound & haptic vibration
+  playNotificationSound();
 
-export const showNativeNotification = async (title: string, message?: string) => {
-  if (!('Notification' in window)) return;
-  
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return;
+  }
+
   if (Notification.permission === 'granted') {
     try {
+      // 1. Send to active Service Worker controller if available
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title,
+          body: message,
+          tag: 'mecura-' + Date.now(),
+          url
+        });
+      }
+
+      // 2. Try ServiceWorker Registration directly (Essential for mobile PWA lockscreen & background)
       if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = swRegistration || (await navigator.serviceWorker.ready);
         if (registration && registration.showNotification) {
           await registration.showNotification(title, {
-            body: message,
+            body: message || 'Nova notificação no consultório.',
             icon: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=192&auto=format&fit=crop',
             badge: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=96&auto=format&fit=crop',
-            tag: 'mecura-alert',
-            renotify: true
+            tag: 'mecura-' + Date.now(),
+            renotify: true,
+            data: { url }
           } as any);
           return;
         }
       }
 
-      // Fallback to standard Notification API
+      // 3. Fallback to standard window.Notification constructor
       const notification = new Notification(title, {
         body: message,
-        icon: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=100&auto=format&fit=crop',
+        icon: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=192&auto=format&fit=crop',
       });
 
       notification.onclick = function() {
@@ -63,7 +96,20 @@ export const showNativeNotification = async (title: string, message?: string) =>
         this.close();
       };
     } catch (e) {
-      console.warn('Falha ao enviar notificação nativa', e);
+      console.warn('Falha ao disparar notificação do sistema:', e);
     }
   }
+};
+
+export const testNotification = async () => {
+  const granted = await requestNotificationPermission();
+  if (granted) {
+    await showNativeNotification(
+      '🔔 Teste de Notificação Mecura',
+      'Notificações e alertas sonoros ativos com sucesso no seu dispositivo!',
+      '/doctor'
+    );
+    return true;
+  }
+  return false;
 };

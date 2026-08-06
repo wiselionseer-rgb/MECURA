@@ -322,55 +322,64 @@ export const useStore = create<AppState>((set, get) => ({
   
   subscribeToQueue: () => {
     let isInitialLoadQueue = true;
-    let prevUnreadStates: Record<string, boolean> = {};
+    const knownWaitingIds = new Set<string>();
+    const prevUnreadStates: Record<string, boolean> = {};
 
     const q = query(collection(db, 'queue'), orderBy('joinedAt', 'asc'));
     return onSnapshot(q, (snapshot) => {
-      const isDoctorRoute = window.location.pathname.includes('/doctor');
-      const isAdminRoute = window.location.pathname.includes('/admin');
-
-      if (!isInitialLoadQueue && (isDoctorRoute || isAdminRoute)) {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === 'added') {
-            const data = change.doc.data();
-            if (data.status === 'waiting') {
-               useAdminStore.getState().addNotification({
-                 id: 'q_' + change.doc.id + '_' + Date.now(),
-                 title: 'Novo Paciente na Fila',
-                 message: `${data.patientName || 'Um paciente'} entrou na fila.`,
-                 date: new Date().toISOString()
-               });
-               playNotificationSound();
-               showNativeNotification('Novo Paciente', `${data.patientName || 'Um paciente'} entrou na fila de atendimento.`);
-            }
-          }
-        });
-      }
+      const isDoctorRoute = typeof window !== 'undefined' && (
+        window.location.pathname.includes('/doctor') || 
+        window.location.pathname.includes('/admin') ||
+        window.location.href.includes('doctor')
+      );
+      const isAdminRoute = typeof window !== 'undefined' && window.location.pathname.includes('/admin');
 
       const queueData = snapshot.docs.map(doc => {
         const data = doc.data();
-        
-        if (!isInitialLoadQueue && isDoctorRoute) {
-          if (data.hasUnread && !prevUnreadStates[doc.id]) {
-            useAdminStore.getState().addNotification({
-              id: 'msg_' + doc.id + '_' + Date.now(),
-              title: 'Nova Mensagem',
-              message: `${data.patientName || 'Um paciente'} enviou uma mensagem.`,
-              date: new Date().toISOString()
-            });
-            playNotificationSound();
-            showNativeNotification('Nova Mensagem', `${data.patientName || 'Um paciente'} enviou uma mensagem.`);
-          }
-        }
-        prevUnreadStates[doc.id] = !!data.hasUnread;
-
         return {
           id: doc.id,
           ...data,
           joinedAt: new Date(data.joinedAt)
         };
       }) as any[];
-      
+
+      if (!isInitialLoadQueue && (isDoctorRoute || isAdminRoute)) {
+        // Detect newly joined or updated waiting patients
+        queueData.forEach((p) => {
+          if (p.status === 'waiting' && !knownWaitingIds.has(p.id)) {
+            useAdminStore.getState().addNotification({
+              id: 'q_' + p.id + '_' + Date.now(),
+              title: 'Novo Paciente na Fila',
+              message: `${p.patientName || 'Um paciente'} entrou na fila de atendimento.`,
+              date: new Date().toISOString()
+            });
+            showNativeNotification('🔔 Novo Paciente na Fila', `${p.patientName || 'Um paciente'} aguarda atendimento.`, '/doctor');
+          }
+        });
+
+        // Detect new unread messages
+        queueData.forEach((p) => {
+          if (p.hasUnread && !prevUnreadStates[p.id]) {
+            useAdminStore.getState().addNotification({
+              id: 'msg_' + p.id + '_' + Date.now(),
+              title: 'Nova Mensagem',
+              message: `${p.patientName || 'Um paciente'} enviou uma mensagem.`,
+              date: new Date().toISOString()
+            });
+            showNativeNotification('💬 Nova Mensagem', `${p.patientName || 'Um paciente'} enviou uma mensagem no chat.`, '/doctor');
+          }
+        });
+      }
+
+      // Refresh known waiting IDs and unread states
+      knownWaitingIds.clear();
+      queueData.forEach((p) => {
+        if (p.status === 'waiting') {
+          knownWaitingIds.add(p.id);
+        }
+        prevUnreadStates[p.id] = !!p.hasUnread;
+      });
+
       isInitialLoadQueue = false;
       
       set({ queue: queueData });
