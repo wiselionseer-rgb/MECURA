@@ -6,7 +6,7 @@ import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function HistoryScreen() {
   const navigate = useNavigate();
-  const { userName, messages } = useStore();
+  const { userName, userCpf, userBirthDate, answers, messages } = useStore();
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -89,7 +89,10 @@ export function HistoryScreen() {
           {/* Action Buttons */}
           <div className="w-full space-y-4">
             <button 
-              onClick={() => generatePrescriptionPDF(userName, messages)}
+              onClick={() => generatePrescriptionPDF(userName, messages, {
+                birthDate: userBirthDate || answers?.birthDate,
+                cpf: userCpf || answers?.cpf
+              })}
               className="w-full bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)]"
             >
               <FileText className="w-5 h-5" />

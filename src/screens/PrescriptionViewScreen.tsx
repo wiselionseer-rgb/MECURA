@@ -6,11 +6,14 @@ import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function PrescriptionViewScreen() {
   const navigate = useNavigate();
-  const { userName, userCpf, messages } = useStore();
+  const { userName, userCpf, userBirthDate, answers, messages } = useStore();
 
   const prescriptionItems = messages
     .filter(msg => msg.type === 'product' && msg.productData)
     .map(msg => msg.productData!);
+
+  const displayBirthDate = userBirthDate || answers?.birthDate || 'Não informada';
+  const displayCpf = userCpf || answers?.cpf || 'Não informado';
 
   return (
     <div className="flex flex-col min-h-full bg-[#0A0A0F] text-mecura-pearl relative overflow-y-auto pb-24 font-sans">
@@ -41,9 +44,12 @@ export function PrescriptionViewScreen() {
 
           {/* Patient Info */}
           <div className="mb-8">
-            <p className="text-sm text-[#71717A] uppercase tracking-wider font-bold mb-1">Paciente</p>
+            <p className="text-xs text-[#71717A] uppercase tracking-wider font-bold mb-1">Paciente</p>
             <p className="text-lg font-bold text-[#18181B]">{userName || 'Paciente'}</p>
-            <p className="text-[#71717A]">CPF: {userCpf || 'Não informado'}</p>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-[#71717A] mt-1.5">
+              <p><span className="font-semibold text-[#52525B]">Data de Nasc.:</span> {displayBirthDate}</p>
+              <p><span className="font-semibold text-[#52525B]">CPF:</span> {displayCpf}</p>
+            </div>
           </div>
 
           {/* Prescription Items */}
@@ -78,7 +84,10 @@ export function PrescriptionViewScreen() {
       <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/90 to-transparent z-30">
         <Button 
           className="w-full h-14 text-lg font-bold shadow-[0_0_30px_rgba(166,255,0,0.2)] flex items-center justify-center gap-2"
-          onClick={() => generatePrescriptionPDF(userName || 'Paciente', messages)}
+          onClick={() => generatePrescriptionPDF(userName || 'Paciente', messages, {
+            birthDate: userBirthDate || answers?.birthDate,
+            cpf: userCpf || answers?.cpf
+          })}
         >
           <Download className="w-5 h-5" />
           Baixar Receita em PDF

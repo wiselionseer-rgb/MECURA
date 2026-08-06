@@ -1,30 +1,86 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, User, Mail, Phone, Save, Flame, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, User, Mail, Phone, Save, Flame, ShieldCheck, Calendar, CreditCard } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
+import { auth, db } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
+
+const formatBirthDate = (val: string) => {
+  const digits = val.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const formatPhone = (val: string) => {
+  const digits = val.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+};
+
+const formatCpf = (val: string) => {
+  const digits = val.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
 
 export function ProfileScreen() {
   const navigate = useNavigate();
-  const { userName, setUserName, userEmail, setUserEmail, userPhone, setUserPhone, userCpf, setUserCpf, healthStreak, userTier } = useStore();
+  const { 
+    userName, setUserName, 
+    userEmail, setUserEmail, 
+    userPhone, setUserPhone, 
+    userCpf, setUserCpf, 
+    userBirthDate, setUserBirthDate,
+    answers, setAnswer,
+    healthStreak, userTier 
+  } = useStore();
   
   const [name, setName] = useState(userName);
   const [email, setEmail] = useState(userEmail);
   const [phone, setPhone] = useState(userPhone);
   const [cpf, setCpf] = useState(userCpf);
+  const [birthDate, setBirthDate] = useState(userBirthDate || answers?.birthDate || '');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    // Simulate API call
+    setUserName(name);
+    setUserEmail(email);
+    setUserPhone(phone);
+    setUserCpf(cpf);
+    setUserBirthDate(birthDate);
+    setAnswer('birthDate', birthDate);
+    setAnswer('cpf', cpf);
+
+    if (auth.currentUser) {
+      try {
+        await setDoc(doc(db, 'users', auth.currentUser.uid), {
+          name,
+          email,
+          phone,
+          cpf,
+          birthDate,
+          answers: {
+            ...answers,
+            birthDate,
+            cpf
+          },
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Error updating profile in Firestore:", err);
+      }
+    }
+
     setTimeout(() => {
-      setUserName(name);
-      setUserEmail(email);
-      setUserPhone(phone);
-      setUserCpf(cpf);
       setIsSaving(false);
       navigate(-1);
-    }, 800);
+    }, 600);
   };
 
   return (
@@ -101,7 +157,7 @@ export function ProfileScreen() {
 
           {/* Phone Field */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-[#8A8A9E] ml-1">Telefone</label>
+            <label className="text-sm font-medium text-[#8A8A9E] ml-1">Telefone / WhatsApp</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Phone className="w-5 h-5 text-[#6A6A7E]" />
@@ -109,11 +165,33 @@ export function ProfileScreen() {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhone(e.target.value))}
                 placeholder="(11) 99999-9999"
                 className="w-full bg-[#161622] border border-[#262636] rounded-2xl py-4 pl-12 pr-4 text-white placeholder-[#6A6A7E] focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon transition-all"
               />
             </div>
+          </div>
+
+          {/* Date of Birth Field */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[#8A8A9E] ml-1">Data de Nascimento</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Calendar className="w-5 h-5 text-mecura-neon" />
+              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={10}
+                value={birthDate}
+                onChange={(e) => setBirthDate(formatBirthDate(e.target.value))}
+                placeholder="DD/MM/AAAA"
+                className="w-full bg-[#161622] border border-[#262636] rounded-2xl py-4 pl-12 pr-4 text-white placeholder-[#6A6A7E] focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon transition-all"
+              />
+            </div>
+            <p className="text-[11px] text-[#8A8A9E] ml-1">
+              Esta data é puxada automaticamente para suas receitas e atestados médicos.
+            </p>
           </div>
 
           {/* CPF Field */}
@@ -121,14 +199,15 @@ export function ProfileScreen() {
             <label className="text-sm font-medium text-[#8A8A9E] ml-1">CPF</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <User className="w-5 h-5 text-[#6A6A7E]" />
+                <CreditCard className="w-5 h-5 text-[#6A6A7E]" />
               </div>
               <input
                 type="text"
                 inputMode="numeric"
+                maxLength={14}
                 value={cpf}
-                onChange={(e) => setCpf(e.target.value)}
-                placeholder="Apenas números"
+                onChange={(e) => setCpf(formatCpf(e.target.value))}
+                placeholder="000.000.000-00"
                 className="w-full bg-[#161622] border border-[#262636] rounded-2xl py-4 pl-12 pr-4 text-white placeholder-[#6A6A7E] focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon transition-all"
               />
             </div>

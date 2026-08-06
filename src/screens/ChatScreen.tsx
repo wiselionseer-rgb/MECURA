@@ -11,7 +11,7 @@ import { auth } from '../firebase';
 
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { userName, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId, isConsultationFinished } = useStore();
+  const { userName, userCpf, userBirthDate, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId, isConsultationFinished } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
@@ -71,7 +71,10 @@ export function ChatScreen() {
   }, [activeConsultationId, patientId, currentUid, subscribeToMessages]);
 
   const handleGeneratePDF = () => {
-    generatePrescriptionPDF(userName, messages);
+    generatePrescriptionPDF(userName, messages, {
+      birthDate: userBirthDate || answers?.birthDate,
+      cpf: userCpf || answers?.cpf
+    });
   };
 
   useEffect(() => {

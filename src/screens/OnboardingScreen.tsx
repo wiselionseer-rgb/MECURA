@@ -5,10 +5,33 @@ import { Input } from '../components/ui/Input';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Switch } from '../components/ui/Switch';
 import { useStore } from '../store/useStore';
-import { ChevronLeft, Check, Info } from 'lucide-react';
+import { ChevronLeft, Check, Info, Calendar, User, Phone, CreditCard } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
+
+// --- HELPERS DE FORMATAÇÃO ---
+const formatBirthDate = (val: string) => {
+  const digits = val.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const formatPhone = (val: string) => {
+  const digits = val.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+};
+
+const formatCpf = (val: string) => {
+  const digits = val.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
 
 // --- CONSTANTS ---
 const OBJECTIVES_MAIN = [
@@ -75,7 +98,7 @@ const EMOTIONAL_QUESTIONS = [
 
 const STEPS = [
   { id: 'auth', title: 'Acesse ou Crie sua Conta', subtitle: 'Para salvar seu histórico e personalizar sua experiência.' },
-  { id: 'name', title: 'Como podemos te chamar?', subtitle: 'Vamos personalizar sua experiência.' },
+  { id: 'name', title: 'Dados do Paciente', subtitle: 'Preencha seus dados para seu cadastro e emissão da receita médica.' },
   { id: 'objective', title: 'Selecione os objetivos que busca com o tratamento', subtitle: 'Você pode selecionar quantas opções quiser.' },
   { id: 'objective_details', title: 'Agora sobre os motivos selecionados:', subtitle: 'Detalhe um pouco mais para o médico.' },
   { id: 'physical', title: 'Informações sobre suas características físicas:', subtitle: 'Dados importantes para dosagem.' },
@@ -90,6 +113,8 @@ const STEPS = [
       userName, setUserName, 
       userEmail, setUserEmail,
       userPhone, setUserPhone,
+      userCpf, setUserCpf,
+      userBirthDate, setUserBirthDate,
       setOnboardingStep, setHasCompletedOnboarding, incrementStreak, answers, setAnswer, reset 
     } = useStore();
     const [currentStep, setCurrentStep] = useState(0);
@@ -128,11 +153,15 @@ const STEPS = [
               const data = userDoc.data();
               if (data.name) setUserName(data.name);
               if (data.phone) setUserPhone(data.phone);
+              if (data.cpf) setUserCpf(data.cpf);
+              if (data.birthDate) setUserBirthDate(data.birthDate);
               if (data.answers) {
                 // Load answers into store
                 Object.entries(data.answers).forEach(([key, value]) => {
                   setAnswer(key, value);
                 });
+                if (data.answers.birthDate && !data.birthDate) setUserBirthDate(data.answers.birthDate);
+                if (data.answers.cpf && !data.cpf) setUserCpf(data.answers.cpf);
               }
               
               if (data.hasCompletedOnboarding) {
@@ -176,8 +205,14 @@ const STEPS = [
               name: userName,
               email: userEmail,
               phone: userPhone,
+              cpf: userCpf,
+              birthDate: userBirthDate,
               hasCompletedOnboarding: true,
-              answers: answers,
+              answers: {
+                ...answers,
+                birthDate: userBirthDate,
+                cpf: userCpf
+              },
               createdAt: new Date().toISOString()
             }, { merge: true });
           } catch (e) {
@@ -216,7 +251,7 @@ const STEPS = [
       return !userEmail || !password || isLoading;
     }
     if (step.id === 'name') {
-      return userName.trim().length < 2 || userPhone.trim().length < 10;
+      return userName.trim().length < 2 || userBirthDate.trim().length < 8 || userPhone.trim().length < 10;
     }
     if (step.id === 'objective') return (answers.objectives || []).length === 0;
     if (step.id === 'physical') return !answers.height || !answers.weight || !answers.sex;
@@ -319,8 +354,65 @@ const STEPS = [
           {/* Step: Name */}
           {step.id === 'name' && (
             <div className="space-y-4">
-              <Input autoFocus placeholder="Seu nome completo" value={userName} onChange={(e) => setUserName(e.target.value)} />
-              <Input placeholder="Seu número de contato (com DDD)" value={userPhone} onChange={(e) => setUserPhone(e.target.value)} type="tel" />
+              <Input 
+                autoFocus 
+                label="Nome Completo"
+                icon={<User className="w-5 h-5" />}
+                placeholder="Ex: Carlos Eduardo da Silva" 
+                value={userName} 
+                onChange={(e) => setUserName(e.target.value)} 
+              />
+
+              <Input 
+                label="Data de Nascimento"
+                icon={<Calendar className="w-5 h-5" />}
+                placeholder="DD/MM/AAAA" 
+                value={userBirthDate} 
+                onChange={(e) => {
+                  const formatted = formatBirthDate(e.target.value);
+                  setUserBirthDate(formatted);
+                  setAnswer('birthDate', formatted);
+                }} 
+                type="text"
+                inputMode="numeric"
+                maxLength={10}
+              />
+
+              <Input 
+                label="CPF (opcional para identificação)"
+                icon={<CreditCard className="w-5 h-5" />}
+                placeholder="000.000.000-00" 
+                value={userCpf} 
+                onChange={(e) => {
+                  const formatted = formatCpf(e.target.value);
+                  setUserCpf(formatted);
+                  setAnswer('cpf', formatted);
+                }} 
+                type="text"
+                inputMode="numeric"
+                maxLength={14}
+              />
+
+              <Input 
+                label="WhatsApp / Celular"
+                icon={<Phone className="w-5 h-5" />}
+                placeholder="(00) 00000-0000" 
+                value={userPhone} 
+                onChange={(e) => {
+                  const formatted = formatPhone(e.target.value);
+                  setUserPhone(formatted);
+                  setAnswer('phone', formatted);
+                }} 
+                type="tel"
+                maxLength={15}
+              />
+
+              <div className="p-3 bg-mecura-surface/60 border border-mecura-elevated rounded-xl flex items-start gap-2.5 mt-2">
+                <Info className="w-4 h-4 text-mecura-neon mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-mecura-silver leading-relaxed">
+                  Sua <strong className="text-mecura-pearl">Data de Nascimento</strong> e <strong className="text-mecura-pearl">CPF</strong> serão inseridos automaticamente nas suas receitas médicas oficiais.
+                </p>
+              </div>
             </div>
           )}
 

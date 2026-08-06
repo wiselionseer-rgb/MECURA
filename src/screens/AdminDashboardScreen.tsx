@@ -133,7 +133,9 @@ export function AdminDashboardScreen() {
   const filteredPatients = patients.filter(p => 
     (p.name && p.name.toLowerCase().includes(patientSearchTerm.toLowerCase())) ||
     (p.email && p.email.toLowerCase().includes(patientSearchTerm.toLowerCase())) ||
-    (p.phone && p.phone.includes(patientSearchTerm))
+    (p.phone && p.phone.includes(patientSearchTerm)) ||
+    (p.cpf && p.cpf.includes(patientSearchTerm)) ||
+    (p.birthDate && p.birthDate.includes(patientSearchTerm))
   );
   
   const { 
@@ -268,139 +270,154 @@ export function AdminDashboardScreen() {
   };
 
   return (
-    <div className="flex h-screen bg-[#0A0A0F] text-white">
+    <div className="flex flex-col md:flex-row h-screen bg-[#0A0A0F] text-white overflow-hidden">
       <NotificationToast />
-      {/* Sidebar */}
-      <div className="w-64 bg-[#161622] border-r border-[#262636] flex flex-col">
-        <div className="p-6 border-b border-[#262636]">
-          <div className="flex items-center gap-3 text-mecura-neon mb-2">
+
+      {/* Mobile Top Header */}
+      <div className="md:hidden flex items-center justify-between p-4 border-b border-[#262636] bg-[#161622] flex-shrink-0 z-20">
+        <div className="flex items-center gap-2 text-mecura-neon">
+          <ShieldCheck className="w-6 h-6" />
+          <h1 className="text-lg font-bold">Admin</h1>
+        </div>
+        <button
+          onClick={() => navigate('/')}
+          className="p-2 rounded-xl text-[#8A8A9E] hover:bg-red-500/10 hover:text-red-400 transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Sidebar / Bottom Bar */}
+      <div className="w-full md:w-64 bg-[#161622] border-t md:border-t-0 md:border-r border-[#262636] flex flex-col flex-shrink-0 z-20 order-last md:order-first">
+        <div className="p-4 md:p-6 border-b border-[#262636] hidden md:block">
+          <div className="flex items-center gap-3 text-mecura-neon md:mb-2">
             <ShieldCheck className="w-8 h-8" />
             <h1 className="text-xl font-bold">Admin</h1>
           </div>
           <p className="text-sm text-[#8A8A9E]">Painel de Controle</p>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="shrink-0 md:flex-1 p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-y-auto whitespace-nowrap hide-scrollbar items-center md:items-stretch">
           <button
             onClick={() => setActiveTab('metrics')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'metrics' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <BarChart3 className="w-5 h-5" />
-            Métricas & Financeiro
+            <BarChart3 className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Métricas & Financeiro</span>
           </button>
           <button
             onClick={() => setActiveTab('patients')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'patients' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <ClipboardList className="w-5 h-5" />
-            Pacientes (Cadastros)
+            <ClipboardList className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Pacientes (Cadastros)</span>
           </button>
           <button
             onClick={() => setActiveTab('doctors')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'doctors' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <Users className="w-5 h-5" />
-            Médicos
+            <Users className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Médicos</span>
           </button>
           <button
             onClick={() => setActiveTab('chat')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'chat' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <MessageSquare className="w-5 h-5" />
-            Chat com Médicos
+            <MessageSquare className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Chat com Médicos</span>
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'history' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <History className="w-5 h-5" />
-            Histórico de Pacientes
+            <History className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Histórico de Pacientes</span>
           </button>
           <button
             onClick={() => setActiveTab('support')}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'support' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <MessageCircle className="w-5 h-5" />
-              Suporte a Pacientes
+            <div className="flex items-center gap-2 md:gap-3">
+              <MessageCircle className="w-4 h-4 md:w-5 md:h-5" />
+              <span className="text-sm md:text-base">Suporte a Pacientes</span>
             </div>
             {supportRequests.length > 0 && (
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-2">
                 {supportRequests.length}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab('abandonment')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'abandonment' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <UserMinus className="w-5 h-5" />
-            Monitoramento de Abandono
+            <UserMinus className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Monitoramento de Abandono</span>
           </button>
           <button
             onClick={() => setActiveTab('coupons')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'coupons' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <Tag className="w-5 h-5" />
-            Cupons
+            <Tag className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Cupons</span>
           </button>
           <button
             onClick={() => setActiveTab('promotions')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'promotions' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <Tag className="w-5 h-5" />
-            Promoções
+            <Tag className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Promoções</span>
           </button>
           <button
             onClick={() => setActiveTab('notifications')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+            className={`flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-4 py-3 rounded-xl transition-colors ${
               activeTab === 'notifications' 
                 ? 'bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20' 
                 : 'text-[#8A8A9E] hover:bg-[#262636] hover:text-white'
             }`}
           >
-            <Bell className="w-5 h-5" />
-            Notificações
+            <Bell className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-sm md:text-base">Notificações</span>
           </button>
         </nav>
 
-        <div className="p-4 border-t border-[#262636]">
+        <div className="p-4 border-t border-[#262636] hidden md:block">
           <button
             onClick={() => navigate('/')}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#8A8A9E] hover:bg-red-500/10 hover:text-red-400 transition-colors"
@@ -412,7 +429,7 @@ export function AdminDashboardScreen() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-8">
+      <div className="flex-1 overflow-auto p-4 md:p-8">
         {activeTab === 'metrics' && (
           <div className="max-w-6xl mx-auto space-y-8">
             <div className="flex justify-between items-center">
@@ -538,11 +555,12 @@ export function AdminDashboardScreen() {
                   />
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
+              <div className="overflow-x-auto hidden md:block">
+                <table className="w-full text-left min-w-[700px]">
                   <thead className="bg-[#0A0A0F] text-[#8A8A9E] text-sm">
                     <tr>
                       <th className="p-4 font-medium">Nome do Paciente</th>
+                      <th className="p-4 font-medium">Data de Nasc. / CPF</th>
                       <th className="p-4 font-medium">E-mail</th>
                       <th className="p-4 font-medium">Telefone</th>
                       <th className="p-4 font-medium">Data de Cadastro</th>
@@ -553,6 +571,10 @@ export function AdminDashboardScreen() {
                     {filteredPatients.length > 0 ? filteredPatients.map((patient) => (
                       <tr key={patient.id} className="hover:bg-[#262636]/50 transition-colors">
                         <td className="p-4 font-bold">{patient.name || 'Sem nome'}</td>
+                        <td className="p-4 text-xs">
+                          <span className="text-white font-medium block">{patient.birthDate || patient.answers?.birthDate || 'N/A'}</span>
+                          <span className="text-[#8A8A9E] block">{patient.cpf || patient.answers?.cpf || 'Sem CPF'}</span>
+                        </td>
                         <td className="p-4 text-[#8A8A9E]">{patient.email || 'N/A'}</td>
                         <td className="p-4 text-[#8A8A9E]">{patient.phone || 'N/A'}</td>
                         <td className="p-4 text-[#8A8A9E]">{patient.createdAt ? format(new Date(patient.createdAt), 'dd/MM/yyyy HH:mm') : 'N/A'}</td>
@@ -564,11 +586,50 @@ export function AdminDashboardScreen() {
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-[#8A8A9E]">Nenhum paciente cadastrado até o momento.</td>
+                        <td colSpan={6} className="p-8 text-center text-[#8A8A9E]">Nenhum paciente cadastrado até o momento.</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile View - Patients */}
+              <div className="md:hidden flex flex-col divide-y divide-[#262636]">
+                {filteredPatients.length > 0 ? filteredPatients.map((patient) => (
+                  <div key={patient.id} className="p-4 flex flex-col gap-3 hover:bg-[#262636]/30 transition-colors">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-bold text-white text-base">{patient.name || 'Sem nome'}</span>
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold whitespace-nowrap ${patient.hasCompletedOnboarding ? 'bg-mecura-neon/10 text-mecura-neon' : 'bg-yellow-500/10 text-yellow-500'}`}>
+                        {patient.hasCompletedOnboarding ? 'Concluído' : 'Pendente'}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex flex-col">
+                        <span className="text-[#8A8A9E] text-xs">Nascimento</span>
+                        <span className="text-white">{patient.birthDate || patient.answers?.birthDate || 'N/A'}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[#8A8A9E] text-xs">CPF</span>
+                        <span className="text-white">{patient.cpf || patient.answers?.cpf || 'Sem CPF'}</span>
+                      </div>
+                      <div className="flex flex-col col-span-2">
+                        <span className="text-[#8A8A9E] text-xs">E-mail</span>
+                        <span className="text-white break-all">{patient.email || 'N/A'}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[#8A8A9E] text-xs">Telefone</span>
+                        <span className="text-white">{patient.phone || 'N/A'}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[#8A8A9E] text-xs">Cadastro</span>
+                        <span className="text-white">{patient.createdAt ? format(new Date(patient.createdAt), 'dd/MM/yyyy HH:mm') : 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="p-8 text-center text-[#8A8A9E]">Nenhum paciente cadastrado até o momento.</div>
+                )}
               </div>
             </div>
           </div>
@@ -577,7 +638,7 @@ export function AdminDashboardScreen() {
         {activeTab === 'chat' && (
           <div className="max-w-6xl mx-auto h-[calc(100vh-4rem)] flex gap-6">
             {/* Doctors List */}
-            <div className="w-1/3 bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden flex flex-col">
+            <div className="w-1/3 bg-[#161622] border border-[#262636] rounded-2xl overflow-x-auto flex flex-col">
               <div className="p-4 border-b border-[#262636]">
                 <h3 className="font-bold">Médicos Online</h3>
               </div>
@@ -846,48 +907,87 @@ export function AdminDashboardScreen() {
               <h2 className="text-2xl font-bold">Monitoramento de Abandono</h2>
             </div>
 
-            <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-[#1A1A26] border-b border-[#262636]">
-                  <tr>
-                    <th className="p-4 font-medium text-[#8A8A9E]">Paciente</th>
-                    <th className="p-4 font-medium text-[#8A8A9E]">Contato</th>
-                    <th className="p-4 font-medium text-[#8A8A9E]">Etapa de Abandono</th>
-                    <th className="p-4 font-medium text-[#8A8A9E]">Data/Hora</th>
-                    <th className="p-4 font-medium text-[#8A8A9E] text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#262636]">
-                  {abandonedLeads.map(lead => (
-                    <tr key={lead.id} className="hover:bg-[#1A1A26]/50">
-                      <td className="p-4 font-medium">{lead.name}</td>
-                      <td className="p-4">
-                        <div className="text-sm">{lead.email}</div>
-                        <div className="text-xs text-[#8A8A9E]">{lead.phone}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className="px-2 py-1 bg-red-500/10 text-red-400 rounded-md text-xs font-bold">
-                          {lead.step}
-                        </span>
-                      </td>
-                      <td className="p-4 text-[#8A8A9E] text-sm">
-                        {format(new Date(lead.date), 'dd/MM/yyyy HH:mm')}
-                      </td>
-                      <td className="p-4 flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => alert(`Iniciando contato via WhatsApp com ${lead.name}`)}>
-                          Contatar
-                        </Button>
-                        <Button size="sm" onClick={() => {
-                          setNotificationForm({ title: 'Temos uma oferta para você!', message: `Olá ${lead.name}, notamos que você não finalizou sua consulta. Use o cupom VOLTA20 para 20% de desconto!` });
-                          setShowSendNotification(true);
-                        }}>
-                          Enviar Oferta
-                        </Button>
-                      </td>
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl">
+              <div className="overflow-x-auto hidden md:block">
+                <table className="w-full text-left min-w-[700px]">
+                  <thead className="bg-[#1A1A26] border-b border-[#262636]">
+                    <tr>
+                      <th className="p-4 font-medium text-[#8A8A9E]">Paciente</th>
+                      <th className="p-4 font-medium text-[#8A8A9E]">Contato</th>
+                      <th className="p-4 font-medium text-[#8A8A9E]">Etapa de Abandono</th>
+                      <th className="p-4 font-medium text-[#8A8A9E]">Data/Hora</th>
+                      <th className="p-4 font-medium text-[#8A8A9E] text-right">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[#262636]">
+                    {abandonedLeads.map(lead => (
+                      <tr key={lead.id} className="hover:bg-[#1A1A26]/50">
+                        <td className="p-4 font-medium">{lead.name}</td>
+                        <td className="p-4">
+                          <div className="text-sm">{lead.email}</div>
+                          <div className="text-xs text-[#8A8A9E]">{lead.phone}</div>
+                        </td>
+                        <td className="p-4">
+                          <span className="px-2 py-1 bg-red-500/10 text-red-400 rounded-md text-xs font-bold">
+                            {lead.step}
+                          </span>
+                        </td>
+                        <td className="p-4 text-[#8A8A9E] text-sm">
+                          {format(new Date(lead.date), 'dd/MM/yyyy HH:mm')}
+                        </td>
+                        <td className="p-4 flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => alert(`Iniciando contato via WhatsApp com ${lead.name}`)}>
+                            Contatar
+                          </Button>
+                          <Button size="sm" onClick={() => {
+                            setNotificationForm({ title: 'Temos uma oferta para você!', message: `Olá ${lead.name}, notamos que você não finalizou sua consulta. Use o cupom VOLTA20 para 20% de desconto!` });
+                            setShowSendNotification(true);
+                          }}>
+                            Enviar Oferta
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile View - Abandonment */}
+              <div className="md:hidden flex flex-col divide-y divide-[#262636]">
+                {abandonedLeads.map(lead => (
+                  <div key={lead.id} className="p-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-bold text-white text-base">{lead.name}</span>
+                      <span className="px-2 py-1 bg-red-500/10 text-red-400 rounded-md text-[10px] font-bold text-right">
+                        {lead.step}
+                      </span>
+                    </div>
+                    
+                    <div className="flex flex-col text-sm gap-1">
+                      <span className="text-white break-all">{lead.email}</span>
+                      <span className="text-[#8A8A9E]">{lead.phone}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-[#8A8A9E] text-xs">
+                        {format(new Date(lead.date), 'dd/MM/yyyy HH:mm')}
+                      </span>
+                    </div>
+                    
+                    <div className="flex gap-2 mt-2">
+                      <Button className="flex-1" size="sm" variant="outline" onClick={() => alert(`Iniciando contato via WhatsApp com ${lead.name}`)}>
+                        Contatar
+                      </Button>
+                      <Button className="flex-1" size="sm" onClick={() => {
+                        setNotificationForm({ title: 'Temos uma oferta para você!', message: `Olá ${lead.name}, notamos que você não finalizou sua consulta. Use o cupom VOLTA20 para 20% de desconto!` });
+                        setShowSendNotification(true);
+                      }}>
+                        Enviar Oferta
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -902,56 +1002,102 @@ export function AdminDashboardScreen() {
               </Button>
             </div>
 
-            <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-[#1A1A26] border-b border-[#262636]">
-                  <tr>
-                    <th className="p-4 font-medium text-[#8A8A9E]">Nome</th>
-                    <th className="p-4 font-medium text-[#8A8A9E]">CRM</th>
-                    <th className="p-4 font-medium text-[#8A8A9E]">Email</th>
-                    <th className="p-4 font-medium text-[#8A8A9E] text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#262636]">
-                  {doctors.map(doctor => (
-                    <tr key={doctor.id} className="hover:bg-[#1A1A26]/50">
-                      <td className="p-4 font-medium">{doctor.name}</td>
-                      <td className="p-4 text-[#8A8A9E]">{doctor.crm}</td>
-                      <td className="p-4 text-[#8A8A9E]">{doctor.email}</td>
-                      <td className="p-4 flex justify-end gap-2">
-                        <button 
-                          onClick={() => setShowAgenda(doctor.id)}
-                          className="p-2 text-[#8A8A9E] hover:text-mecura-neon bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-mecura-neon/50 transition-colors"
-                          title="Ver Agenda"
-                        >
-                          <Calendar className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => setShowEditPassword(doctor.id)}
-                          className="p-2 text-[#8A8A9E] hover:text-mecura-neon bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-mecura-neon/50 transition-colors"
-                          title="Alterar Senha"
-                        >
-                          <Key className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => deleteDoctor(doctor.id)}
-                          className="p-2 text-[#8A8A9E] hover:text-red-400 bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-red-400/50 transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {doctors.length === 0 && (
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl">
+              <div className="overflow-x-auto hidden md:block">
+                <table className="w-full text-left min-w-[700px]">
+                  <thead className="bg-[#1A1A26] border-b border-[#262636]">
                     <tr>
-                      <td colSpan={4} className="p-8 text-center text-[#8A8A9E]">
-                        Nenhum médico cadastrado.
-                      </td>
+                      <th className="p-4 font-medium text-[#8A8A9E]">Nome</th>
+                      <th className="p-4 font-medium text-[#8A8A9E]">CRM</th>
+                      <th className="p-4 font-medium text-[#8A8A9E]">Email</th>
+                      <th className="p-4 font-medium text-[#8A8A9E] text-right">Ações</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[#262636]">
+                    {doctors.map(doctor => (
+                      <tr key={doctor.id} className="hover:bg-[#1A1A26]/50">
+                        <td className="p-4 font-medium">{doctor.name}</td>
+                        <td className="p-4 text-[#8A8A9E]">{doctor.crm}</td>
+                        <td className="p-4 text-[#8A8A9E]">{doctor.email}</td>
+                        <td className="p-4 flex justify-end gap-2">
+                          <button 
+                            onClick={() => setShowAgenda(doctor.id)}
+                            className="p-2 text-[#8A8A9E] hover:text-mecura-neon bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-mecura-neon/50 transition-colors"
+                            title="Ver Agenda"
+                          >
+                            <Calendar className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => setShowEditPassword(doctor.id)}
+                            className="p-2 text-[#8A8A9E] hover:text-mecura-neon bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-mecura-neon/50 transition-colors"
+                            title="Alterar Senha"
+                          >
+                            <Key className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => deleteDoctor(doctor.id)}
+                            className="p-2 text-[#8A8A9E] hover:text-red-400 bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-red-400/50 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {doctors.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-8 text-center text-[#8A8A9E]">
+                          Nenhum médico cadastrado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile View - Doctors */}
+              <div className="md:hidden flex flex-col divide-y divide-[#262636]">
+                {doctors.map(doctor => (
+                  <div key={doctor.id} className="p-4 flex flex-col gap-3 hover:bg-[#1A1A26]/50">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-bold text-white text-base">{doctor.name}</span>
+                      <span className="text-xs bg-[#262636] px-2 py-1 rounded text-[#8A8A9E]">CRM: {doctor.crm}</span>
+                    </div>
+                    
+                    <div className="flex flex-col text-sm gap-1">
+                      <span className="text-[#8A8A9E] break-all">{doctor.email}</span>
+                    </div>
+                    
+                    <div className="flex gap-2 mt-2">
+                      <button 
+                        onClick={() => setShowAgenda(doctor.id)}
+                        className="flex-1 flex items-center justify-center gap-2 p-2.5 text-[#8A8A9E] hover:text-mecura-neon bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-mecura-neon/50 transition-colors"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        <span className="text-xs font-medium">Agenda</span>
+                      </button>
+                      <button 
+                        onClick={() => setShowEditPassword(doctor.id)}
+                        className="flex-1 flex items-center justify-center gap-2 p-2.5 text-[#8A8A9E] hover:text-mecura-neon bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-mecura-neon/50 transition-colors"
+                      >
+                        <Key className="w-4 h-4" />
+                        <span className="text-xs font-medium">Senha</span>
+                      </button>
+                      <button 
+                        onClick={() => deleteDoctor(doctor.id)}
+                        className="p-2.5 text-[#8A8A9E] hover:text-red-400 bg-[#0A0A0F] rounded-lg border border-[#262636] hover:border-red-400/50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {doctors.length === 0 && (
+                  <div className="p-8 text-center text-[#8A8A9E]">
+                    Nenhum médico cadastrado.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -28,7 +28,8 @@ import {
   Download,
   ChevronDown,
   ChevronLeft,
-  Maximize2
+  Maximize2,
+  Calendar
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
@@ -51,8 +52,31 @@ import { NotificationToast } from '../components/NotificationToast';
 
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
+const calculateAge = (birthDateStr?: string) => {
+  if (!birthDateStr) return null;
+  let birthDate: Date;
+  if (birthDateStr.includes('/')) {
+    const parts = birthDateStr.split('/');
+    if (parts.length === 3) {
+      birthDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    } else {
+      return null;
+    }
+  } else {
+    birthDate = new Date(birthDateStr);
+  }
+  if (isNaN(birthDate.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age >= 0 && age < 130 ? age : null;
+};
+
 export function DoctorDashboardScreen() {
-  const { userName, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, subscribeToMessages, subscribeToAppointments } = useStore();
+  const { userName, userCpf, userBirthDate, userPhone, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, subscribeToMessages, subscribeToAppointments } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -432,7 +456,16 @@ export function DoctorDashboardScreen() {
   };
 
   const handleGeneratePDF = () => {
-    generatePrescriptionPDF(currentPatient?.patientName || userName || 'Paciente', messages);
+    const patientAnswers = currentPatient?.answers || answers;
+    const patientBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate;
+    const patientCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf;
+    const patientPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
+
+    generatePrescriptionPDF(currentPatient?.patientName || userName || 'Paciente', messages, {
+      birthDate: patientBirthDate,
+      cpf: patientCpf,
+      phone: patientPhone
+    });
   };
 
   const handleGenerateAnalysis = async () => {
@@ -744,7 +777,21 @@ export function DoctorDashboardScreen() {
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className={`font-semibold text-base ${patient.hasUnread ? 'text-white' : 'text-mecura-pearl'}`}>{patient.patientName}</h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className={`font-semibold text-base ${patient.hasUnread ? 'text-white' : 'text-mecura-pearl'}`}>{patient.patientName}</h3>
+                    {(() => {
+                      const bDate = patient.birthDate || patient.answers?.birthDate;
+                      const age = calculateAge(bDate);
+                      if (age !== null) {
+                        return (
+                          <span className="text-[10px] bg-mecura-surface-light border border-mecura-elevated text-mecura-silver px-1.5 py-0.5 rounded font-normal">
+                            {age} anos
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                   <div className="flex flex-col items-end gap-1">
                     {patient.lastMessageAt && (
                       <span className="text-[10px] text-mecura-silver">
@@ -1469,6 +1516,59 @@ export function DoctorDashboardScreen() {
               </div>
             )}
           </div>
+
+          {/* Section: Patient Demographics */}
+          {(() => {
+            const patientAnswers = currentPatient?.answers || answers;
+            const pName = currentPatient?.patientName || userName || 'Paciente';
+            const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate;
+            const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf;
+            const pPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
+            const pEmail = currentPatient?.email || (currentPatient?.answers?.email) || '';
+            const pAge = calculateAge(pBirthDate);
+
+            return (
+              <section>
+                <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
+                  <User className="w-4 h-4 text-mecura-neon" /> Dados Cadastrais
+                </h3>
+                <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between items-center border-b border-mecura-elevated/40 pb-2.5">
+                    <span className="text-xs text-mecura-silver">Nome Completo</span>
+                    <span className="text-sm font-bold text-white text-right">{pName}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center border-b border-mecura-elevated/40 pb-2.5">
+                    <span className="text-xs text-mecura-silver">Data de Nascimento</span>
+                    <span className="text-sm font-bold text-mecura-neon flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-mecura-neon" />
+                      {pBirthDate || 'Não informada'}
+                      {pAge !== null && (
+                        <span className="text-xs font-normal text-mecura-silver bg-mecura-surface-light px-2 py-0.5 rounded-md">
+                          {pAge} anos
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center border-b border-mecura-elevated/40 pb-2.5">
+                    <span className="text-xs text-mecura-silver">CPF</span>
+                    <span className="text-sm font-medium text-white">{pCpf || 'Não informado'}</span>
+                  </div>
+
+                  {(pPhone || pEmail) && (
+                    <div className="flex justify-between items-center pt-0.5">
+                      <span className="text-xs text-mecura-silver">Contato</span>
+                      <span className="text-xs text-mecura-pearl text-right">
+                        {pPhone && <span className="block font-medium text-white">{pPhone}</span>}
+                        {pEmail && !pEmail.includes('sem-email') && <span className="block text-[#8A8A9E]">{pEmail}</span>}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Section: Objectives */}
           <section>

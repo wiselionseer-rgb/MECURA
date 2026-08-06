@@ -1,8 +1,18 @@
 import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
-import { Message } from '../store/useStore';
+import { Message, useStore } from '../store/useStore';
 
-export const generatePrescriptionPDF = (userName: string, messages: Message[]) => {
+export interface PatientPrescriptionData {
+  birthDate?: string;
+  cpf?: string;
+  phone?: string;
+}
+
+export const generatePrescriptionPDF = (
+  userName: string, 
+  messages: Message[],
+  patientData?: PatientPrescriptionData
+) => {
   const doc = new jsPDF();
   
   // Configurações de fonte e cor
@@ -32,39 +42,59 @@ export const generatePrescriptionPDF = (userName: string, messages: Message[]) =
   // Informações do Paciente
   doc.setTextColor(40, 40, 40);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("DADOS DO PACIENTE", 20, 65);
+  doc.setFontSize(13);
+  doc.text("DADOS DO PACIENTE", 20, 60);
   
   doc.setLineWidth(0.5);
   doc.setDrawColor(212, 175, 55); // Dourado
-  doc.line(20, 68, 190, 68);
+  doc.line(20, 63, 190, 63);
   
-  doc.setFontSize(11);
+  // Linha 1: Nome e Data de Emissão
+  doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(60, 60, 60);
-  doc.text("Nome:", 20, 80);
+  doc.text("Nome:", 20, 72);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
   const sanitizedUserName = (userName || 'Paciente').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-  doc.text(`${sanitizedUserName}`, 35, 80);
+  doc.text(`${sanitizedUserName}`, 35, 72);
   
   doc.setFont("helvetica", "bold");
   doc.setTextColor(60, 60, 60);
-  doc.text("Data:", 140, 80);
+  doc.text("Emissão:", 140, 72);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
-  doc.text(`${format(new Date(), 'dd/MM/yyyy')}`, 152, 80);
+  doc.text(`${format(new Date(), 'dd/MM/yyyy')}`, 158, 72);
+
+  // Linha 2: Data de Nascimento e CPF
+  const storeState = useStore.getState();
+  const birthDateText = patientData?.birthDate || storeState.userBirthDate || storeState.answers?.birthDate || 'Não informada';
+  const cpfText = patientData?.cpf || storeState.userCpf || storeState.answers?.cpf || 'Não informado';
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60, 60, 60);
+  doc.text("Data de Nasc.:", 20, 80);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0, 0, 0);
+  doc.text(`${birthDateText}`, 47, 80);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60, 60, 60);
+  doc.text("CPF:", 140, 80);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0, 0, 0);
+  doc.text(`${cpfText}`, 152, 80);
   
   // Prescrição
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setTextColor(40, 40, 40);
-  doc.text("PRESCRIÇÃO", 20, 105);
+  doc.text("PRESCRIÇÃO", 20, 96);
   
   doc.setDrawColor(212, 175, 55); // Dourado
-  doc.line(20, 108, 190, 108);
+  doc.line(20, 99, 190, 99);
   
-  let yPos = 120;
+  let yPos = 110;
   const prescribedItems = messages.filter(m => 
     (m.type === 'product' && m.productData) || 
     (m.type === 'prescription_notes' && m.text)

@@ -36,6 +36,8 @@ interface AppState {
   setUserPhone: (phone: string) => void;
   userCpf: string;
   setUserCpf: (cpf: string) => void;
+  userBirthDate: string;
+  setUserBirthDate: (birthDate: string) => void;
   userTier: UserTier;
   setUserTier: (tier: UserTier) => void;
   
@@ -95,8 +97,11 @@ interface AppState {
     hasUnread?: boolean;
     lastMessageAt?: string;
     lastMessageText?: string;
+    birthDate?: string;
+    cpf?: string;
+    phone?: string;
   }>;
-  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any }) => void;
+  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string }) => void;
   leaveQueue: (patientId: string) => void;
   updateQueue: (position: number, waitTime: number) => void;
   subscribeToQueue: () => () => void;
@@ -150,6 +155,8 @@ export const useStore = create<AppState>((set, get) => ({
   setUserPhone: (phone) => set({ userPhone: phone }),
   userCpf: '',
   setUserCpf: (cpf) => set({ userCpf: cpf }),
+  userBirthDate: '',
+  setUserBirthDate: (birthDate) => set({ userBirthDate: birthDate }),
   userTier: 'Essencial',
   setUserTier: (tier) => set({ userTier: tier }),
   
@@ -253,7 +260,14 @@ export const useStore = create<AppState>((set, get) => ({
       id: currentUserId, 
       patientName: state.userName || 'Paciente Anônimo', 
       email: state.userEmail || 'sem-email@mecura.com',
-      answers: state.answers // Pass answers to the queue so doctor can see them
+      phone: state.userPhone || '',
+      cpf: state.userCpf || '',
+      birthDate: state.userBirthDate || state.answers?.birthDate || '',
+      answers: {
+        ...state.answers,
+        birthDate: state.userBirthDate || state.answers?.birthDate || '',
+        cpf: state.userCpf || state.answers?.cpf || '',
+      }
     };
     
     try {
@@ -656,6 +670,7 @@ export const useStore = create<AppState>((set, get) => ({
     userEmail: '',
     userPhone: '',
     userCpf: '',
+    userBirthDate: '',
     userTier: 'Essencial',
     onboardingStep: 0,
     hasCompletedOnboarding: false,
