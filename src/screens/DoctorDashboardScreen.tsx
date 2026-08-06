@@ -83,6 +83,7 @@ export function DoctorDashboardScreen() {
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [expandAnalysis, setExpandAnalysis] = useState(false);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [addedMedications, setAddedMedications] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<'chat' | 'guide' | 'analytics'>('chat');
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showProductSearchModal, setShowProductSearchModal] = useState(false);
@@ -593,6 +594,14 @@ export function DoctorDashboardScreen() {
   };
 
   const addPrescribedMedication = (med: any) => {
+    // Add to addedMedications state
+    setAddedMedications(prev => {
+      if (!prev.includes(med.name)) {
+        return [...prev, med.name];
+      }
+      return prev;
+    });
+
     // Find product in cbdGuideData
     let foundProduct = null;
     for (const category of cbdGuideData) {
@@ -1482,16 +1491,31 @@ export function DoctorDashboardScreen() {
                       <div className="mt-6 pt-4 border-t border-mecura-elevated">
                         <h4 className="text-sm font-bold text-white mb-3">Medicamentos Sugeridos</h4>
                         <div className="space-y-2">
-                          {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => addPrescribedMedication(med)}
-                              className="w-full p-3 bg-mecura-surface border border-mecura-elevated rounded-xl text-left hover:border-mecura-neon/50 transition-all group"
-                            >
-                              <h5 className="font-bold text-white text-xs mb-0.5 group-hover:text-mecura-neon">{med.name}</h5>
-                              <p className="text-[10px] text-mecura-silver">{med.dosage}</p>
-                            </button>
-                          ))}
+                          {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => {
+                            const isAdded = addedMedications.includes(med.name);
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => addPrescribedMedication(med)}
+                                disabled={isAdded}
+                                className={`w-full p-3 border rounded-xl text-left transition-all group relative overflow-hidden ${
+                                  isAdded 
+                                    ? 'bg-mecura-neon/10 border-mecura-neon cursor-default' 
+                                    : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
+                                }`}
+                              >
+                                {isAdded && (
+                                  <div className="absolute top-0 right-0 p-2 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
+                                    <CheckCircle className="w-4 h-4" />
+                                  </div>
+                                )}
+                                <h5 className={`font-bold text-xs mb-0.5 transition-colors ${
+                                  isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
+                                }`}>{med.name}</h5>
+                                <p className="text-[10px] text-mecura-silver pr-8">{med.dosage}</p>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -1722,17 +1746,34 @@ export function DoctorDashboardScreen() {
                   <div className="mt-8 pt-8 border-t border-mecura-elevated">
                     <h3 className="text-xl font-bold text-white mb-6">Medicamentos Sugeridos</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => addPrescribedMedication(med)}
-                          className="p-4 bg-mecura-surface border border-mecura-elevated rounded-xl text-left hover:border-mecura-neon/50 transition-all group"
-                        >
-                          <h4 className="font-bold text-white mb-1 group-hover:text-mecura-neon">{med.name}</h4>
-                          <p className="text-xs text-mecura-silver mb-2">{med.dosage}</p>
-                          <span className="text-[10px] font-bold text-mecura-neon uppercase">Adicionar ao Chat</span>
-                        </button>
-                      ))}
+                      {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => {
+                        const isAdded = addedMedications.includes(med.name);
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => addPrescribedMedication(med)}
+                            disabled={isAdded}
+                            className={`p-4 border rounded-xl text-left transition-all group relative overflow-hidden ${
+                              isAdded
+                                ? 'bg-mecura-neon/10 border-mecura-neon cursor-default'
+                                : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
+                            }`}
+                          >
+                            {isAdded && (
+                              <div className="absolute top-0 right-0 p-3 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
+                                <CheckCircle className="w-5 h-5" />
+                              </div>
+                            )}
+                            <h4 className={`font-bold mb-1 transition-colors ${
+                              isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
+                            }`}>{med.name}</h4>
+                            <p className="text-xs text-mecura-silver mb-2 pr-10">{med.dosage}</p>
+                            <span className="text-[10px] font-bold text-mecura-neon uppercase">
+                              {isAdded ? 'Adicionado ao Chat' : 'Adicionar ao Chat'}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
