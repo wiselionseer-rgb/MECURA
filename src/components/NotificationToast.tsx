@@ -4,6 +4,8 @@ import { useStore } from '../store/useStore';
 import { Bell, X } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { showNativeNotification } from '../utils/notifications';
+import { playNotificationSound } from '../utils/sound';
 
 export function NotificationToast() {
   const { notifications, addNotification } = useAdminStore();
@@ -11,6 +13,7 @@ export function NotificationToast() {
   const [visibleNotification, setVisibleNotification] = useState<any>(null);
   const [seenNotifications, setSeenNotifications] = useState<Set<string>>(new Set());
 
+  // Listen to personal notifications
   useEffect(() => {
     const currentId = auth.currentUser?.uid || patientId;
     if (!currentId) return;
@@ -21,12 +24,16 @@ export function NotificationToast() {
         if (change.type === 'added') {
           const data = change.doc.data();
           if (change.doc.id === currentId) {
+            const notifTitle = data.type === 'next' ? 'Sua vez chegou!' : 'Aviso do Médico';
+            const notifMessage = data.text;
             addNotification({
-              id: change.doc.id + '_' + Date.now(), // Ensure unique ID for local state
-              title: data.type === 'next' ? 'Sua vez chegou!' : 'Aviso do Médico',
-              message: data.text,
+              id: change.doc.id + '_' + Date.now(),
+              title: notifTitle,
+              message: notifMessage,
               date: new Date(data.timestamp).toISOString()
             });
+            showNativeNotification(notifTitle, notifMessage);
+            playNotificationSound();
           }
         }
       });
@@ -34,6 +41,35 @@ export function NotificationToast() {
 
     return () => unsubscribe();
   }, [addNotification, patientId]);
+
+  // Listen to global admin notifications broadcasted to all users
+  useEffect(() => {
+    let isInitial = true;
+    const q = query(collection(db, 'global_notifications'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (isInitial) {
+        isInitial = false;
+        return;
+      }
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data() as any;
+          if (data && data.title && data.message) {
+            addNotification({
+              id: data.id || ('global_' + Date.now()),
+              title: data.title,
+              message: data.message,
+              date: data.date || new Date().toISOString()
+            });
+            showNativeNotification(data.title, data.message);
+            playNotificationSound();
+          }
+        }
+      });
+    });
+
+    return () => unsubscribe();
+  }, [addNotification]);
 
   useEffect(() => {
     if (notifications.length > 0) {

@@ -6,7 +6,7 @@ import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { NotificationToast } from '../components/NotificationToast';
 import { db } from '../firebase';
-import { collection, onSnapshot, collectionGroup, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, collectionGroup, query, where, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -256,14 +256,25 @@ export function AdminDashboardScreen() {
     }
   };
 
-  const handleSendNotification = () => {
+  const handleSendNotification = async () => {
     if (notificationForm.title && notificationForm.message) {
-      addNotification({
-        id: Date.now().toString(),
+      const notifId = 'notif_' + Date.now();
+      const newNotif = {
+        id: notifId,
         title: notificationForm.title,
         message: notificationForm.message,
-        date: new Date().toISOString()
-      });
+        date: new Date().toISOString(),
+        timestamp: Date.now()
+      };
+
+      addNotification(newNotif);
+
+      try {
+        await setDoc(doc(db, 'global_notifications', notifId), newNotif);
+      } catch (e) {
+        console.error('Erro ao salvar notificação global no Firestore:', e);
+      }
+
       setShowSendNotification(false);
       setNotificationForm({ title: '', message: '' });
     }
