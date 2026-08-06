@@ -147,6 +147,7 @@ import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useAdminStore } from './useAdminStore';
 import { playNotificationSound } from '../utils/sound';
+import { showNativeNotification } from '../utils/notifications';
 
 export const useStore = create<AppState>((set, get) => ({
   userName: '',
@@ -340,6 +341,7 @@ export const useStore = create<AppState>((set, get) => ({
                  date: new Date().toISOString()
                });
                playNotificationSound();
+               showNativeNotification('Novo Paciente', `${data.patientName || 'Um paciente'} entrou na fila de atendimento.`);
             }
           }
         });
@@ -357,6 +359,7 @@ export const useStore = create<AppState>((set, get) => ({
               date: new Date().toISOString()
             });
             playNotificationSound();
+            showNativeNotification('Nova Mensagem', `${data.patientName || 'Um paciente'} enviou uma mensagem.`);
           }
         }
         prevUnreadStates[doc.id] = !!data.hasUnread;

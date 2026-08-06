@@ -34,6 +34,7 @@ import {
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { requestNotificationPermission } from '../utils/notifications';
 import { 
   LineChart, 
   Line, 
@@ -131,6 +132,7 @@ export function DoctorDashboardScreen() {
   };
 
   useEffect(() => {
+    requestNotificationPermission();
     const currentUnreadCount = queue.filter(p => p.hasUnread).length;
     if (currentUnreadCount > prevUnreadCount) {
       playNotificationSound();
