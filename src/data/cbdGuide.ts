@@ -467,5 +467,77 @@ export const cbdGuideData: CBDCategory[] = [
         description: "Cepa híbrida popular para relaxamento e bem-estar."
       }
     ]
+  },
+  {
+    id: "associacoes-nacionais",
+    title: "8. ASSOCIAÇÕES BRASILEIRAS (PRODUTOS NACIONAIS)",
+    description: "Formulações manipuladas e fornecidas por associações de pacientes no Brasil (Óleos integrais, Flores in natura, Pomadas e Gomas terapêuticas).",
+    dosageGuidance: "Prescrição direcionada para associações nacionais autorizadas. Titulação padrão conforme resposta clínica.",
+    products: [
+      {
+        name: "ÓLEO INTEGRAL THC/CBD 100mg/ml",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Óleo Integral (Full Spectrum)",
+        details: ["Frasco 30ml", "100mg/ml THC/CBD balanceado", "Associação Nacional"],
+        description: "Óleo integral com proporção equilibrada de THC e CBD para manejo de dores crônicas, modulação de espasticidade e distúrbios neurovegetativos."
+      },
+      {
+        name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Óleo Integral Rico em THC",
+        details: ["Frasco 30ml", "100mg/ml Predominante THC", "Associação Nacional"],
+        description: "Formulação com predominância de Tetrahidrocanabinol (THC) para analgesia potente, insônia grave e estímulo de apetite."
+      },
+      {
+        name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Óleo Integral Rico em CBD",
+        details: ["Frasco 30ml", "100mg/ml Predominante CBD", "Associação Nacional"],
+        description: "Extrato com alta concentração de Canabidiol (CBD) para controle de ansiedade, epilepsia, inflamação e neuroproteção."
+      },
+      {
+        name: "ÓLEO INTEGRAL PREDOMINANTE CBG 50mg/ml",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Óleo Integral Rico em CBG",
+        details: ["Frasco 30ml", "50mg/ml Predominante CBG", "Associação Nacional"],
+        description: "Formulação enriquecida com Canabigerol (CBG) com ação anti-inflamatória gastrointestinal, foco diurno e suporte neurológico."
+      },
+      {
+        name: "Flores in natura de cannabis sp rica em CBD 15g",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Flor in natura (Inalação/Vaporização)",
+        details: ["Embalagem 15g", "Rica em CBD", "Uso inalatório em crises"],
+        description: "Flores secas padronizadas com alto teor de CBD para vaporização em momentos de crise aguda de ansiedade, enxaqueca ou dor."
+      },
+      {
+        name: "Flores in natura de cannabis sp rica em THC 15g",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Flor in natura (Inalação/Vaporização)",
+        details: ["Embalagem 15g", "Rica em THC", "Uso inalatório em crises álgicas"],
+        description: "Flores secas padronizadas ricas em THC para rápida resposta analgésica e alívio imediato via inalação vaporizada."
+      },
+      {
+        name: "Pomada Canábica Terapêutica 500mg (50g)",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Pomada Tópica",
+        details: ["Pote 50g", "500mg Canabinoides", "Uso tópico local"],
+        description: "Pomada fitocanabinoide de uso tópico para alívio localizado de dores articulares, musculares, artrite e dermatites."
+      },
+      {
+        name: "Gomas Terapêuticas CBD/CBN 25mg - 30 unidades",
+        manufacturer: "Associação Brasileira",
+        origin: "Nacional",
+        type: "Gomas (Comestível)",
+        details: ["Pote com 30 unidades", "25mg CBD/CBN por goma", "Sabor Frutas"],
+        description: "Gomas terapêuticas para facilidade de ingestão e liberação prolongada, indicadas para indução e manutenção do sono reparador."
+      }
+    ]
   }
 ];

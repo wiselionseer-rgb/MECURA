@@ -29,7 +29,13 @@ import {
   ChevronDown,
   ChevronLeft,
   Maximize2,
-  Calendar
+  Calendar,
+  RefreshCw,
+  FileCheck,
+  HeartHandshake,
+  TrendingUp,
+  Sparkles,
+  Wallet
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
@@ -52,7 +58,7 @@ import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard
 import { cbdGuideData, CBDProduct } from '../data/cbdGuide';
 import { NotificationToast } from '../components/NotificationToast';
 
-import { generatePrescriptionPDF } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF } from '../utils/pdfGenerator';
 
 const calculateAge = (birthDateStr?: string) => {
   if (!birthDateStr) return null;
@@ -93,6 +99,9 @@ export function DoctorDashboardScreen() {
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any>(null);
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [showAccessiblePlanModal, setShowAccessiblePlanModal] = useState(false);
+  const [accessibleType, setAccessibleType] = useState<'cbd' | 'balanced' | 'thc'>('cbd');
+  const [accessibleCustomMessage, setAccessibleCustomMessage] = useState('');
   const [prescriptionInput, setPrescriptionInput] = useState('');
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<CBDProduct | null>(null);
@@ -181,6 +190,7 @@ export function DoctorDashboardScreen() {
   const handleStartConsultation = (patient: any) => {
     console.log("Starting consultation for:", patient);
     setCurrentPatient(patient);
+    setAnalysisResult(null); // Reset previous analysis to allow fresh generation
     startConsultation(patient.id);
     
     // Auto-greeting if the patient was just waiting
@@ -472,21 +482,105 @@ export function DoctorDashboardScreen() {
     });
   };
 
-  const handleGenerateAnalysis = async () => {
+  const handleGenerateMedicalReport = () => {
+    const patientAnswers = currentPatient?.answers || answers;
+    const patientBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate;
+    const patientCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf;
+    const patientPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
+
+    generateMedicalReportPDF(currentPatient?.patientName || userName || 'Paciente', messages, {
+      birthDate: patientBirthDate,
+      cpf: patientCpf,
+      phone: patientPhone,
+      answers: patientAnswers,
+      analysisText: analysisResult
+    });
+  };
+
+  const handleApplyAccessiblePlan = (
+    type: 'cbd' | 'balanced' | 'thc' = accessibleType,
+    customMsg?: string
+  ) => {
+    const patientName = currentPatient?.patientName || userName || 'Paciente';
+
+    let prodName = 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml';
+    let prodDesc = 'Óleo integral concentrado de Associação Brasileira com excelente custo-benefício. Indicado para controle de ansiedade, estresse, regulação do humor e inflamação crônica.';
+    let dosage = [
+      'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
+      'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).',
+      '01 Frasco de 30ml rende de 45 a 60 dias de tratamento contínuo.'
+    ];
+
+    if (type === 'balanced') {
+      prodName = 'ÓLEO INTEGRAL THC/CBD 100mg/ml';
+      prodDesc = 'Óleo integral balanceado de Associação Brasileira com proporção 1:1. Indicado para dores crônicas, fibromialgia, espasticidade e rigidez.';
+      dosage = [
+        'Tomar 03 gotas de 12 em 12 horas (sublingual).',
+        'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.',
+        '01 Frasco de 30ml rende até 60 dias.'
+      ];
+    } else if (type === 'thc') {
+      prodName = 'ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml';
+      prodDesc = 'Formulação com predominância de THC de Associação Brasileira. Indicado para insônia grave refratária e alívio de crises noturnas.';
+      dosage = [
+        'Tomar 04 a 06 gotas 30 minutos antes do repouso noturno.',
+        '01 Frasco de 30ml com duração média de 60 a 90 dias.'
+      ];
+    }
+
+    // 1. Send empathetic doctor chat message
+    const defaultMsg = `Olá ${patientName}! Pensando na sua acessibilidade e conforto financeiro, estruturei um **Protocolo de Entrada Acessível** através de Associação Brasileira autorizada.\n\nIniciaremos com **apenas 01 medicamento essencial de alto rendimento** (${prodName}), que dura cerca de 2 meses com a posologia inicial.\n\nVamos acompanhar sua resposta e, conforme sua evolução e condições futuras, poderemos ajustar as doses ou introduzir novos itens se houver real necessidade. Conte sempre com nosso apoio!`;
+    
+    addMessage({
+      sender: 'doctor',
+      text: customMsg || accessibleCustomMessage || defaultMsg,
+      type: 'text'
+    });
+
+    // 2. Add product prescription
+    const productItem = {
+      name: prodName,
+      brand: 'Associação Brasileira (Nacional)',
+      origin: 'Nacional',
+      type: 'Óleo Integral Acessível',
+      details: ['Frasco 30ml', 'Alto rendimento (~60 dias)', 'Associação Nacional autorizada'],
+      dosage: dosage,
+      description: prodDesc,
+      image: "https://placehold.co/400x400/10b981/ffffff?text=Associa%C3%A7%C3%A3o+Nacional"
+    };
+
+    addMessage({
+      sender: 'doctor',
+      type: 'product',
+      productData: productItem
+    });
+
+    // 3. Add prescription notes
+    const protocolNotes = `PROTOCOLO DE ENTRADA ACESSÍVEL (FASE 1):\n- Medicamento Inicial: ${prodName} (Associação Brasileira)\n- Posologia Econômica: ${dosage.join(' ')}\n- Rendimento estimado: 45 a 60 dias.\n- Fase 2 (Evolução): Reavaliação em 30 a 45 dias para verificar resposta terapêutica e evolução progressiva se necessário.`;
+
+    addMessage({
+      sender: 'doctor',
+      type: 'prescription_notes',
+      text: protocolNotes
+    });
+
+    setAddedMedications(prev => [...prev, prodName]);
+    setShowAccessiblePlanModal(false);
+    setAccessibleCustomMessage('');
+  };
+
+  const handleGenerateAnalysis = async (force: boolean = false) => {
     setExpandAnalysis(true);
-    if (analysisResult) return; // Already generated
+    if (analysisResult && !force) return; // Already generated and not forced
     
     const patientAnswers = currentPatient?.answers || answers;
     
     setIsAnalyzing(true);
+    if (force) setAnalysisResult(null);
     try {
       const prompt = `
         Atue como um Especialista Sênior em Medicina Canabinoide e Prescrição Médica de Alto Nível.
         Sua missão é fornecer uma análise clínica com PRECISÃO MÁXIMA, baseada em protocolos rigorosos e literatura médica atualizada, indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
-        Aplique raciocínio clínico step-by-step considerando a farmacocinética e farmacodinâmica dos canabinoides, garantindo assertividade quase total na sugestão de prescrição.
-        
-        Sua análise deve obrigatoriamente referenciar estudos científicos reais, ensaios clínicos robustos ou consensos médicos internacionais (Medicina Baseada em Evidências).
-        Lembre-se: esta análise é um suporte avançado à decisão clínica do médico.
         
         Dados Clínicos do Paciente:
         - Queixa Principal / Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
@@ -496,25 +590,36 @@ export function DoctorDashboardScreen() {
         - Dados Biométricos: Altura ${patientAnswers?.height || 'Não informada'}m, Peso ${patientAnswers?.weight || 'Não informada'}kg, Sexo ${patientAnswers?.sex || 'Não informada'}
         - Histórico Médico: Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}), Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' : 'Não'}), Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}), Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' : 'Não'})
         
-        DIRETRIZ RESTRITA DE PRESCRIÇÃO:
-        Você DEVE recomendar EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo. Correlacione meticulosamente a fisiopatologia do paciente com o perfil canabinoide (CBD, THC, CBG, CBN) de cada produto.
-        
-        CATÁLOGO OFICIAL DISPONÍVEL:
+        DIRETRIZ DE PRESCRIÇÃO (IMPORTADOS E NACIONAIS):
+        Você DEVE sugerir DUAS frentes de tratamento para o médico escolher, cobrindo opções Importadas e Nacionais.
+        1. Opção de Importados: Utilize EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo.
+        2. Opção de Associações Nacionais: Sugira formulações genéricas ou de associações brasileiras (ex: Óleo Full Spectrum CBD/THC, Pomadas, Gomas, ou Flores in natura), adequadas à fisiopatologia do paciente.
+
+        CATÁLOGO OFICIAL DISPONÍVEL (Para a Opção Importada):
         ${cbdGuideData.map(cat => `Categoria: ${cat.title}\n${cat.products.map(p => `- ${p.name} (${p.type})`).join('\n')}`).join('\n\n')}
         
         Formato de Saída Exigido (Markdown estruturado e clínico):
         1. Diagnóstico Sindrômico e Avaliação Clínica
-        2. Racional Terapêutico Fisiopatológico (Interação exata com o Sistema Endocanabinoide)
+        2. Racional Terapêutico Fisiopatológico (Interação com o Sistema Endocanabinoide)
         3. Protocolo de Titulação e Posologia Sugerida
         4. Medicina Baseada em Evidências (Citações estruturadas de estudos reais)
         5. Manejo de Riscos (Interações no citocromo P450 e contraindicações)
         
         6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita, NÃO USE TABELAS):
-           Para cada produto sugerido, use EXATAMENTE este bloco:
-           **Medicamento**: (Nome fiel ao catálogo em negrito)
-           **Indicação/Doença**: (Condição primária alvo em negrito)
-           **Modo de Uso**: (Posologia inicial e titulação em negrito, ex: **2 gotas**, **12 em 12 horas**)
-           **Observações**: (Dicas cruciais de biodisponibilidade e administração)
+           
+           **OPÇÕES IMPORTADAS (CATÁLOGO OFICIAL):**
+           (Para cada produto importado sugerido, use EXATAMENTE este bloco)
+           **Medicamento**: (Nome fiel ao catálogo)
+           **Indicação/Doença**: (Condição primária alvo)
+           **Modo de Uso**: (Posologia e titulação, ex: 2 gotas, 12 em 12 horas)
+           **Observações**: (Dicas de administração)
+
+           **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):**
+           (Para cada produto nacional sugerido - Óleos, Pomadas, Gomas ou Flores in natura, use EXATAMENTE este bloco)
+           **Medicamento**: (Descrição da formulação, ex: Óleo CBD 50mg/ml + THC 2mg/ml - Associação Nacional)
+           **Indicação/Doença**: (Condição primária alvo)
+           **Modo de Uso**: (Posologia e titulação)
+           **Observações**: (Dicas cruciais de administração e via de uso)
 
         IMPORTANTE: Destaque em **negrito** todos os fármacos, diagnósticos, enzimas (ex: CYP3A4) e dosagens para escaneabilidade médica de alto rendimento. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
       `;
@@ -543,7 +648,12 @@ export function DoctorDashboardScreen() {
   };
 
   const parseMedications = (text: string) => {
-    const medications = [];
+    const medications: Array<{
+      name: string;
+      dosage: string;
+      instructions: string;
+      origin: 'Importado' | 'Nacional';
+    }> = [];
     
     // Try parsing as a Markdown table first
     if (text.includes('| Medicamento |') || text.includes('| **Medicamento** |') || text.includes('|Medicamento|')) {
@@ -560,10 +670,13 @@ export function DoctorDashboardScreen() {
         if (inTable && line.trim().startsWith('|')) {
           const cols = line.split('|').map(c => c.trim()).filter(c => c !== '');
           if (cols.length >= 3) {
+            const rawName = cols[0].replace(/\*\*/g, '').trim();
+            const isNational = /ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL/i.test(rawName);
             medications.push({
-              name: cols[0].replace(/\*\*/g, '').trim(),
+              name: rawName,
               dosage: cols[2].replace(/\*\*/g, '').trim(),
-              instructions: cols[3] ? cols[3].replace(/\*\*/g, '').trim() : ''
+              instructions: cols[3] ? cols[3].replace(/\*\*/g, '').trim() : '',
+              origin: isNational ? 'Nacional' : 'Importado'
             });
           }
         } else if (inTable && !line.trim().startsWith('|')) {
@@ -572,25 +685,30 @@ export function DoctorDashboardScreen() {
       }
     }
 
-    // If table parsing found nothing, try the list format
+    // If table parsing found nothing, try the list format with regex to handle inline fields
     if (medications.length === 0) {
-      const lines = text.split('\n');
-      let currentMed = null;
-      
-      for (let line of lines) {
-        if (line.match(/\bMedicamento\b/i) && line.includes(':')) {
-          if (currentMed && currentMed.name) medications.push(currentMed);
-          const parts = line.split(/Medicamento.*?:/i);
-          currentMed = { name: parts[1]?.trim().replace(/\*/g, '').replace(/^- /, '').trim() || '', dosage: '', instructions: '' };
-        } else if (line.match(/\bModo de Uso\b/i) && line.includes(':') && currentMed) {
-          const parts = line.split(/Modo de Uso.*?:/i);
-          currentMed.dosage = parts[1]?.trim().replace(/\*/g, '') || '';
-        } else if (line.match(/\bObservações\b/i) && line.includes(':') && currentMed) {
-          const parts = line.split(/Observações.*?:/i);
-          currentMed.instructions = parts[1]?.trim().replace(/\*/g, '') || '';
+      const blocks = text.split(/\bMedicamento\b/i);
+      for (let i = 1; i < blocks.length; i++) {
+        const block = blocks[i];
+        
+        // Extract fields using Regex, handling possible inline text
+        const nameMatch = block.match(/.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|\bObservações\b|$)/is);
+        const dosageMatch = block.match(/\bModo de Uso\b.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bObservações\b|$)/is);
+        const instructionsMatch = block.match(/\bObservações\b.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|$)/is);
+        
+        if (nameMatch && nameMatch[1].trim()) {
+          const rawName = nameMatch[1].replace(/\*\*/g, '').replace(/^- /, '').replace(/\*$/, '').trim();
+          const isNational = /ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL/i.test(rawName) ||
+                             block.includes('Associação') || block.includes('Nacional');
+
+          medications.push({
+            name: rawName,
+            dosage: dosageMatch ? dosageMatch[1].replace(/\*\*/g, '').trim() : '',
+            instructions: instructionsMatch ? instructionsMatch[1].replace(/\*\*/g, '').trim() : '',
+            origin: isNational ? 'Nacional' : 'Importado'
+          });
         }
       }
-      if (currentMed && currentMed.name) medications.push(currentMed);
     }
     
     return medications;
@@ -621,13 +739,13 @@ export function DoctorDashboardScreen() {
       type: 'product',
       productData: {
         name: foundProduct ? foundProduct.name : med.name,
-        brand: foundProduct ? foundProduct.manufacturer : 'GreenBudzCBD',
-        origin: foundProduct ? foundProduct.origin : 'Importado',
+        brand: foundProduct ? foundProduct.manufacturer : 'Associação Brasileira',
+        origin: foundProduct ? foundProduct.origin : 'Nacional',
         details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions],
         dosage: [med.dosage],
         description: foundProduct && foundProduct.description ? foundProduct.description : med.instructions,
-        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : '',
-        image: foundProduct && foundProduct.image ? foundProduct.image : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop",
+        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : 'Produto Nacional Autorizado',
+        image: foundProduct && foundProduct.image ? foundProduct.image : "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop",
         priceUSD: foundProduct && foundProduct.priceUSD ? foundProduct.priceUSD : undefined
       }
     });
@@ -959,7 +1077,36 @@ export function DoctorDashboardScreen() {
               </div>
               <div>
                 <h4 className="text-white font-bold text-base">Baixar PDF da Receita</h4>
-                <p className="text-xs text-mecura-silver">Gerar documento em PDF formatado</p>
+                <p className="text-xs text-mecura-silver">Gerar receita médica oficial formatada</p>
+              </div>
+            </button>
+
+            <button
+              onClick={handleGenerateMedicalReport}
+              className="w-full p-4 bg-mecura-surface border border-mecura-elevated rounded-2xl flex items-center gap-4 text-left hover:border-amber-500/50 transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 flex-shrink-0">
+                <FileCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-white font-bold text-base">Gerar Laudo Médico (PDF)</h4>
+                <p className="text-xs text-mecura-silver">Laudo completo com diagnóstico, fisiopatologia e tratamentos</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setShowAccessiblePlanModal(true)}
+              className="w-full p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-4 text-left hover:border-emerald-500/60 transition-all shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+            >
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                <HeartHandshake className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-white font-bold text-base">Plano de Entrada Acessível</h4>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">Custo Reduzido</span>
+                </div>
+                <p className="text-xs text-mecura-silver">Iniciar com 1 produto de associação e evoluir gradualmente</p>
               </div>
             </button>
 
@@ -990,24 +1137,41 @@ export function DoctorDashboardScreen() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+              <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0 items-center">
                 <button 
                   onClick={() => setShowHistoryModal(true)}
                   className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
+                  title="Histórico de Consultas"
                 >
                   <FileText className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Histórico</span>
                 </button>
                 <button 
                   onClick={() => setShowPrescriptionModal(true)}
                   className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-neon text-black rounded-xl text-xs md:text-sm font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1 md:gap-2 shadow-[0_0_20px_rgba(166,255,0,0.15)] whitespace-nowrap"
+                  title="Prescrever Medicamentos"
                 >
                   <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
                 </button>
                 <button 
-                  onClick={handleGeneratePDF}
-                  className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
+                  onClick={() => setShowAccessiblePlanModal(true)}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-emerald-500/25 hover:border-emerald-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                  title="Prescrever Plano Acessível de Associação Nacional com Evolução Escalonada"
                 >
-                  <Download className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">PDF</span>
+                  <HeartHandshake className="w-3 h-3 md:w-4 md:h-4 text-emerald-400" /> <span className="hidden md:inline">Plano Acessível</span><span className="md:hidden">Acessível</span>
+                </button>
+                <button 
+                  onClick={handleGeneratePDF}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light hover:text-mecura-neon transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
+                  title="Baixar Receita Médica (PDF)"
+                >
+                  <Download className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Receita</span><span className="md:hidden">PDF</span>
+                </button>
+                <button 
+                  onClick={handleGenerateMedicalReport}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-amber-500/20 hover:border-amber-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(245,158,11,0.1)]"
+                  title="Gerar Laudo Médico Detalhado (PDF)"
+                >
+                  <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-amber-400" /> <span className="hidden md:inline">Laudo Médico</span><span className="md:hidden">Laudo</span>
                 </button>
                 <button 
                   onClick={handleFinishConsultation}
@@ -1434,7 +1598,7 @@ export function DoctorDashboardScreen() {
           {/* AI Analysis Button */}
           <div className="space-y-4">
             <div 
-              onClick={handleGenerateAnalysis}
+              onClick={() => handleGenerateAnalysis()}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && handleGenerateAnalysis()}
@@ -1450,16 +1614,29 @@ export function DoctorDashboardScreen() {
               </div>
               <div className="flex items-center gap-2">
                 {analysisResult && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowAnalysisModal(true);
-                    }}
-                    className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
-                    title="Expandir Análise"
-                  >
-                    <Maximize2 className="w-5 h-5" />
-                  </button>
+                  <>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleGenerateAnalysis(true);
+                      }}
+                      disabled={isAnalyzing}
+                      className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
+                      title="Re-gerar Análise (Importados e Nacionais)"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin text-mecura-neon' : ''}`} />
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAnalysisModal(true);
+                      }}
+                      className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
+                      title="Expandir Análise"
+                    >
+                      <Maximize2 className="w-5 h-5" />
+                    </button>
+                  </>
                 )}
                 {analysisResult && (
                   <ChevronDown className={`w-6 h-6 text-mecura-silver transition-transform duration-300 ${expandAnalysis ? 'rotate-180' : ''}`} />
@@ -1509,10 +1686,14 @@ export function DoctorDashboardScreen() {
                       </div>
                       
                       <div className="mt-6 pt-4 border-t border-mecura-elevated">
-                        <h4 className="text-sm font-bold text-white mb-3">Medicamentos Sugeridos</h4>
-                        <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-bold text-white">Medicamentos Sugeridos</h4>
+                          <span className="text-[10px] text-mecura-silver">Importados & Associações</span>
+                        </div>
+                        <div className="space-y-2.5">
                           {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => {
                             const isAdded = addedMedications.includes(med.name);
+                            const isNational = med.origin === 'Nacional';
                             return (
                               <button
                                 key={idx}
@@ -1529,14 +1710,41 @@ export function DoctorDashboardScreen() {
                                     <CheckCircle className="w-4 h-4" />
                                   </div>
                                 )}
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                    isNational 
+                                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                  }`}>
+                                    {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
+                                  </span>
+                                </div>
                                 <h5 className={`font-bold text-xs mb-0.5 transition-colors ${
                                   isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
                                 }`}>{med.name}</h5>
-                                <p className="text-[10px] text-mecura-silver pr-8">{med.dosage}</p>
+                                <p className="text-[10px] text-mecura-silver pr-8 leading-tight">{med.dosage}</p>
                               </button>
                             );
                           })}
                         </div>
+                      </div>
+
+                      {/* Accessible Plan Callout Banner */}
+                      <div className="mt-4 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl relative overflow-hidden">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <HeartHandshake className="w-4 h-4 text-emerald-400" />
+                          <h5 className="text-xs font-bold text-emerald-300">Paciente com Restrição Orçamentária?</h5>
+                        </div>
+                        <p className="text-[11px] text-mecura-silver mb-2.5 leading-snug">
+                          Prescreva o plano de entrada com 1 frasco de alto rendimento de Associação Nacional e evolução progressiva.
+                        </p>
+                        <button
+                          onClick={() => setShowAccessiblePlanModal(true)}
+                          className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                          Aplicar Protocolo Acessível
+                        </button>
                       </div>
 
                       <div className="mt-8 pt-4 border-t border-mecura-elevated flex items-start gap-2">
@@ -1764,10 +1972,19 @@ export function DoctorDashboardScreen() {
                 
                 {analysisResult && (
                   <div className="mt-8 pt-8 border-t border-mecura-elevated">
-                    <h3 className="text-xl font-bold text-white mb-6">Medicamentos Sugeridos</h3>
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="text-xl font-bold text-white">Medicamentos Sugeridos</h3>
+                        <p className="text-sm text-mecura-silver">Selecione opções importadas ou nacionais de associações brasileiras</p>
+                      </div>
+                      <span className="text-xs px-3 py-1 bg-mecura-surface border border-mecura-elevated rounded-full text-mecura-silver">
+                        {parseMedications(analysisResult).filter(med => med.name).length} opções disponíveis
+                      </span>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => {
                         const isAdded = addedMedications.includes(med.name);
+                        const isNational = med.origin === 'Nacional';
                         return (
                           <button
                             key={idx}
@@ -1784,10 +2001,19 @@ export function DoctorDashboardScreen() {
                                 <CheckCircle className="w-5 h-5" />
                               </div>
                             )}
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                isNational 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                  : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                              }`}>
+                                {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
+                              </span>
+                            </div>
                             <h4 className={`font-bold mb-1 transition-colors ${
                               isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
                             }`}>{med.name}</h4>
-                            <p className="text-xs text-mecura-silver mb-2 pr-10">{med.dosage}</p>
+                            <p className="text-xs text-mecura-silver mb-3 pr-10">{med.dosage}</p>
                             <span className="text-[10px] font-bold text-mecura-neon uppercase">
                               {isAdded ? 'Adicionado ao Chat' : 'Adicionar ao Chat'}
                             </span>
@@ -1807,12 +2033,32 @@ export function DoctorDashboardScreen() {
                     Lembrete: A IA é uma ferramenta de suporte. A decisão final é sempre do médico prescritor.
                   </p>
                 </div>
-                <button 
-                  onClick={() => setShowAnalysisModal(false)}
-                  className="px-8 py-3 bg-mecura-surface border border-mecura-elevated rounded-xl text-base font-bold text-white hover:bg-mecura-surface-light transition-all hover:scale-105 active:scale-95"
-                >
-                  Fechar Análise
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      setShowAccessiblePlanModal(true);
+                    }}
+                    className="px-5 py-2.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-sm font-bold hover:bg-emerald-500/30 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                  >
+                    <HeartHandshake className="w-4 h-4 text-emerald-400" />
+                    Plano Acessível (Entrada)
+                  </button>
+                  <button 
+                    onClick={() => {
+                      handleGenerateMedicalReport();
+                    }}
+                    className="px-5 py-2.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-xl text-sm font-bold hover:bg-amber-500/30 transition-all flex items-center gap-2"
+                  >
+                    <FileCheck className="w-4 h-4 text-amber-400" />
+                    Gerar Laudo Médico (PDF)
+                  </button>
+                  <button 
+                    onClick={() => setShowAnalysisModal(false)}
+                    className="px-8 py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-sm font-bold text-white hover:bg-mecura-surface-light transition-all hover:scale-105 active:scale-95"
+                  >
+                    Fechar Análise
+                  </button>
+                </div>
               </div>
             </div>
         </div>
@@ -1840,6 +2086,28 @@ export function DoctorDashboardScreen() {
             </div>
             
             <div className="p-6 space-y-6 overflow-y-auto">
+              {/* Accessible Plan Shortcut Banner */}
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                    <HeartHandshake className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-emerald-300">Paciente precisa de opção mais acessível?</h4>
+                    <p className="text-xs text-mecura-silver">Inicie com 1 medicamento de associação e posologia escalonada</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPrescriptionModal(false);
+                    setShowAccessiblePlanModal(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition-all whitespace-nowrap shadow-sm"
+                >
+                  Abrir Protocolo Acessível
+                </button>
+              </div>
+
               <div className="space-y-3">
                 <label className="text-sm font-bold text-mecura-silver uppercase tracking-wider">
                   Orientações e Prescrição Detalhada
@@ -2249,6 +2517,234 @@ export function DoctorDashboardScreen() {
                     </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Modal de Plano de Entrada Acessível (Associação Nacional + Evolução Escalonada) */}
+        {showAccessiblePlanModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+              onClick={() => setShowAccessiblePlanModal(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-3xl bg-[#0F1017] border border-emerald-500/30 rounded-3xl shadow-[0_0_50px_rgba(16,185,129,0.15)] overflow-hidden flex flex-col max-h-[92vh] z-10"
+            >
+              {/* Modal Header */}
+              <div className="p-6 md:p-8 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-950/40 via-emerald-900/20 to-transparent flex justify-between items-start">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 flex-shrink-0 shadow-lg">
+                    <HeartHandshake className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-xl md:text-2xl font-bold text-white tracking-tight">
+                        Protocolo de Entrada Acessível
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        Associação Nacional
+                      </span>
+                    </div>
+                    <p className="text-xs md:text-sm text-mecura-silver leading-relaxed">
+                      Alternativa com excelente custo-benefício para iniciar com <strong>01 frasco de alto rendimento (~60 dias)</strong> e evoluir progressivamente conforme a resposta clínica e as condições do paciente.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAccessiblePlanModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-full text-mecura-silver hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                {/* Step 1: Select Formulation */}
+                <div>
+                  <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[10px] font-bold border border-emerald-500/30">1</span>
+                    Selecione a Formulação de Entrada (Frasco Único de 30ml)
+                  </label>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                    {/* Option CBD */}
+                    <div 
+                      onClick={() => setAccessibleType('cbd')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleType === 'cbd'
+                          ? 'bg-emerald-950/40 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)] ring-1 ring-emerald-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-emerald-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleType === 'cbd' && (
+                        <div className="absolute top-2 right-2 text-emerald-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30 inline-block mb-2">
+                          Ansiedade / Estresse / Foco
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          Óleo Integral CBD 100mg/ml
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Alta concentração de Canabidiol. Ação ansiolítica, reguladora do humor e anti-inflamatória.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-emerald-400 font-semibold flex items-center justify-between">
+                        <span>30ml • Rende ~60 dias</span>
+                        <span className="text-white/80">3 gotas 2x/dia</span>
+                      </div>
+                    </div>
+
+                    {/* Option Balanced */}
+                    <div 
+                      onClick={() => setAccessibleType('balanced')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleType === 'balanced'
+                          ? 'bg-emerald-950/40 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)] ring-1 ring-emerald-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-emerald-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleType === 'balanced' && (
+                        <div className="absolute top-2 right-2 text-emerald-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 bg-teal-500/20 px-2 py-0.5 rounded border border-teal-500/30 inline-block mb-2">
+                          Dor Crônica / Rigidez / 1:1
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          Óleo Integral THC/CBD 100mg/ml
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Proporção equilibrada 1:1 para analgesia, controle de espasmos musculares e fibromialgia.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-teal-400 font-semibold flex items-center justify-between">
+                        <span>30ml • Rende ~60 dias</span>
+                        <span className="text-white/80">3 gotas 12/12h</span>
+                      </div>
+                    </div>
+
+                    {/* Option THC */}
+                    <div 
+                      onClick={() => setAccessibleType('thc')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleType === 'thc'
+                          ? 'bg-emerald-950/40 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)] ring-1 ring-emerald-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-emerald-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleType === 'thc' && (
+                        <div className="absolute top-2 right-2 text-emerald-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 inline-block mb-2">
+                          Insônia Grave / Dor Noturna
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          Óleo Integral THC 100mg/ml
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Predominância de THC para indução fisiológica do sono e alívio rápido de crises álgicas noturnas.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-amber-400 font-semibold flex items-center justify-between">
+                        <span>30ml • Rende ~60-90 dias</span>
+                        <span className="text-white/80">4-6 gotas à noite</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 2: Evolution Timeline */}
+                <div className="p-4 bg-mecura-surface/30 border border-mecura-elevated rounded-2xl">
+                  <label className="text-xs font-bold text-white uppercase tracking-wider block mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    Plano de Evolução do Tratamento
+                  </label>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/20 rounded-xl">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <h5 className="text-xs font-bold text-emerald-300">Fase 1: Início Acessível (Meses 1 e 2)</h5>
+                      </div>
+                      <p className="text-[11px] text-mecura-silver leading-relaxed">
+                        Uso exclusivo do frasco de Associação Nacional com titulação lenta (inicia com 3 gotas e ajusta 1 gota a cada 5 dias). Custo previsível e baixo consumo.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 bg-blue-950/20 border border-blue-500/20 rounded-xl">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                        <h5 className="text-xs font-bold text-blue-300">Fase 2: Reavaliação (Mês 2 em diante)</h5>
+                      </div>
+                      <p className="text-[11px] text-mecura-silver leading-relaxed">
+                        Retorno clínico. Se houver controle adequado (superior a 70%), mantém apenas a monoterapia. Caso persistam sintomas específicos e haja viabilidade financeira, associar pomada ou gomas.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3: Empathetic Patient Message Preview */}
+                <div>
+                  <label className="text-xs font-bold text-white uppercase tracking-wider block mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-emerald-400" />
+                      Mensagem Acolhedora para o Paciente (Chat)
+                    </span>
+                    <span className="text-[10px] text-mecura-silver lowercase font-normal">(Editável antes do envio)</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={accessibleCustomMessage || `Olá ${currentPatient?.patientName || userName || 'Paciente'}! Pensando na sua acessibilidade e conforto financeiro, estruturei um Protocolo de Entrada Acessível através de Associação Brasileira autorizada.\n\nIniciaremos com apenas 01 medicamento essencial de alto rendimento que dura cerca de 2 meses com a posologia inicial.\n\nVamos acompanhar sua resposta e, conforme sua evolução e condições futuras, poderemos ajustar as doses ou introduzir novos itens se houver real necessidade. Conte sempre com nosso apoio!`}
+                    onChange={(e) => setAccessibleCustomMessage(e.target.value)}
+                    className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3 text-xs md:text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all resize-none leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 md:p-8 border-t border-emerald-500/20 bg-mecura-surface/30 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <button 
+                  onClick={() => setShowAccessiblePlanModal(false)}
+                  className="w-full sm:w-auto px-6 py-3 bg-transparent border border-mecura-elevated rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Cancelar
+                </button>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <button 
+                    onClick={() => {
+                      handleGeneratePDF();
+                    }}
+                    className="flex-1 sm:flex-none px-4 py-3 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-semibold text-white hover:bg-mecura-surface-light transition-all flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4 text-mecura-silver" />
+                    Baixar Receita PDF
+                  </button>
+                  <button 
+                    onClick={() => handleApplyAccessiblePlan(accessibleType, accessibleCustomMessage)}
+                    className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-bold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.25)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Prescrever e Enviar ao Paciente
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

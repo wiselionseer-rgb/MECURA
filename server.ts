@@ -130,8 +130,8 @@ async function startServer() {
     const isPain = /dor|inflama|coluna|lombar|muscular|artrite|fibromialgia/i.test(promptText);
     const isInsomnia = /sono|insônia|dormir|acordar/i.test(promptText);
     
-    let primaryCondition = "Ansiedade e Estresse Crônico";
-    let targetProducts = [
+    let primaryCondition = "Ansiedade Generalizada, Estresse Crônico e Modulação do Humor";
+    let importedProducts = [
       {
         name: "GreenBudzCBD CalmVibe CBD 6000mg + Mint",
         indication: "Ansiedade Generalizada, Estresse e Modulação do Humor",
@@ -146,9 +146,30 @@ async function startServer() {
       }
     ];
 
+    let nationalProducts = [
+      {
+        name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml",
+        indication: "Controle de Ansiedade, Estresse Crônico e Modulação do Humor",
+        usage: "Tomar **05 a 10 gotas** de manhã e **05 gotas** à tarde.",
+        notes: "01 Frasco de 30ml - Associação Brasileira. Uso sublingual contínuo com titulação progressiva."
+      },
+      {
+        name: "ÓLEO INTEGRAL PREDOMINANTE CBG 50mg/ml",
+        indication: "Foco Diurno, Neuroproteção e Equilíbrio Emocional",
+        usage: "Tomar **05 gotas** à tarde após refeição.",
+        notes: "01 Frasco de 30ml - Associação Brasileira. Potencializa o efeito modulador sem sedação diurna."
+      },
+      {
+        name: "Gomas Terapêuticas CBD/CBN 25mg - 30 unidades",
+        indication: "Alívio Rápido de Picos de Tensão e Estresse",
+        usage: "Mastigar **1 goma** ao final da tarde ou quando necessário.",
+        notes: "01 Pote com 30 unidades - Associação Brasileira. Absorção gradual e prolongada."
+      }
+    ];
+
     if (isPain) {
-      primaryCondition = "Dor Crônica e Processos Inflamatórios";
-      targetProducts = [
+      primaryCondition = "Dor Crônica, Processos Inflamatórios e Tensão Muscular";
+      importedProducts = [
         {
           name: "GreenBudzCBD Deep Vibe CBD 3000mg + Indica Terps",
           indication: "Alívio de Dores Crônicas, Inflamação e Tensão Muscular",
@@ -162,9 +183,36 @@ async function startServer() {
           notes: "Titular a cada 3 a 5 dias conforme resposta álgica do paciente."
         }
       ];
+
+      nationalProducts = [
+        {
+          name: "ÓLEO INTEGRAL THC/CBD 100mg/ml",
+          indication: "Analgesia Potente, Modulação de Dores Neuropáticas e Inflamatórias",
+          usage: "Tomar **10 gotas** de **12 em 12 horas** (sublingual).",
+          notes: "01 Frasco de 30ml - Associação Brasileira. Efeito entourage equilibrado com alta eficácia analgésica."
+        },
+        {
+          name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml",
+          indication: "Miorrelaxamento Noturno e Crises Álgicas Intrusivas",
+          usage: "Tomar **05 gotas** à noite 30 minutos antes do repouso.",
+          notes: "01 Frasco de 30ml - Associação Brasileira. Potente ação moduladora das vias nociceptivas centrais."
+        },
+        {
+          name: "Pomada Canábica Terapêutica 500mg (50g)",
+          indication: "Alívio Tópico Localizado para Articulações e Músculos Doloridos",
+          usage: "Aplicar fina camada sobre a região afetada **2 a 3 vezes ao dia**, massageando suavemente.",
+          notes: "01 Pote 50g - Associação Brasileira. Ação anti-inflamatória tópica sem efeitos sistêmicos."
+        },
+        {
+          name: "Flores in natura de cannabis sp rica em THC 15g",
+          indication: "Controle de Crises Agudas e Picos de Dor Intratável (Resgate)",
+          usage: "Inalar **1g** via vaporizador medicinal nas crises.",
+          notes: "01 Frasco de 15g - Associação Brasileira. Início de ação ultrarrápido (1 a 3 minutos)."
+        }
+      ];
     } else if (isInsomnia) {
-      primaryCondition = "Distúrbios do Sono e Insônia Crônica";
-      targetProducts = [
+      primaryCondition = "Distúrbios do Sono, Insônia Crônica e Fragmentação Noturna";
+      importedProducts = [
         {
           name: "Drops By GreenBudzCBD Gummies 1mg THC 2.5mg CBN 10mg CBD per ct Lullaby - 20ct",
           indication: "Indução e Manutenção do Sono Reparador",
@@ -178,6 +226,27 @@ async function startServer() {
           notes: "Uso sublingual para início de ação em 15-30 minutos."
         }
       ];
+
+      nationalProducts = [
+        {
+          name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml",
+          indication: "Indução Fisiológica e Estabilização dos Ciclos do Sono",
+          usage: "Tomar **05 a 08 gotas** à noite 30 minutos antes de dormir.",
+          notes: "01 Frasco de 30ml - Associação Brasileira. Facilita o adormecer e prolonga o sono profundo (N3/REM)."
+        },
+        {
+          name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml",
+          indication: "Manutenção do Tônus Ansiolítico e Prevenção de Despertares Precoces",
+          usage: "Tomar **05 gotas** de manhã e **05 gotas** no fim da tarde.",
+          notes: "01 Frasco de 30ml - Associação Brasileira. Regulação circadiana sem sonolência diurna residual."
+        },
+        {
+          name: "Flores in natura de cannabis sp rica em CBD 15g",
+          indication: "Indução Imediata de Relaxamento e Manejo de Crises de Ansiedade Noturna",
+          usage: "Inalar **1g** via vaporizador medicinal 15 minutos antes de deitar.",
+          notes: "01 Frasco de 15g - Associação Brasileira. Alívio imediato da hiperexcitabilidade pré-sono."
+        }
+      ];
     }
 
     return `# Avaliação do Quadro Clínico
@@ -186,15 +255,17 @@ O paciente apresenta manifestação clínica compatível com quadro de **${prima
 # Racional Terapêutico (Sistema Endocanabinoide)
 O tratamento visa a estimulação e modulação alostérica dos receptores **CB1** e **CB2**, além de agonismo indireto sobre receptores serotoninérgicos **5-HT1A** e canais **TRPV1**. 
 - O **Canabidiol (CBD)** atua inibindo a recaptação de anandamida e a enzima FAAH, reduzindo a hiperexcitabilidade neuronal e mediadores pró-inflamatórios (IL-6, TNF-alfa).
+- O **Tetrahidrocanabinol (THC)** em dosagens microdosadas e controladas potencializa o tônus analgésico e sinergia de sono.
 - O **Efeito Comitiva (Entourage Effect)** obtido por fórmulas Full Spectrum otimiza a biodisponibilidade através de terpenos sinérgicos (Mirceno, Linalol, Beta-cariofileno).
 
-# Sugestões de Fitocanabinoides
-- **Proporção Predominante**: Formulação com alta proporção de **CBD (Full Spectrum)**, complementada por canabinoides secundários (**CBG/CBN**) para ação multimodal.
+# Sugestões de Fitocanabinoides e Vias de Administração
+- **Opção Importada**: Produtos padronizados de alta pureza e formulação farmacêutica do catálogo oficial.
+- **Opção Nacional (Associações Brasileiras)**: Formulações manipuladas acessíveis (Óleos integrais concentrados, Pomadas tópicas, Gomas e Flores *in natura* para vaporização).
 - **Estratégia de Titulação**: Princípio *"Start Low, Go Slow"* — iniciar com dosagens basais e titular a cada 3 a 5 dias conforme tolerabilidade e desfecho clínico.
 
 # Evidências Científicas e Estudos Base
-- **Estudos Clínicos Controlados**: Ensaios clínicos randomizados demonstram que canabinoides orais reduzem significativamente escalas de severidade de sintomas (HAM-A, VAS de dor e PSQI para qualidade do sono).
-- **Consenso Internacional de Dosagem Canabinoide (2021)**: Suporta o uso de extratos padronizados com acompanhamento médico continuado.
+- **Estudos Clínicos Controlados**: Ensaios clínicos randomizados demonstram que canabinoides orais e inalatórios reduzem significativamente escalas de severidade de sintomas (HAM-A, VAS de dor e PSQI para qualidade do sono).
+- **Consenso Internacional de Dosagem Canabinoide (2021)**: Suporta o uso de extratos padronizados e formulações associativas com acompanhamento médico continuado.
 
 # Precauções e Interações Medicamentosas
 - **Metabolismo Hepático**: Monitorar possíveis interações via citocromo P450 (**CYP3A4** e **CYP2C19**), especialmente se o paciente fizer uso concomitante de outros fármacos de metabolização hepática.
@@ -202,7 +273,17 @@ O tratamento visa a estimulação e modulação alostérica dos receptores **CB1
 
 # **RESUMO DE PRESCRIÇÃO SUGERIDA**
 
-${targetProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doença**: **${p.indication}**\n**Modo de Uso**: ${p.usage}\n**Observações**: ${p.notes}`).join('\n\n')}
+### **OPÇÕES IMPORTADAS (CATÁLOGO OFICIAL)**
+${importedProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doença**: **${p.indication}**\n**Modo de Uso**: ${p.usage}\n**Observações**: ${p.notes}`).join('\n\n')}
+
+### **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS)**
+${nationalProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doença**: **${p.indication}**\n**Modo de Uso**: ${p.usage}\n**Observações**: ${p.notes}`).join('\n\n')}
+
+### **PLANO DE ENTRADA ACESSÍVEL (CUSTO REDUZIDO / ASSOCIAÇÃO INICIAL)**
+- **Estratégia de Acessibilidade**: Para pacientes com restrição orçamentária que não tenham condições de adquirir todos os itens no início, adotar o **Protocolo de Entrada Escalonado com Frasco Único de Associação Nacional** (Alto rendimento: 45 a 60 dias por frasco).
+- **Fase 1 (Início Acessível / Frasco Essencial)**: Prescrever **${nationalProducts[0]?.name || 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml'}** (Associação Brasileira).
+  - *Posologia Econômica*: Iniciar com **03 gotas pela manhã e 03 gotas à noite**, aumentando 01 gota a cada 05 dias até atingir a dose de manutenção (rendimento prolongado do frasco).
+- **Fase 2 (Evolução Conforme Necessidade e Condições Financeiras)**: Reavaliação clínica em 30 a 45 dias. Caso o paciente atinja estabilidade satisfatória, mantém-se a monoterapia econômica. Havendo queixas residuais e viabilidade orçamentária futura, introduzir formulação tópica ou complementar.
 `;
   }
 
@@ -223,7 +304,7 @@ ${targetProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doença
         });
         
         const response = await ai.models.generateContent({
-          model: 'gemini-3.1-pro-preview',
+          model: 'gemini-2.5-flash',
           contents: prompt,
         });
 
