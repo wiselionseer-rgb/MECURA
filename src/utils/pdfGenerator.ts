@@ -2,10 +2,26 @@ import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
 import { Message, useStore } from '../store/useStore';
 
+export interface PrescriptionItemData {
+  name: string;
+  brand?: string;
+  origin?: string;
+  type?: string;
+  dosage: string[];
+  description?: string;
+}
+
 export interface PatientPrescriptionData {
   birthDate?: string;
   cpf?: string;
   phone?: string;
+  emissionDate?: string;
+  customPatientName?: string;
+  customDoctorName?: string;
+  customDoctorCrm?: string;
+  customDoctorSpecialty?: string;
+  customItems?: PrescriptionItemData[];
+  customNotes?: string;
 }
 
 export const generatePrescriptionPDF = (
@@ -56,7 +72,8 @@ export const generatePrescriptionPDF = (
   doc.text("Nome:", 20, 72);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
-  const sanitizedUserName = (userName || 'Paciente').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+  const rawUserName = patientData?.customPatientName || userName || 'Paciente';
+  const sanitizedUserName = rawUserName.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
   doc.text(`${sanitizedUserName}`, 35, 72);
   
   doc.setFont("helvetica", "bold");
@@ -64,7 +81,8 @@ export const generatePrescriptionPDF = (
   doc.text("Emissão:", 140, 72);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
-  doc.text(`${format(new Date(), 'dd/MM/yyyy')}`, 158, 72);
+  const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
+  doc.text(`${emissionDateStr}`, 158, 72);
 
   // Linha 2: Data de Nascimento e CPF
   const storeState = useStore.getState();
@@ -95,95 +113,107 @@ export const generatePrescriptionPDF = (
   doc.line(20, 99, 190, 99);
   
   let yPos = 110;
-  const prescribedItems = messages.filter(m => 
-    (m.type === 'product' && m.productData) || 
-    (m.type === 'prescription_notes' && m.text)
-  );
+
+  // Use custom items if provided, or parse from chat messages
+  let itemsToRender: PrescriptionItemData[] = [];
+  if (patientData?.customItems && patientData.customItems.length > 0) {
+    itemsToRender = patientData.customItems;
+  } else {
+    messages.forEach(m => {
+      if (m.type === 'product' && m.productData) {
+        itemsToRender.push({
+          name: m.productData.name,
+          brand: m.productData.brand,
+          origin: m.productData.origin || 'Importado',
+          dosage: m.productData.dosage || [],
+          description: m.productData.description
+        });
+      }
+    });
+  }
+
+  const customNotesText = patientData?.customNotes !== undefined
+    ? patientData.customNotes
+    : messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n');
   
-  if (prescribedItems.length === 0) {
+  if (itemsToRender.length === 0 && !customNotesText) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     doc.text("Nenhum produto ou orientação prescrita nesta consulta.", 20, yPos);
   } else {
-    prescribedItems.forEach((msg, index) => {
-      if (msg.type === 'product' && msg.productData) {
-        const product = msg.productData;
-        
-        // Produto
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(212, 175, 55); // Dourado
-        doc.text(`${index + 1}.`, 20, yPos);
-        
-        doc.setTextColor(20, 20, 20);
-        const sanitizedProductName = product.name.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-        const splitProductName = doc.splitTextToSize(sanitizedProductName, 160);
-        doc.text(splitProductName, 28, yPos);
-        
-        // Detalhes
-        yPos += (splitProductName.length * 5) + 1;
-        doc.setFont("helvetica", "italic");
-        doc.setFontSize(10);
-        doc.setTextColor(100, 100, 100);
-        const sanitizedBrand = product.brand.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-        const sanitizedOrigin = product.origin.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-        doc.text(`Fabricante: ${sanitizedBrand} | Origem: ${sanitizedOrigin}`, 28, yPos);
-        
-        // Posologia
-        yPos += 8;
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(60, 60, 60);
-        doc.text("Posologia:", 28, yPos);
-        
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(40, 40, 40);
-        yPos += 6;
-        const dosageText = product.dosage.join('\n').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-        const splitDosage = doc.splitTextToSize(dosageText, 160);
-        
-        for (let i = 0; i < splitDosage.length; i++) {
-          if (yPos > 260) {
-            doc.addPage();
-            yPos = 30;
-          }
-          doc.text(splitDosage[i], 28, yPos);
-          yPos += 5;
-        }
-        yPos += 7;
-      } else if (msg.type === 'prescription_notes' && msg.text) {
-        // Notas/Orientações
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(212, 175, 55); // Dourado
-        doc.text(`${index + 1}.`, 20, yPos);
-        
-        doc.setTextColor(20, 20, 20);
-        doc.text(`Orientações e Prescrição Detalhada:`, 28, yPos);
-        
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(40, 40, 40);
-        yPos += 8;
-        const sanitizedNotes = msg.text.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-        const splitNotes = doc.splitTextToSize(sanitizedNotes, 160);
-        
-        for (let i = 0; i < splitNotes.length; i++) {
-          if (yPos > 260) {
-            doc.addPage();
-            yPos = 30;
-          }
-          doc.text(splitNotes[i], 28, yPos);
-          yPos += 5;
-        }
-        yPos += 7;
-      }
+    let itemIdx = 1;
+    itemsToRender.forEach((product) => {
+      // Produto
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(212, 175, 55); // Dourado
+      doc.text(`${itemIdx}.`, 20, yPos);
       
-      // Nova página se necessário
-      if (yPos > 240) {
-        doc.addPage();
-        yPos = 30;
+      doc.setTextColor(20, 20, 20);
+      const sanitizedProductName = (product.name || 'Medicamento Fitocanabinoide').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const splitProductName = doc.splitTextToSize(sanitizedProductName, 160);
+      doc.text(splitProductName, 28, yPos);
+      
+      // Detalhes
+      yPos += (splitProductName.length * 5) + 1;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      const sanitizedBrand = (product.brand || 'Associação Brasileira').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const sanitizedOrigin = (product.origin || 'Nacional').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      doc.text(`Fabricante: ${sanitizedBrand} | Origem: ${sanitizedOrigin}`, 28, yPos);
+      
+      // Posologia
+      yPos += 8;
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(60, 60, 60);
+      doc.text("Posologia:", 28, yPos);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(40, 40, 40);
+      yPos += 6;
+      const dosageArr = Array.isArray(product.dosage) ? product.dosage : [String(product.dosage || '')];
+      const dosageText = dosageArr.join('\n').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const splitDosage = doc.splitTextToSize(dosageText, 160);
+      
+      for (let i = 0; i < splitDosage.length; i++) {
+        if (yPos > 260) {
+          doc.addPage();
+          yPos = 30;
+        }
+        doc.text(splitDosage[i], 28, yPos);
+        yPos += 5;
       }
+      yPos += 7;
+      itemIdx++;
     });
+
+    if (customNotesText && customNotesText.trim()) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(212, 175, 55); // Dourado
+      doc.text(`${itemIdx}.`, 20, yPos);
+      
+      doc.setTextColor(20, 20, 20);
+      doc.text(`Orientações e Prescrição Detalhada:`, 28, yPos);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(40, 40, 40);
+      yPos += 8;
+      const sanitizedNotes = customNotesText.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const splitNotes = doc.splitTextToSize(sanitizedNotes, 160);
+      
+      for (let i = 0; i < splitNotes.length; i++) {
+        if (yPos > 260) {
+          doc.addPage();
+          yPos = 30;
+        }
+        doc.text(splitNotes[i], 28, yPos);
+        yPos += 5;
+      }
+      yPos += 7;
+    }
   }
   
   // Rodapé / Assinatura
@@ -193,16 +223,20 @@ export const generatePrescriptionPDF = (
   doc.setLineWidth(0.5);
   doc.line(60, pageHeight - 50, 150, pageHeight - 50); // Linha de assinatura
   
+  const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
+  const docCrm = patientData?.customDoctorCrm || "CRM: 12345/SP";
+  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
-  doc.text("Dr. Guilherme Taveira Dias", 105, pageHeight - 42, { align: "center" });
+  doc.text(docName, 105, pageHeight - 42, { align: "center" });
   
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-  doc.text("CRM: 12345/SP", 105, pageHeight - 36, { align: "center" });
-  doc.text("Especialista em Medicina Canabinoide", 105, pageHeight - 31, { align: "center" });
+  doc.text(docCrm, 105, pageHeight - 36, { align: "center" });
+  doc.text(docSpec, 105, pageHeight - 31, { align: "center" });
   
   // Espaço para assinatura digital (caixa pontilhada)
   doc.setDrawColor(150, 150, 150);
@@ -220,8 +254,18 @@ export interface MedicalReportData {
   birthDate?: string;
   cpf?: string;
   phone?: string;
+  emissionDate?: string;
   answers?: any;
   analysisText?: string | null;
+  customPatientName?: string;
+  customDoctorName?: string;
+  customDoctorCrm?: string;
+  customDoctorSpecialty?: string;
+  customDiagnosis?: string;
+  customRationale?: string;
+  customItems?: PrescriptionItemData[];
+  customTreatmentPlan?: string;
+  customMonitoring?: string;
 }
 
 export const generateMedicalReportPDF = (
@@ -244,9 +288,15 @@ export const generateMedicalReportPDF = (
 
   const storeState = useStore.getState();
   const patientAnswers = patientData?.answers || storeState.answers;
-  const sanitizedUserName = sanitize(userName || 'Paciente');
+  const rawPatientName = patientData?.customPatientName || userName || 'Paciente';
+  const sanitizedUserName = sanitize(rawPatientName);
   const birthDateText = sanitize(patientData?.birthDate || storeState.userBirthDate || patientAnswers?.birthDate || 'Não informada');
   const cpfText = sanitize(patientData?.cpf || storeState.userCpf || patientAnswers?.cpf || 'Não informado');
+  const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
+
+  const doctorName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
+  const doctorCrm = patientData?.customDoctorCrm || "CRM: 12345/SP";
+  const doctorSpecialty = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
   // Cabeçalho
   const renderHeader = (pageNumber: number) => {
@@ -316,7 +366,7 @@ export const generateMedicalReportPDF = (
   doc.text("Data de Emissão:", 135, yPos);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(10, 10, 10);
-  doc.text(format(new Date(), 'dd/MM/yyyy'), 167, yPos);
+  doc.text(emissionDateStr, 167, yPos);
 
   yPos += 6;
   doc.setFont("helvetica", "bold");
@@ -352,11 +402,13 @@ export const generateMedicalReportPDF = (
   const duration = patientAnswers?.duration || 'Quadro de evolução crônica';
   const description = patientAnswers?.description || 'Paciente relata persistência dos sintomas refratários aos tratamentos convencionais de primeira linha, com impacto expressivo na qualidade de vida, repouso noturno e funcionalidade global.';
 
-  const clinicalSummary = `O(A) paciente supramencionado(a) compareceu a atendimento médico e foi submetido(a) a minuciosa avaliação clínica. Apresenta sintomatologia compatível com ${objectives}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration}. 
+  const defaultClinicalSummary = `O(A) paciente supramencionado(a) compareceu a atendimento médico e foi submetido(a) a minuciosa avaliação clínica. Apresenta sintomatologia compatível com ${objectives}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration}. 
 
 História da Moléstia: ${description}
 
 Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Sim' : 'Não'} | Diagnóstico de Comorbidade Crônica: ${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}.`;
+
+  const clinicalSummary = patientData?.customDiagnosis || defaultClinicalSummary;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
@@ -382,11 +434,13 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
   doc.line(margin, yPos, pageWidth - margin, yPos);
 
   yPos += 8;
-  const therapeuticRationale = `A terapêutica com Fitocanabinoides (Cannabis Medicinal) fundamenta-se na modulação do Sistema Endocanabinoide (SEC), uma complexa rede de sinalização neuromoduladora e imunológica composta por receptores CB1 e CB2.
+  const defaultTherapeuticRationale = `A terapêutica com Fitocanabinoides (Cannabis Medicinal) fundamenta-se na modulação do Sistema Endocanabinoide (SEC), uma complexa rede de sinalização neuromoduladora e imunológica composta por receptores CB1 e CB2.
 
 - Modulação Neuroquímica e Anti-inflamatória: O Canabidiol (CBD) atua como modulador alostérico negativo de CB1 e inibidor da degradação de anandamida (via FAAH), promovendo ação ansiolítica, neuroprotetora e redução de citocinas pró-inflamatórias.
 - Efeito Comitiva (Entourage Effect): A administração de extratos integrais (Full Spectrum) contendo canabinoides menores (CBG, CBN e microdosagens de THC) e terpenos sinérgicos proporciona potencialização da resposta terapêutica com menor necessidade de escalonamento de doses.
 - Adequação Clínica: Diante da refratariedade e da necessidade de estabilização sintomática sem os efeitos colaterais deletérios de medicações sedativas ou anti-inflamatórios convencionais a longo prazo, justifica-se a instituição do tratamento fitocanabinoide.`;
+
+  const therapeuticRationale = patientData?.customRationale || defaultTherapeuticRationale;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
@@ -413,63 +467,81 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
 
   yPos += 8;
 
-  const prescribedItems = messages.filter(m => 
-    (m.type === 'product' && m.productData) || 
-    (m.type === 'prescription_notes' && m.text)
-  );
-
-  if (prescribedItems.length > 0) {
-    prescribedItems.forEach((msg, idx) => {
-      if (msg.type === 'product' && msg.productData) {
-        checkPageBreak(25);
-        const p = msg.productData;
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setTextColor(212, 175, 55);
-        doc.text(`Item ${idx + 1}: ${sanitize(p.name)}`, margin, yPos);
-        
-        yPos += 5;
-        doc.setFont("helvetica", "italic");
-        doc.setFontSize(9);
-        doc.setTextColor(90, 90, 90);
-        doc.text(`Origem: ${sanitize(p.origin || 'Associação Nacional / Importado')} | Fabricante: ${sanitize(p.brand || 'Associação Brasileira')}`, margin + 3, yPos);
-
-        yPos += 5;
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.setTextColor(50, 50, 50);
-        doc.text("Posologia e Modo de Uso:", margin + 3, yPos);
-
-        yPos += 4;
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(20, 20, 20);
-        const dosageLines = doc.splitTextToSize(sanitize(p.dosage.join(' ')), contentWidth - 6);
-        for (const dl of dosageLines) {
-          checkPageBreak(5);
-          doc.text(dl, margin + 3, yPos);
-          yPos += 4.5;
-        }
-        yPos += 3;
-      } else if (msg.type === 'prescription_notes' && msg.text) {
-        checkPageBreak(20);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setTextColor(212, 175, 55);
-        doc.text(`Item ${idx + 1}: Orientações e Prescrição Médica`, margin, yPos);
-        
-        yPos += 5;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(30, 30, 30);
-        const noteLines = doc.splitTextToSize(sanitize(msg.text), contentWidth - 6);
-        for (const nl of noteLines) {
-          checkPageBreak(5);
-          doc.text(nl, margin + 3, yPos);
-          yPos += 4.5;
-        }
-        yPos += 3;
+  let itemsToRender: PrescriptionItemData[] = [];
+  if (patientData?.customItems && patientData.customItems.length > 0) {
+    itemsToRender = patientData.customItems;
+  } else {
+    messages.forEach(m => {
+      if (m.type === 'product' && m.productData) {
+        itemsToRender.push({
+          name: m.productData.name,
+          brand: m.productData.brand,
+          origin: m.productData.origin || 'Importado',
+          dosage: m.productData.dosage || [],
+          description: m.productData.description
+        });
       }
     });
+  }
+
+  const customNotesText = patientData?.customTreatmentPlan !== undefined
+    ? patientData.customTreatmentPlan
+    : messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n');
+
+  if (itemsToRender.length > 0 || (customNotesText && customNotesText.trim())) {
+    let itemIdx = 1;
+    itemsToRender.forEach((p) => {
+      checkPageBreak(25);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(212, 175, 55);
+      doc.text(`Item ${itemIdx}: ${sanitize(p.name)}`, margin, yPos);
+      
+      yPos += 5;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text(`Origem: ${sanitize(p.origin || 'Associação Nacional / Importado')} | Fabricante: ${sanitize(p.brand || 'Associação Brasileira')}`, margin + 3, yPos);
+
+      yPos += 5;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(50, 50, 50);
+      doc.text("Posologia e Modo de Uso:", margin + 3, yPos);
+
+      yPos += 4;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(20, 20, 20);
+      const dosageArr = Array.isArray(p.dosage) ? p.dosage : [String(p.dosage || '')];
+      const dosageLines = doc.splitTextToSize(sanitize(dosageArr.join(' ')), contentWidth - 6);
+      for (const dl of dosageLines) {
+        checkPageBreak(5);
+        doc.text(dl, margin + 3, yPos);
+        yPos += 4.5;
+      }
+      yPos += 3;
+      itemIdx++;
+    });
+
+    if (customNotesText && customNotesText.trim()) {
+      checkPageBreak(20);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(212, 175, 55);
+      doc.text(`Item ${itemIdx}: Orientações e Prescrição Médica`, margin, yPos);
+      
+      yPos += 5;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 30, 30);
+      const noteLines = doc.splitTextToSize(sanitize(customNotesText), contentWidth - 6);
+      for (const nl of noteLines) {
+        checkPageBreak(5);
+        doc.text(nl, margin + 3, yPos);
+        yPos += 4.5;
+      }
+      yPos += 3;
+    }
   } else {
     // Default therapeutic guideline if no items in chat
     const defaultMedicationPlan = `1. Formulação Predominante em CBD Full Spectrum (ou Óleo Integral Associação Nacional):
@@ -502,9 +574,11 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
   doc.line(margin, yPos, pageWidth - margin, yPos);
 
   yPos += 7;
-  const monitoringText = `- Titulação Lenta e Progressiva ("Start Low, Go Slow"): Ajustar a dosagem gradualmente até atingir a janela terapêutica ideal com controle pleno de sintomas e ausência de efeitos adversos.
+  const defaultMonitoringText = `- Titulação Lenta e Progressiva ("Start Low, Go Slow"): Ajustar a dosagem gradualmente até atingir a janela terapêutica ideal com controle pleno de sintomas e ausência de efeitos adversos.
 - Monitoramento de Segurança: Acompanhar potenciais interações no citocromo hepático CYP3A4 / CYP2C19 caso haja uso concomitante de outros fármacos.
 - Retorno Médico: Reavaliação clínica agendada em 30 (trinta) dias para ajuste posológico e consolidação do desfecho clínico.`;
+
+  const monitoringText = patientData?.customMonitoring || defaultMonitoringText;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -528,13 +602,13 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(10, 10, 10);
-  doc.text("Dr. Guilherme Taveira Dias", 105, yPos, { align: "center" });
+  doc.text(doctorName, 105, yPos, { align: "center" });
 
   yPos += 4.5;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(80, 80, 80);
-  doc.text("CRM: 12345/SP | Especialista em Medicina Canabinoide", 105, yPos, { align: "center" });
+  doc.text(`${doctorCrm} | ${doctorSpecialty}`, 105, yPos, { align: "center" });
   
   yPos += 4;
   doc.setFontSize(8);

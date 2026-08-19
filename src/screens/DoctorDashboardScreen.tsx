@@ -35,7 +35,12 @@ import {
   HeartHandshake,
   TrendingUp,
   Sparkles,
-  Wallet
+  Wallet,
+  Edit3,
+  Trash2,
+  Printer,
+  FileDown,
+  RotateCcw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
@@ -57,8 +62,10 @@ import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
 import { cbdGuideData, CBDProduct } from '../data/cbdGuide';
 import { NotificationToast } from '../components/NotificationToast';
+import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
+import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
 
-import { generatePrescriptionPDF, generateMedicalReportPDF } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
 
 const calculateAge = (birthDateStr?: string) => {
   if (!birthDateStr) return null;
@@ -111,6 +118,35 @@ export function DoctorDashboardScreen() {
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queueSearchTerm, setQueueSearchTerm] = useState('');
   const [mobileTab, setMobileTab] = useState<'chat' | 'ficha' | 'actions'>('chat');
+
+  // Medical Report (Laudo Médico) Editor & Preview States
+  const [showMedicalReportEditorModal, setShowMedicalReportEditorModal] = useState(false);
+  const [medicalReportTab, setMedicalReportTab] = useState<'edit' | 'preview'>('edit');
+  const [reportPatientName, setReportPatientName] = useState('');
+  const [reportBirthDate, setReportBirthDate] = useState('');
+  const [reportCpf, setReportCpf] = useState('');
+  const [reportEmissionDate, setReportEmissionDate] = useState('');
+  const [reportDoctorName, setReportDoctorName] = useState('Dr. Guilherme Taveira Dias');
+  const [reportDoctorCrm, setReportDoctorCrm] = useState('CRM: 12345/SP');
+  const [reportDoctorSpecialty, setReportDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
+  const [reportDiagnosis, setReportDiagnosis] = useState('');
+  const [reportRationale, setReportRationale] = useState('');
+  const [reportTreatmentPlan, setReportTreatmentPlan] = useState('');
+  const [reportMonitoring, setReportMonitoring] = useState('');
+
+  // Prescription (Receita Médica) Editor & Preview States
+  const [showPrescriptionEditorModal, setShowPrescriptionEditorModal] = useState(false);
+  const [prescriptionTab, setPrescriptionTab] = useState<'edit' | 'preview'>('edit');
+  const [prescPatientName, setPrescPatientName] = useState('');
+  const [prescBirthDate, setPrescBirthDate] = useState('');
+  const [prescCpf, setPrescCpf] = useState('');
+  const [prescEmissionDate, setPrescEmissionDate] = useState('');
+  const [prescDoctorName, setPrescDoctorName] = useState('Dr. Guilherme Taveira Dias');
+  const [prescDoctorCrm, setPrescDoctorCrm] = useState('CRM: 12345/SP');
+  const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
+  const [prescItems, setPrescItems] = useState<PrescriptionItemData[]>([]);
+  const [prescNotes, setPrescNotes] = useState('');
+
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -469,32 +505,139 @@ export function DoctorDashboardScreen() {
     setCurrentPatient(null);
   };
 
-  const handleGeneratePDF = () => {
+  const handleOpenPrescriptionEditor = () => {
     const patientAnswers = currentPatient?.answers || answers;
-    const patientBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate;
-    const patientCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf;
-    const patientPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
+    const pName = currentPatient?.patientName || userName || 'Paciente';
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
-    generatePrescriptionPDF(currentPatient?.patientName || userName || 'Paciente', messages, {
-      birthDate: patientBirthDate,
-      cpf: patientCpf,
-      phone: patientPhone
+    // Extract products already in messages
+    const items: PrescriptionItemData[] = [];
+    messages.forEach(m => {
+      if (m.type === 'product' && m.productData) {
+        items.push({
+          name: m.productData.name,
+          brand: m.productData.brand || 'Associação Brasileira',
+          origin: m.productData.origin || 'Nacional',
+          dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
+          description: m.productData.description || ''
+        });
+      }
+    });
+
+    const notes = messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n');
+
+    setPrescPatientName(pName);
+    setPrescBirthDate(pBirthDate);
+    setPrescCpf(pCpf);
+    setPrescEmissionDate(format(new Date(), 'dd/MM/yyyy'));
+    setPrescDoctorName('Dr. Guilherme Taveira Dias');
+    setPrescDoctorCrm('CRM: 12345/SP');
+    setPrescDoctorSpecialty('Especialista em Medicina Canabinoide');
+    setPrescItems(items.length > 0 ? items : [
+      {
+        name: 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)',
+        brand: 'Associação Brasileira (Nacional)',
+        origin: 'Nacional',
+        dosage: [
+          'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
+          'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).'
+        ],
+        description: 'Extrato integral rico em Canabidiol com excelente rendimento e custo-benefício.'
+      }
+    ]);
+    setPrescNotes(notes || 'Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.');
+    setPrescriptionTab('edit');
+    setShowPrescriptionEditorModal(true);
+  };
+
+  const handleDownloadPrescriptionFromEditor = () => {
+    generatePrescriptionPDF(prescPatientName, messages, {
+      customPatientName: prescPatientName,
+      birthDate: prescBirthDate,
+      cpf: prescCpf,
+      emissionDate: prescEmissionDate,
+      customDoctorName: prescDoctorName,
+      customDoctorCrm: prescDoctorCrm,
+      customDoctorSpecialty: prescDoctorSpecialty,
+      customItems: prescItems,
+      customNotes: prescNotes
     });
   };
 
-  const handleGenerateMedicalReport = () => {
+  const handleOpenMedicalReportEditor = () => {
     const patientAnswers = currentPatient?.answers || answers;
-    const patientBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate;
-    const patientCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf;
-    const patientPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
+    const pName = currentPatient?.patientName || userName || 'Paciente';
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
-    generateMedicalReportPDF(currentPatient?.patientName || userName || 'Paciente', messages, {
-      birthDate: patientBirthDate,
-      cpf: patientCpf,
-      phone: patientPhone,
-      answers: patientAnswers,
-      analysisText: analysisResult
+    const objectives = patientAnswers?.objectives?.join(', ') || 'Ansiedade, estresse crônico e dores';
+    const intensity = patientAnswers?.intensity ? `${patientAnswers.intensity}/10` : 'Moderada a intensa';
+    const duration = patientAnswers?.duration || 'Quadro de evolução crônica';
+    const description = patientAnswers?.description || 'Paciente relata persistência e refratariedade de sintomas clínicos aos tratamentos convencionais de primeira linha, com impacto relevante na qualidade de vida, repouso noturno e funcionalidade global.';
+
+    const defaultClinicalSummary = `O(A) paciente supramencionado(a) compareceu a atendimento médico especializado e foi submetido(a) a minuciosa avaliação clínica. Apresenta sintomatologia compatível com ${objectives}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration}.\n\nHistória da Moléstia: ${description}\n\nTratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Sim' : 'Não'} | Diagnóstico de Comorbidade Crônica: ${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}.`;
+
+    const defaultTherapeuticRationale = `A terapêutica com Fitocanabinoides (Cannabis Medicinal) fundamenta-se na modulação do Sistema Endocanabinoide (SEC), uma complexa rede de sinalização neuromoduladora e imunológica composta por receptores CB1 (sistema nervoso central) e CB2 (sistema imunológico e tecidos periféricos).\n\n- Modulação Neuroquímica e Anti-inflamatória: O Canabidiol (CBD) atua como modulador alostérico negativo de CB1 e inibidor da degradação de anandamida (via enzima FAAH), promovendo expressiva ação ansiolítica, neuroprotetora e redução de citocinas pró-inflamatórias.\n- Efeito Comitiva (Entourage Effect): A administração de extratos integrais (Full Spectrum) contendo canabinoides menores (CBG, CBN e microdosagens de THC) e terpenos sinérgicos proporciona potencialização da resposta terapêutica com menor necessidade de escalonamento de doses.\n- Adequação Clínica: Diante da refratariedade e da necessidade de estabilização sintomática sem os efeitos colaterais deletérios de medicações sedativas ou anti-inflamatórios convencionais a longo prazo, justifica-se a instituição do tratamento fitocanabinoide.`;
+
+    const items: PrescriptionItemData[] = [];
+    messages.forEach(m => {
+      if (m.type === 'product' && m.productData) {
+        items.push({
+          name: m.productData.name,
+          brand: m.productData.brand || 'Associação Brasileira',
+          origin: m.productData.origin || 'Nacional',
+          dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
+          description: m.productData.description || ''
+        });
+      }
     });
+
+    const defaultTreatmentPlan = items.length > 0
+      ? items.map((item, idx) => `${idx + 1}. ${item.name} (${item.brand})\n   Posologia: ${item.dosage.join(' ')}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`).join('\n\n')
+      : `1. Formulação Predominante em CBD Full Spectrum 100mg/ml (Associação Nacional ou Importado):\n   Posologia: Iniciar com 3 a 5 gotas sublinguais a cada 12 horas, com titulação progressiva.\n   Finalidade: Controle de ansiedade, alívio da dor e estabilização do humor.`;
+
+    const defaultMonitoringText = `- Titulação Lenta e Progressiva ("Start Low, Go Slow"): Ajustar a dosagem gradualmente a cada 4 a 5 dias até atingir a janela terapêutica ideal com controle pleno de sintomas e ausência de efeitos adversos.\n- Monitoramento de Segurança: Acompanhar potenciais interações no citocromo hepático CYP3A4 / CYP2C19 caso haja uso concomitante de outros fármacos.\n- Retorno Médico: Reavaliação clínica agendada em 30 (trinta) dias para ajuste posológico e consolidação do desfecho clínico.`;
+
+    setReportPatientName(pName);
+    setReportBirthDate(pBirthDate);
+    setReportCpf(pCpf);
+    setReportEmissionDate(format(new Date(), 'dd/MM/yyyy'));
+    setReportDoctorName('Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm('CRM: 12345/SP');
+    setReportDoctorSpecialty('Especialista em Medicina Canabinoide');
+    setReportDiagnosis(defaultClinicalSummary);
+    setReportRationale(defaultTherapeuticRationale);
+    setReportTreatmentPlan(defaultTreatmentPlan);
+    setReportMonitoring(defaultMonitoringText);
+    setMedicalReportTab('edit');
+    setShowMedicalReportEditorModal(true);
+  };
+
+  const handleDownloadMedicalReportFromEditor = () => {
+    const patientAnswers = currentPatient?.answers || answers;
+    generateMedicalReportPDF(reportPatientName, messages, {
+      customPatientName: reportPatientName,
+      birthDate: reportBirthDate,
+      cpf: reportCpf,
+      emissionDate: reportEmissionDate,
+      answers: patientAnswers,
+      customDoctorName: reportDoctorName,
+      customDoctorCrm: reportDoctorCrm,
+      customDoctorSpecialty: reportDoctorSpecialty,
+      customDiagnosis: reportDiagnosis,
+      customRationale: reportRationale,
+      customTreatmentPlan: reportTreatmentPlan,
+      customMonitoring: reportMonitoring
+    });
+  };
+
+  const handleGeneratePDF = () => {
+    handleOpenPrescriptionEditor();
+  };
+
+  const handleGenerateMedicalReport = () => {
+    handleOpenMedicalReportEditor();
   };
 
   const handleApplyAccessiblePlan = (
@@ -2750,6 +2893,60 @@ export function DoctorDashboardScreen() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Prescription View & Edit Modal */}
+      <PrescriptionEditorModal
+        isOpen={showPrescriptionEditorModal}
+        onClose={() => setShowPrescriptionEditorModal(false)}
+        patientName={prescPatientName}
+        setPatientName={setPrescPatientName}
+        birthDate={prescBirthDate}
+        setBirthDate={setPrescBirthDate}
+        cpf={prescCpf}
+        setCpf={setPrescCpf}
+        emissionDate={prescEmissionDate}
+        setEmissionDate={setPrescEmissionDate}
+        doctorName={prescDoctorName}
+        setDoctorName={setPrescDoctorName}
+        doctorCrm={prescDoctorCrm}
+        setDoctorCrm={setPrescDoctorCrm}
+        doctorSpecialty={prescDoctorSpecialty}
+        setDoctorSpecialty={setPrescDoctorSpecialty}
+        items={prescItems}
+        setItems={setPrescItems}
+        notes={prescNotes}
+        setNotes={setPrescNotes}
+        onDownloadPDF={handleDownloadPrescriptionFromEditor}
+      />
+
+      {/* Medical Report (Laudo Médico) View & Edit Modal */}
+      <MedicalReportEditorModal
+        isOpen={showMedicalReportEditorModal}
+        onClose={() => setShowMedicalReportEditorModal(false)}
+        patientName={reportPatientName}
+        setPatientName={setReportPatientName}
+        birthDate={reportBirthDate}
+        setBirthDate={setReportBirthDate}
+        cpf={reportCpf}
+        setCpf={setReportCpf}
+        emissionDate={reportEmissionDate}
+        setEmissionDate={setReportEmissionDate}
+        doctorName={reportDoctorName}
+        setDoctorName={setReportDoctorName}
+        doctorCrm={reportDoctorCrm}
+        setDoctorCrm={setReportDoctorCrm}
+        doctorSpecialty={reportDoctorSpecialty}
+        setDoctorSpecialty={setReportDoctorSpecialty}
+        diagnosis={reportDiagnosis}
+        setDiagnosis={setReportDiagnosis}
+        rationale={reportRationale}
+        setRationale={setReportRationale}
+        treatmentPlan={reportTreatmentPlan}
+        setTreatmentPlan={setReportTreatmentPlan}
+        monitoring={reportMonitoring}
+        setMonitoring={setReportMonitoring}
+        onDownloadPDF={handleDownloadMedicalReportFromEditor}
+      />
     </div>
   );
 }
