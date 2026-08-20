@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Send, FileText, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
+import { requestNotificationPermission } from '../utils/notifications';
 
 import { auth } from '../firebase';
 
@@ -17,6 +18,10 @@ export function ChatScreen() {
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
   const [prevMessageCount, setPrevMessageCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   const playNotificationSound = () => {
     try {
@@ -243,17 +248,21 @@ export function ChatScreen() {
 
       {/* Chat Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-          >
-            {msg.type === 'product' && msg.productData ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-[95%] sm:w-[85%] bg-[#F3F4F6] rounded-2xl overflow-hidden mb-2 shadow-lg relative group border border-gray-200"
-              >
+        <AnimatePresence>
+          {messages.map((msg) => (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.3, type: 'spring', bounce: 0.4 }}
+              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+            >
+              {msg.type === 'product' && msg.productData ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-[95%] sm:w-[85%] bg-[#F3F4F6] rounded-2xl overflow-hidden mb-2 shadow-lg relative group border border-gray-200"
+                >
                 <div className="p-5 flex flex-col">
                   {/* Top Section */}
                   <div className="flex gap-4 mb-4">
@@ -492,8 +501,9 @@ export function ChatScreen() {
               </span>
               {msg.sender === 'user' && <CheckCheck className="w-3.5 h-3.5 text-mecura-neon" />}
             </div>
-          </div>
+          </motion.div>
         ))}
+        </AnimatePresence>
 
         {isTyping && (
           <div className="flex items-center gap-2 bg-mecura-surface border border-mecura-elevated w-fit p-4 rounded-2xl rounded-tl-sm shadow-md">

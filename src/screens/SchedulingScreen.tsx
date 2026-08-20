@@ -68,25 +68,25 @@ export function SchedulingScreen() {
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 text-center pr-10">
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB]">mecura</h1>
+          <h1 className="text-2xl font-serif font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C]">mecura</h1>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-40">
         <h2 className="text-3xl font-bold text-center leading-tight mb-8 text-mecura-pearl">
           Escolha o melhor horário<br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB]">para sua consulta</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C]">para sua consulta</span>
         </h2>
 
         <div className="bg-[#1A1A24] rounded-3xl p-6 mb-8 border border-[#2A2A3A] shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-mecura-pearl flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#D4AF37]" />
+              <Calendar className="w-5 h-5 text-[#A6FF00]" />
               {currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
             </h3>
             <div className="flex gap-2">
-              <button onClick={() => changeMonth(-1)} className="p-2 rounded-full bg-[#2A2A3A] hover:bg-[#3A3A4A] transition-colors"><ChevronLeft className="w-4 h-4 text-[#D4AF37]" /></button>
-              <button onClick={() => changeMonth(1)} className="p-2 rounded-full bg-[#2A2A3A] hover:bg-[#3A3A4A] transition-colors"><ChevronRight className="w-4 h-4 text-[#D4AF37]" /></button>
+              <button onClick={() => changeMonth(-1)} className="p-2 rounded-full bg-[#2A2A3A] hover:bg-[#3A3A4A] transition-colors"><ChevronLeft className="w-4 h-4 text-[#A6FF00]" /></button>
+              <button onClick={() => changeMonth(1)} className="p-2 rounded-full bg-[#2A2A3A] hover:bg-[#3A3A4A] transition-colors"><ChevronRight className="w-4 h-4 text-[#A6FF00]" /></button>
             </div>
           </div>
           <div className="grid grid-cols-7 gap-2 text-center text-xs text-mecura-silver mb-2">
@@ -101,10 +101,10 @@ export function SchedulingScreen() {
                   key={day}
                   onClick={() => setSelectedDate(date)}
                   className={`p-3 rounded-2xl border transition-all duration-300 ${
-                    isSelected ? 'border-[#D4AF37] bg-gradient-to-b from-[#D4AF37]/20 to-transparent shadow-[0_0_15px_rgba(212,175,55,0.2)]' : 'border-[#2A2A3A] bg-[#0A0A0F] hover:border-[#3A3A4A]'
+                    isSelected ? 'border-[#A6FF00] bg-gradient-to-b from-[#A6FF00]/20 to-transparent shadow-[0_0_15px_rgba(212,175,55,0.2)]' : 'border-[#2A2A3A] bg-[#0A0A0F] hover:border-[#3A3A4A]'
                   }`}
                 >
-                  <span className={`block text-lg font-bold ${isSelected ? 'text-[#F3E5AB]' : 'text-mecura-pearl'}`}>{day}</span>
+                  <span className={`block text-lg font-bold ${isSelected ? 'text-[#C9FF5C]' : 'text-mecura-pearl'}`}>{day}</span>
                 </button>
               );
             })}
@@ -125,13 +125,13 @@ export function SchedulingScreen() {
                   disabled={isOccupied}
                   className={`p-4 rounded-2xl border transition-all duration-300 ${
                     isSelected 
-                      ? 'border-[#D4AF37] bg-gradient-to-b from-[#D4AF37]/20 to-transparent shadow-[0_0_15px_rgba(212,175,55,0.2)]' 
+                      ? 'border-[#A6FF00] bg-gradient-to-b from-[#A6FF00]/20 to-transparent shadow-[0_0_15px_rgba(212,175,55,0.2)]' 
                       : isOccupied
                         ? 'border-red-500/20 bg-red-500/5 opacity-40 cursor-not-allowed'
                         : 'border-[#2A2A3A] bg-[#0A0A0F] hover:border-[#3A3A4A]'
                   }`}
                 >
-                  <span className={`text-lg font-bold ${isSelected ? 'text-[#F3E5AB]' : isOccupied ? 'text-red-500/50' : 'text-mecura-pearl'}`}>{time}</span>
+                  <span className={`text-lg font-bold ${isSelected ? 'text-[#C9FF5C]' : isOccupied ? 'text-red-500/50' : 'text-mecura-pearl'}`}>{time}</span>
                   {isOccupied && <span className="block text-[10px] text-red-500/50 uppercase font-bold mt-1">Ocupado</span>}
                 </button>
               );

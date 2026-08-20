@@ -14,7 +14,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     
     const variants = {
       primary: "bg-mecura-neon text-[#0A0A0F] shadow-[0_0_15px_rgba(166,255,0,0.3)] hover:bg-mecura-neon-hover hover:shadow-[0_0_25px_rgba(166,255,0,0.5)]",
-      premium: "bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB] text-[#0A0A0F] shadow-[0_0_20px_rgba(212,175,55,0.4)] hover:shadow-[0_0_30px_rgba(212,175,55,0.6)]",
+      premium: "bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C] text-[#0A0A0F] shadow-[0_0_20px_rgba(212,175,55,0.4)] hover:shadow-[0_0_30px_rgba(212,175,55,0.6)]",
       secondary: "bg-mecura-surface-light text-mecura-pearl hover:bg-mecura-elevated",
       outline: "border border-mecura-neon text-mecura-pearl hover:bg-mecura-neon/10",
       ghost: "border border-mecura-silver text-mecura-pearl hover:bg-white/5",

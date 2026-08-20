@@ -90,15 +90,15 @@ export function PremiumCheckoutScreen() {
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 text-center pr-10">
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB]">mecura</h1>
+          <h1 className="text-2xl font-serif font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C]">mecura</h1>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-40 pt-4">
         {pixData ? (
           <div className="flex flex-col items-center pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-xl bg-[#D4AF3733]">
-               <PixIcon className="w-10 h-10 text-[#D4AF37]" />
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-xl bg-[#A6FF0033]">
+               <PixIcon className="w-10 h-10 text-[#A6FF00]" />
             </div>
 
             <h2 className="text-2xl font-bold text-center text-white mb-2">Escaneie o QR Code</h2>
@@ -110,10 +110,10 @@ export function PremiumCheckoutScreen() {
                 alt="Pix QR Code" 
                 className="w-56 h-56 mx-auto"
               />
-              <div className="absolute inset-0 border-4 border-[#D4AF37]/20 rounded-3xl animate-pulse -z-10" />
+              <div className="absolute inset-0 border-4 border-[#A6FF00]/20 rounded-3xl animate-pulse -z-10" />
             </div>
 
-            <div className="w-full bg-[#1A1A24] rounded-3xl p-6 border border-[#D4AF37]/30 mb-8">
+            <div className="w-full bg-[#1A1A24] rounded-3xl p-6 border border-[#A6FF00]/30 mb-8">
               <p className="text-mecura-silver text-[10px] uppercase font-bold tracking-widest text-center mb-3">Código Pix Copia e Cola</p>
               <div className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex items-center gap-3">
                 <span className="text-[11px] text-mecura-silver truncate font-mono text-left flex-1">{pixData.qr_code}</span>
@@ -122,16 +122,16 @@ export function PremiumCheckoutScreen() {
                     navigator.clipboard.writeText(pixData.qr_code);
                     alert("Copiado!");
                   }}
-                  className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] p-2.5 rounded-lg transition-colors"
+                  className="bg-[#A6FF00]/10 hover:bg-[#A6FF00]/20 text-[#A6FF00] p-2.5 rounded-lg transition-colors"
                 >
                   <Ticket className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 py-4 bg-[#D4AF37]/5 px-6 rounded-full border border-[#D4AF37]/10">
-              <div className="w-2.5 h-2.5 bg-[#D4AF37] rounded-full animate-pulse shadow-[0_0_8px_#D4AF37]" />
-              <span className="text-[#D4AF37] text-sm font-bold tracking-tight uppercase">Aguardando confirmação...</span>
+            <div className="flex items-center gap-3 py-4 bg-[#A6FF00]/5 px-6 rounded-full border border-[#A6FF00]/10">
+              <div className="w-2.5 h-2.5 bg-[#A6FF00] rounded-full animate-pulse shadow-[0_0_8px_#A6FF00]" />
+              <span className="text-[#A6FF00] text-sm font-bold tracking-tight uppercase">Aguardando confirmação...</span>
             </div>
 
             <button 
@@ -143,7 +143,7 @@ export function PremiumCheckoutScreen() {
           </div>
         ) : step === 'discount' ? (
           <div className="flex flex-col items-center text-center pt-8">
-            <div className="w-24 h-24 rounded-full flex items-center justify-center mb-8 shadow-[0_0_30px_rgba(212,175,55,0.4)] relative bg-gradient-to-br from-[#D4AF37] to-[#AA7B2F]">
+            <div className="w-24 h-24 rounded-full flex items-center justify-center mb-8 shadow-[0_0_30px_rgba(212,175,55,0.4)] relative bg-gradient-to-br from-[#A6FF00] to-[#8BD400]">
               <Percent className="w-12 h-12 text-[#0A0A0F]" strokeWidth={3} />
             </div>
 
@@ -156,24 +156,24 @@ export function PremiumCheckoutScreen() {
             <div className="mb-2">
               <span className="text-mecura-silver text-lg line-through decoration-mecura-silver/50">De: R$ 598</span>
             </div>
-            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB] mb-8 tracking-tighter drop-shadow-[0_0_10px_rgba(212,175,55,0.3)]">
+            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C] mb-8 tracking-tighter drop-shadow-[0_0_10px_rgba(212,175,55,0.3)]">
               R$ 250,00
             </div>
             <div className="space-y-2 text-mecura-silver">
-              <p className="text-[#D4AF37] font-bold text-lg">Acompanhamento Premium</p>
+              <p className="text-[#A6FF00] font-bold text-lg">Acompanhamento Premium</p>
               <p>O médico irá te atender em Video Chamada.</p>
               <p>Ele vai avaliar seu perfil<br />único e orientar os próximos<br />passos.</p>
             </div>
           </div>
         ) : (
           <div className="flex flex-col pt-4">
-            <h2 className="text-2xl font-bold text-center leading-tight mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB]">
+            <h2 className="text-2xl font-bold text-center leading-tight mb-6 text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C]">
               Acompanhamento Premium
             </h2>
 
             <div className="text-center mb-6">
               <p className="text-mecura-silver mb-1">Hoje Por Apenas:</p>
-              <div className="text-6xl font-black tracking-tighter drop-shadow-[0_0_10px_rgba(212,175,55,0.3)] text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB]">
+              <div className="text-6xl font-black tracking-tighter drop-shadow-[0_0_10px_rgba(212,175,55,0.3)] text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C]">
                 R$ {finalPrice.toFixed(2).replace('.', ',')}
               </div>
               {appliedCoupon && (
@@ -202,7 +202,7 @@ export function PremiumCheckoutScreen() {
               </div>
             )}
 
-            <div className="bg-[#1A1A24] rounded-3xl p-6 mb-8 border border-[#D4AF37]/30">
+            <div className="bg-[#1A1A24] rounded-3xl p-6 mb-8 border border-[#A6FF00]/30">
               <h3 className="text-xl font-bold text-center mb-6 text-mecura-pearl">
                 Escolha a forma de pagamento:
               </h3>
@@ -211,10 +211,10 @@ export function PremiumCheckoutScreen() {
                 <button
                   onClick={() => setPaymentMethod('pix')}
                   className={`w-full flex items-center gap-4 p-4 rounded-xl bg-[#0A0A0F] border-2 transition-all ${
-                    paymentMethod === 'pix' ? 'border-[#D4AF37] shadow-[0_0_15px_rgba(212,175,55,0.3)]' : 'border-transparent'
+                    paymentMethod === 'pix' ? 'border-[#A6FF00] shadow-[0_0_15px_rgba(212,175,55,0.3)]' : 'border-transparent'
                   }`}
                 >
-                  <PixIcon className={`w-8 h-8 ${paymentMethod === 'pix' ? 'text-[#D4AF37]' : 'text-mecura-silver'}`} />
+                  <PixIcon className={`w-8 h-8 ${paymentMethod === 'pix' ? 'text-[#A6FF00]' : 'text-mecura-silver'}`} />
                   <span className="font-medium text-lg text-mecura-pearl">Pix</span>
                 </button>
               </div>

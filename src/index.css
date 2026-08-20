@@ -5,18 +5,18 @@
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Cormorant Garamond", ui-serif, Georgia, serif;
   
-  --color-mecura-bg: #0A0A0F;
-  --color-mecura-surface: #1A1A26;
-  --color-mecura-surface-light: #22222F;
-  --color-mecura-elevated: #2E2E40;
+  --color-mecura-bg: #050508;
+  --color-mecura-surface: #12121A;
+  --color-mecura-surface-light: #1A1A24;
+  --color-mecura-elevated: #242433;
   --color-mecura-neon: #A6FF00;
   --color-mecura-neon-hover: #CFFF5A;
-  --color-mecura-gold: #C9A84C;
-  --color-mecura-gold-light: #E8C97A;
+  --color-mecura-gold: #D4AF37;
+  --color-mecura-gold-light: #F3E5AB;
   --color-mecura-green: #3D7A55;
   --color-mecura-green-dark: #2C5A3E;
-  --color-mecura-pearl: #F0EEE8;
-  --color-mecura-silver: #9A9AB0;
+  --color-mecura-pearl: #FAFAFA;
+  --color-mecura-silver: #8A8A9E;
 
   --animate-shimmer: shimmer 1.5s infinite;
   @keyframes shimmer {
@@ -43,6 +43,9 @@
   body {
     @apply bg-mecura-bg text-mecura-pearl font-sans antialiased selection:bg-mecura-neon/30;
     -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   /* Prevent iOS Safari auto-zoom on input focus */
@@ -68,8 +71,15 @@
     display: none; /* Chrome, Safari and Opera */
   }
 
-  /* Keep custom scrollbar only where explicitly requested if needed later, but hide by default */
   .custom-scrollbar::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Glassmorphism utilities */
+.glass-panel {
+  @apply bg-mecura-surface/60 backdrop-blur-xl border border-white/5 shadow-2xl;
+}
+.glass-panel-gold {
+  @apply bg-gradient-to-br from-mecura-surface to-[#12121A] backdrop-blur-xl border border-mecura-gold/20 shadow-[0_4px_30px_rgba(212,175,55,0.05)];
 }

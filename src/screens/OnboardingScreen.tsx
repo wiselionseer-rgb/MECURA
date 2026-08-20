@@ -9,6 +9,7 @@ import { ChevronLeft, Check, Info, Calendar, User, Phone, CreditCard } from 'luc
 import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'motion/react';
 
 // --- HELPERS DE FORMATAÇÃO ---
 const formatBirthDate = (val: string) => {
@@ -303,10 +304,18 @@ const STEPS = [
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6 pt-4" ref={scrollRef}>
-        <div className="flex flex-col pb-24">
-          <h2 className="text-3xl font-serif font-semibold text-mecura-pearl mb-2">
-            {step.title}
-          </h2>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col pb-24"
+          >
+            <h2 className="text-3xl font-serif font-semibold text-mecura-pearl mb-2">
+              {step.title}
+            </h2>
           
           <div className={`flex items-center gap-2 mb-8 ${step.warning ? 'text-mecura-neon' : 'text-mecura-silver'}`}>
             {step.warning && <Info className="w-4 h-4" />}
@@ -579,7 +588,8 @@ const STEPS = [
           {/* Step: Emotional */}
           {step.id === 'emotional' && renderBooleanList(EMOTIONAL_QUESTIONS)}
 
-        </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Footer */}

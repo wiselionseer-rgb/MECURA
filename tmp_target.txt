@@ -1,0 +1,68 @@
+        {/* Categories Grid (Quick Services) */}
+        <section>
+          <div className="flex items-center justify-between mb-4 px-1">
+            <h3 className="text-[18px] font-serif font-bold text-white tracking-tight">Serviços Rápidos</h3>
+          </div>
+          
+          <div className="grid grid-cols-4 gap-3">
+            {/* Chat / Consultation */}
+            <button 
+              onClick={() => navigate(consultationActive || isConsultationFinished ? '/chat' : inQueue ? '/queue' : '/checkout')} 
+              className="flex flex-col items-center gap-2.5 group outline-none"
+            >
+              <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
+                <MessageCircle className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
+                <div className="absolute inset-0 bg-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Consulta</span>
+            </button>
+
+            {/* Pharmacy */}
+            <button 
+              onClick={() => navigate('/pharmacy')} 
+              className="flex flex-col items-center gap-2.5 group outline-none"
+            >
+              <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
+                <ShoppingCart className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
+                <div className="absolute inset-0 bg-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Farmácia</span>
+            </button>
+
+            {/* Protocol */}
+            <button 
+              onClick={() => isConsultationFinished ? navigate('/protocol') : alert('Seu protocolo estará disponível após a prescrição.')}
+              className={`flex flex-col items-center gap-2.5 group outline-none ${!isConsultationFinished && 'opacity-60'}`}
+            >
+              <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
+                <Droplets className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
+                <div className="absolute inset-0 bg-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Protocolo</span>
+            </button>
+
+            {/* VIP / Premium or History */}
+            {!pagamento_premium ? (
+              <button 
+                onClick={() => navigate('/premium-checkout')} 
+                className="flex flex-col items-center gap-2.5 group outline-none"
+              >
+                <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-[#A6FF00]/20 flex items-center justify-center group-hover:bg-[#1A1A24] group-hover:border-[#A6FF00]/40 transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#A6FF00]/10 to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+                  <Star className="w-6 h-6 text-[#A6FF00] relative z-10" />
+                </div>
+                <span className="text-[11px] text-[#A6FF00] font-medium transition-colors">Premium</span>
+              </button>
+            ) : (
+              <button 
+                onClick={() => navigate('/history')} 
+                className="flex flex-col items-center gap-2.5 group outline-none"
+              >
+                <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
+                  <History className="w-6 h-6 text-[#8A8A9E] group-hover:text-white transition-colors relative z-10" />
+                  <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Histórico</span>
+              </button>
+            )}
+          </div>

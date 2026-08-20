@@ -1,12 +1,18 @@
 import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
 import { Message, useStore } from '../store/useStore';
+import { enrichMedicationDetails } from '../data/cbdGuide';
 
 export interface PrescriptionItemData {
   name: string;
   brand?: string;
   origin?: string;
   type?: string;
+  activeIngredients?: string;
+  concentration?: string;
+  pharmaceuticalForm?: string;
+  quantity?: string;
+  administrationRoute?: string;
   dosage: string[];
   description?: string;
 }
@@ -24,97 +30,48 @@ export interface PatientPrescriptionData {
   customNotes?: string;
 }
 
+export const isNationalProduct = (item: PrescriptionItemData): boolean => {
+  const originLower = (item.origin || '').toLowerCase();
+  const brandLower = (item.brand || '').toLowerCase();
+  const nameLower = (item.name || '').toLowerCase();
+
+  return (
+    originLower.includes('nacional') ||
+    originLower.includes('associação') ||
+    originLower.includes('associacao') ||
+    brandLower.includes('associação') ||
+    brandLower.includes('associacao') ||
+    brandLower.includes('nacional') ||
+    /associação|nacional|óleo integral|pomada|flor|flores/i.test(nameLower)
+  );
+};
+
 export const generatePrescriptionPDF = (
   userName: string, 
   messages: Message[],
   patientData?: PatientPrescriptionData
 ) => {
   const doc = new jsPDF();
-  
-  // Configurações de fonte e cor
-  doc.setFont("helvetica", "bold");
-  
-  // Cabeçalho
-  doc.setFillColor(10, 10, 15); // Cor de fundo escura
-  doc.rect(0, 0, 210, 45, 'F');
-  
-  // Logo / Nome da Clínica
-  doc.setTextColor(212, 175, 55); // Dourado (Mecura gold)
-  doc.setFontSize(28);
-  doc.setFont("helvetica", "bold");
-  doc.text("mecura", 20, 28);
-  
-  // Título do Documento
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.text("RECEITA MÉDICA", 140, 28);
-  
-  // Linha decorativa dourada abaixo do cabeçalho
-  doc.setDrawColor(212, 175, 55);
-  doc.setLineWidth(1);
-  doc.line(0, 45, 210, 45);
-  
-  // Informações do Paciente
-  doc.setTextColor(40, 40, 40);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("DADOS DO PACIENTE", 20, 60);
-  
-  doc.setLineWidth(0.5);
-  doc.setDrawColor(212, 175, 55); // Dourado
-  doc.line(20, 63, 190, 63);
-  
-  // Linha 1: Nome e Data de Emissão
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(60, 60, 60);
-  doc.text("Nome:", 20, 72);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(0, 0, 0);
+
+  const sanitize = (text: string) => {
+    return (text || '')
+      .replace(/[–—]/g, '-')
+      .replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+  };
+
   const rawUserName = patientData?.customPatientName || userName || 'Paciente';
-  const sanitizedUserName = rawUserName.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-  doc.text(`${sanitizedUserName}`, 35, 72);
-  
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(60, 60, 60);
-  doc.text("Emissão:", 140, 72);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(0, 0, 0);
-  const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
-  doc.text(`${emissionDateStr}`, 158, 72);
+  const sanitizedUserName = sanitize(rawUserName);
 
-  // Linha 2: Data de Nascimento e CPF
   const storeState = useStore.getState();
-  const birthDateText = patientData?.birthDate || storeState.userBirthDate || storeState.answers?.birthDate || 'Não informada';
-  const cpfText = patientData?.cpf || storeState.userCpf || storeState.answers?.cpf || 'Não informado';
+  const birthDateText = sanitize(patientData?.birthDate || storeState.userBirthDate || storeState.answers?.birthDate || 'Não informada');
+  const cpfText = sanitize(patientData?.cpf || storeState.userCpf || storeState.answers?.cpf || 'Não informado');
+  const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
 
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(60, 60, 60);
-  doc.text("Data de Nasc.:", 20, 80);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(0, 0, 0);
-  doc.text(`${birthDateText}`, 47, 80);
+  const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
+  const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
+  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(60, 60, 60);
-  doc.text("CPF:", 140, 80);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(0, 0, 0);
-  doc.text(`${cpfText}`, 152, 80);
-  
-  // Prescrição
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(40, 40, 40);
-  doc.text("PRESCRIÇÃO", 20, 96);
-  
-  doc.setDrawColor(212, 175, 55); // Dourado
-  doc.line(20, 99, 190, 99);
-  
-  let yPos = 110;
-
-  // Use custom items if provided, or parse from chat messages
+  // Gather items
   let itemsToRender: PrescriptionItemData[] = [];
   if (patientData?.customItems && patientData.customItems.length > 0) {
     itemsToRender = patientData.customItems;
@@ -135,116 +92,311 @@ export const generatePrescriptionPDF = (
   const customNotesText = patientData?.customNotes !== undefined
     ? patientData.customNotes
     : messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n');
-  
-  if (itemsToRender.length === 0 && !customNotesText) {
+
+  // Separate into National vs. Imported
+  const nationalItems = itemsToRender.filter(isNationalProduct);
+  const importedItems = itemsToRender.filter(item => !isNationalProduct(item));
+
+  const hasNational = nationalItems.length > 0;
+  const hasImported = importedItems.length > 0;
+
+  const renderSingleGuide = (
+    guideTitle: string,
+    guideSubtitle: string,
+    guideItems: PrescriptionItemData[],
+    notesText: string,
+    isFirstPage: boolean
+  ) => {
+    if (!isFirstPage) {
+      doc.addPage();
+    }
+
+    // Header Dark Banner
+    doc.setFillColor(10, 10, 15);
+    doc.rect(0, 0, 210, 45, 'F');
+
+    // Clinic Logo
+    doc.setTextColor(212, 175, 55); // Dourado (Mecura gold)
+    doc.setFontSize(26);
+    doc.setFont("helvetica", "bold");
+    doc.text("mecura", 20, 28);
+
+    // Document Title & Subtitle
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(guideTitle, 190, 22, { align: "right" });
+
+    doc.setFontSize(8.5);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.text("Nenhum produto ou orientação prescrita nesta consulta.", 20, yPos);
-  } else {
-    let itemIdx = 1;
-    itemsToRender.forEach((product) => {
-      // Produto
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(212, 175, 55); // Dourado
-      doc.text(`${itemIdx}.`, 20, yPos);
-      
-      doc.setTextColor(20, 20, 20);
-      const sanitizedProductName = (product.name || 'Medicamento Fitocanabinoide').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-      const splitProductName = doc.splitTextToSize(sanitizedProductName, 160);
-      doc.text(splitProductName, 28, yPos);
-      
-      // Detalhes
-      yPos += (splitProductName.length * 5) + 1;
-      doc.setFont("helvetica", "italic");
+    doc.setTextColor(212, 175, 55);
+    doc.text(guideSubtitle, 190, 31, { align: "right" });
+
+    // Golden decorative line
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(1);
+    doc.line(0, 45, 210, 45);
+
+    // Patient Info Section
+    doc.setTextColor(40, 40, 40);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("DADOS DO PACIENTE", 20, 58);
+
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(212, 175, 55);
+    doc.line(20, 61, 190, 61);
+
+    // Line 1: Name and Emission Date
+    doc.setFontSize(9.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(60, 60, 60);
+    doc.text("Nome:", 20, 69);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${sanitizedUserName}`, 33, 69);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(60, 60, 60);
+    doc.text("Emissão:", 140, 69);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${emissionDateStr}`, 158, 69);
+
+    // Line 2: Birth Date and CPF
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(60, 60, 60);
+    doc.text("Data de Nasc.:", 20, 77);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${birthDateText}`, 47, 77);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(60, 60, 60);
+    doc.text("CPF:", 140, 77);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${cpfText}`, 152, 77);
+
+    // Prescription Section
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(40, 40, 40);
+    doc.text("PRESCRIÇÃO TERAPÊUTICA", 20, 91);
+
+    doc.setDrawColor(212, 175, 55);
+    doc.line(20, 94, 190, 94);
+
+    let yPos = 104;
+
+    if (guideItems.length === 0 && !notesText) {
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(100, 100, 100);
-      const sanitizedBrand = (product.brand || 'Associação Brasileira').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-      const sanitizedOrigin = (product.origin || 'Nacional').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-      doc.text(`Fabricante: ${sanitizedBrand} | Origem: ${sanitizedOrigin}`, 28, yPos);
-      
-      // Posologia
-      yPos += 8;
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(60, 60, 60);
-      doc.text("Posologia:", 28, yPos);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(40, 40, 40);
-      yPos += 6;
-      const dosageArr = Array.isArray(product.dosage) ? product.dosage : [String(product.dosage || '')];
-      const dosageText = dosageArr.join('\n').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-      const splitDosage = doc.splitTextToSize(dosageText, 160);
-      
-      for (let i = 0; i < splitDosage.length; i++) {
-        if (yPos > 260) {
-          doc.addPage();
-          yPos = 30;
-        }
-        doc.text(splitDosage[i], 28, yPos);
-        yPos += 5;
-      }
-      yPos += 7;
-      itemIdx++;
-    });
+      doc.text("Nenhum produto ou orientação prescrita nesta guia.", 20, yPos);
+      yPos += 15;
+    } else {
+      let itemIdx = 1;
+      guideItems.forEach((product) => {
+        const enriched = enrichMedicationDetails(product.name, product.brand, product.origin, product.type);
+        const activeIng = sanitize(product.activeIngredients || enriched.activeIngredients);
+        const pharmForm = sanitize(product.pharmaceuticalForm || enriched.pharmaceuticalForm);
+        const quantity = sanitize(product.quantity || enriched.quantity);
+        const admRoute = sanitize(product.administrationRoute || enriched.administrationRoute);
 
-    if (customNotesText && customNotesText.trim()) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(212, 175, 55); // Dourado
-      doc.text(`${itemIdx}.`, 20, yPos);
-      
-      doc.setTextColor(20, 20, 20);
-      doc.text(`Orientações e Prescrição Detalhada:`, 28, yPos);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(40, 40, 40);
-      yPos += 8;
-      const sanitizedNotes = customNotesText.replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
-      const splitNotes = doc.splitTextToSize(sanitizedNotes, 160);
-      
-      for (let i = 0; i < splitNotes.length; i++) {
-        if (yPos > 260) {
+        if (yPos > 215) {
           doc.addPage();
           yPos = 30;
         }
-        doc.text(splitNotes[i], 28, yPos);
+
+        // Product Numbering & Name
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(212, 175, 55); // Gold
+        doc.text(`${itemIdx}.`, 20, yPos);
+
+        doc.setTextColor(20, 20, 20);
+        const sanitizedProductName = sanitize(product.name || 'Medicamento Fitocanabinoide');
+        const splitProductName = doc.splitTextToSize(sanitizedProductName, 160);
+        doc.text(splitProductName, 28, yPos);
+
+        // Brand & Origin
+        yPos += (splitProductName.length * 5) + 1;
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(9);
+        doc.setTextColor(100, 100, 100);
+        const sanitizedBrand = sanitize(product.brand || enriched.brand);
+        const sanitizedOrigin = sanitize(product.origin || enriched.origin);
+        doc.text(`Fabricante: ${sanitizedBrand} | Origem: ${sanitizedOrigin}`, 28, yPos);
+
+        // Active Ingredient & Concentration
         yPos += 5;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(40, 40, 40);
+        doc.text("Princípio Ativo & Concentração:", 28, yPos);
+
+        yPos += 4.5;
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(30, 30, 30);
+        const splitActiveIng = doc.splitTextToSize(activeIng, 160);
+        for (let i = 0; i < splitActiveIng.length; i++) {
+          if (yPos > 245) {
+            doc.addPage();
+            yPos = 30;
+          }
+          doc.text(splitActiveIng[i], 28, yPos);
+          yPos += 4.5;
+        }
+
+        // Presentation & Route
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(60, 60, 60);
+        doc.text("Apresentação & Via:", 28, yPos);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(40, 40, 40);
+        doc.text(`${pharmForm} | Qtd: ${quantity} | ${admRoute}`, 65, yPos);
+        yPos += 5.5;
+
+        // Posology
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(60, 60, 60);
+        doc.text("Posologia e Modo de Uso:", 28, yPos);
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(30, 30, 30);
+        yPos += 5;
+        const dosageArr = Array.isArray(product.dosage) ? product.dosage : [String(product.dosage || '')];
+        const dosageText = sanitize(dosageArr.join('\n'));
+        const splitDosage = doc.splitTextToSize(dosageText, 160);
+
+        for (let i = 0; i < splitDosage.length; i++) {
+          if (yPos > 245) {
+            doc.addPage();
+            yPos = 30;
+          }
+          doc.text(splitDosage[i], 28, yPos);
+          yPos += 4.5;
+        }
+        yPos += 6;
+        itemIdx++;
+      });
+
+      if (notesText && notesText.trim()) {
+        if (yPos > 215) {
+          doc.addPage();
+          yPos = 30;
+        }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(212, 175, 55);
+        doc.text(`${itemIdx}.`, 20, yPos);
+
+        doc.setTextColor(20, 20, 20);
+        doc.text(`Orientações Farmacológicas e Clínicas:`, 28, yPos);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(40, 40, 40);
+        yPos += 6;
+        const sanitizedNotes = sanitize(notesText);
+        const splitNotes = doc.splitTextToSize(sanitizedNotes, 160);
+
+        for (let i = 0; i < splitNotes.length; i++) {
+          if (yPos > 245) {
+            doc.addPage();
+            yPos = 30;
+          }
+          doc.text(splitNotes[i], 28, yPos);
+          yPos += 4.5;
+        }
+        yPos += 6;
       }
-      yPos += 7;
     }
-  }
-  
-  // Rodapé / Assinatura
-  const pageHeight = doc.internal.pageSize.height;
-  
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.5);
-  doc.line(60, pageHeight - 50, 150, pageHeight - 50); // Linha de assinatura
-  
-  const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
-  const docCrm = patientData?.customDoctorCrm || "CRM: 12345/SP";
-  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(0, 0, 0);
-  doc.text(docName, 105, pageHeight - 42, { align: "center" });
-  
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(100, 100, 100);
-  doc.text(docCrm, 105, pageHeight - 36, { align: "center" });
-  doc.text(docSpec, 105, pageHeight - 31, { align: "center" });
-  
-  // Espaço para assinatura digital (caixa pontilhada)
-  doc.setDrawColor(150, 150, 150);
-  doc.setLineDashPattern([2, 2], 0);
-  doc.rect(60, pageHeight - 85, 90, 30);
-  doc.setFontSize(9);
-  doc.setTextColor(150, 150, 150);
-  doc.text("Espaço para Assinatura Digital", 105, pageHeight - 68, { align: "center" });
+    // Signature Block at the bottom of THIS guide (independent prescription)
+    const pageHeight = doc.internal.pageSize.height;
+    if (yPos > pageHeight - 65) {
+      doc.addPage();
+    }
+
+    // Signature Line
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.setLineDashPattern([], 0);
+    doc.line(60, pageHeight - 48, 150, pageHeight - 48);
+
+    // Doctor Details
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text(docName, 105, pageHeight - 40, { align: "center" });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(80, 80, 80);
+    doc.text(docCrm, 105, pageHeight - 34, { align: "center" });
+    doc.text(docSpec, 105, pageHeight - 29, { align: "center" });
+
+    // Digital Signature / Stamp Box
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.rect(60, pageHeight - 82, 90, 30);
+    doc.setFontSize(8.5);
+    doc.setTextColor(150, 150, 150);
+    doc.text("Espaço para Assinatura e Carimbo Digital", 105, pageHeight - 66, { align: "center" });
+    doc.setLineDashPattern([], 0);
+  };
+
+  // Decide how to render guides
+  if (hasNational && hasImported) {
+    // Guia 1: Nacionais
+    renderSingleGuide(
+      "RECEITA MÉDICA",
+      "GUIA 1: PRODUTOS NACIONAIS (ASSOCIAÇÃO BRASILEIRA)",
+      nationalItems,
+      customNotesText,
+      true
+    );
+
+    // Guia 2: Importados
+    renderSingleGuide(
+      "RECEITA MÉDICA",
+      "GUIA 2: PRODUTOS IMPORTADOS (ANVISA RDC 660)",
+      importedItems,
+      customNotesText,
+      false
+    );
+  } else if (hasNational) {
+    // Apenas Nacionais
+    renderSingleGuide(
+      "RECEITA MÉDICA",
+      "PRODUTOS NACIONAIS / ASSOCIAÇÃO BRASILEIRA",
+      nationalItems,
+      customNotesText,
+      true
+    );
+  } else if (hasImported) {
+    // Apenas Importados
+    renderSingleGuide(
+      "RECEITA MÉDICA",
+      "PRODUTOS IMPORTADOS / ANVISA (RDC 660)",
+      importedItems,
+      customNotesText,
+      true
+    );
+  } else {
+    // Fallback: todos juntos
+    renderSingleGuide(
+      "RECEITA MÉDICA",
+      "RECEITUÁRIO MÉDICO ESPECIALIZADO",
+      itemsToRender,
+      customNotesText,
+      true
+    );
+  }
   
   const fileName = `Receita_${sanitizedUserName.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
   doc.save(fileName);
@@ -295,7 +447,7 @@ export const generateMedicalReportPDF = (
   const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
 
   const doctorName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
-  const doctorCrm = patientData?.customDoctorCrm || "CRM: 12345/SP";
+  const doctorCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
   const doctorSpecialty = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
   // Cabeçalho
@@ -491,7 +643,13 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
   if (itemsToRender.length > 0 || (customNotesText && customNotesText.trim())) {
     let itemIdx = 1;
     itemsToRender.forEach((p) => {
-      checkPageBreak(25);
+      const enriched = enrichMedicationDetails(p.name, p.brand, p.origin, p.type);
+      const activeIng = (p.activeIngredients || enriched.activeIngredients).replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const pharmForm = (p.pharmaceuticalForm || enriched.pharmaceuticalForm).replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const quantity = (p.quantity || enriched.quantity).replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+      const admRoute = (p.administrationRoute || enriched.administrationRoute).replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+
+      checkPageBreak(30);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.setTextColor(212, 175, 55);
@@ -501,7 +659,30 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
       doc.setFont("helvetica", "italic");
       doc.setFontSize(9);
       doc.setTextColor(90, 90, 90);
-      doc.text(`Origem: ${sanitize(p.origin || 'Associação Nacional / Importado')} | Fabricante: ${sanitize(p.brand || 'Associação Brasileira')}`, margin + 3, yPos);
+      doc.text(`Origem: ${sanitize(p.origin || enriched.origin)} | Fabricante: ${sanitize(p.brand || enriched.brand)}`, margin + 3, yPos);
+
+      yPos += 5;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(40, 40, 40);
+      doc.text("Princípio Ativo:", margin + 3, yPos);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(20, 20, 20);
+      const splitActive = doc.splitTextToSize(sanitize(activeIng), contentWidth - 35);
+      doc.text(splitActive[0], margin + 30, yPos);
+      for (let i = 1; i < splitActive.length; i++) {
+        yPos += 4.5;
+        doc.text(splitActive[i], margin + 3, yPos);
+      }
+
+      yPos += 4.5;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(60, 60, 60);
+      doc.text("Apresentação & Via:", margin + 3, yPos);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 30);
+      doc.text(`${pharmForm} | Qtd: ${quantity} | ${admRoute}`, margin + 38, yPos);
 
       yPos += 5;
       doc.setFont("helvetica", "bold");

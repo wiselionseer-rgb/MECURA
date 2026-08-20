@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, FileText, MessageCircle, Receipt, X, ChevronDown } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
+import { motion, AnimatePresence } from 'motion/react';
 
 export function HistoryScreen() {
   const navigate = useNavigate();
@@ -88,7 +89,9 @@ export function HistoryScreen() {
 
           {/* Action Buttons */}
           <div className="w-full space-y-4">
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => generatePrescriptionPDF(userName, messages, {
                 birthDate: userBirthDate || answers?.birthDate,
                 cpf: userCpf || answers?.cpf
@@ -97,33 +100,44 @@ export function HistoryScreen() {
             >
               <FileText className="w-5 h-5" />
               Abrir Receita
-            </button>
+            </motion.button>
             
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setShowFaqModal(true)}
               className="w-full bg-[#8A8AFF]/10 hover:bg-[#8A8AFF]/20 border border-[#8A8AFF]/30 text-[#8A8AFF] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
             >
               <MessageCircle className="w-5 h-5" />
               Dúvidas Sobre o Tratamento
-            </button>
+            </motion.button>
             
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setShowReceiptModal(true)}
               className="w-full bg-mecura-green/10 hover:bg-mecura-green/20 border border-mecura-green/30 text-mecura-green font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
             >
               <Receipt className="w-5 h-5" />
               Abrir Nota Fiscal
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>
 
       {/* FAQ Modal */}
+      <AnimatePresence>
       {showFaqModal && (
-        <div 
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6"
         >
-          <div 
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
             className="bg-[#161622] w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[#262636] overflow-hidden flex flex-col max-h-[85vh]"
           >
               <div className="p-6 border-b border-[#262636] flex items-center justify-between sticky top-0 bg-[#161622] z-10">
@@ -160,29 +174,42 @@ export function HistoryScreen() {
                         <ChevronDown className={`w-5 h-5 text-[#8A8A9E] transition-transform ${expandedFaq === index ? 'rotate-180' : ''}`} />
                       </button>
                       
+                      <AnimatePresence>
                       {expandedFaq === index && (
-                        <div 
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
                           className="overflow-hidden"
                         >
                           <div className="p-4 pt-0 text-sm text-[#8A8A9E] leading-relaxed border-t border-[#262636]/50 mt-2">
                             {faq.answer}
                           </div>
-                        </div>
+                        </motion.div>
                       )}
+                      </AnimatePresence>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
+      </AnimatePresence>
 
       {/* Receipt Modal */}
+      <AnimatePresence>
       {showReceiptModal && (
-        <div 
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6"
         >
-          <div 
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
             className="bg-[#161622] w-full max-w-sm rounded-3xl border border-[#262636] overflow-hidden flex flex-col"
           >
               <div className="p-6 border-b border-[#262636] flex items-center justify-between">
@@ -235,9 +262,10 @@ export function HistoryScreen() {
                   Fechar
                 </button>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
+      </AnimatePresence>
     </div>
   );
 }

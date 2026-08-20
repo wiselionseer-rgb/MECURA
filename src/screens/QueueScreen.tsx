@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { Hexagon, BellRing, Bell } from 'lucide-react';
+import { requestNotificationPermission } from '../utils/notifications';
 
 export function QueueScreen() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export function QueueScreen() {
 
   useEffect(() => {
     const unsubscribe = subscribeToQueue();
+    requestNotificationPermission();
     return () => unsubscribe();
   }, [subscribeToQueue]);
 
@@ -52,12 +54,12 @@ export function QueueScreen() {
         {/* Futuristic Scanner Graphic */}
         <div className="relative w-64 h-64 flex items-center justify-center mb-12">
           {/* Outer Rotating Hexagon */}
-          <div className="absolute inset-0 text-mecura-neon/10 animate-[mecura-spin_15s_linear_infinite]">
+          <div className="absolute inset-0 text-mecura-neon/10 animate-spin-slow">
             <Hexagon className="w-full h-full" strokeWidth={0.5} />
           </div>
 
           {/* Reverse Rotating Dashed Circle */}
-          <div className="absolute inset-4 rounded-full border-2 border-dashed border-mecura-neon/20 animate-[mecura-spin_10s_linear_infinite_reverse]" />
+          <div className="absolute inset-4 rounded-full border-2 border-dashed border-mecura-neon/20 animate-spin-reverse" />
 
           {/* Pulsing Inner Circle */}
           <div className={`absolute inset-12 rounded-full border backdrop-blur-sm animate-pulse ${
@@ -86,7 +88,7 @@ export function QueueScreen() {
 
           {/* Scanning Line (Only when waiting) */}
           {!isNext && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 bg-mecura-neon/80 shadow-[0_0_15px_rgba(166,255,0,1)] z-30 animate-[scan_3s_linear_infinite]" />
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-mecura-neon/80 shadow-[0_0_15px_rgba(166,255,0,1)] z-30 animate-scan" />
           )}
         </div>
 

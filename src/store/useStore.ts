@@ -19,6 +19,12 @@ export interface Message {
     details: string[];
     brand: string;
     origin: string;
+    type?: string;
+    activeIngredients?: string;
+    concentration?: string;
+    pharmaceuticalForm?: string;
+    quantity?: string;
+    administrationRoute?: string;
     italicText?: string;
     dosage: string[];
     description: string;
@@ -130,6 +136,8 @@ interface AppState {
   // Chat
   messages: Message[];
   addMessage: (msg: Omit<Message, 'id' | 'timestamp'>) => void;
+  deleteMessage: (messageId: string, customConsultationId?: string) => Promise<void>;
+  clearPrescriptionMessages: (customConsultationId?: string) => Promise<void>;
   setMessages: (messages: Message[]) => void;
   subscribeToMessages: (consultationId: string) => () => void;
 
@@ -386,12 +394,18 @@ export const useStore = create<AppState>((set, get) => ({
       
       // Update position for current user (if they are a patient)
       const currentUserId = auth.currentUser?.uid;
+      const state = get();
       
       if (currentUserId && !isDoctorRoute) {
         const myIndex = queueData.findIndex(p => p.id === currentUserId);
         if (myIndex !== -1) {
           // Check if doctor started consultation
           if (queueData[myIndex].status === 'in-consultation') {
+             if (state.inQueue && typeof document !== 'undefined' && document.hidden) {
+               import('../utils/notifications').then(({ showNativeNotification }) => {
+                 showNativeNotification('Consulta Iniciada!', 'O médico te chamou para a consulta. Clique para abrir.', '/chat');
+               });
+             }
              // Doctor started it!
              set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: currentUserId });
           } else if (queueData[myIndex].status === 'finished') {
@@ -411,12 +425,16 @@ export const useStore = create<AppState>((set, get) => ({
         }
       } else if (!isDoctorRoute) {
         // Handle anonymous users based on their local state
-        const state = get();
         if (state.inQueue || state.consultationActive || state.isConsultationFinished) {
           // Find their position based on their generated ID if possible, or just rely on local state
           const myIndex = queueData.findIndex(p => p.id === state.patientId);
           if (myIndex !== -1) {
             if (queueData[myIndex].status === 'in-consultation') {
+               if (state.inQueue && typeof document !== 'undefined' && document.hidden) {
+                 import('../utils/notifications').then(({ showNativeNotification }) => {
+                   showNativeNotification('Consulta Iniciada!', 'O médico te chamou para a consulta. Clique para abrir.', '/chat');
+                 });
+               }
                set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: queueData[myIndex].id });
             } else if (queueData[myIndex].status === 'finished') {
                set({ isConsultationFinished: true, consultationActive: false, inQueue: false, activeConsultationId: queueData[myIndex].id });
@@ -673,13 +691,70 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   
+  deleteMessage: async (messageId: string, customConsultationId?: string) => {
+    const state = get();
+    set((s) => ({
+      messages: s.messages.filter(m => m.id !== messageId)
+    }));
+
+    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    console.log("deleteMessage called. id:", messageId, "consultationId:", consultationId);
+    if (consultationId) {
+      try {
+        await deleteDoc(doc(db, 'active_consultations', consultationId, 'messages', messageId));
+        console.log("Message deleted from Firestore:", messageId);
+      } catch (error) {
+        console.error("Error deleting message from Firestore:", error);
+      }
+    }
+  },
+
+  clearPrescriptionMessages: async (customConsultationId?: string) => {
+    const state = get();
+    const prescriptionMsgIds = state.messages
+      .filter(m => m.type === 'product' || m.type === 'prescription' || m.type === 'prescription_notes')
+      .map(m => m.id);
+
+    set((s) => ({
+      messages: s.messages.filter(m => m.type !== 'product' && m.type !== 'prescription' && m.type !== 'prescription_notes')
+    }));
+
+    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    console.log("clearPrescriptionMessages called. consultationId:", consultationId, "ids:", prescriptionMsgIds);
+    if (consultationId && prescriptionMsgIds.length > 0) {
+      try {
+        await Promise.all(
+          prescriptionMsgIds.map(id => deleteDoc(doc(db, 'active_consultations', consultationId, 'messages', id)))
+        );
+        console.log("Prescription messages cleared from Firestore");
+      } catch (error) {
+        console.error("Error clearing prescription messages from Firestore:", error);
+      }
+    }
+  },
+
   subscribeToMessages: (consultationId: string) => {
     const q = query(collection(db, 'active_consultations', consultationId, 'messages'), orderBy('timestamp', 'asc'));
     return onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({
+        id: doc.id,
         ...doc.data(),
         timestamp: new Date(doc.data().timestamp)
       })) as Message[];
+      
+      const currentMessages = get().messages;
+      // Show notification if a new message is received from the doctor and the page is hidden (e.g. locked screen)
+      if (msgs.length > currentMessages.length && currentMessages.length > 0) {
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg.sender === 'doctor') {
+          if (typeof document !== 'undefined' && document.hidden) {
+            import('../utils/notifications').then(({ showNativeNotification }) => {
+              showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
+            });
+          }
+        }
+      }
+      
       set({ messages: msgs });
     }, (error) => {
       console.error("Error subscribing to messages:", error);

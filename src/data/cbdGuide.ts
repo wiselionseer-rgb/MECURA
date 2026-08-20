@@ -3,7 +3,11 @@ export interface CBDProduct {
   manufacturer: string;
   origin: string;
   type: string;
+  activeIngredients?: string;
   concentration?: string;
+  pharmaceuticalForm?: string;
+  quantity?: string;
+  administrationRoute?: string;
   image?: string;
   details?: string[];
   italicText?: string;
@@ -541,3 +545,166 @@ export const cbdGuideData: CBDCategory[] = [
     ]
   }
 ];
+
+export interface EnrichedMedicationInfo {
+  name: string;
+  activeIngredients: string;
+  concentration: string;
+  pharmaceuticalForm: string;
+  quantity: string;
+  administrationRoute: string;
+  brand: string;
+  origin: string;
+  type?: string;
+  description: string;
+}
+
+export function enrichMedicationDetails(
+  productName: string, 
+  brand?: string, 
+  origin?: string, 
+  type?: string
+): EnrichedMedicationInfo {
+  const pName = productName || '';
+  const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
+  const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
+  const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
+
+  // 1. Pomadas
+  if (/Pomada|Tópico|Cream|Balm/i.test(pName)) {
+    return {
+      name: pName,
+      activeIngredients: 'Extrato Canábico Rico em Fitocanabinoides (CBD + CBG) 500mg com Terpenos Anti-inflamatórios',
+      concentration: '10mg/g (500mg de Canabinoides Totais)',
+      pharmaceuticalForm: 'Pomada Terapêutica de Uso Tópico',
+      quantity: '01 Pote com 50g',
+      administrationRoute: 'Uso Tópico / Dérmico',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Pomada fitocanabinoide de uso tópico para alívio localizado de dores musculares, articulares e processos inflamatórios.'
+    };
+  }
+
+  // 2. Flores in natura
+  if (/Flores|Flor|In natura/i.test(pName)) {
+    const isTHC = /THC/i.test(pName);
+    return {
+      name: pName,
+      activeIngredients: isTHC 
+        ? 'Inflorescências Secas de Cannabis sativa L. com Alto Teor de Delta-9-THC (15% a 20%) e Terpenos Mirceno/Beta-Cariofileno'
+        : 'Inflorescências Secas de Cannabis sativa L. com Alto Teor de Canabidiol (CBD 10% a 15%) e Delta-9-THC < 0,3%',
+      concentration: isTHC ? 'THC ~18% | CBD < 1%' : 'CBD ~14% | THC < 0,3%',
+      pharmaceuticalForm: 'Inflorescências Secas Padronizadas para Vaporização Medicinal',
+      quantity: '01 Embalagem hermética de 15g',
+      administrationRoute: 'Via Inalatória (Vaporização Medicinal - Não Comburente)',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Inalação vaporizada para rápida absorção e efeito analgésico ou ansiolítico imediato em momentos de crise.'
+    };
+  }
+
+  // 3. Gomas
+  if (/Goma|Gummies|Gummy|Drops/i.test(pName)) {
+    const hasCBN = /CBN/i.test(pName);
+    const hasTHC = /THC/i.test(pName) && !/CBN/i.test(pName);
+    return {
+      name: pName,
+      activeIngredients: hasCBN
+        ? 'Fitocanabinoides Padronizados: Canabidiol (CBD 10mg) + Canabinol (CBN 2.5mg) + Delta-9-THC (1mg)'
+        : (hasTHC ? 'Fitocanabinoides Padronizados: Canabidiol (CBD 10mg) + Delta-9-THC (10mg)' : 'Canabidiol (CBD Isolado / Broad Spectrum 25mg)'),
+      concentration: '25mg de Fitocanabinoides por unidade',
+      pharmaceuticalForm: 'Gomas Mastigáveis (Forma Farmacêutica Comestível)',
+      quantity: '01 Frasco com 20 a 30 unidades mastigáveis',
+      administrationRoute: 'Via Oral (Mastigável)',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Gomas mastigáveis com liberação gradual e prolongada para relaxamento sustentado e sono reparador.'
+    };
+  }
+
+  // 4. Óleos e Extratos
+  if (/THC\/CBD|1:1|Balanceado/i.test(pName)) {
+    return {
+      name: pName,
+      activeIngredients: 'Extrato Integral de Cannabis Full Spectrum com Proporção Balanceada THC:CBD (1:1) 50mg/ml THC + 50mg/ml CBD',
+      concentration: '100mg/ml (50mg/ml THC + 50mg/ml CBD) - 3000mg totais',
+      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
+      quantity: '01 Frasco de 30ml',
+      administrationRoute: 'Via Sublingual / Oral',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Extrato balanceado 1:1 indicado para analgesia potente, dores neuropáticas, rigidez e espasticidade.'
+    };
+  }
+
+  if (/PREDOMINANTE THC|Rico em THC|High THC/i.test(pName)) {
+    return {
+      name: pName,
+      activeIngredients: 'Extrato Integral de Cannabis com Predominância de Tetrahidrocanabinol (Delta-9-THC 100mg/ml) + Canabinoides Menores',
+      concentration: '100mg/ml Delta-9-THC (3000mg totais)',
+      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
+      quantity: '01 Frasco de 30ml',
+      administrationRoute: 'Via Sublingual / Oral',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Extrato predominante em THC para analgesia em dores intratáveis, insônia refratária e relaxamento neuromuscular.'
+    };
+  }
+
+  if (/CBG/i.test(pName)) {
+    return {
+      name: pName,
+      activeIngredients: 'Extrato de Canabigerol (CBG) + Canabidiol (CBD) Full Spectrum com Terpenos Energizantes',
+      concentration: '50mg/ml a 80mg/ml de Canabinoides Totais (Frasco 30ml)',
+      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
+      quantity: '01 Frasco de 30ml',
+      administrationRoute: 'Via Sublingual / Oral',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Formulação rica em CBG para clareza mental, foco, suporte anti-inflamatório sistêmico e imunológico.'
+    };
+  }
+
+  if (/6000mg/i.test(pName)) {
+    return {
+      name: pName,
+      activeIngredients: 'Canabidiol (CBD) Full Spectrum 200mg/ml (6000mg totais) + Terpenos Naturais + Delta-9-THC < 0,2%',
+      concentration: '200mg/ml (6000mg CBD por frasco de 30ml - Aprox. 5mg/gota)',
+      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
+      quantity: '01 Frasco de 30ml',
+      administrationRoute: 'Via Sublingual / Oral',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Canabidiol de altíssima concentração para quadros de ansiedade severa, dores refratárias e regulação do humor.'
+    };
+  }
+
+  if (/3000mg/i.test(pName)) {
+    return {
+      name: pName,
+      activeIngredients: 'Canabidiol (CBD) Full Spectrum 100mg/ml (3000mg totais) + Blend Terpênico Mirceno/Linalol + Delta-9-THC < 0,2%',
+      concentration: '100mg/ml (3000mg CBD por frasco de 30ml - Aprox. 2,5mg/gota)',
+      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
+      quantity: '01 Frasco de 30ml',
+      administrationRoute: 'Via Sublingual / Oral',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Extrato Full Spectrum enriquecido com terpenos calmantes para relaxamento, inflamação e alívio da dor.'
+    };
+  }
+
+  // Padrão Geral (Óleo CBD 100mg/ml)
+  return {
+    name: pName,
+    activeIngredients: isNational 
+      ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD 100mg/ml) - Associação Brasileira' 
+      : 'Canabidiol (CBD) Full Spectrum 100mg/ml com Terpenos Naturais (Delta-9-THC < 0,2%)',
+    concentration: '100mg/ml de Canabidiol (CBD) - 3000mg por frasco',
+    pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
+    quantity: '01 Frasco de 30ml',
+    administrationRoute: 'Via Sublingual / Oral',
+    brand: manufacturer,
+    origin: prodOrigin,
+    description: 'Modulação terapêutica do Sistema Endocanabinoide para redução de ansiedade, regulação do humor e neuroproteção.'
+  };
+}

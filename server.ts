@@ -172,58 +172,52 @@ async function startServer() {
       importedProducts = [
         {
           name: "GreenBudzCBD Deep Vibe CBD 3000mg + Indica Terps",
-          indication: "Alívio de Dores Crônicas, Inflamação e Tensão Muscular",
-          usage: "**12 gotas (30mg de CBD)** por via sublingual, de **8 em 8 horas** ou **12 em 12 horas**",
-          notes: "Perfil terpênico rico em mirceno e beta-cariofileno potencializa o efeito analgésico e miorrelaxante."
+          indication: "Alívio de Dores Crônicas, Inflamação e Tensão Muscular (Óleo Sublingual)",
+          usage: "**10 a 12 gotas** por via sublingual, de **12 em 12 horas**",
+          notes: "Perfil terpênico com Mirceno e Beta-Cariofileno para analgesia sistêmica contínua."
         },
         {
-          name: "GreenBudzCBD CalmVibe CBD 6000mg + Mint",
-          indication: "Manejo da Inflamação Sistêmica e Modulação Central da Dor",
-          usage: "**8 a 10 gotas** de **12 em 12 horas**",
-          notes: "Titular a cada 3 a 5 dias conforme resposta álgica do paciente."
+          name: "Drops By GreenBudzCBD Gummies 5mg THC 5mg CBN 5mg CBD per ct Nightshade - 20ct",
+          indication: "Crises Álgicas Noturnas e Relaxamento Muscular Profundo (Gomas Mastigáveis)",
+          usage: "**1 goma mastigável** ao final da tarde ou 1h antes de deitar",
+          notes: "Forma farmacêutica sólida comestível com liberação prolongada para controle da dor noturna."
         }
       ];
 
       nationalProducts = [
         {
           name: "ÓLEO INTEGRAL THC/CBD 100mg/ml",
-          indication: "Analgesia Potente, Modulação de Dores Neuropáticas e Inflamatórias",
+          indication: "Analgesia Contínua, Modulação de Dores Neuropáticas e Inflamatórias",
           usage: "Tomar **10 gotas** de **12 em 12 horas** (sublingual).",
-          notes: "01 Frasco de 30ml - Associação Brasileira. Efeito entourage equilibrado com alta eficácia analgésica."
-        },
-        {
-          name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml",
-          indication: "Miorrelaxamento Noturno e Crises Álgicas Intrusivas",
-          usage: "Tomar **05 gotas** à noite 30 minutos antes do repouso.",
-          notes: "01 Frasco de 30ml - Associação Brasileira. Potente ação moduladora das vias nociceptivas centrais."
+          notes: "01 Frasco de 30ml - Associação Brasileira. Efeito entourage balanceado (1:1) de uso contínuo."
         },
         {
           name: "Pomada Canábica Terapêutica 500mg (50g)",
           indication: "Alívio Tópico Localizado para Articulações e Músculos Doloridos",
           usage: "Aplicar fina camada sobre a região afetada **2 a 3 vezes ao dia**, massageando suavemente.",
-          notes: "01 Pote 50g - Associação Brasileira. Ação anti-inflamatória tópica sem efeitos sistêmicos."
+          notes: "01 Pote 50g - Associação Brasileira. Ação anti-inflamatória tópica localizada sem sedação."
         },
         {
           name: "Flores in natura de cannabis sp rica em THC 15g",
-          indication: "Controle de Crises Agudas e Picos de Dor Intratável (Resgate)",
+          indication: "Controle de Crises Agudas e Picos de Dor Intratável (Resgate Inalatório)",
           usage: "Inalar **1g** via vaporizador medicinal nas crises.",
-          notes: "01 Frasco de 15g - Associação Brasileira. Início de ação ultrarrápido (1 a 3 minutos)."
+          notes: "01 Frasco de 15g - Associação Brasileira. Início de ação ultrarrápido (1 a 3 minutos) para resgate."
         }
       ];
     } else if (isInsomnia) {
       primaryCondition = "Distúrbios do Sono, Insônia Crônica e Fragmentação Noturna";
       importedProducts = [
         {
-          name: "Drops By GreenBudzCBD Gummies 1mg THC 2.5mg CBN 10mg CBD per ct Lullaby - 20ct",
-          indication: "Indução e Manutenção do Sono Reparador",
-          usage: "**1 goma mastigável** aproximadamente **45 minutos antes de deitar**",
-          notes: "O fitocanabinoide CBN atua sinergicamente promovendo relaxamento neuromuscular e indução fisiológica do sono."
+          name: "IgniteCBD by Isospec Health 1200mg:1200mg CBD:CBN - 30ml - Mint",
+          indication: "Indução e Manutenção do Sono Reparador (Óleo Sublingual com CBN)",
+          usage: "**10 a 12 gotas** por via sublingual, **30 a 45 minutos antes de deitar**",
+          notes: "O Canabinol (CBN) é o fitocanabinoide de escolha para arquitetura do sono profundo."
         },
         {
-          name: "GreenBudzCBD Deep Vibe CBD 3000mg + Indica Terps",
-          indication: "Redução da Latência do Sono e Despertares Noturnos",
-          usage: "**12 a 15 gotas** 30 minutos antes do repouso noturno",
-          notes: "Uso sublingual para início de ação em 15-30 minutos."
+          name: "Drops By GreenBudzCBD Gummies 1mg THC 2.5mg CBN 10mg CBD per ct Lullaby - 20ct",
+          indication: "Sono Prolongado e Prevenção de Despertares Noturnos (Gomas Mastigáveis)",
+          usage: "**1 goma mastigável** 45 minutos antes do repouso",
+          notes: "Gomas mastigáveis de ação prolongada com fitocanabinoides sinérgicos (CBN/CBD)."
         }
       ];
 
@@ -231,18 +225,12 @@ async function startServer() {
         {
           name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml",
           indication: "Indução Fisiológica e Estabilização dos Ciclos do Sono",
-          usage: "Tomar **05 a 08 gotas** à noite 30 minutos antes de dormir.",
-          notes: "01 Frasco de 30ml - Associação Brasileira. Facilita o adormecer e prolonga o sono profundo (N3/REM)."
-        },
-        {
-          name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml",
-          indication: "Manutenção do Tônus Ansiolítico e Prevenção de Despertares Precoces",
-          usage: "Tomar **05 gotas** de manhã e **05 gotas** no fim da tarde.",
-          notes: "01 Frasco de 30ml - Associação Brasileira. Regulação circadiana sem sonolência diurna residual."
+          usage: "Tomar **05 gotas** à noite 30 minutos antes de dormir.",
+          notes: "01 Frasco de 30ml - Associação Brasileira. Facilita o adormecer e modula o tônus de relaxamento."
         },
         {
           name: "Flores in natura de cannabis sp rica em CBD 15g",
-          indication: "Indução Imediata de Relaxamento e Manejo de Crises de Ansiedade Noturna",
+          indication: "Relaxamento Imediato e Manejo de Crises de Ansiedade Pré-Sono (Inalatória)",
           usage: "Inalar **1g** via vaporizador medicinal 15 minutos antes de deitar.",
           notes: "01 Frasco de 15g - Associação Brasileira. Alívio imediato da hiperexcitabilidade pré-sono."
         }

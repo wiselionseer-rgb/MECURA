@@ -60,7 +60,7 @@ import {
 } from 'recharts';
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
-import { cbdGuideData, CBDProduct } from '../data/cbdGuide';
+import { cbdGuideData, CBDProduct, enrichMedicationDetails } from '../data/cbdGuide';
 import { NotificationToast } from '../components/NotificationToast';
 import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
@@ -91,7 +91,13 @@ const calculateAge = (birthDateStr?: string) => {
 };
 
 export function DoctorDashboardScreen() {
-  const { userName, userCpf, userBirthDate, userPhone, answers, messages, addMessage, consultationActive, endConsultation, resetConsultation, setSelectedOffer, allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, subscribeToMessages, subscribeToAppointments } = useStore();
+  const { 
+    userName, userCpf, userBirthDate, userPhone, answers, messages, 
+    addMessage, deleteMessage, clearPrescriptionMessages, 
+    consultationActive, endConsultation, resetConsultation, setSelectedOffer, 
+    allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
+    subscribeToMessages, subscribeToAppointments 
+  } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -127,7 +133,7 @@ export function DoctorDashboardScreen() {
   const [reportCpf, setReportCpf] = useState('');
   const [reportEmissionDate, setReportEmissionDate] = useState('');
   const [reportDoctorName, setReportDoctorName] = useState('Dr. Guilherme Taveira Dias');
-  const [reportDoctorCrm, setReportDoctorCrm] = useState('CRM: 12345/SP');
+  const [reportDoctorCrm, setReportDoctorCrm] = useState('CRM/MT 17259');
   const [reportDoctorSpecialty, setReportDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
   const [reportDiagnosis, setReportDiagnosis] = useState('');
   const [reportRationale, setReportRationale] = useState('');
@@ -142,7 +148,7 @@ export function DoctorDashboardScreen() {
   const [prescCpf, setPrescCpf] = useState('');
   const [prescEmissionDate, setPrescEmissionDate] = useState('');
   const [prescDoctorName, setPrescDoctorName] = useState('Dr. Guilherme Taveira Dias');
-  const [prescDoctorCrm, setPrescDoctorCrm] = useState('CRM: 12345/SP');
+  const [prescDoctorCrm, setPrescDoctorCrm] = useState('CRM/MT 17259');
   const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
   const [prescItems, setPrescItems] = useState<PrescriptionItemData[]>([]);
   const [prescNotes, setPrescNotes] = useState('');
@@ -319,6 +325,30 @@ export function DoctorDashboardScreen() {
     }
     
     setInputText('');
+  };
+
+  const handleRemovePrescribedMedication = async (messageId: string, medicationName?: string) => {
+    try {
+      const pId = currentPatient?.id;
+      console.log("Removing medication message:", messageId, "medicationName:", medicationName, "patientId:", pId);
+      await deleteMessage(messageId, pId);
+      if (medicationName) {
+        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== medicationName.toLowerCase()));
+      }
+    } catch (err) {
+      console.error("Error removing medication message:", err);
+    }
+  };
+
+  const handleClearAllPrescriptions = async () => {
+    try {
+      const pId = currentPatient?.id;
+      console.log("Clearing all prescriptions for patientId:", pId);
+      await clearPrescriptionMessages(pId);
+      setAddedMedications([]);
+    } catch (err) {
+      console.error("Error clearing all prescriptions:", err);
+    }
   };
 
   const handleDoctorAction = (action: 'prescribe' | 'ask_approval' | 'send_prescription' | 'ask_doubt' | 'acompanhamento') => {
@@ -511,17 +541,36 @@ export function DoctorDashboardScreen() {
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
-    // Extract products already in messages
+    // Extract products already in messages & enrich with full pharmacology
     const items: PrescriptionItemData[] = [];
+    const seenNames = new Set<string>();
+
     messages.forEach(m => {
       if (m.type === 'product' && m.productData) {
-        items.push({
-          name: m.productData.name,
-          brand: m.productData.brand || 'Associação Brasileira',
-          origin: m.productData.origin || 'Nacional',
-          dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
-          description: m.productData.description || ''
-        });
+        const pName = m.productData.name;
+        if (!seenNames.has(pName)) {
+          seenNames.add(pName);
+          const enriched = enrichMedicationDetails(
+            pName,
+            m.productData.brand || 'Associação Brasileira',
+            m.productData.origin || 'Nacional',
+            m.productData.type
+          );
+
+          items.push({
+            name: pName,
+            brand: m.productData.brand || enriched.brand,
+            origin: m.productData.origin || enriched.origin,
+            type: m.productData.type || enriched.type,
+            activeIngredients: m.productData.activeIngredients || enriched.activeIngredients,
+            concentration: m.productData.concentration || enriched.concentration,
+            pharmaceuticalForm: m.productData.pharmaceuticalForm || enriched.pharmaceuticalForm,
+            quantity: m.productData.quantity || enriched.quantity,
+            administrationRoute: m.productData.administrationRoute || enriched.administrationRoute,
+            dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
+            description: m.productData.description || enriched.description || ''
+          });
+        }
       }
     });
 
@@ -532,20 +581,31 @@ export function DoctorDashboardScreen() {
     setPrescCpf(pCpf);
     setPrescEmissionDate(format(new Date(), 'dd/MM/yyyy'));
     setPrescDoctorName('Dr. Guilherme Taveira Dias');
-    setPrescDoctorCrm('CRM: 12345/SP');
+    setPrescDoctorCrm('CRM/MT 17259');
     setPrescDoctorSpecialty('Especialista em Medicina Canabinoide');
-    setPrescItems(items.length > 0 ? items : [
-      {
-        name: 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)',
-        brand: 'Associação Brasileira (Nacional)',
-        origin: 'Nacional',
-        dosage: [
-          'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
-          'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).'
-        ],
-        description: 'Extrato integral rico em Canabidiol com excelente rendimento e custo-benefício.'
-      }
-    ]);
+    
+    if (items.length > 0) {
+      setPrescItems(items);
+    } else {
+      const defaultEnriched = enrichMedicationDetails('ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)', 'Associação Brasileira (Nacional)', 'Nacional');
+      setPrescItems([
+        {
+          name: 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)',
+          brand: 'Associação Brasileira (Nacional)',
+          origin: 'Nacional',
+          activeIngredients: defaultEnriched.activeIngredients,
+          concentration: defaultEnriched.concentration,
+          pharmaceuticalForm: defaultEnriched.pharmaceuticalForm,
+          quantity: defaultEnriched.quantity,
+          administrationRoute: defaultEnriched.administrationRoute,
+          dosage: [
+            'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
+            'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).'
+          ],
+          description: 'Extrato integral rico em Canabidiol com excelente rendimento e custo-benefício.'
+        }
+      ]);
+    }
     setPrescNotes(notes || 'Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.');
     setPrescriptionTab('edit');
     setShowPrescriptionEditorModal(true);
@@ -581,21 +641,47 @@ export function DoctorDashboardScreen() {
     const defaultTherapeuticRationale = `A terapêutica com Fitocanabinoides (Cannabis Medicinal) fundamenta-se na modulação do Sistema Endocanabinoide (SEC), uma complexa rede de sinalização neuromoduladora e imunológica composta por receptores CB1 (sistema nervoso central) e CB2 (sistema imunológico e tecidos periféricos).\n\n- Modulação Neuroquímica e Anti-inflamatória: O Canabidiol (CBD) atua como modulador alostérico negativo de CB1 e inibidor da degradação de anandamida (via enzima FAAH), promovendo expressiva ação ansiolítica, neuroprotetora e redução de citocinas pró-inflamatórias.\n- Efeito Comitiva (Entourage Effect): A administração de extratos integrais (Full Spectrum) contendo canabinoides menores (CBG, CBN e microdosagens de THC) e terpenos sinérgicos proporciona potencialização da resposta terapêutica com menor necessidade de escalonamento de doses.\n- Adequação Clínica: Diante da refratariedade e da necessidade de estabilização sintomática sem os efeitos colaterais deletérios de medicações sedativas ou anti-inflamatórios convencionais a longo prazo, justifica-se a instituição do tratamento fitocanabinoide.`;
 
     const items: PrescriptionItemData[] = [];
+    const seenReportNames = new Set<string>();
+
     messages.forEach(m => {
       if (m.type === 'product' && m.productData) {
-        items.push({
-          name: m.productData.name,
-          brand: m.productData.brand || 'Associação Brasileira',
-          origin: m.productData.origin || 'Nacional',
-          dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
-          description: m.productData.description || ''
-        });
+        const pName = m.productData.name;
+        if (!seenReportNames.has(pName)) {
+          seenReportNames.add(pName);
+          const enriched = enrichMedicationDetails(
+            pName,
+            m.productData.brand || 'Associação Brasileira',
+            m.productData.origin || 'Nacional',
+            m.productData.type
+          );
+          items.push({
+            name: pName,
+            brand: m.productData.brand || enriched.brand,
+            origin: m.productData.origin || enriched.origin,
+            type: m.productData.type || enriched.type,
+            activeIngredients: m.productData.activeIngredients || enriched.activeIngredients,
+            concentration: m.productData.concentration || enriched.concentration,
+            pharmaceuticalForm: m.productData.pharmaceuticalForm || enriched.pharmaceuticalForm,
+            quantity: m.productData.quantity || enriched.quantity,
+            administrationRoute: m.productData.administrationRoute || enriched.administrationRoute,
+            dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
+            description: m.productData.description || enriched.description || ''
+          });
+        }
       }
     });
 
     const defaultTreatmentPlan = items.length > 0
-      ? items.map((item, idx) => `${idx + 1}. ${item.name} (${item.brand})\n   Posologia: ${item.dosage.join(' ')}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`).join('\n\n')
-      : `1. Formulação Predominante em CBD Full Spectrum 100mg/ml (Associação Nacional ou Importado):\n   Posologia: Iniciar com 3 a 5 gotas sublinguais a cada 12 horas, com titulação progressiva.\n   Finalidade: Controle de ansiedade, alívio da dor e estabilização do humor.`;
+      ? items.map((item, idx) => {
+          const ing = item.activeIngredients ? `\n   Princípio Ativo: ${item.activeIngredients}` : '';
+          const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
+          return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   Posologia: ${item.dosage.join(' ')}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
+        }).join('\n\n')
+      : `1. ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (Associação Brasileira / Nacional)
+   Princípio Ativo: Canabidiol (CBD) Full Spectrum 100mg/ml, Delta-9-THC < 0,2%, Terpenos
+   Apresentação / Via: Solução Oleosa Gotas • 01 Frasco 30ml • Via Sublingual
+   Posologia: Tomar 03 gotas pela manhã e 03 gotas à noite, aumentando 01 gota a cada 05 dias até controle dos sintomas.
+   Finalidade: Modulação ansiolítica, regulação do ciclo circadiano e analgesia inflamatória.`;
 
     const defaultMonitoringText = `- Titulação Lenta e Progressiva ("Start Low, Go Slow"): Ajustar a dosagem gradualmente a cada 4 a 5 dias até atingir a janela terapêutica ideal com controle pleno de sintomas e ausência de efeitos adversos.\n- Monitoramento de Segurança: Acompanhar potenciais interações no citocromo hepático CYP3A4 / CYP2C19 caso haja uso concomitante de outros fármacos.\n- Retorno Médico: Reavaliação clínica agendada em 30 (trinta) dias para ajuste posológico e consolidação do desfecho clínico.`;
 
@@ -604,7 +690,7 @@ export function DoctorDashboardScreen() {
     setReportCpf(pCpf);
     setReportEmissionDate(format(new Date(), 'dd/MM/yyyy'));
     setReportDoctorName('Dr. Guilherme Taveira Dias');
-    setReportDoctorCrm('CRM: 12345/SP');
+    setReportDoctorCrm('CRM/MT 17259');
     setReportDoctorSpecialty('Especialista em Medicina Canabinoide');
     setReportDiagnosis(defaultClinicalSummary);
     setReportRationale(defaultTherapeuticRationale);
@@ -681,11 +767,18 @@ export function DoctorDashboardScreen() {
     });
 
     // 2. Add product prescription
+    const enriched = enrichMedicationDetails(prodName, 'Associação Brasileira (Nacional)', 'Nacional', 'Óleo Integral Acessível');
+
     const productItem = {
       name: prodName,
       brand: 'Associação Brasileira (Nacional)',
       origin: 'Nacional',
       type: 'Óleo Integral Acessível',
+      activeIngredients: enriched.activeIngredients,
+      concentration: enriched.concentration,
+      pharmaceuticalForm: enriched.pharmaceuticalForm,
+      quantity: enriched.quantity,
+      administrationRoute: enriched.administrationRoute,
       details: ['Frasco 30ml', 'Alto rendimento (~60 dias)', 'Associação Nacional autorizada'],
       dosage: dosage,
       description: prodDesc,
@@ -736,7 +829,11 @@ export function DoctorDashboardScreen() {
         DIRETRIZ DE PRESCRIÇÃO (IMPORTADOS E NACIONAIS):
         Você DEVE sugerir DUAS frentes de tratamento para o médico escolher, cobrindo opções Importadas e Nacionais.
         1. Opção de Importados: Utilize EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo.
-        2. Opção de Associações Nacionais: Sugira formulações genéricas ou de associações brasileiras (ex: Óleo Full Spectrum CBD/THC, Pomadas, Gomas, ou Flores in natura), adequadas à fisiopatologia do paciente.
+        2. Opção de Associações Nacionais: Sugira formulações de associações brasileiras (ex: Óleo Integral THC/CBD 100mg/ml, Pomada Canábica, Gomas Terapêuticas, ou Flores in natura), adequadas à fisiopatologia do paciente.
+
+        REGRA CLÍNICA CRÍTICA (NÃO DUPLICAR MEDICAMENTOS SIMILARES):
+        - NUNCA sugira dois óleos de CBD ou dois produtos com o mesmo princípio ativo e a mesma via sublingual para o mesmo paciente.
+        - Em cada categoria (Importados ou Nacionais), sugira no máximo 1 ÓLEO PRINCIPAL de uso contínuo (ex: CBD ou THC/CBD) e, apenas se houver real justificativa clínica, 1 item de via ou forma complementar diferente (ex: Pomada tópica para dor localizada, Gomas mastigáveis noturnas para insônia, ou Flores in natura para resgate de crises).
 
         CATÁLOGO OFICIAL DISPONÍVEL (Para a Opção Importada):
         ${cbdGuideData.map(cat => `Categoria: ${cat.title}\n${cat.products.map(p => `- ${p.name} (${p.type})`).join('\n')}`).join('\n\n')}
@@ -876,18 +973,31 @@ export function DoctorDashboardScreen() {
       }
     }
 
+    const enriched = enrichMedicationDetails(
+      foundProduct ? foundProduct.name : med.name,
+      foundProduct ? foundProduct.manufacturer : (med.origin === 'Nacional' ? 'Associação Brasileira' : 'GreenBudzCBD'),
+      foundProduct ? foundProduct.origin : med.origin,
+      foundProduct ? foundProduct.type : undefined
+    );
+
     addMessage({
       text: `Prescrição de ${med.name}`,
       sender: 'doctor',
       type: 'product',
       productData: {
         name: foundProduct ? foundProduct.name : med.name,
-        brand: foundProduct ? foundProduct.manufacturer : 'Associação Brasileira',
-        origin: foundProduct ? foundProduct.origin : 'Nacional',
-        details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions],
-        dosage: [med.dosage],
-        description: foundProduct && foundProduct.description ? foundProduct.description : med.instructions,
-        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : 'Produto Nacional Autorizado',
+        brand: foundProduct ? foundProduct.manufacturer : enriched.brand,
+        origin: foundProduct ? foundProduct.origin : enriched.origin,
+        type: foundProduct ? foundProduct.type : enriched.type,
+        activeIngredients: enriched.activeIngredients,
+        concentration: enriched.concentration,
+        pharmaceuticalForm: enriched.pharmaceuticalForm,
+        quantity: enriched.quantity,
+        administrationRoute: enriched.administrationRoute,
+        details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients],
+        dosage: [med.dosage || 'Tomar conforme orientação médica.'],
+        description: foundProduct && foundProduct.description ? foundProduct.description : (med.instructions || enriched.description),
+        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : 'Produto Autorizado',
         image: foundProduct && foundProduct.image ? foundProduct.image : "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop",
         priceUSD: foundProduct && foundProduct.priceUSD ? foundProduct.priceUSD : undefined
       }
@@ -957,7 +1067,7 @@ export function DoctorDashboardScreen() {
             </div>
           </button>
           <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated hidden md:block">
-            <img src="https://images.unsplash.com/photo-1594824436998-dd40e4f69d1b?q=80&w=100&auto=format&fit=crop" alt="Doctor" referrerPolicy="no-referrer" />
+            <img src="https://images.unsplash.com/photo-1594824436998-dd40e4f69d1b?q=80&w=100&auto=format&fit=crop" alt="Doctor" referrerPolicy="no-referrer" className="w-full h-full object-cover shrink-0 aspect-square" />
           </div>
         </div>
       </div>
@@ -1295,6 +1405,20 @@ export function DoctorDashboardScreen() {
                 >
                   <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
                 </button>
+                {messages.some(m => m.type === 'product' || m.type === 'prescription' || m.type === 'prescription_notes') && (
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleClearAllPrescriptions();
+                    }}
+                    className="px-3 md:px-4 py-2 md:py-2.5 bg-red-500/15 border border-red-500/35 text-red-400 rounded-xl text-xs md:text-sm font-semibold hover:bg-red-500/25 hover:border-red-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(239,68,68,0.15)] cursor-pointer"
+                    title="Limpar todos os medicamentos e prescrições desta consulta para recomeçar do zero"
+                  >
+                    <Trash2 className="w-3 h-3 md:w-4 md:h-4 text-red-400" /> <span className="hidden md:inline">Limpar Prescrições</span><span className="md:hidden">Limpar</span>
+                  </button>
+                )}
                 <button 
                   onClick={() => setShowAccessiblePlanModal(true)}
                   className="px-3 md:px-4 py-2 md:py-2.5 bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-emerald-500/25 hover:border-emerald-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(16,185,129,0.15)]"
@@ -1373,7 +1497,24 @@ export function DoctorDashboardScreen() {
 
                           {/* Details */}
                           <div className="flex-1 flex flex-col">
-                            <h3 className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} font-bold text-base leading-tight mb-2`}>{msg.productData.name}</h3>
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <h3 className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} font-bold text-base leading-tight flex-1`}>
+                                {msg.productData.name}
+                              </h3>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleRemovePrescribedMedication(msg.id, msg.productData?.name);
+                                }}
+                                className="px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm flex-shrink-0 cursor-pointer active:scale-95"
+                                title="Remover este medicamento da prescrição"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                                <span className="pointer-events-none">Remover</span>
+                              </button>
+                            </div>
                             <ul className={`${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-600'} text-xs space-y-1 mb-2`}>
                               {msg.productData.details.map((detail, idx) => (
                                 <li key={idx} className="flex items-center gap-1.5">
@@ -1417,7 +1558,20 @@ export function DoctorDashboardScreen() {
                       </div>
                     </div>
                   ) : msg.type === 'prescription_notes' ? (
-                    <div className="w-[85%] max-w-2xl bg-mecura-surface border border-mecura-neon/30 rounded-2xl p-6 mb-2 shadow-xl relative overflow-hidden">
+                    <div className="w-[85%] max-w-2xl bg-mecura-surface border border-mecura-neon/30 rounded-2xl p-6 mb-2 shadow-xl relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemovePrescribedMedication(msg.id, 'Orientações da Prescrição');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover estas orientações da prescrição"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
                       <div className="absolute top-0 right-0 p-4 opacity-10">
                         <PlusCircle className="w-12 h-12 text-mecura-neon" />
                       </div>
@@ -1440,7 +1594,20 @@ export function DoctorDashboardScreen() {
                       </div>
                     </div>
                   ) : msg.type === 'prescription' ? (
-                    <div className="w-[70%] max-w-xl bg-gradient-to-r from-mecura-surface to-mecura-surface-light border border-mecura-neon/30 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden">
+                    <div className="w-[70%] max-w-xl bg-gradient-to-r from-mecura-surface to-mecura-surface-light border border-mecura-neon/30 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemovePrescribedMedication(msg.id, 'Receita Digital');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover receita digital"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
                       <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-mecura-neon/5 to-transparent" />
                       <div className="flex items-center gap-4 relative z-10">
                         <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20">
@@ -1511,7 +1678,7 @@ export function DoctorDashboardScreen() {
                             setSelectedOffer('premium');
                             navigate('/premium-checkout');
                           }}
-                          className="w-full py-4 bg-[#D4AF37] text-black font-bold rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.25)] hover:bg-[#E5C048] transition-colors"
+                          className="w-full py-4 bg-[#A6FF00] text-black font-bold rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.25)] hover:bg-[#b5ff33] transition-colors"
                         >
                           Desejo dar o Próximo Passo
                         </button>
