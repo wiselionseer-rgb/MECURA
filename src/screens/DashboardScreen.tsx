@@ -207,9 +207,7 @@ export function DashboardScreen() {
                 </button>
               </div>
               
-              <div className="absolute right-[-30px] bottom-[-20px] opacity-[0.15] group-hover:opacity-30 group-hover:scale-105 transition-all duration-700">
-                <FileText className="w-56 h-56 text-mecura-neon" strokeWidth={1} />
-              </div>
+              
             </motion.div>
           ) : inQueue ? (
             <motion.div 
@@ -270,9 +268,7 @@ export function DashboardScreen() {
                 </button>
               </div>
               
-              <div className="absolute right-[-30px] bottom-[-20px] opacity-[0.10] group-hover:opacity-20 group-hover:scale-105 transition-all duration-700 z-0 pointer-events-none">
-                <Clock className="w-56 h-56 text-[#FF8A00]" strokeWidth={1} />
-              </div>
+              
             </motion.div>
           ) : pagamento_consulta || consultationActive ? (
             <motion.div 
@@ -301,9 +297,7 @@ export function DashboardScreen() {
                 </button>
               </div>
               
-              <div className="absolute right-[-30px] bottom-[-20px] opacity-[0.15] group-hover:opacity-30 group-hover:scale-105 transition-all duration-700">
-                <MessageCircle className="w-56 h-56 text-mecura-neon" strokeWidth={1} />
-              </div>
+              
             </motion.div>
           ) : (
             <motion.div 
@@ -366,9 +360,7 @@ export function DashboardScreen() {
                 </button>
               </div>
               
-              <div className="absolute right-[-30px] bottom-[-20px] opacity-[0.15] group-hover:opacity-30 group-hover:scale-105 transition-all duration-700">
-                <Sparkles className="w-56 h-56 text-white" strokeWidth={1} />
-              </div>
+              
             </motion.div>
           )}
         </section>
