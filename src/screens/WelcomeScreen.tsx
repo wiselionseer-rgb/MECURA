@@ -110,27 +110,7 @@ export function WelcomeScreen() {
           >
             {/* Full Screen Background Video */}
             <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/welcome-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-              <video 
-                autoPlay 
-                loop 
-                muted 
-                playsInline
-                controls={false}
-                disablePictureInPicture
-                ref={(el) => {
-                  if (el && !el.dataset.attempted) {
-                    el.dataset.attempted = 'true';
-                    const p = el.play();
-                    if (p) {
-                      p.catch(() => {
-                        el.style.display = 'none'; // Hide video to show background poster instead
-                      });
-                    }
-                  }
-                }}
-                src="/Cannabis_oil_bottle_with_plants_202608200004.mp4" 
-                className="w-full h-full object-cover opacity-[0.80] pointer-events-none"
-              />
+              
               <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/30 via-[#0A0A0F]/80 to-[#0A0A0F] opacity-95 pointer-events-none" />
               <div className="absolute inset-0 bg-mecura-neon/5 pointer-events-none" />
             </div>

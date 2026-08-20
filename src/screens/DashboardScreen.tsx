@@ -160,27 +160,7 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                <video 
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  controls={false}
-                  disablePictureInPicture
-                  ref={(el) => {
-                    if (el && !el.dataset.attempted) {
-                      el.dataset.attempted = 'true';
-                      const p = el.play();
-                      if (p) {
-                        p.catch(() => {
-                          el.style.display = 'none';
-                        });
-                      }
-                    }
-                  }}
-                  src="/2131.mp4" 
-                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
-                />
+                
                 <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/70 to-[#A6FF00]/10" />
               </div>
               <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/15 blur-[80px] rounded-full pointer-events-none z-0" />
@@ -216,27 +196,7 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                <video 
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  controls={false}
-                  disablePictureInPicture
-                  ref={(el) => {
-                    if (el && !el.dataset.attempted) {
-                      el.dataset.attempted = 'true';
-                      const p = el.play();
-                      if (p) {
-                        p.catch(() => {
-                          el.style.display = 'none';
-                        });
-                      }
-                    }
-                  }}
-                  src="/2131.mp4" 
-                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
-                />
+                
                 <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/60 to-[#FF8A00]/20" />
               </div>
 
@@ -308,27 +268,7 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                <video 
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  controls={false}
-                  disablePictureInPicture
-                  ref={(el) => {
-                    if (el && !el.dataset.attempted) {
-                      el.dataset.attempted = 'true';
-                      const p = el.play();
-                      if (p) {
-                        p.catch(() => {
-                          el.style.display = 'none';
-                        });
-                      }
-                    }
-                  }}
-                  src="/2131.mp4" 
-                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
-                />
+                
                 <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/70 to-white/5" />
               </div>
 
