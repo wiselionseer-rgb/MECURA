@@ -83,3 +83,11 @@
 .glass-panel-gold {
   @apply bg-gradient-to-br from-mecura-surface to-[#12121A] backdrop-blur-xl border border-mecura-gold/20 shadow-[0_4px_30px_rgba(212,175,55,0.05)];
 }
+
+  /* Hide video controls that might appear on iOS */
+  video::-webkit-media-controls {
+    display: none !important;
+  }
+  video::-webkit-media-controls-start-playback-button {
+    display: none !important;
+  }

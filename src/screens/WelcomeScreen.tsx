@@ -75,7 +75,7 @@ export function WelcomeScreen() {
       >
         <button 
           onClick={handleBack}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${step === 2 ? 'bg-[#161622] border border-[#262636] text-white hover:bg-[#1A1A26] shadow-lg' : 'bg-black/20 backdrop-blur-xl text-white hover:bg-black/40 border border-white/10 shadow-lg'}`}
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${step === 2 ? 'bg-[#161622] border border-[#262636] text-white hover:bg-[#1A1A26] shadow-lg' : 'bg-black/20 backdrop-blur-md text-white hover:bg-black/40 border border-white/10 shadow-lg'}`}
           style={{ opacity: step === 1 ? 0 : 1, pointerEvents: step === 1 ? 'none' : 'auto' }}
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />
@@ -115,11 +115,13 @@ export function WelcomeScreen() {
                 loop 
                 muted 
                 playsInline
+                controls={false}
+                disablePictureInPicture
                 src="/Cannabis_oil_bottle_with_plants_202608200004.mp4" 
-                className="w-full h-full object-cover opacity-[0.80]"
+                className="w-full h-full object-cover opacity-[0.80] pointer-events-none"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/30 via-[#0A0A0F]/80 to-[#0A0A0F] opacity-95" />
-              <div className="absolute inset-0 bg-mecura-neon/5 mix-blend-overlay" />
+              <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/30 via-[#0A0A0F]/80 to-[#0A0A0F] opacity-95 pointer-events-none" />
+              <div className="absolute inset-0 bg-mecura-neon/5 pointer-events-none" />
             </div>
 
             {/* Content */}
@@ -129,7 +131,7 @@ export function WelcomeScreen() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div className="inline-flex items-center gap-2 bg-[#0A0A0F]/40 border border-white/10 px-4 py-2 rounded-full mb-8 backdrop-blur-xl shadow-2xl">
+                <div className="inline-flex items-center gap-2 bg-[#0A0A0F]/40 border border-white/10 px-4 py-2 rounded-full mb-8 backdrop-blur-md shadow-2xl">
                   <Sparkles className="w-3.5 h-3.5 text-mecura-neon" />
                   <span className="text-[10px] font-bold text-white/90 uppercase tracking-[0.25em]">Medicina do Futuro</span>
                 </div>
@@ -172,14 +174,14 @@ export function WelcomeScreen() {
             className="absolute inset-0 flex flex-col px-6 pt-28 pb-36 overflow-y-auto bg-[#0A0A0F]"
           >
             {/* Background Accent */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-mecura-neon/10 blur-[120px] rounded-full pointer-events-none" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
 
             {/* Doctor Card */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-[#161622]/80 backdrop-blur-xl border border-white/5 rounded-[28px] p-5 flex items-center gap-5 mb-12 shadow-2xl relative overflow-hidden shrink-0"
+              className="bg-[#161622]/80 backdrop-blur-md border border-white/5 rounded-[28px] p-5 flex items-center gap-5 mb-12 shadow-2xl relative overflow-hidden shrink-0"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/10 to-transparent opacity-20" />
               <div className="relative z-10 shrink-0">

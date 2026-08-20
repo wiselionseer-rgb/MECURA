@@ -155,10 +155,24 @@ export function DashboardScreen() {
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer"
+              className="relative border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
               onClick={() => navigate('/chat')}
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
+              {/* Background Video */}
+              <div className="absolute inset-0 z-0">
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  controls={false}
+                  disablePictureInPicture
+                  src="/2131.mp4" 
+                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
+                />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/70 to-[#A6FF00]/10" />
+              </div>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/15 blur-[80px] rounded-full pointer-events-none z-0" />
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
@@ -196,8 +210,10 @@ export function DashboardScreen() {
                   loop 
                   muted 
                   playsInline
-                  src="/2131.mov" 
-                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700"
+                  controls={false}
+                  disablePictureInPicture
+                  src="/2131.mp4" 
+                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
                 />
                 <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/60 to-[#FF8A00]/20" />
               </div>
@@ -262,13 +278,28 @@ export function DashboardScreen() {
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer"
+              className="relative border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
               onClick={() => {
                 setSelectedOffer('basic');
                 navigate('/checkout');
               }}
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 blur-[80px] rounded-full pointer-events-none" />
+              {/* Background Video */}
+              <div className="absolute inset-0 z-0">
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  controls={false}
+                  disablePictureInPicture
+                  src="/2131.mp4" 
+                  className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
+                />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/70 to-white/5" />
+              </div>
+
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 blur-[80px] rounded-full pointer-events-none z-0" />
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-white/40 animate-pulse" />
@@ -569,8 +600,8 @@ export function DashboardScreen() {
 
       {/* Background Ambient Blur */}
       <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-0 overflow-hidden">
-        <div className="absolute top-[0%] left-[-20%] w-[60%] h-[60%] bg-mecura-neon/5 blur-[120px] rounded-full mix-blend-screen" />
-        <div className="absolute bottom-[0%] right-[-20%] w-[60%] h-[60%] bg-[#A6FF00]/5 blur-[120px] rounded-full mix-blend-screen" />
+        <div className="absolute top-[0%] left-[-20%] w-[60%] h-[60%] bg-mecura-neon/5 blur-[60px] rounded-full " />
+        <div className="absolute bottom-[0%] right-[-20%] w-[60%] h-[60%] bg-[#A6FF00]/5 blur-[60px] rounded-full " />
       </div>
       
       {/* Advisor Chat Widget */}
