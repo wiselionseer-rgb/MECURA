@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { ChevronLeft, ShieldCheck, MessageSquare, FileText, Package, Activity, ChevronRight, Sparkles, User, Settings, Stethoscope, X } from 'lucide-react';
@@ -8,6 +8,13 @@ import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function WelcomeScreen() {
+  const bgVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (bgVideoRef.current) {
+      bgVideoRef.current.play().catch((e) => console.log('Video autoplay prevented:', e));
+    }
+  }, []);
+
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const { hasCompletedOnboarding, reset } = useStore();
@@ -110,30 +117,17 @@ export function WelcomeScreen() {
           >
             {/* Full Screen Background Video */}
             <div className="absolute inset-0 z-0 bg-black">
-              {/* Fallback Poster */}
-              <div 
-                className="absolute inset-0 z-0 bg-cover bg-center opacity-80" 
-                style={{ backgroundImage: 'url(/welcome-bg-poster.jpg)' }} 
-              />
+              
               {/* Video Element */}
-              <video 
+              <video
+                poster="/welcome-bg-poster.jpg" 
                 autoPlay 
                 loop 
                 muted 
                 playsInline
                 controls={false}
                 disablePictureInPicture
-                ref={(el) => {
-                  if (el && !el.dataset.attempted) {
-                    el.dataset.attempted = 'true';
-                    const p = el.play();
-                    if (p) {
-                      p.catch(() => {
-                        el.style.display = 'none'; // Fallback to poster on failure
-                      });
-                    }
-                  }
-                }}
+                ref={bgVideoRef}
                 src="/0820-ezgif.com-video-compressor.mp4" 
                 className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10"
               />
@@ -239,7 +233,7 @@ export function WelcomeScreen() {
                   initial={{ opacity: 0, scale: 0.95, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ delay: 0.3 + (idx * 0.1), duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                  className={`flex-shrink-0 min-h-[280px] w-[275px] backdrop-blur-xl border rounded-[28px] p-7 relative snap-center flex flex-col overflow-hidden ${
+                  className={`flex-shrink-0 min-h-[280px] min-w-[275px] max-w-[275px] backdrop-blur-xl border rounded-[28px] p-7 relative snap-center flex flex-col overflow-hidden ${
                     item.active 
                       ? 'bg-gradient-to-br from-white/[0.06] to-[#0A0A0F]/80 border-white/[0.15] shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]' 
                       : 'bg-[#12121A]/80 border-white/[0.04] shadow-[0_8px_20px_rgba(0,0,0,0.1)]'

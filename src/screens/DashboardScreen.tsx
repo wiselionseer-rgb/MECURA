@@ -51,6 +51,7 @@ const itemVariants = {
 };
 
 export function DashboardScreen() {
+
   const navigate = useNavigate();
   const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue } = useStore();
   
@@ -160,28 +161,16 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
-                <div 
-                  className="absolute inset-0 z-0 bg-cover bg-center opacity-100" 
-                  style={{ backgroundImage: 'url(/dashboard-bg-poster.jpg)' }} 
-                />
-                <video 
+                
+                <video
+                  poster="/dashboard-bg-poster.jpg" 
                   autoPlay 
                   loop 
                   muted 
                   playsInline
                   controls={false}
                   disablePictureInPicture
-                  ref={(el) => {
-                    if (el && !el.dataset.attempted) {
-                      el.dataset.attempted = 'true';
-                      const p = el.play();
-                      if (p) {
-                        p.catch(() => {
-                          el.style.display = 'none';
-                        });
-                      }
-                    }
-                  }}
+                  ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
                   src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
@@ -219,28 +208,16 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
-                <div 
-                  className="absolute inset-0 z-0 bg-cover bg-center opacity-100" 
-                  style={{ backgroundImage: 'url(/dashboard-bg-poster.jpg)' }} 
-                />
-                <video 
+                
+                <video
+                  poster="/dashboard-bg-poster.jpg" 
                   autoPlay 
                   loop 
                   muted 
                   playsInline
                   controls={false}
                   disablePictureInPicture
-                  ref={(el) => {
-                    if (el && !el.dataset.attempted) {
-                      el.dataset.attempted = 'true';
-                      const p = el.play();
-                      if (p) {
-                        p.catch(() => {
-                          el.style.display = 'none';
-                        });
-                      }
-                    }
-                  }}
+                  ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
                   src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
@@ -312,28 +289,16 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
-                <div 
-                  className="absolute inset-0 z-0 bg-cover bg-center opacity-100" 
-                  style={{ backgroundImage: 'url(/dashboard-bg-poster.jpg)' }} 
-                />
-                <video 
+                
+                <video
+                  poster="/dashboard-bg-poster.jpg" 
                   autoPlay 
                   loop 
                   muted 
                   playsInline
                   controls={false}
                   disablePictureInPicture
-                  ref={(el) => {
-                    if (el && !el.dataset.attempted) {
-                      el.dataset.attempted = 'true';
-                      const p = el.play();
-                      if (p) {
-                        p.catch(() => {
-                          el.style.display = 'none';
-                        });
-                      }
-                    }
-                  }}
+                  ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
                   src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />

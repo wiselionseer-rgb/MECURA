@@ -77,8 +77,8 @@ export function ChatScreen() {
 
   const handleGeneratePDF = () => {
     generatePrescriptionPDF(userName, messages, {
-      birthDate: userBirthDate || answers?.birthDate,
-      cpf: userCpf || answers?.cpf
+      birthDate: userBirthDate || (answers && answers.birthDate),
+      cpf: userCpf || (answers && answers.cpf)
     });
   };
 
@@ -91,9 +91,9 @@ export function ChatScreen() {
         
         let problemText = 'anamnese';
         
-        if (answers?.objectives?.length > 0) {
+        if ((answers && answers.objectives && answers.objectives.length) > 0) {
           problemText = `queixa de ${answers.objectives.join(', ')}`;
-        } else if (answers?.description) {
+        } else if ((answers && answers.description)) {
           problemText = 'queixa principal';
         }
         
@@ -302,7 +302,7 @@ export function ChatScreen() {
                       </div>
                       <h3 className="text-black font-bold text-base leading-tight mb-2">{msg.productData.name}</h3>
                       <ul className="text-gray-600 text-[11px] space-y-1 mb-2">
-                        {msg.productData.details.map((detail, idx) => (
+                        {(msg.productData.details || []).map((detail, idx) => (
                           <li key={idx} className="flex items-center gap-1.5">
                             <span className="w-1 h-1 rounded-full bg-[#58D68D]" />
                             {detail}
@@ -318,7 +318,7 @@ export function ChatScreen() {
                       <Droplets className="w-3 h-3" /> Iniciar tratamento com:
                     </h4>
                     <ul className="text-black text-sm font-medium space-y-1.5">
-                      {msg.productData.dosage.map((dose, idx) => (
+                      {(msg.productData.dosage || []).map((dose, idx) => (
                         <li key={idx} className="flex items-start gap-2">
                           <span className="text-[#58D68D] mt-1">•</span>
                           {dose}
@@ -497,7 +497,7 @@ export function ChatScreen() {
             )}
             <div className="flex items-center gap-1 mt-1.5 px-1">
               <span className="text-[10px] text-mecura-silver font-medium">
-                {format(msg.timestamp, 'HH:mm')}
+                {msg.timestamp && !isNaN(new Date(msg.timestamp).getTime()) ? format(new Date(msg.timestamp), 'HH:mm') : ''}
               </span>
               {msg.sender === 'user' && <CheckCheck className="w-3.5 h-3.5 text-mecura-neon" />}
             </div>

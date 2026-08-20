@@ -14,7 +14,7 @@ export function DiagnosisScreen() {
   };
 
   // Dynamic Clinical Logic
-  const objectives = answers.objectives || [];
+  const objectives = (answers && answers.objectives) || [];
   const primaryObjective = objectives[0] || 'Bem-estar Geral';
   
   const getClinicalInsight = (objective: string) => {
@@ -46,7 +46,7 @@ export function DiagnosisScreen() {
   };
 
   // Calculate a "Compatibility Score" based on intensity and number of objectives
-  const intensity = parseInt(answers.intensity || '5');
+  const intensity = parseInt((answers && answers.intensity) || '5');
   const baseScore = 82;
   const dynamicBonus = Math.min(15, (objectives.length * 2) + (intensity / 2));
   const compatibilityScore = Math.min(99, baseScore + dynamicBonus + Math.floor(Math.random() * 3));

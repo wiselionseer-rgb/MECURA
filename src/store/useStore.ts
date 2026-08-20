@@ -739,7 +739,7 @@ export const useStore = create<AppState>((set, get) => ({
       const msgs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        timestamp: new Date(doc.data().timestamp)
+        timestamp: doc.data().timestamp?.toDate ? doc.data().timestamp.toDate() : new Date(doc.data().timestamp)
       })) as Message[];
       
       const currentMessages = get().messages;
