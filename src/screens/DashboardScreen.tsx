@@ -53,6 +53,7 @@ const itemVariants = {
 export function DashboardScreen() {
 
   const navigate = useNavigate();
+  const [videoFailed, setVideoFailed] = useState(false);
   const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue } = useStore();
   
   useEffect(() => {
@@ -162,11 +163,29 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
-                <img 
-                  src="/dashboard-bg.webp" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10" 
-                  alt="animated background"
-                />
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
+                {!videoFailed && (
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    ref={(el) => {
+                      if (el && !el.dataset.initialized) {
+                        el.dataset.initialized = 'true';
+                        const p = el.play();
+                        if (p !== undefined) {
+                          p.catch((e) => {
+                            console.log('Autoplay blocked:', e);
+                            setVideoFailed(true);
+                          });
+                        }
+                      }
+                    }}
+                    src="/2131-ezgif.com-video-compressor.mp4"
+                    className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>
@@ -202,11 +221,29 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
-                <img 
-                  src="/dashboard-bg.webp" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10" 
-                  alt="animated background"
-                />
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
+                {!videoFailed && (
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    ref={(el) => {
+                      if (el && !el.dataset.initialized) {
+                        el.dataset.initialized = 'true';
+                        const p = el.play();
+                        if (p !== undefined) {
+                          p.catch((e) => {
+                            console.log('Autoplay blocked:', e);
+                            setVideoFailed(true);
+                          });
+                        }
+                      }
+                    }}
+                    src="/2131-ezgif.com-video-compressor.mp4"
+                    className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>
@@ -276,11 +313,29 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
-                <img 
-                  src="/dashboard-bg.webp" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10" 
-                  alt="animated background"
-                />
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
+                {!videoFailed && (
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    ref={(el) => {
+                      if (el && !el.dataset.initialized) {
+                        el.dataset.initialized = 'true';
+                        const p = el.play();
+                        if (p !== undefined) {
+                          p.catch((e) => {
+                            console.log('Autoplay blocked:', e);
+                            setVideoFailed(true);
+                          });
+                        }
+                      }
+                    }}
+                    src="/2131-ezgif.com-video-compressor.mp4"
+                    className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>

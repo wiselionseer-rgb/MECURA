@@ -12,6 +12,7 @@ export function WelcomeScreen() {
 
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [videoFailed, setVideoFailed] = useState(false);
   const { hasCompletedOnboarding, reset } = useStore();
   const { doctors } = useAdminStore();
   
@@ -113,12 +114,30 @@ export function WelcomeScreen() {
             {/* Full Screen Background Video */}
             <div className="absolute inset-0 z-0 bg-black">
               
-              {/* Video Element */}
-              <img 
-                src="/welcome-bg.webp" 
-                className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10" 
-                alt="animated background"
-              />
+              {/* Video Background Fallback Logic */}
+              <img src="/welcome-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
+              {!videoFailed && (
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  ref={(el) => {
+                    if (el && !el.dataset.initialized) {
+                      el.dataset.initialized = 'true';
+                      const p = el.play();
+                      if (p !== undefined) {
+                        p.catch((e) => {
+                          console.log('Autoplay blocked:', e);
+                          setVideoFailed(true);
+                        });
+                      }
+                    }
+                  }}
+                  src="/0820-ezgif.com-video-compressor.mp4"
+                  className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10"
+                />
+              )}
               
               {/* Elegant Gradient for Readability - No Green/Neon tint */}
               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0A0A0F]/60 to-[#0A0A0F] z-20 pointer-events-none" />
