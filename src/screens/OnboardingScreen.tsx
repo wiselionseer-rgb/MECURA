@@ -185,7 +185,7 @@ const STEPS = [
           } else if (error.code === 'auth/weak-password') {
             setAuthError('A senha deve ter pelo menos 6 caracteres.');
           } else if (error.code === 'auth/operation-not-allowed') {
-            setAuthError('Login por email/senha não está ativado no Firebase.');
+            setAuthError('Você precisa ativar o provedor de Email/Senha no console do Firebase > Authentication > Sign-in method.');
           } else {
             setAuthError(`Ocorreu um erro: ${error.message || 'Tente novamente.'}`);
           }
