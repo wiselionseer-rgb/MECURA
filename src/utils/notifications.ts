@@ -75,8 +75,8 @@ export const showNativeNotification = async (title: string, message?: string, ur
         if (registration && registration.showNotification) {
           await registration.showNotification(title, {
             body: message || 'Nova notificação no consultório.',
-            icon: '/logo.png',
-            badge: '/logo.png',
+            icon: '/logo-192.png',
+            badge: '/logo-192.png',
             tag: 'mecura-' + Date.now(),
             renotify: true,
             data: { url }
@@ -88,7 +88,7 @@ export const showNativeNotification = async (title: string, message?: string, ur
       // 3. Fallback to standard window.Notification constructor
       const notification = new Notification(title, {
         body: message,
-        icon: '/logo.png',
+        icon: '/logo-192.png',
       });
 
       notification.onclick = function() {
