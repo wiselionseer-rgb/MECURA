@@ -162,8 +162,8 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
                 <video
-                  poster="/dashboard-bg-poster.jpg" 
                   autoPlay 
                   loop 
                   muted 
@@ -171,7 +171,7 @@ export function DashboardScreen() {
                   webkit-playsinline="true"
                   controls={false}
                   disablePictureInPicture
-                  ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
+                  ref={(el) => { if (el) { el.play().catch(()=>{ el.style.display = 'none'; }); } }}
                   src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
@@ -210,8 +210,8 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
                 <video
-                  poster="/dashboard-bg-poster.jpg" 
                   autoPlay 
                   loop 
                   muted 
@@ -219,7 +219,7 @@ export function DashboardScreen() {
                   webkit-playsinline="true"
                   controls={false}
                   disablePictureInPicture
-                  ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
+                  ref={(el) => { if (el) { el.play().catch(()=>{ el.style.display = 'none'; }); } }}
                   src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
@@ -292,8 +292,8 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
                 <video
-                  poster="/dashboard-bg-poster.jpg" 
                   autoPlay 
                   loop 
                   muted 
@@ -301,7 +301,7 @@ export function DashboardScreen() {
                   webkit-playsinline="true"
                   controls={false}
                   disablePictureInPicture
-                  ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
+                  ref={(el) => { if (el) { el.play().catch(()=>{ el.style.display = 'none'; }); } }}
                   src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />

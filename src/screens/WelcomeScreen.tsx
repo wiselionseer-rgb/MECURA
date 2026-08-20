@@ -11,7 +11,10 @@ export function WelcomeScreen() {
   const bgVideoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (bgVideoRef.current) {
-      bgVideoRef.current.play().catch((e) => console.log('Video autoplay prevented:', e));
+      bgVideoRef.current.play().catch((e) => {
+        console.log('Video autoplay prevented:', e);
+        if (bgVideoRef.current) bgVideoRef.current.style.display = 'none';
+      });
     }
   }, []);
 
@@ -119,8 +122,8 @@ export function WelcomeScreen() {
             <div className="absolute inset-0 z-0 bg-black">
               
               {/* Video Element */}
+              <img src="/welcome-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
               <video
-                poster="/welcome-bg-poster.jpg" 
                 autoPlay 
                 loop 
                 muted 
