@@ -101,3 +101,14 @@
     display: none;
   }
 }
+
+/* Hide iOS Safari Video Play Button in Low Power Mode */
+video::-webkit-media-controls {
+    display: none !important;
+}
+video::-webkit-media-controls-start-playback-button {
+    display: none !important;
+}
+video {
+    pointer-events: none !important;
+}

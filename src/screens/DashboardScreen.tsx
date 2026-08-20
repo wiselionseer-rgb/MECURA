@@ -168,6 +168,7 @@ export function DashboardScreen() {
                   loop 
                   muted 
                   playsInline
+                  webkit-playsinline="true"
                   controls={false}
                   disablePictureInPicture
                   ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
@@ -215,6 +216,7 @@ export function DashboardScreen() {
                   loop 
                   muted 
                   playsInline
+                  webkit-playsinline="true"
                   controls={false}
                   disablePictureInPicture
                   ref={(el) => { if (el) { el.play().catch(()=>{}); } }}
@@ -296,6 +298,7 @@ export function DashboardScreen() {
                   loop 
                   muted 
                   playsInline
+                  webkit-playsinline="true"
                   controls={false}
                   disablePictureInPicture
                   ref={(el) => { if (el) { el.play().catch(()=>{}); } }}

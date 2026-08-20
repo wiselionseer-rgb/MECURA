@@ -125,6 +125,7 @@ export function WelcomeScreen() {
                 loop 
                 muted 
                 playsInline
+                webkit-playsinline="true"
                 controls={false}
                 disablePictureInPicture
                 ref={bgVideoRef}
@@ -183,7 +184,7 @@ export function WelcomeScreen() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0 flex flex-col px-6 pt-28 pb-36 overflow-y-auto overflow-x-hidden bg-[#0A0A0F]"
+            className="absolute inset-0 flex flex-col px-6 pt-16 pb-48 overflow-y-auto overflow-x-hidden bg-[#0A0A0F]"
           >
             {/* Background Accent */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[600px] overflow-x-hidden h-[300px] bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
@@ -193,7 +194,7 @@ export function WelcomeScreen() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-[#161622]/80 backdrop-blur-md border border-white/5 rounded-[28px] p-5 flex items-center gap-5 mb-12 shadow-2xl relative overflow-hidden shrink-0"
+              className="bg-[#161622]/80 backdrop-blur-md border border-white/5 rounded-[28px] p-5 flex items-center gap-5 mb-8 shadow-2xl relative overflow-hidden shrink-0"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/10 to-transparent opacity-20" />
               <div className="relative z-10 shrink-0">
@@ -215,7 +216,7 @@ export function WelcomeScreen() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="text-4xl font-serif font-semibold text-white mb-12 leading-tight tracking-tight shrink-0"
+              className="text-4xl font-serif font-semibold text-white mb-8 leading-tight tracking-tight shrink-0"
             >
               Sua jornada de<br/>saúde em <span className="text-mecura-neon italic font-light">4 passos</span>
             </motion.h2>
