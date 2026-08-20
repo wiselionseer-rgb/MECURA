@@ -8,15 +8,7 @@ import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function WelcomeScreen() {
-  const bgVideoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (bgVideoRef.current) {
-      bgVideoRef.current.play().catch((e) => {
-        console.log('Video autoplay prevented:', e);
-        if (bgVideoRef.current) bgVideoRef.current.style.display = 'none';
-      });
-    }
-  }, []);
+  
 
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -122,18 +114,10 @@ export function WelcomeScreen() {
             <div className="absolute inset-0 z-0 bg-black">
               
               {/* Video Element */}
-              <img src="/welcome-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
-              <video
-                autoPlay 
-                loop 
-                muted 
-                playsInline
-                webkit-playsinline="true"
-                controls={false}
-                disablePictureInPicture
-                ref={bgVideoRef}
-                src="/0820-ezgif.com-video-compressor.mp4" 
-                className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10"
+              <img 
+                src="/welcome-bg.webp" 
+                className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10" 
+                alt="animated background"
               />
               
               {/* Elegant Gradient for Readability - No Green/Neon tint */}

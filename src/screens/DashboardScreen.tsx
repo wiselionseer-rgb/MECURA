@@ -162,18 +162,10 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
-                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
-                <video
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  webkit-playsinline="true"
-                  controls={false}
-                  disablePictureInPicture
-                  ref={(el) => { if (el) { el.play().catch(()=>{ el.style.display = 'none'; }); } }}
-                  src="/2131-ezgif.com-video-compressor.mp4" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                <img 
+                  src="/dashboard-bg.webp" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10" 
+                  alt="animated background"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
@@ -210,18 +202,10 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
-                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
-                <video
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  webkit-playsinline="true"
-                  controls={false}
-                  disablePictureInPicture
-                  ref={(el) => { if (el) { el.play().catch(()=>{ el.style.display = 'none'; }); } }}
-                  src="/2131-ezgif.com-video-compressor.mp4" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                <img 
+                  src="/dashboard-bg.webp" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10" 
+                  alt="animated background"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
@@ -292,18 +276,10 @@ export function DashboardScreen() {
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
                 
-                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="background" />
-                <video
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline
-                  webkit-playsinline="true"
-                  controls={false}
-                  disablePictureInPicture
-                  ref={(el) => { if (el) { el.play().catch(()=>{ el.style.display = 'none'; }); } }}
-                  src="/2131-ezgif.com-video-compressor.mp4" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                <img 
+                  src="/dashboard-bg.webp" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10" 
+                  alt="animated background"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
