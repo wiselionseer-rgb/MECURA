@@ -221,13 +221,13 @@ export function WelcomeScreen() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="text-4xl font-serif font-semibold text-white mb-12 leading-tight tracking-tight"
+              className="text-4xl font-serif font-semibold text-white mb-12 leading-tight tracking-tight shrink-0"
             >
               Sua jornada de<br/>saúde em <span className="text-mecura-neon italic font-light">4 passos</span>
             </motion.h2>
 
             {/* Timeline Carousel */}
-            <div className="flex gap-4 overflow-x-auto pb-12 pt-4 snap-x snap-mandatory hide-scrollbar -mx-6 px-6">
+            <div className="flex gap-4 overflow-x-auto pb-12 pt-4 snap-x snap-mandatory hide-scrollbar -mx-6 px-6 shrink-0">
               {[
                 { icon: Activity, title: 'Avaliação Inicial', desc: 'Definição do seu objetivo e dos seus sintomas de forma rápida e segura.', active: true, step: '01' },
                 { icon: MessageSquare, title: 'Consulta via Chat', desc: 'Fale com um médico especialista sem precisar agendar horário.', active: false, step: '02' },
@@ -239,7 +239,7 @@ export function WelcomeScreen() {
                   initial={{ opacity: 0, scale: 0.95, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ delay: 0.3 + (idx * 0.1), duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                  className={`flex-shrink-0 w-[275px] backdrop-blur-xl border rounded-[28px] p-7 relative snap-center flex flex-col overflow-hidden ${
+                  className={`flex-shrink-0 min-h-[280px] w-[275px] backdrop-blur-xl border rounded-[28px] p-7 relative snap-center flex flex-col overflow-hidden ${
                     item.active 
                       ? 'bg-gradient-to-br from-white/[0.06] to-[#0A0A0F]/80 border-white/[0.15] shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]' 
                       : 'bg-[#12121A]/80 border-white/[0.04] shadow-[0_8px_20px_rgba(0,0,0,0.1)]'
