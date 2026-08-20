@@ -182,7 +182,7 @@ export function DashboardScreen() {
                       }
                     }
                   }}
-                  src="/dashboard-bg.mp4" 
+                  src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
@@ -243,7 +243,7 @@ export function DashboardScreen() {
                       }
                     }
                   }}
-                  src="/dashboard-bg.mp4" 
+                  src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
@@ -340,7 +340,7 @@ export function DashboardScreen() {
                       }
                     }
                   }}
-                  src="/dashboard-bg.mp4" 
+                  src="/2131-ezgif.com-video-compressor.mp4" 
                   className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />

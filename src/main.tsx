@@ -1,3 +1,4 @@
+// Trigger Github Sync (Video Fix)
 // Atualizacao manual para o GitHub (2026-08-20)
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';

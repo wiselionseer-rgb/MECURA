@@ -134,7 +134,7 @@ export function WelcomeScreen() {
                     }
                   }
                 }}
-                src="/welcome-bg.mp4" 
+                src="/0820-ezgif.com-video-compressor.mp4" 
                 className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10"
               />
               
