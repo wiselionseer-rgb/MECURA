@@ -109,7 +109,7 @@ export function WelcomeScreen() {
             className="absolute inset-0 flex flex-col"
           >
             {/* Full Screen Background Video */}
-            <div className="absolute inset-0 z-0">
+            <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/welcome-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
               <video 
                 autoPlay 
                 loop 
@@ -117,6 +117,17 @@ export function WelcomeScreen() {
                 playsInline
                 controls={false}
                 disablePictureInPicture
+                ref={(el) => {
+                  if (el && !el.dataset.attempted) {
+                    el.dataset.attempted = 'true';
+                    const p = el.play();
+                    if (p) {
+                      p.catch(() => {
+                        el.style.display = 'none'; // Hide video to show background poster instead
+                      });
+                    }
+                  }
+                }}
                 src="/Cannabis_oil_bottle_with_plants_202608200004.mp4" 
                 className="w-full h-full object-cover opacity-[0.80] pointer-events-none"
               />
@@ -171,10 +182,10 @@ export function WelcomeScreen() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0 flex flex-col px-6 pt-28 pb-36 overflow-y-auto bg-[#0A0A0F]"
+            className="absolute inset-0 flex flex-col px-6 pt-28 pb-36 overflow-y-auto overflow-x-hidden bg-[#0A0A0F]"
           >
             {/* Background Accent */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[600px] overflow-x-hidden h-[300px] bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
 
             {/* Doctor Card */}
             <motion.div 

@@ -159,7 +159,7 @@ export function DashboardScreen() {
               onClick={() => navigate('/chat')}
             >
               {/* Background Video */}
-              <div className="absolute inset-0 z-0">
+              <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
                 <video 
                   autoPlay 
                   loop 
@@ -167,6 +167,17 @@ export function DashboardScreen() {
                   playsInline
                   controls={false}
                   disablePictureInPicture
+                  ref={(el) => {
+                    if (el && !el.dataset.attempted) {
+                      el.dataset.attempted = 'true';
+                      const p = el.play();
+                      if (p) {
+                        p.catch(() => {
+                          el.style.display = 'none';
+                        });
+                      }
+                    }
+                  }}
                   src="/2131.mp4" 
                   className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
                 />
@@ -204,7 +215,7 @@ export function DashboardScreen() {
               onClick={() => navigate('/queue')}
             >
               {/* Background Video */}
-              <div className="absolute inset-0 z-0">
+              <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
                 <video 
                   autoPlay 
                   loop 
@@ -212,6 +223,17 @@ export function DashboardScreen() {
                   playsInline
                   controls={false}
                   disablePictureInPicture
+                  ref={(el) => {
+                    if (el && !el.dataset.attempted) {
+                      el.dataset.attempted = 'true';
+                      const p = el.play();
+                      if (p) {
+                        p.catch(() => {
+                          el.style.display = 'none';
+                        });
+                      }
+                    }
+                  }}
                   src="/2131.mp4" 
                   className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
                 />
@@ -285,7 +307,7 @@ export function DashboardScreen() {
               }}
             >
               {/* Background Video */}
-              <div className="absolute inset-0 z-0">
+              <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
                 <video 
                   autoPlay 
                   loop 
@@ -293,6 +315,17 @@ export function DashboardScreen() {
                   playsInline
                   controls={false}
                   disablePictureInPicture
+                  ref={(el) => {
+                    if (el && !el.dataset.attempted) {
+                      el.dataset.attempted = 'true';
+                      const p = el.play();
+                      if (p) {
+                        p.catch(() => {
+                          el.style.display = 'none';
+                        });
+                      }
+                    }
+                  }}
                   src="/2131.mp4" 
                   className="w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none"
                 />
