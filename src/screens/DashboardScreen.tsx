@@ -159,11 +159,36 @@ export function DashboardScreen() {
               onClick={() => navigate('/chat')}
             >
               {/* Background Video */}
-              <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                
-                <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/70 to-[#A6FF00]/10" />
+              <div className="absolute inset-0 z-0 bg-black">
+                <div 
+                  className="absolute inset-0 z-0 bg-cover bg-center opacity-100" 
+                  style={{ backgroundImage: 'url(/dashboard-bg-poster.jpg)' }} 
+                />
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  controls={false}
+                  disablePictureInPicture
+                  ref={(el) => {
+                    if (el && !el.dataset.attempted) {
+                      el.dataset.attempted = 'true';
+                      const p = el.play();
+                      if (p) {
+                        p.catch(() => {
+                          el.style.display = 'none';
+                        });
+                      }
+                    }
+                  }}
+                  src="/dashboard-bg.mp4" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>
-              <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/15 blur-[80px] rounded-full pointer-events-none z-0" />
+              
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
@@ -195,12 +220,37 @@ export function DashboardScreen() {
               onClick={() => navigate('/queue')}
             >
               {/* Background Video */}
-              <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                
-                <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/60 to-[#FF8A00]/20" />
+              <div className="absolute inset-0 z-0 bg-black">
+                <div 
+                  className="absolute inset-0 z-0 bg-cover bg-center opacity-100" 
+                  style={{ backgroundImage: 'url(/dashboard-bg-poster.jpg)' }} 
+                />
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  controls={false}
+                  disablePictureInPicture
+                  ref={(el) => {
+                    if (el && !el.dataset.attempted) {
+                      el.dataset.attempted = 'true';
+                      const p = el.play();
+                      if (p) {
+                        p.catch(() => {
+                          el.style.display = 'none';
+                        });
+                      }
+                    }
+                  }}
+                  src="/dashboard-bg.mp4" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>
 
-              <div className="absolute top-0 right-0 w-64 h-64 bg-[#FF8A00]/15 blur-[80px] rounded-full pointer-events-none z-0" />
+              
               
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-[#FF8A00]/20 border border-[#FF8A00]/30 backdrop-blur-md px-3 py-1.5 rounded-full mb-6">
@@ -267,12 +317,37 @@ export function DashboardScreen() {
               }}
             >
               {/* Background Video */}
-              <div className="absolute inset-0 z-0" style={{ backgroundImage: 'url(/dashboard-poster.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                
-                <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0F]/90 via-[#0A0A0F]/70 to-white/5" />
+              <div className="absolute inset-0 z-0 bg-black">
+                <div 
+                  className="absolute inset-0 z-0 bg-cover bg-center opacity-100" 
+                  style={{ backgroundImage: 'url(/dashboard-bg-poster.jpg)' }} 
+                />
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  controls={false}
+                  disablePictureInPicture
+                  ref={(el) => {
+                    if (el && !el.dataset.attempted) {
+                      el.dataset.attempted = 'true';
+                      const p = el.play();
+                      if (p) {
+                        p.catch(() => {
+                          el.style.display = 'none';
+                        });
+                      }
+                    }
+                  }}
+                  src="/dashboard-bg.mp4" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>
 
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 blur-[80px] rounded-full pointer-events-none z-0" />
+              
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-white/40 animate-pulse" />
