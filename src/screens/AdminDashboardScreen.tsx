@@ -1194,7 +1194,7 @@ export function AdminDashboardScreen() {
             </div>
 
             <div className="space-y-4">
-              {notifications.map(notification => (
+              {Array.from(new Map(notifications.map(n => [n.id, n])).values()).map(notification => (
                 <div key={notification.id} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 relative group">
                   <button 
                     onClick={() => deleteNotification(notification.id)}

@@ -75,7 +75,10 @@ export const useAdminStore = create<AdminState>()(
       })),
 
       notifications: [],
-      addNotification: (notification) => set((state) => ({ notifications: [...state.notifications, notification] })),
+      addNotification: (notification) => set((state) => {
+        if (state.notifications.some(n => n.id === notification.id)) return state;
+        return { notifications: [...state.notifications, notification] };
+      }),
       deleteNotification: (id) => set((state) => ({
         notifications: state.notifications.filter((n) => n.id !== id)
       })),

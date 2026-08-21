@@ -44,7 +44,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification, subscribeToBackgroundNotifications } from '../utils/notifications';
 import { playNotificationSound, initAudioUnlock } from '../utils/sound';
 import { 
