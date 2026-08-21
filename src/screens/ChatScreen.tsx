@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Send, FileText, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
-import { requestNotificationPermission } from '../utils/notifications';
+import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
 import { auth } from '../firebase';
 
@@ -20,7 +20,11 @@ export function ChatScreen() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    requestNotificationPermission();
+    requestNotificationPermission().then(granted => {
+      if (granted && patientId) {
+        subscribeToBackgroundNotifications(patientId);
+      }
+    });
   }, []);
 
   const playNotificationSound = () => {

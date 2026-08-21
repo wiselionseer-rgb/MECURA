@@ -1,7 +1,10 @@
 import express from "express";
+import webpush from "web-push";
 import path from "node:path";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
+import { db } from "./src/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
@@ -28,6 +31,33 @@ async function startServer() {
   console.log("-----------------------------------------");
 
   // API Routes
+
+  const vapidPublic = process.env.VAPID_PUBLIC_KEY || "BNhGkh4NPQdL5-v97cIGWleXsEuVlZiW6YGu3866y33lZuMB_INQ-nJh0Ff-DECy-uIO-E2X4KdDvEw2oo0--Aw";
+  const vapidPrivate = process.env.VAPID_PRIVATE_KEY || "qQnw0dxc2m0c1fFN444rwuE0mWbZrrYeiQcbTKeXy8M";
+  webpush.setVapidDetails('mailto:lucasdanieltrader@gmail.com', vapidPublic, vapidPrivate);
+  
+  app.get('/api/vapid-public-key', (req, res) => {
+    res.send(vapidPublic);
+  });
+  
+  app.post('/api/send-push', async (req, res) => {
+    const { userId, title, body, url } = req.body;
+    if (!userId) return res.status(400).json({ error: 'No userId' });
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (!userDoc.exists()) return res.status(404).json({ error: 'User not found' });
+      const userData = userDoc.data();
+      const subscription = userData.pushSubscription;
+      if (!subscription) return res.status(400).json({ error: 'User has no push subscription' });
+      
+      await webpush.sendNotification(subscription, JSON.stringify({ title, body, url }));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error sending push:', error);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
   app.post("/api/create-preference", async (req, res) => {
     try {
       const { title, price, quantity = 1 } = req.body;

@@ -155,7 +155,7 @@ import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useAdminStore } from './useAdminStore';
 import { playNotificationSound } from '../utils/sound';
-import { showNativeNotification } from '../utils/notifications';
+import { showNativeNotification, triggerBackgroundPush, triggerAdminBackgroundPush } from '../utils/notifications';
 
 export const useStore = create<AppState>((set, get) => ({
   userName: '',
@@ -683,6 +683,22 @@ export const useStore = create<AppState>((set, get) => ({
           hasUnread: newMessage.sender === 'user' // Only mark unread if patient sent it
         });
         console.log("Queue document updated successfully.");
+        
+        // Trigger background push
+        if (newMessage.sender === 'doctor') {
+          triggerBackgroundPush(
+            consultationId,
+            'Nova mensagem da Mecura',
+            newMessage.text ? (newMessage.text.length > 50 ? newMessage.text.substring(0, 50) + '...' : newMessage.text) : 'Você tem uma nova atualização no consultório.',
+            '/chat'
+          );
+        } else if (newMessage.sender === 'user') {
+          triggerAdminBackgroundPush(
+            'Nova mensagem de Paciente',
+            newMessage.text ? (newMessage.text.length > 50 ? newMessage.text.substring(0, 50) + '...' : newMessage.text) : 'O paciente enviou uma nova mensagem.',
+            '/doctor'
+          );
+        }
       } catch (error) {
         console.error("Error sending message to Firestore:", error);
       }

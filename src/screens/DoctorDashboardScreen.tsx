@@ -45,7 +45,7 @@ import {
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification } from '../utils/notifications';
+import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification, subscribeToBackgroundNotifications } from '../utils/notifications';
 import { playNotificationSound, initAudioUnlock } from '../utils/sound';
 import { 
   LineChart, 
@@ -91,6 +91,7 @@ const calculateAge = (birthDateStr?: string) => {
 };
 
 export function DoctorDashboardScreen() {
+  const adminId = auth.currentUser?.uid;
   const { 
     userName, userCpf, userBirthDate, userPhone, answers, messages, 
     addMessage, deleteMessage, clearPrescriptionMessages, 
@@ -184,7 +185,11 @@ export function DoctorDashboardScreen() {
   };
 
   useEffect(() => {
-    requestNotificationPermission();
+    requestNotificationPermission().then(granted => {
+      if (granted && adminId) {
+        subscribeToBackgroundNotifications(adminId);
+      }
+    });
     const currentUnreadCount = queue.filter(p => p.hasUnread).length;
     if (currentUnreadCount > prevUnreadCount) {
       playNotificationSound();
