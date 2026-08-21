@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAdminStore } from '../store/useAdminStore';
 import { useStore } from '../store/useStore';
 import { Bell, X } from 'lucide-react';
@@ -77,12 +78,23 @@ export function NotificationToast() {
     return () => unsubscribe();
   }, [addNotification]);
 
+  const location = useLocation();
+
   useEffect(() => {
     if (notifications.length > 0) {
       const latestNotification = notifications[notifications.length - 1];
       if (!seenNotifications.has(latestNotification.id)) {
-        setVisibleNotification(latestNotification);
         setSeenNotifications(prev => new Set(prev).add(latestNotification.id));
+        
+        const isDoctorRoute = location.pathname.includes('/doctor') || location.pathname.includes('/admin');
+        const isDoctorNotification = latestNotification.title.includes('Novo Paciente') || latestNotification.title.includes('Nova Mensagem');
+        
+        // Only show doctor-specific notifications if the user is currently on the doctor/admin route
+        if (isDoctorNotification && !isDoctorRoute) {
+           return;
+        }
+
+        setVisibleNotification(latestNotification);
         
         // Auto-hide after 8 seconds for better readability
         const timer = setTimeout(() => {
@@ -92,7 +104,7 @@ export function NotificationToast() {
         return () => clearTimeout(timer);
       }
     }
-  }, [notifications, seenNotifications]);
+  }, [notifications, seenNotifications, location.pathname]);
 
   return (
     <AnimatePresence>
