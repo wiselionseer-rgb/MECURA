@@ -16,12 +16,11 @@ self.addEventListener('message', (event) => {
       icon: '/logo-192.png?v=6',
       badge: '/logo-192.png?v=6',
       vibrate: [300, 100, 300, 100, 400],
-      tag: tag || 'mecura-alert-' + Date.now(),
+      tag: tag || 'mecura-alert',
       renotify: true,
       requireInteraction: true,
-      data: { url: url || '/doctor' }
+      data: { url: url || '/chat' }
     };
-
     event.waitUntil(
       self.registration.showNotification(title || 'Mecura - Novo Alerta', options)
     );
@@ -43,10 +42,10 @@ self.addEventListener('push', (event) => {
     icon: '/logo-192.png?v=6',
     badge: '/logo-192.png?v=6',
     vibrate: [300, 100, 300, 100, 400],
-    tag: 'mecura-alert-' + Date.now(),
-    renotify: true,
+    tag: 'mecura-chat', // Constant tag so they group/replace
+    renotify: true, // Forces sound/vibration even if replacing an existing notification
     requireInteraction: true,
-    data: { url: data.url || '/doctor' }
+    data: { url: data.url || '/chat' }
   };
 
   event.waitUntil(
@@ -57,8 +56,8 @@ self.addEventListener('push', (event) => {
 // Click action on system notification
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/doctor';
-
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/chat';
+  
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {

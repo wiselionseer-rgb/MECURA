@@ -42,18 +42,29 @@ async function startServer() {
   
   app.post('/api/send-push', async (req, res) => {
     const { userId, title, body, url } = req.body;
-    if (!userId) return res.status(400).json({ error: 'No userId' });
+    console.log('[PUSH] Request received for userId:', userId, 'Title:', title);
+    if (!userId) {
+      console.warn('[PUSH] No userId provided');
+      return res.status(400).json({ error: 'No userId' });
+    }
     try {
       const userDoc = await getDoc(doc(db, 'users', userId));
-      if (!userDoc.exists()) return res.status(404).json({ error: 'User not found' });
+      if (!userDoc.exists()) {
+        console.warn('[PUSH] User not found in DB:', userId);
+        return res.status(404).json({ error: 'User not found' });
+      }
       const userData = userDoc.data();
       const subscription = userData.pushSubscription;
-      if (!subscription) return res.status(400).json({ error: 'User has no push subscription' });
+      if (!subscription) {
+        console.warn('[PUSH] User has no push subscription:', userId);
+        return res.status(400).json({ error: 'User has no push subscription' });
+      }
       
       await webpush.sendNotification(subscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 });
+      console.log('[PUSH] Successfully sent Web Push to:', userId);
       res.json({ success: true });
     } catch (error) {
-      console.error('Error sending push:', error);
+      console.error('[PUSH] Error sending Web Push:', error);
       res.status(500).json({ error: 'Failed' });
     }
   });
