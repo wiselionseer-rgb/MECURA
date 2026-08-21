@@ -308,7 +308,7 @@ export function CheckoutScreen() {
                     />
                     <Button
                       onClick={handleApplyCoupon}
-                      isLoading={isValidatingCoupon}
+                      isLoading={false}
                       disabled={!couponCode}
                       className="bg-mecura-neon text-black font-bold h-14 px-6 rounded-2xl shadow-lg hover:shadow-[0_0_20px_rgba(166,255,0,0.3)] transition-all"
                     >
@@ -341,7 +341,17 @@ export function CheckoutScreen() {
                   </div>
                 </button>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
+      {/* Sticky Bottom Actions */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="absolute bottom-0 left-0 right-0 p-6 z-20 bg-gradient-to-t from-[#050508] via-[#050508] to-transparent pt-12 flex flex-col items-center"
+      >
         {pixData ? (
           <div className="flex flex-col gap-3 mt-4 w-full">
             <Button 
@@ -388,9 +398,6 @@ export function CheckoutScreen() {
           Pular por enquanto e ir para o painel
         </button>
       </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
     </div>
   );
 }

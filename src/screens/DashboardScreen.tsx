@@ -33,7 +33,7 @@ import {
   Globe,
   Star,
   Users
-, Leaf } from 'lucide-react';
+ } from 'lucide-react';
 
 const containerVariants = {
   hidden: { opacity: 0 },

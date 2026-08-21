@@ -230,22 +230,43 @@ export function PremiumCheckoutScreen() {
 
       {/* Footer Button */}
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F] to-transparent z-10 flex flex-col gap-3">
-        <Button 
-          className="w-full h-16 text-lg font-bold tracking-wide" 
-          variant="premium"
-          onClick={() => {
-            if (pixData) {
-              navigator.clipboard.writeText(pixData.qr_code);
-              alert("Código Pix Copiado!");
-            } else {
+        
+        {pixData ? (
+          <div className="flex flex-col gap-3 w-full">
+            <Button 
+              className="w-full h-12 bg-[#1A1A26] border border-[#A6FF00]/50 text-[#A6FF00] hover:bg-[#A6FF00]/10"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(pixData.qr_code);
+                  alert("Código Pix Copiado! Após pagar, clique em 'Já Paguei'.");
+                } catch (e) {
+                  alert("Seu navegador bloqueou a cópia automática. Por favor, copie manualmente o código acima.");
+                }
+              }}
+            >
+              Copiar Código
+            </Button>
+            <Button 
+              className="w-full h-14 text-lg font-bold bg-gradient-to-r from-[#A6FF00] to-[#8BD400] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)]"
+              onClick={() => handleSuccess()}
+            >
+              Já Paguei (Liberar Acesso)
+            </Button>
+          </div>
+        ) : (
+          <Button 
+            className="w-full h-16 text-lg font-bold tracking-wide" 
+            variant="premium"
+            onClick={() => {
               step === 'discount' ? setStep('checkout') : handlePayment()
-            }
-          }}
-          isLoading={isLoading}
-          disabled={step === 'checkout' && !paymentMethod}
-        >
-          {pixData ? 'Copiar Código Pix' : (step === 'discount' ? 'Próximo' : 'Gerar Pix e Iniciar')}
-        </Button>
+            }}
+            isLoading={isLoading}
+            disabled={step === 'checkout' && !paymentMethod}
+          >
+            {step === 'discount' ? 'Próximo' : 'Gerar Pix e Iniciar'}
+          </Button>
+        )}
+
         <button 
           onClick={() => navigate('/dashboard')}
           className="text-mecura-silver text-sm font-medium underline decoration-mecura-silver/30 underline-offset-4 hover:text-mecura-pearl transition-colors py-2"
