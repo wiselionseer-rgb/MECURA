@@ -13,8 +13,8 @@ self.addEventListener('message', (event) => {
     const { title, body, tag, url } = event.data;
     const options = {
       body: body || 'Nova notificação de atendimento.',
-      icon: '/logo-192.png',
-      badge: '/logo-192.png',
+      icon: '/logo-192.png?v=6',
+      badge: '/logo-192.png?v=6',
       vibrate: [300, 100, 300, 100, 400],
       tag: tag || 'mecura-alert-' + Date.now(),
       renotify: true,
@@ -40,8 +40,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Mecura - Notificação de Paciente';
   const options = {
     body: data.body || 'Você recebeu uma nova atualização no consultório.',
-    icon: '/logo-192.png',
-    badge: '/logo-192.png',
+    icon: '/logo-192.png?v=6',
+    badge: '/logo-192.png?v=6',
     vibrate: [300, 100, 300, 100, 400],
     tag: 'mecura-alert-' + Date.now(),
     renotify: true,

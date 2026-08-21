@@ -3,13 +3,13 @@
   "name": "Mecura - Portal Médico e Saúde",
   "icons": [
     {
-      "src": "/logo-192.png?v=3",
+      "src": "/logo-192.png?v=7",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo-512.png?v=3",
+      "src": "/logo-512.png?v=7",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
