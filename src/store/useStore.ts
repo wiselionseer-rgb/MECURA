@@ -300,6 +300,12 @@ export const useStore = create<AppState>((set, get) => ({
         status: 'waiting'
       });
       
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+         import('../utils/notifications').then(({ subscribeToBackgroundNotifications }) => {
+            subscribeToBackgroundNotifications(currentUserId).catch(() => {});
+         }).catch(() => {});
+      }
+      
       triggerAdminBackgroundPush(
         'Novo Paciente na Fila',
         `${newPatient.patientName} acabou de entrar na fila de espera.`,
