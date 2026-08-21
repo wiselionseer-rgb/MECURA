@@ -371,10 +371,12 @@ ${nationalProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doen�
           const allUsersSnapshot = await getDocs(usersRef);
           allUsersSnapshot.forEach(doc => {
               const uData = doc.data();
-              // A hacky way for now: if a user has pushSubscription and is NOT a patient (maybe missing fields? No, let's just assume the doctor logs in first)
-              // We should just fix the doctor subscription to include role: 'admin'.
+              if (uData.pushSubscription) {
+                 promises.push(webpush.sendNotification(uData.pushSubscription, JSON.stringify({ title, body, url })).catch(e => console.error('Admin push error', e)));
+              }
           });
       }
+
 
       await Promise.all(promises);
       res.json({ success: true, count: promises.length });

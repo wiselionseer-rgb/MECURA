@@ -19,12 +19,16 @@ export function EnableNotificationsBanner({ userId, role }: { userId?: string, r
     setLoading(true);
     try {
       const granted = await requestNotificationPermission();
-      if (granted && userId) {
-        await subscribeToBackgroundNotifications(userId);
+      
+      const { auth } = await import('../firebase');
+      const finalUserId = userId || auth.currentUser?.uid;
+      if (granted && finalUserId) {
+
+        await subscribeToBackgroundNotifications(finalUserId);
         if (role === 'admin') {
           const { doc, setDoc } = await import('firebase/firestore');
           const { db } = await import('../firebase');
-          await setDoc(doc(db, 'users', userId), { role: 'admin' }, { merge: true });
+          await setDoc(doc(db, 'users', finalUserId), { role: 'admin' }, { merge: true });
         }
       }
       setShow(false);

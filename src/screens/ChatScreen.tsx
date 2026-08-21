@@ -20,12 +20,14 @@ export function ChatScreen() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    requestNotificationPermission().then(granted => {
-      if (granted && patientId) {
-        subscribeToBackgroundNotifications(patientId);
-      }
-    });
-  }, []);
+    if (patientId) {
+      requestNotificationPermission().then(granted => {
+        if (granted) {
+          subscribeToBackgroundNotifications(patientId);
+        }
+      });
+    }
+  }, [patientId]);
 
   const playNotificationSound = () => {
     try {

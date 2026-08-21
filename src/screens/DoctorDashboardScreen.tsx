@@ -186,11 +186,21 @@ export function DoctorDashboardScreen() {
   };
 
   useEffect(() => {
-    requestNotificationPermission().then(granted => {
-      if (granted && adminId) {
-        subscribeToBackgroundNotifications(adminId).then(() => { setDoc(doc(db, "users", adminId), { role: "admin" }, { merge: true }); });
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        requestNotificationPermission().then(granted => {
+          if (granted) {
+            subscribeToBackgroundNotifications(user.uid).then(() => { 
+              setDoc(doc(db, "users", user.uid), { role: "admin" }, { merge: true }); 
+            });
+          }
+        });
       }
     });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     const currentUnreadCount = queue.filter(p => p.hasUnread).length;
     if (currentUnreadCount > prevUnreadCount) {
       playNotificationSound();
