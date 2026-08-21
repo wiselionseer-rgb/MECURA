@@ -299,6 +299,12 @@ export const useStore = create<AppState>((set, get) => ({
         joinedAt: new Date().toISOString(),
         status: 'waiting'
       });
+      
+      triggerAdminBackgroundPush(
+        'Novo Paciente na Fila',
+        `${newPatient.patientName} acabou de entrar na fila de espera.`,
+        '/doctor'
+      );
     } catch (error) {
       console.error("Error joining queue in Firestore", error);
       // Fallback for local if Firestore fails
@@ -540,6 +546,12 @@ export const useStore = create<AppState>((set, get) => ({
         const updates: any = { hasUnread: false };
         if (patient && patient.status === 'waiting') {
           updates.status = 'in-consultation';
+          triggerBackgroundPush(
+            patientId,
+            'Sua vez chegou!',
+            'O médico está te chamando no consultório agora. Clique para abrir.',
+            '/chat'
+          );
         }
         
         await updateDoc(doc(db, 'queue', patientId), updates);
@@ -604,6 +616,13 @@ export const useStore = create<AppState>((set, get) => ({
         await updateDoc(doc(db, 'queue', consultationId), {
           status: 'finished'
         });
+        
+        triggerBackgroundPush(
+          consultationId,
+          'Consulta Finalizada',
+          'Sua consulta foi concluída. Muito obrigado!',
+          '/dashboard'
+        );
         
         // We no longer delete messages from active_consultations to preserve chat history
       } catch (error) {
@@ -763,7 +782,17 @@ export const useStore = create<AppState>((set, get) => ({
       if (msgs.length > currentMessages.length && currentMessages.length > 0) {
         const lastMsg = msgs[msgs.length - 1];
         if (lastMsg.sender === 'doctor') {
+          // Play sound for ALL new doctor messages
+          import('../utils/sound').then(({ playNotificationSound }) => {
+            playNotificationSound();
+          });
+          
           if (typeof document !== 'undefined' && document.hidden) {
+            import('../utils/notifications').then(({ showNativeNotification }) => {
+              showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
+            });
+          } else if (lastMsg.text.includes('SUA VEZ CHEGOU')) {
+            // Also explicitly show the notification for the ALERT message even if not hidden
             import('../utils/notifications').then(({ showNativeNotification }) => {
               showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
             });

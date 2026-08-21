@@ -1119,21 +1119,7 @@ export function DoctorDashboardScreen() {
               <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold text-white tracking-tight">Fila de Atendimento</h2>
-                  <button
-                    onClick={async () => {
-                      const success = await testNotification();
-                      if (!success) {
-                        alert('Por favor, permita as notificações nas configurações do seu navegador para receber alertas sonoros e pop-ups.');
-                      } else {
-                        alert('Notificação de teste enviada com sucesso!');
-                      }
-                    }}
-                    title="Testar Notificação e Som"
-                    className="p-2 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon hover:bg-mecura-neon/20 transition-all flex items-center gap-1.5 text-xs font-bold"
-                  >
-                    <Bell className="w-3.5 h-3.5" />
-                    <span>Testar Alerta</span>
-                  </button>
+
                 </div>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
@@ -1427,6 +1413,57 @@ export function DoctorDashboardScreen() {
                 </div>
               </div>
               <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0 items-center">
+                <button
+                  onClick={async () => {
+                    const targetPatient = currentPatient || queue.find(p => p.status === 'waiting');
+                    if (targetPatient) {
+                      try {
+                        // 1. Send Background Push Notification (if they have app closed)
+                        const { triggerBackgroundPush } = await import('../utils/notifications');
+                        triggerBackgroundPush(
+                          targetPatient.id,
+                          'Sua vez chegou!',
+                          'O médico está te chamando no consultório agora. Clique para abrir.',
+                          '/chat'
+                        ).catch(() => {});
+                        
+                        // 2. Send an automated chat message that will definitively trigger their UI
+                        // This guarantees delivery if they are already in the app/chat
+                        const { collection, doc, setDoc } = await import('firebase/firestore');
+                        const { db } = await import('../firebase');
+                        
+                        const msgRef = doc(collection(db, 'active_consultations', targetPatient.id, 'messages'));
+                        await setDoc(msgRef, {
+                          id: msgRef.id,
+                          text: "🔔 SUA VEZ CHEGOU! O médico está te chamando no consultório agora.",
+                          sender: 'doctor',
+                          type: 'text',
+                          timestamp: new Date().toISOString()
+                        });
+                        
+                        // Also update the queue so the patient side can react if they are on the QueueScreen
+                        const patientRef = doc(db, 'queue', targetPatient.id);
+                        await setDoc(patientRef, { isAlerted: Date.now() }, { merge: true });
+
+                        alert(`Alerta enviado para ${targetPatient.patientName || 'o paciente'} com sucesso!`);
+                        
+                        // Auto-select if it was the first waiting one
+                        if (!currentPatient && targetPatient.status === 'waiting') {
+                           handleStartConsultation(targetPatient);
+                        }
+                      } catch (e) {
+                        console.error(e);
+                        alert('Erro ao enviar alerta.');
+                      }
+                    } else {
+                      alert('Nenhum paciente aguardando na fila.');
+                    }
+                  }}
+                  title="Chamar Paciente"
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon rounded-xl text-xs md:text-sm font-bold hover:bg-mecura-neon hover:text-black transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(166,255,0,0.1)]"
+                >
+                  <Bell className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Chamar Paciente</span><span className="md:hidden">Chamar</span>
+                </button>
                 <button 
                   onClick={() => setShowHistoryModal(true)}
                   className="px-3 md:px-4 py-2 md:py-2.5 bg-mecura-surface border border-mecura-elevated rounded-xl text-xs md:text-sm font-medium hover:bg-mecura-surface-light transition-colors flex items-center gap-1 md:gap-2 text-white whitespace-nowrap"
