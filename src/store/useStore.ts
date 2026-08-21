@@ -363,6 +363,35 @@ export const useStore = create<AppState>((set, get) => ({
         };
       }) as any[];
 
+      // GLOBAL LISTENER FOR PATIENT (Runs on all screens)
+      if (!isInitialLoadQueue && !isDoctorRoute && !isAdminRoute) {
+        const currentUserId = auth.currentUser?.uid || get().patientId;
+        if (currentUserId) {
+          const myDoc = queueData.find(p => p.id === currentUserId);
+          if (myDoc && myDoc.lastMessageAt) {
+            const prevState = get().queue.find(p => p.id === currentUserId);
+            // Se o lastMessageAt mudou, e o remetente não foi o paciente (ou seja, foi o médico)
+            if (prevState && prevState.lastMessageAt !== myDoc.lastMessageAt && !myDoc.hasUnread) {
+              if (typeof document !== 'undefined' && document.hidden) {
+                import('../utils/sound').then(({ playNotificationSound }) => {
+                  playNotificationSound();
+                });
+                import('../utils/notifications').then(({ showNativeNotification }) => {
+                  showNativeNotification('Nova mensagem do Médico', myDoc.lastMessageText || 'Você tem uma nova mensagem.', '/chat');
+                });
+              } else if (myDoc.lastMessageText && myDoc.lastMessageText.includes('SUA VEZ CHEGOU')) {
+                import('../utils/sound').then(({ playNotificationSound }) => {
+                  playNotificationSound();
+                });
+                import('../utils/notifications').then(({ showNativeNotification }) => {
+                  showNativeNotification('Nova mensagem do Médico', myDoc.lastMessageText, '/chat');
+                });
+              }
+            }
+          }
+        }
+      }
+
       if (!isInitialLoadQueue && (isDoctorRoute || isAdminRoute)) {
         // Detect newly joined or updated waiting patients
         queueData.forEach((p) => {
@@ -793,11 +822,14 @@ export const useStore = create<AppState>((set, get) => ({
             playNotificationSound();
           });
           
-          // We rely exclusively on Web Push (triggerBackgroundPush via server) for background notifications
-          // to ensure robust delivery (sound/vibration) on mobile devices.
-          // We only explicitly trigger a native notification here if it's the critical ALERT message 
-          // while the user is actively viewing another tab.
-          if (lastMsg.text.includes('SUA VEZ CHEGOU')) {
+          // Se o app estiver em segundo plano (outra aba ou minimizado), dispara a notificação nativa HTML5
+          // Ela trabalha em conjunto com o Push Server para garantir a exibição do alerta na tela do paciente
+          if (typeof document !== 'undefined' && document.hidden) {
+            import('../utils/notifications').then(({ showNativeNotification }) => {
+              showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
+            });
+          } else if (lastMsg.text.includes('SUA VEZ CHEGOU')) {
+            // Força a exibição para a mensagem de alerta, mesmo se a tela não estiver minimizada
             import('../utils/notifications').then(({ showNativeNotification }) => {
               showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
             });
