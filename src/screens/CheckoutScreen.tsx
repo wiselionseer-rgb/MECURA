@@ -85,11 +85,7 @@ export function CheckoutScreen() {
             });
             setIsLoading(false);
             
-            // Simulando aprovação do PIX após alguns segundos para fluxo automático
-            pollingInterval.current = setInterval(() => {
-              clearInterval(pollingInterval.current);
-              handleSuccess();
-            }, 8000);
+            // O paciente clicará no botão "Já Paguei" para continuar.
             return;
           }
         }
@@ -310,71 +306,81 @@ export function CheckoutScreen() {
                       placeholder="Possui cupom?"
                       className="flex-1 bg-[#050508] border border-white/5 rounded-2xl px-5 py-4 text-white text-[15px] focus:outline-none focus:border-white/20 uppercase placeholder:normal-case placeholder:text-[#8A8A9E]"
                     />
-                    <Button onClick={handleApplyCoupon} disabled={!couponCode} className="px-8 rounded-2xl font-bold">
+                    <Button
+                      onClick={handleApplyCoupon}
+                      isLoading={isValidatingCoupon}
+                      disabled={!couponCode}
+                      className="bg-mecura-neon text-black font-bold h-14 px-6 rounded-2xl shadow-lg hover:shadow-[0_0_20px_rgba(166,255,0,0.3)] transition-all"
+                    >
                       Aplicar
                     </Button>
                   </div>
-                  {couponError && <p className="text-red-400 text-sm mt-3 px-2 font-medium">{couponError}</p>}
                 </div>
               )}
 
-              <div className="bg-[#12121A] rounded-[32px] p-7 mb-8 border border-white/5 shadow-2xl">
-                <h3 className="text-lg font-bold text-left mb-6 text-white tracking-tight">
-                  Como deseja pagar?
-                </h3>
-                
-                <div className="space-y-4">
-                  <button
-                    onClick={() => setPaymentMethod('pix')}
-                    className={`w-full flex items-center justify-between p-6 rounded-[24px] bg-[#050508] border-2 transition-all group ${
-                      paymentMethod === 'pix' ? (selectedOffer === 'basic' ? 'border-mecura-neon shadow-[0_0_20px_rgba(166,255,0,0.1)]' : 'border-[#A6FF00] shadow-[0_0_20px_rgba(212,175,55,0.15)]') : 'border-white/5 hover:border-white/10'
-                    }`}
-                  >
+              {/* Payment Methods List */}
+              <div className="space-y-3 mb-8">
+                {/* Pix */}
+                <button
+                  onClick={() => setPaymentMethod('pix')}
+                  className={`w-full text-left p-1 rounded-[24px] transition-all duration-300 group ${paymentMethod === 'pix' ? 'bg-gradient-to-r from-white/10 to-transparent border border-white/10' : 'bg-transparent border border-transparent hover:border-white/5'}`}
+                >
+                  <div className={`bg-[#0A0A0F] rounded-[20px] p-5 flex items-center justify-between transition-all duration-300 ${paymentMethod === 'pix' ? 'shadow-2xl' : 'group-hover:bg-[#12121A]'}`}>
                     <div className="flex items-center gap-5">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-inner ${paymentMethod === 'pix' ? (selectedOffer === 'basic' ? 'bg-mecura-neon/10' : 'bg-[#A6FF00]/10') : 'bg-[#12121A] group-hover:bg-white/5'}`}>
                         <PixIcon className={`w-7 h-7 ${paymentMethod === 'pix' ? (selectedOffer === 'basic' ? 'text-mecura-neon' : 'text-[#A6FF00]') : 'text-[#8A8A9E]'}`} />
                       </div>
-                      <div className="flex flex-col items-start">
-                        <span className="font-bold text-[18px] text-white">Pix Copia e Cola</span>
-                        <span className="text-[12px] text-[#8A8A9E] font-medium mt-1">Aprovação imediata</span>
+                      <div>
+                        <p className={`font-bold text-[17px] mb-1 ${paymentMethod === 'pix' ? 'text-white' : 'text-[#8A8A9E]'}`}>Pix</p>
+                        <p className={`text-[13px] ${paymentMethod === 'pix' ? 'text-mecura-neon' : 'text-[#8A8A9E]/60'}`}>Aprovação imediata</p>
                       </div>
                     </div>
-                    <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-colors ${paymentMethod === 'pix' ? (selectedOffer === 'basic' ? 'border-mecura-neon bg-mecura-neon/10' : 'border-[#A6FF00] bg-[#A6FF00]/10') : 'border-white/10 bg-[#12121A]'}`}>
-                      {paymentMethod === 'pix' && <div className={`w-3.5 h-3.5 rounded-full ${selectedOffer === 'basic' ? 'bg-mecura-neon' : 'bg-[#A6FF00]'}`} />}
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${paymentMethod === 'pix' ? 'border-mecura-neon bg-mecura-neon/10' : 'border-[#8A8A9E]/30'}`}>
+                      {paymentMethod === 'pix' && <div className="w-2.5 h-2.5 bg-mecura-neon rounded-full" />}
                     </div>
-                  </button>
-                </div>
+                  </div>
+                </button>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
 
-      {/* Footer Button */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#050508] via-[#050508]/95 to-transparent z-30 flex flex-col gap-4 pt-24 pb-8"
-      >
-        <Button 
-          className={`w-full h-[64px] text-[17px] font-bold tracking-wide rounded-full shadow-2xl transition-all duration-300 ${
-            selectedOffer === 'basic' 
-              ? 'bg-mecura-neon text-black hover:bg-[#B3FF1A] shadow-[0_0_30px_rgba(166,255,0,0.2)] hover:shadow-[0_0_40px_rgba(166,255,0,0.3)]' 
-              : 'bg-gradient-to-r from-[#A6FF00] to-[#8BD400] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)]'
-          }`}
-          onClick={() => {
-            if (pixData) {
-              navigator.clipboard.writeText(pixData.qr_code);
-              alert("Código Pix Copiado!");
-            } else {
+        {pixData ? (
+          <div className="flex flex-col gap-3 mt-4 w-full">
+            <Button 
+              className="w-full h-12 bg-[#1A1A26] border border-mecura-neon/50 text-mecura-neon hover:bg-mecura-neon/10"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(pixData.qr_code);
+                  alert("Código Pix Copiado! Após pagar, clique em 'Já Paguei'.");
+                } catch (e) {
+                  alert("Seu navegador bloqueou a cópia automática. Por favor, copie manualmente o código acima.");
+                }
+              }}
+            >
+              Copiar Código
+            </Button>
+            <Button 
+              className="w-full h-14 text-lg font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)]"
+              onClick={() => handleSuccess()}
+            >
+              Já Paguei (Entrar na Fila)
+            </Button>
+          </div>
+        ) : (
+          <Button 
+            className={`w-full h-14 text-lg font-bold mt-2 ${
+              selectedOffer === 'basic' 
+                ? 'bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.4)]'
+                : 'bg-gradient-to-r from-[#A6FF00] to-[#8BD400] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)]'
+            }`}
+            onClick={() => {
               step === 'discount' ? setStep('checkout') : handlePayment()
-            }
-          }}
-          isLoading={isLoading}
-          disabled={step === 'checkout' && !paymentMethod}
-        >
-          {pixData ? 'Copiar Código' : (step === 'discount' ? 'Continuar para Pagamento' : 'Gerar Pix e Iniciar')}
-        </Button>
+            }}
+            isLoading={isLoading}
+            disabled={step === 'checkout' && !paymentMethod}
+          >
+            {step === 'discount' ? 'Continuar para Pagamento' : 'Gerar Pix e Iniciar'}
+          </Button>
+        )}
+
         <button 
           onClick={() => navigate('/dashboard')}
           className="text-[#8A8A9E] text-[14px] font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-2"
@@ -382,6 +388,9 @@ export function CheckoutScreen() {
           Pular por enquanto e ir para o painel
         </button>
       </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -157,11 +157,13 @@ export const subscribeToBackgroundNotifications = async (userId: string) => {
 export const triggerBackgroundPush = async (userId: string, title: string, body: string, url: string = '/dashboard') => {
   if (!userId) return;
   try {
-    await fetch('/api/send-push', {
+    const res = await fetch('/api/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, title, body, url })
     });
+    const data = await res.json();
+    console.log('Push response:', data);
   } catch (error) {
     console.error('Failed to trigger background push', error);
   }
