@@ -187,7 +187,7 @@ export function DoctorDashboardScreen() {
   useEffect(() => {
     requestNotificationPermission().then(granted => {
       if (granted && adminId) {
-        subscribeToBackgroundNotifications(adminId);
+        subscribeToBackgroundNotifications(adminId).then(() => { setDoc(doc(db, "users", adminId), { role: "admin" }, { merge: true }); });
       }
     });
     const currentUnreadCount = queue.filter(p => p.hasUnread).length;

@@ -140,9 +140,12 @@ export const subscribeToBackgroundNotifications = async (userId: string) => {
     });
     
     // Save to Firestore user doc
-    await updateDoc(doc(db, 'users', userId), {
+    const { doc, setDoc } = await import('firebase/firestore');
+    const { db } = await import('../firebase');
+    await setDoc(doc(db, 'users', userId), {
       pushSubscription: JSON.parse(JSON.stringify(subscription))
-    });
+    }, { merge: true });
+    
     console.log('Background push notifications subscribed!');
     return true;
   } catch (error) {
