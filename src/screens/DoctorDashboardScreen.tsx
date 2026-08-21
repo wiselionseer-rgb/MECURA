@@ -62,6 +62,7 @@ import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
 import { cbdGuideData, CBDProduct, enrichMedicationDetails } from '../data/cbdGuide';
 import { NotificationToast } from '../components/NotificationToast';
+import { EnableNotificationsBanner } from '../components/EnableNotificationsBanner';
 import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
 
@@ -1031,6 +1032,7 @@ export function DoctorDashboardScreen() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-[#050508] text-mecura-pearl overflow-hidden font-sans">
+      <EnableNotificationsBanner userId={adminId} role="admin" />
       <NotificationToast />
       {/* Left Sidebar - Navigation (Bottom bar on mobile) */}
       <div className="w-full md:w-20 bg-mecura-surface border-t md:border-t-0 md:border-r border-mecura-elevated flex md:flex-col items-center py-2 md:py-6 px-4 md:px-0 gap-4 md:gap-8 z-20 order-last md:order-first overflow-x-auto md:overflow-x-visible">

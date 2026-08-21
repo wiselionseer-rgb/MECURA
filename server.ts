@@ -384,6 +384,20 @@ ${nationalProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doen�
     }
   });
 
+  
+  app.get('/api/debug-users', async (req, res) => {
+    try {
+      const { collection, getDocs } = await import('firebase/firestore');
+      const usersRef = collection(db, 'users');
+      const snapshot = await getDocs(usersRef);
+      const users = [];
+      snapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/webhook", async (req, res) => {
     // Mercado Pago envia notificações via POST
     const { action, data, type } = req.body;

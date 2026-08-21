@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { User, Store } from 'lucide-react';
 import { NotificationToast } from '../NotificationToast';
+import { EnableNotificationsBanner } from '../EnableNotificationsBanner';
 import { useStore } from '../../store/useStore';
 import { auth } from '../../firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,7 +12,7 @@ const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userName, resetConsultation, subscribeToQueue } = useStore();
+  const { userName, patientId, resetConsultation, subscribeToQueue } = useStore();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Show gamification header only on specific screens
@@ -81,6 +82,7 @@ export function AppLayout() {
     <div className="min-h-screen bg-black flex items-center justify-center sm:p-4 perspective-[1000px]">
       <div className="w-full h-screen sm:h-[850px] sm:max-w-[400px] bg-[#0A0A0F] sm:rounded-[44px] sm:border-[8px] sm:border-[#1F1F29] overflow-hidden relative shadow-2xl flex flex-col transform-gpu">
         
+        <EnableNotificationsBanner userId={patientId || auth.currentUser?.uid} />
         <NotificationToast />
 
         {showGamificationHeader && (
