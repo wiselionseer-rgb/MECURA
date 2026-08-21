@@ -3,6 +3,7 @@ import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { User, Store } from 'lucide-react';
 import { NotificationToast } from '../NotificationToast';
 import { EnableNotificationsBanner } from '../EnableNotificationsBanner';
+import { subscribeToBackgroundNotifications } from '../../utils/notifications';
 import { useStore } from '../../store/useStore';
 import { auth } from '../../firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -23,6 +24,23 @@ export function AppLayout() {
     const unsubscribe = subscribeToQueue();
     return () => unsubscribe();
   }, [subscribeToQueue]);
+
+  // Auto-subscribe to notifications for anonymous patients (patientId)
+  useEffect(() => {
+    const checkAndSubscribe = async () => {
+      const finalUserId = patientId || auth.currentUser?.uid;
+      if (finalUserId && typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          try {
+            await subscribeToBackgroundNotifications(finalUserId);
+          } catch (e) {
+            console.error("Auto push subscription failed in AppLayout:", e);
+          }
+        }
+      }
+    };
+    checkAndSubscribe();
+  }, [patientId]);
 
   const resetTimeout = () => {
     if (timeoutRef.current) {
