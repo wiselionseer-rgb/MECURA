@@ -50,7 +50,7 @@ async function startServer() {
       const subscription = userData.pushSubscription;
       if (!subscription) return res.status(400).json({ error: 'User has no push subscription' });
       
-      await webpush.sendNotification(subscription, JSON.stringify({ title, body, url }));
+      await webpush.sendNotification(subscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 });
       res.json({ success: true });
     } catch (error) {
       console.error('Error sending push:', error);
@@ -362,7 +362,7 @@ ${nationalProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doen�
       querySnapshot.forEach((doc) => {
         const userData = doc.data();
         if (userData.pushSubscription) {
-          promises.push(webpush.sendNotification(userData.pushSubscription, JSON.stringify({ title, body, url })).catch(e => console.error('Admin push error', e)));
+          promises.push(webpush.sendNotification(userData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 }).catch(e => console.error('Admin push error', e)));
         }
       });
       
@@ -372,7 +372,7 @@ ${nationalProducts.map(p => `**Medicamento**: **${p.name}**\n**Indicação/Doen�
           allUsersSnapshot.forEach(doc => {
               const uData = doc.data();
               if (uData.pushSubscription) {
-                 promises.push(webpush.sendNotification(uData.pushSubscription, JSON.stringify({ title, body, url })).catch(e => console.error('Admin push error', e)));
+                 promises.push(webpush.sendNotification(uData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 }).catch(e => console.error('Admin push error', e)));
               }
           });
       }

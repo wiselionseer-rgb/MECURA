@@ -31,16 +31,33 @@ import { ProfileScreen } from './screens/ProfileScreen';
 import { PharmacyScreen } from './screens/PharmacyScreen';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { auth } from './firebase';
+import { subscribeToBackgroundNotifications } from './utils/notifications';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
   const { subscribeToExchangeRate, subscribeToAppointments } = useStore();
 
   useEffect(() => {
+    // Auto-subscribe to background notifications if already granted
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (user && typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          try {
+            await subscribeToBackgroundNotifications(user.uid);
+          } catch (e) {
+            console.error("Auto push subscription failed:", e);
+          }
+        }
+      }
+    });
+
     const unsubscribeExchange = subscribeToExchangeRate();
     const unsubscribeAppointments = subscribeToAppointments();
     return () => {
       unsubscribeExchange();
       unsubscribeAppointments();
+      unsubscribeAuth();
     };
   }, [subscribeToExchangeRate, subscribeToAppointments]);
 
