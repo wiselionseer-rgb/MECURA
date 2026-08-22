@@ -22,6 +22,7 @@ import { useStore } from '../store/useStore';
 export function CBDGuideView() {
   const { productCategories } = useAdminStore();
   const [searchTerm, setSearchTerm] = useState('');
+  const [diseaseFilter, setDiseaseFilter] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>(() => {
     // Open the first category by default
@@ -65,11 +66,15 @@ export function CBDGuideView() {
     .filter(category => selectedCategoryFilter === 'all' || category.id === selectedCategoryFilter)
     .map(category => {
       const filteredProducts = category.products.filter(product => 
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (product.details && product.details.some(d => d.toLowerCase().includes(searchTerm.toLowerCase()))) ||
-        (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))
+        (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))) &&
+        (!diseaseFilter || 
+          (product.indications && product.indications.toLowerCase().includes(diseaseFilter.toLowerCase())) ||
+          category.title.toLowerCase().includes(diseaseFilter.toLowerCase()) ||
+          category.description.toLowerCase().includes(diseaseFilter.toLowerCase()))
       );
       return { ...category, products: filteredProducts };
     })
@@ -111,13 +116,13 @@ export function CBDGuideView() {
           </div>
 
           {/* Search & Actions Bar */}
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-80">
+          <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+            <div className="relative flex-1 w-full md:w-64">
               <Search className="w-4 h-4 text-mecura-silver absolute left-3 top-1/2 -translate-y-1/2" />
               <input 
                 id="input-cbd-search"
                 type="text" 
-                placeholder="Buscar produto, marca, tipo ou detalhe..." 
+                placeholder="Buscar produto..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-mecura-surface border border-mecura-elevated rounded-xl py-2 pl-9 pr-8 text-xs md:text-sm text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors"
@@ -125,6 +130,24 @@ export function CBDGuideView() {
               {searchTerm && (
                 <button 
                   onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-mecura-silver hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="relative flex-1 w-full md:w-64">
+              <Search className="w-4 h-4 text-mecura-silver absolute left-3 top-1/2 -translate-y-1/2" />
+              <input 
+                type="text" 
+                placeholder="Filtrar por patologia/doença..." 
+                value={diseaseFilter}
+                onChange={(e) => setDiseaseFilter(e.target.value)}
+                className="w-full bg-mecura-surface border border-mecura-elevated rounded-xl py-2 pl-9 pr-8 text-xs md:text-sm text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors"
+              />
+              {diseaseFilter && (
+                <button 
+                  onClick={() => setDiseaseFilter('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-mecura-silver hover:text-white"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -297,10 +320,15 @@ export function CBDGuideView() {
                                   {product.description}
                                 </p>
                               )}
+                              {product.indications && (
+                                <p className="text-[10px] text-mecura-neon/80 bg-mecura-neon/5 px-2 py-1 rounded border border-mecura-neon/10 mt-2 inline-block">
+                                  <span className="font-bold opacity-75 mr-1">Indicações:</span> {product.indications}
+                                </p>
+                              )}
                             </div>
                             <div className="text-right flex-shrink-0">
                               <span className="text-sm font-black text-mecura-neon block">
-                                {product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte'}
+                                {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte')}
                               </span>
                               {product.origin && (
                                 <span className="text-[10px] text-mecura-silver/70 block mt-0.5">
@@ -362,6 +390,11 @@ export function CBDGuideView() {
                                 {product.description && (
                                   <p className="text-xs text-mecura-silver mt-1 leading-relaxed break-words">
                                     {product.description}
+                                  </p>
+                                )}
+                                {product.indications && (
+                                  <p className="text-[10px] text-mecura-neon/80 bg-mecura-neon/5 px-2 py-1 rounded border border-mecura-neon/10 mt-2 inline-block">
+                                    <span className="font-bold opacity-75 mr-1">Indicações:</span> {product.indications}
                                   </p>
                                 )}
                               </td>

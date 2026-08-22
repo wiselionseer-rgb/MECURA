@@ -13,6 +13,8 @@ export interface CBDProduct {
   italicText?: string;
   description?: string;
   priceUSD?: number;
+  priceBRL?: number;
+  indications?: string;
 }
 
 export interface CBDCategory {

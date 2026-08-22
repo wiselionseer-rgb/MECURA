@@ -1,12 +1,10 @@
-import html2pdf from "html2pdf.js";
-import Markdown from 'react-markdown';
+const fs = require('fs');
 
+const fullCode = `
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
-  FileText,
-  Download, UserCircle, MessageCircle,
   Pill,
   MessageSquare,
   BarChart,
@@ -29,12 +27,12 @@ import {
 } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { useStore } from '../store/useStore';
-import { Button } from '../components/ui/Button';
+import { Button } from '../components/Button';
 import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs } from 'firebase/firestore';
 
 export const AdminDashboardScreen = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'doctors' | 'catalog' | 'coupons' | 'notifications' | 'support'>('overview');
   const {
     doctors,
     addDoctor,
@@ -60,29 +58,6 @@ export const AdminDashboardScreen = () => {
   const { allAppointments } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
-
-  const [patients, setPatients] = useState<any[]>([]);
-  const [queueCount, setQueueCount] = useState(0);
-
-  useEffect(() => {
-    // Fetch users (patients)
-    const qUsers = query(collection(db, 'users'));
-    const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-      setPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    // Fetch queue (basic consultations 50 reais)
-    const qQueue = query(collection(db, 'queue'));
-    const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
-      setQueueCount(snapshot.size);
-    });
-
-    return () => {
-      unsubscribeUsers();
-      unsubscribeQueue();
-    };
-  }, []);
-
   const [showSupportToast, setShowSupportToast] = useState(false);
   const [supportToastMessage, setSupportToastMessage] = useState("");
 
@@ -90,7 +65,7 @@ export const AdminDashboardScreen = () => {
     const q = query(collection(db, 'support_requests'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const activeRequests = requests.filter((r: any) => r.status === 'pending');
+      const activeRequests = requests.filter(r => r.status === 'pending');
       
       if (activeRequests.length > supportRequests.length && supportRequests.length > 0) {
         setSupportToastMessage("Nova solicitação de suporte recebida!");
@@ -128,96 +103,6 @@ export const AdminDashboardScreen = () => {
       { role: 'ai', text: 'Olá! Sou o assistente de IA da Mecura. Envie um arquivo (PDF, Tabela) e me diga o que deseja atualizar ou adicionar no catálogo!' }
   ]);
   const [aiInputText, setAiInputText] = useState('');
-
-  // Agronomic Report States
-  const [agronomicMedicalReport, setAgronomicMedicalReport] = useState('');
-  const [agronomicPrescription, setAgronomicPrescription] = useState('');
-  const [agronomicMedicalFile, setAgronomicMedicalFile] = useState<any>(null);
-  const [agronomicPrescriptionFile, setAgronomicPrescriptionFile] = useState<any>(null);
-  const medFileRef = useRef<HTMLInputElement>(null);
-  const prescFileRef = useRef<HTMLInputElement>(null);
-  
-  const handleMedFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        setAgronomicMedicalFile({ name: file.name, data: event.target?.result as string, mimeType: file.type });
-    };
-    reader.readAsDataURL(file);
-  };
-  
-  const handlePrescFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        setAgronomicPrescriptionFile({ name: file.name, data: event.target?.result as string, mimeType: file.type });
-    };
-    reader.readAsDataURL(file);
-  };
-  const [agronomicResult, setAgronomicResult] = useState('');
-  const [isAgronomicLoading, setIsAgronomicLoading] = useState(false);
-
-  const handleGenerateAgronomic = async () => {
-    if ((!agronomicMedicalReport && !agronomicMedicalFile) || (!agronomicPrescription && !agronomicPrescriptionFile)) {
-       alert("Forneça o laudo médico e a receita (em texto ou arquivo).");
-       return;
-    }
-    setIsAgronomicLoading(true);
-    setAgronomicResult('');
-    try {
-      const response = await fetch('/api/admin-agronomic-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-           medicalReportText: agronomicMedicalReport,
-           prescriptionText: agronomicPrescription,
-           medicalReportFile: agronomicMedicalFile,
-           prescriptionFile: agronomicPrescriptionFile
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setAgronomicResult(data.markdown);
-    } catch (e: any) {
-      alert("Erro ao gerar laudo: " + e.message);
-    } finally {
-      setIsAgronomicLoading(false);
-    }
-  };
-
-  const handleCopyAgronomic = () => {
-     if (agronomicResult) {
-        navigator.clipboard.writeText(agronomicResult);
-        alert("Laudo copiado para a área de transferência!");
-     }
-  };
-  
-  const handleDownloadPDF = async () => {
-      if (!agronomicResult) return;
-      try {
-          
-          const element = document.getElementById('agronomic-report-container');
-          if (!element) {
-              alert("Conteúdo do laudo não encontrado na tela.");
-              return;
-          }
-          const opt = {
-              margin: 15,
-              filename: 'Parecer_Tecnico_Agronomico.pdf',
-              image: { type: 'jpeg', quality: 0.98 },
-              html2canvas: { scale: 2 },
-              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-              pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-          };
-          html2pdf().set(opt).from(element).save();
-      } catch (e) {
-          console.error("Erro ao gerar PDF:", e);
-          alert("Erro ao gerar o arquivo PDF.");
-      }
-  };
-
   const [isAiLoading, setIsAiLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedAiFile, setSelectedAiFile] = useState<{name: string, data: string, mimeType: string} | null>(null);
@@ -318,12 +203,12 @@ export const AdminDashboardScreen = () => {
                     }
                 } catch (e) { console.error("Action error", e); }
             });
-            setAiChatHistory(prev => [...prev, { role: 'ai', text: data.message || `Ações: ${addCount} adicões, ${updateCount} atualizações, ${deleteCount} exclusões.` }]);
+            setAiChatHistory(prev => [...prev, { role: 'ai', text: data.message || \`Ações: \${addCount} adicões, \${updateCount} atualizações, \${deleteCount} exclusões.\` }]);
         } else {
             setAiChatHistory(prev => [...prev, { role: 'ai', text: data.message || "Não encontrei ações válidas para executar." }]);
         }
     } catch (error: any) {
-        setAiChatHistory(prev => [...prev, { role: 'ai', text: `Erro: ${error.message}` }]);
+        setAiChatHistory(prev => [...prev, { role: 'ai', text: \`Erro: \${error.message}\` }]);
     } finally {
         setIsAiLoading(false);
     }
@@ -337,23 +222,20 @@ export const AdminDashboardScreen = () => {
           <Settings className="w-6 h-6 text-mecura-neon" />
           Mecura Admin
         </div>
-        {[
+        {[ 
           { id: 'overview', label: 'Visão Geral', icon: BarChart },
-          { id: 'patients', label: 'Pacientes', icon: UserCircle },
           { id: 'doctors', label: 'Médicos', icon: Users },
-          { id: 'chat_patient', label: 'Chat Paciente', icon: MessageCircle },
-          { id: 'chat_doctor', label: 'Chat Médico', icon: MessageSquare },
-          { id: 'catalog', label: 'Assistente IA', icon: Pill },
-          { id: 'agronomic', label: 'Laudo Agronômico', icon: FileText },
+          { id: 'catalog', label: 'Catálogo', icon: Pill },
           { id: 'coupons', label: 'Cupons', icon: Ticket },
-          { id: 'notifications', label: 'Notificações', icon: Bell }
+          { id: 'notifications', label: 'Notificações', icon: Bell },
+          { id: 'support', label: 'Suporte', icon: MessageSquare }
         ].map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab.id ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-[#8A8A9E] hover:bg-white/5 hover:text-white'}`}
+              className={\`flex items-center gap-3 px-4 py-3 rounded-xl transition-all \${activeTab === tab.id ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-[#8A8A9E] hover:bg-white/5 hover:text-white'}\`}
             >
               <Icon className="w-5 h-5" />
               {tab.label}
@@ -370,83 +252,23 @@ export const AdminDashboardScreen = () => {
         {activeTab === 'overview' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold mb-6">Visão Geral</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Total Consultas</div>
-                <div className="text-3xl font-bold text-white">{allAppointments.length + queueCount}</div>
-              </div>
-              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">R$ 50 (Fila)</div>
-                <div className="text-3xl font-bold text-mecura-neon">{queueCount}</div>
-              </div>
-              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">R$ 250 (Premium)</div>
-                <div className="text-3xl font-bold text-purple-400">{allAppointments.length}</div>
-              </div>
-              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Pacientes</div>
-                <div className="text-3xl font-bold text-white">{patients.length}</div>
-              </div>
-            </div>
-
-            <h3 className="text-xl font-bold mt-8 mb-4">Faturamento (Lucro)</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-[#161622] to-[#1a2e20] p-6 rounded-2xl border border-mecura-neon/30">
-                <div className="text-[#8A8A9E] mb-2">Receita Fila (R$ 50)</div>
-                <div className="text-3xl font-bold text-mecura-neon">
-                  {(queueCount * 50).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </div>
+              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
+                <div className="text-[#8A8A9E] mb-2">Médicos Parceiros</div>
+                <div className="text-3xl font-bold text-white">{doctors.length}</div>
               </div>
-              <div className="bg-gradient-to-br from-[#161622] to-[#2e1a2b] p-6 rounded-2xl border border-purple-500/30">
-                <div className="text-[#8A8A9E] mb-2">Receita Premium (R$ 250)</div>
-                <div className="text-3xl font-bold text-purple-400">
-                  {(allAppointments.length * 250).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </div>
+              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
+                <div className="text-[#8A8A9E] mb-2">Cupons Ativos</div>
+                <div className="text-3xl font-bold text-white">{coupons.filter(c => c.active).length}</div>
               </div>
-              <div className="bg-gradient-to-br from-[#161622] to-[#262636] p-6 rounded-2xl border border-white/20">
-                <div className="text-[#8A8A9E] mb-2">Faturamento Total</div>
-                <div className="text-3xl font-bold text-white">
-                  {((queueCount * 50) + (allAppointments.length * 250)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </div>
+              <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
+                <div className="text-[#8A8A9E] mb-2">Solicitações de Suporte</div>
+                <div className="text-3xl font-bold text-white">{supportRequests.length}</div>
               </div>
             </div>
           </div>
         )}
-        {activeTab === 'patients' && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <h2 className="text-2xl font-bold mb-6">Pacientes Cadastrados</h2>
-            <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden">
-              <div className="grid grid-cols-4 p-4 border-b border-[#262636] text-[#8A8A9E] font-bold">
-                <div>Nome</div>
-                <div>Email</div>
-                <div>Plano</div>
-                <div>Status</div>
-              </div>
-              <div className="divide-y divide-[#262636]">
-                {patients.length > 0 ? patients.map(p => (
-                  <div key={p.id} className="grid grid-cols-4 p-4 items-center">
-                    <div className="font-bold text-white">{p.name || 'Sem nome'}</div>
-                    <div className="text-[#8A8A9E] text-sm">{p.email || 'N/A'}</div>
-                    <div>
-                       <span className={`px-2 py-1 rounded-full text-xs ${p.tier === 'Premium' ? 'bg-purple-500/20 text-purple-400' : 'bg-mecura-neon/20 text-mecura-neon'}`}>
-                         {p.tier || 'Essencial'}
-                       </span>
-                    </div>
-                    <div>
-                       {p.hasCompletedOnboarding ? (
-                          <span className="text-green-400 text-sm">Ativo</span>
-                       ) : (
-                          <span className="text-yellow-400 text-sm">Pendente</span>
-                       )}
-                    </div>
-                  </div>
-                )) : (
-                  <div className="p-8 text-center text-[#8A8A9E]">Nenhum paciente encontrado.</div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+
         {activeTab === 'doctors' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex justify-between items-center">
@@ -506,103 +328,6 @@ export const AdminDashboardScreen = () => {
           </div>
         )}
 
-        
-        {activeTab === 'agronomic' && (
-          <div className="max-w-5xl mx-auto space-y-6">
-            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-               <FileText className="text-mecura-neon" /> Gerador de Laudo Agronômico (IA)
-            </h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-               <div className="space-y-4">
-                  <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                     <h3 className="text-lg font-bold mb-4 text-white">1. Dados do Paciente</h3>
-                     <p className="text-sm text-[#8A8A9E] mb-4">Insira o texto ou faça o upload dos PDFs/Imagens do Laudo e Receita.</p>
-                     
-                     <div className="flex justify-between items-center mb-2">
-                        <label className="block text-sm font-bold text-white">Laudo Médico (Histórico Clínico)</label>
-                        <button onClick={() => medFileRef.current?.click()} className="flex items-center gap-2 text-xs text-mecura-neon hover:text-white transition-colors">
-                            <Paperclip className="w-3 h-3" /> Anexar Arquivo
-                        </button>
-                        <input type="file" className="hidden" ref={medFileRef} onChange={handleMedFileChange} accept=".pdf,image/*" />
-                     </div>
-                     {agronomicMedicalFile && (
-                        <div className="flex items-center justify-between bg-mecura-neon/10 border border-mecura-neon/30 rounded-xl px-4 py-2 mb-2">
-                           <span className="text-xs text-mecura-neon truncate">{agronomicMedicalFile.name}</span>
-                           <button onClick={() => setAgronomicMedicalFile(null)} className="text-xs text-[#8A8A9E] hover:text-white">X</button>
-                        </div>
-                     )}
-                     <textarea 
-                        value={agronomicMedicalReport}
-                        onChange={(e) => setAgronomicMedicalReport(e.target.value)}
-                        className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-3 text-sm text-white focus:border-mecura-neon h-24 resize-none mb-4"
-                        placeholder="Ex: Paciente com dor lombar..."
-                     />
-
-                     <div className="flex justify-between items-center mb-2">
-                         <label className="block text-sm font-bold text-white">Receita Médica</label>
-                         <button onClick={() => prescFileRef.current?.click()} className="flex items-center gap-2 text-xs text-purple-400 hover:text-white transition-colors">
-                             <Paperclip className="w-3 h-3" /> Anexar Arquivo
-                         </button>
-                         <input type="file" className="hidden" ref={prescFileRef} onChange={handlePrescFileChange} accept=".pdf,image/*" />
-                     </div>
-                     {agronomicPrescriptionFile && (
-                        <div className="flex items-center justify-between bg-purple-500/10 border border-purple-500/30 rounded-xl px-4 py-2 mb-2">
-                           <span className="text-xs text-purple-400 truncate">{agronomicPrescriptionFile.name}</span>
-                           <button onClick={() => setAgronomicPrescriptionFile(null)} className="text-xs text-[#8A8A9E] hover:text-white">X</button>
-                        </div>
-                     )}
-                     <textarea 
-                        value={agronomicPrescription}
-                        onChange={(e) => setAgronomicPrescription(e.target.value)}
-                        className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-3 text-sm text-white focus:border-purple-500 h-24 resize-none mb-6"
-                        placeholder="Ex: 1. Óleo Integral THC/CBD 100mg/ml - Tomar 10 gotas..."
-                     />
-                     
-                     <Button 
-                        onClick={handleGenerateAgronomic} 
-                        disabled={isAgronomicLoading}
-                        className="w-full py-4 text-black font-bold text-lg"
-                     >
-                        {isAgronomicLoading ? 'Gerando Laudo Analítico...' : 'Gerar Parecer Técnico'}
-                     </Button>
-                  </div>
-               </div>
-
-               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636] flex flex-col">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-lg font-bold text-white">Resultado (Parecer)</h3>
-                     {agronomicResult && (
-                        <div className="flex gap-4">
-                            <button onClick={handleCopyAgronomic} className="flex items-center gap-2 text-[#8A8A9E] hover:text-white transition-colors text-sm font-bold">
-                               Copiar HTML
-                            </button>
-                            <button onClick={handleDownloadPDF} className="flex items-center gap-2 text-mecura-neon hover:text-white transition-colors text-sm font-bold">
-                               <Download className="w-4 h-4" /> Baixar PDF
-                            </button>
-                        </div>
-                     )}
-                  </div>
-                  <div className="flex-1 bg-[#0A0A0F] border border-[#262636] rounded-xl p-4 overflow-y-auto">
-                     {isAgronomicLoading ? (
-                        <div className="h-full flex flex-col items-center justify-center text-[#8A8A9E] space-y-4">
-                           <BrainCircuit className="w-12 h-12 animate-pulse text-mecura-neon" />
-                           <p>A IA está calculando as dosagens e projetando o cultivo...</p>
-                        </div>
-                     ) : agronomicResult ? (
-                        <div className="bg-white p-6 rounded-xl overflow-x-auto relative text-black">
-                           <div dangerouslySetInnerHTML={{ __html: agronomicResult.replace(/```html/g, "").replace(/```/g, "") }} id="agronomic-report-container" className="text-black bg-white p-4 rounded" />
-                        </div>
-                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-[#8A8A9E]">
-                           <FileText className="w-8 h-8 mb-2 opacity-50" />
-                           <p className="text-center text-sm">O laudo gerado aparecerá aqui.<br/>Preencha os dados e clique em "Gerar".</p>
-                        </div>
-                     )}
-                  </div>
-               </div>
-            </div>
-          </div>
-        )}
         {activeTab === 'coupons' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex justify-between items-center">
@@ -616,10 +341,10 @@ export const AdminDashboardScreen = () => {
                 <div key={coupon.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex items-center justify-between">
                   <div>
                     <h3 className="font-bold text-xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
-                    <p className="text-[#8A8A9E] text-sm mt-1">{coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador: ${coupon.ownerId})` : ''}</p>
+                    <p className="text-[#8A8A9E] text-sm mt-1">{coupon.discount}% de Desconto {coupon.ownerId ? \`(Indicador: \${coupon.ownerId})\` : ''}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className={`px-3 py-1 rounded-full text-xs ${coupon.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                    <span className={\`px-3 py-1 rounded-full text-xs \${coupon.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}\`}>
                       {coupon.active ? 'Ativo' : 'Inativo'}
                     </span>
                     <button onClick={() => updateCoupon(coupon.id, { active: !coupon.active })} className="text-[#8A8A9E] hover:text-white">
@@ -657,29 +382,7 @@ export const AdminDashboardScreen = () => {
           </div>
         )}
 
-        {activeTab === 'chat_doctor' && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <h2 className="text-2xl font-bold mb-6">Chat com Médico</h2>
-            <div className="bg-[#161622] border border-[#262636] rounded-2xl p-8 text-center">
-              <MessageSquare className="w-12 h-12 text-[#8A8A9E] mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Canal de Comunicação com Médicos</h3>
-              <p className="text-[#8A8A9E] mb-6">Selecione um médico parceiro para iniciar uma conversa.</p>
-              
-              <div className="grid grid-cols-1 gap-4 text-left">
-                {doctors.map(doc => (
-                  <div key={doc.id} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex items-center justify-between">
-                    <div>
-                      <div className="font-bold text-white">{doc.name}</div>
-                      <div className="text-sm text-[#8A8A9E]">CRM: {doc.crm}</div>
-                    </div>
-                    <Button variant="outline" size="sm">Mensagem</Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTab === 'chat_patient' && (
+        {activeTab === 'support' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold mb-6">Solicitações de Suporte (Humanos)</h2>
             {supportRequests.length === 0 ? (
@@ -694,7 +397,7 @@ export const AdminDashboardScreen = () => {
                       <div className="text-xs text-[#8A8A9E] mt-2">Solicitado em: {req.createdAt ? new Date(req.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Agora'}</div>
                     </div>
                     <div className="flex gap-3">
-                      <Button onClick={() => window.open(`https://wa.me/5566996280883?text=Olá ${encodeURIComponent(req.userName)}, recebemos sua solicitação na Mecura.`, '_blank')} className="bg-[#25D366] text-white">Chamar no WhatsApp</Button>
+                      <Button onClick={() => window.open(\`https://wa.me/5566996280883?text=Olá \${encodeURIComponent(req.userName)}, recebemos sua solicitação na Mecura.\`, '_blank')} className="bg-[#25D366] text-white">Chamar no WhatsApp</Button>
                       <Button variant="outline" onClick={async () => await updateDoc(doc(db, 'support_requests', req.id), { status: 'resolved' })}>Resolvido</Button>
                     </div>
                   </div>
@@ -722,11 +425,11 @@ export const AdminDashboardScreen = () => {
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-[#0A0A0F]">
                   {aiChatHistory.map((msg, i) => (
-                      <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-[#262636]' : 'bg-mecura-neon/10'}`}>
+                      <div key={i} className={\`flex gap-3 \${msg.role === 'user' ? 'flex-row-reverse' : ''}\`}>
+                          <div className={\`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 \${msg.role === 'user' ? 'bg-[#262636]' : 'bg-mecura-neon/10'}\`}>
                               {msg.role === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-mecura-neon" />}
                           </div>
-                          <div className={`max-w-[80%] rounded-2xl p-4 ${msg.role === 'user' ? 'bg-[#262636] text-white rounded-tr-none' : 'bg-[#161622] text-white border border-white/5 rounded-tl-none'}`}>
+                          <div className={\`max-w-[80%] rounded-2xl p-4 \${msg.role === 'user' ? 'bg-[#262636] text-white rounded-tr-none' : 'bg-[#161622] text-white border border-white/5 rounded-tl-none'}\`}>
                               <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                               {msg.file && (
                                   <div className="mt-3 p-2 bg-black/20 rounded-lg flex items-center gap-2 border border-white/5">
@@ -862,3 +565,6 @@ export const AdminDashboardScreen = () => {
     </div>
   );
 };
+`
+
+fs.writeFileSync('src/screens/AdminDashboardScreen.tsx', fullCode);

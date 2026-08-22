@@ -1,3 +1,4 @@
+import { useAdminStore } from '../store/useAdminStore';
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
@@ -92,6 +93,7 @@ const calculateAge = (birthDateStr?: string) => {
 };
 
 export function DoctorDashboardScreen() {
+  const { productCategories } = useAdminStore();
   const adminId = auth.currentUser?.uid;
   const { 
     userName, userCpf, userBirthDate, userPhone, answers, messages, 
