@@ -1273,7 +1273,7 @@ export function DoctorDashboardScreen() {
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col bg-[#0A0A0F] relative h-full min-h-0 w-full ${!currentPatient ? 'hidden md:flex' : mobileTab === 'chat' || mobileTab === 'actions' ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`flex-1 flex flex-col bg-[#0A0A0F] relative h-full min-h-0 min-w-0 ${!currentPatient ? 'hidden md:flex' : mobileTab === 'chat' || mobileTab === 'actions' ? 'flex' : 'hidden md:flex'}`}>
         {/* Subtle background pattern */}
         <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#A6FF00 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
         
@@ -1571,7 +1571,7 @@ export function DoctorDashboardScreen() {
                           </div>
 
                           {/* Details */}
-                          <div className="flex-1 flex flex-col">
+                          <div className="flex-1 flex flex-col min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <h3 className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} font-bold text-base leading-tight flex-1`}>
                                 {msg.productData.name}
@@ -1933,7 +1933,7 @@ export function DoctorDashboardScreen() {
       </div>
 
       {/* Right Sidebar - Patient Record (Anamnese) */}
-      <div className={`w-full md:w-96 bg-[#0A0A0F] border-t md:border-t-0 md:border-l border-mecura-elevated flex flex-col shadow-[-10px_0_30px_rgba(0,0,0,0.2)] z-10 h-full min-h-0 flex-1 md:flex-none ${!currentPatient ? 'hidden md:flex' : mobileTab === 'ficha' ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`w-full md:w-80 bg-[#0A0A0F] border-t md:border-t-0 md:border-l border-mecura-elevated flex flex-col shadow-[-10px_0_30px_rgba(0,0,0,0.2)] z-10 h-full min-h-0 flex-1 md:flex-none ${!currentPatient ? 'hidden md:flex' : mobileTab === 'ficha' ? 'flex' : 'hidden md:flex'}`}>
         {/* Mobile Navigation Header & Tabs */}
         {currentPatient && (
           <div className="md:hidden flex-shrink-0 bg-[#0A0A0F] z-20">
