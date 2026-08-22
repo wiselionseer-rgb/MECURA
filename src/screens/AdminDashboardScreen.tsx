@@ -2,6 +2,7 @@ import html2pdf from "html2pdf.js";
 import Markdown from 'react-markdown';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
@@ -26,7 +27,7 @@ import {
   Bot,
   User,
   X
-} from 'lucide-react';
+, Edit3, Check, LogOut } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
@@ -34,6 +35,7 @@ import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs } from 'firebase/firestore';
 
 export const AdminDashboardScreen = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications'>('overview');
   const {
     doctors,
@@ -132,6 +134,7 @@ export const AdminDashboardScreen = () => {
   // Agronomic Report States
   const [agronomicMedicalReport, setAgronomicMedicalReport] = useState('');
   const [agronomicPrescription, setAgronomicPrescription] = useState('');
+  const [agronomicTargetPlants, setAgronomicTargetPlants] = useState('');
   const [agronomicMedicalFile, setAgronomicMedicalFile] = useState<any>(null);
   const [agronomicPrescriptionFile, setAgronomicPrescriptionFile] = useState<any>(null);
   const medFileRef = useRef<HTMLInputElement>(null);
@@ -157,6 +160,7 @@ export const AdminDashboardScreen = () => {
     reader.readAsDataURL(file);
   };
   const [agronomicResult, setAgronomicResult] = useState('');
+  const [isEditingAgronomic, setIsEditingAgronomic] = useState(false);
   const [isAgronomicLoading, setIsAgronomicLoading] = useState(false);
 
   const handleGenerateAgronomic = async () => {
@@ -174,7 +178,8 @@ export const AdminDashboardScreen = () => {
            medicalReportText: agronomicMedicalReport,
            prescriptionText: agronomicPrescription,
            medicalReportFile: agronomicMedicalFile,
-           prescriptionFile: agronomicPrescriptionFile
+           prescriptionFile: agronomicPrescriptionFile,
+           targetPlants: agronomicTargetPlants
         })
       });
       const data = await response.json();
@@ -363,6 +368,16 @@ export const AdminDashboardScreen = () => {
             </button>
           );
         })}
+        
+        <div className="mt-auto pt-4 border-t border-white/5">
+          <button
+            onClick={() => navigate('/')}
+            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10"
+          >
+            <LogOut className="w-5 h-5" />
+            Sair do Painel
+          </button>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -558,6 +573,17 @@ export const AdminDashboardScreen = () => {
                         placeholder="Ex: 1. Óleo Integral THC/CBD 100mg/ml - Tomar 10 gotas..."
                      />
                      
+                     <div className="mb-6">
+                        <label className="block text-sm font-bold text-white mb-2">Número de plantas desejado (Opcional)</label>
+                        <input 
+                           type="number" 
+                           value={agronomicTargetPlants}
+                           onChange={(e) => setAgronomicTargetPlants(e.target.value)}
+                           className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-3 text-sm text-white focus:border-mecura-neon"
+                           placeholder="Ex: 30"
+                        />
+                     </div>
+                     
                      <Button 
                         onClick={handleGenerateAgronomic} 
                         disabled={isAgronomicLoading}
@@ -573,6 +599,10 @@ export const AdminDashboardScreen = () => {
                      <h3 className="text-lg font-bold text-white">Resultado (Parecer)</h3>
                      {agronomicResult && (
                         <div className="flex gap-4">
+                            <button onClick={() => setIsEditingAgronomic(!isEditingAgronomic)} className={`flex items-center gap-2 transition-colors text-sm font-bold ${isEditingAgronomic ? 'text-mecura-neon' : 'text-[#8A8A9E] hover:text-white'}`}>
+                               {isEditingAgronomic ? <Check className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+                               {isEditingAgronomic ? 'Concluir Edição' : 'Editar Laudo'}
+                            </button>
                             <button onClick={handleCopyAgronomic} className="flex items-center gap-2 text-[#8A8A9E] hover:text-white transition-colors text-sm font-bold">
                                Copiar HTML
                             </button>
@@ -590,7 +620,7 @@ export const AdminDashboardScreen = () => {
                         </div>
                      ) : agronomicResult ? (
                         <div className="bg-white p-6 rounded-xl overflow-x-auto relative text-black">
-                           <div dangerouslySetInnerHTML={{ __html: agronomicResult.replace(/```html/g, "").replace(/```/g, "") }} id="agronomic-report-container" className="text-black bg-white p-4 rounded" />
+                           <div contentEditable={isEditingAgronomic} suppressContentEditableWarning={true} onBlur={(e) => setAgronomicResult(e.currentTarget.innerHTML)} dangerouslySetInnerHTML={{ __html: agronomicResult.replace(/```html/g, "").replace(/```/g, "") }} id="agronomic-report-container" className={`text-black bg-white p-4 rounded outline-none transition-all ${isEditingAgronomic ? 'ring-4 ring-mecura-neon/50' : ''}`} />
                         </div>
                      ) : (
                         <div className="h-full flex flex-col items-center justify-center text-[#8A8A9E]">
