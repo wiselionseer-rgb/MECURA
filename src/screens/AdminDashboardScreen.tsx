@@ -182,8 +182,21 @@ export const AdminDashboardScreen = () => {
            targetPlants: agronomicTargetPlants
         })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Servidor retornou HTML ou erro não-JSON:", responseText);
+        if (response.status === 413) {
+           throw new Error("Os arquivos anexados são muito grandes. Tente enviar PDFs menores ou apenas colar o texto.");
+        } else {
+           throw new Error(`Erro no servidor da hospedagem (Status ${response.status}). Verifique o console do navegador para mais detalhes.`);
+        }
+      }
+      
+      if (!response.ok) throw new Error(data.error || 'Erro desconhecido');
       setAgronomicResult(data.markdown);
     } catch (e: any) {
       alert("Erro ao gerar laudo: " + e.message);
