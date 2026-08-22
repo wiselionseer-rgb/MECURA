@@ -1,3 +1,4 @@
+import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -43,6 +44,11 @@ interface AdminState {
   setPromotionsText: (text: string) => void;
   catalogUrl: string;
   setCatalogUrl: (url: string) => void;
+  productCategories: CBDCategory[];
+  setProductCategories: (categories: CBDCategory[]) => void;
+  addProduct: (categoryId: string, product: CBDProduct) => void;
+  updateProduct: (categoryId: string, productName: string, product: Partial<CBDProduct>) => void;
+  deleteProduct: (categoryId: string, productName: string) => void;
 }
 
 export const useAdminStore = create<AdminState>()(
@@ -87,6 +93,29 @@ export const useAdminStore = create<AdminState>()(
       setPromotionsText: (text) => set({ promotionsText: text }),
       catalogUrl: 'https://drive.google.com/file/d/1QvJjJlj6gLaljo4-Jp0XhStUbwn_yYBA/preview?usp=drive_link',
       setCatalogUrl: (url) => set({ catalogUrl: url }),
+      productCategories: cbdGuideData,
+      setProductCategories: (categories) => set({ productCategories: categories }),
+      addProduct: (categoryId, product) => set((state) => ({
+        productCategories: state.productCategories.map(c => 
+          c.id === categoryId ? { ...c, products: [...c.products, product] } : c
+        )
+      })),
+      updateProduct: (categoryId, productName, productData) => set((state) => ({
+        productCategories: state.productCategories.map(c => 
+          c.id === categoryId ? { 
+            ...c, 
+            products: c.products.map(p => p.name === productName ? { ...p, ...productData } : p) 
+          } : c
+        )
+      })),
+      deleteProduct: (categoryId, productName) => set((state) => ({
+        productCategories: state.productCategories.map(c => 
+          c.id === categoryId ? { 
+            ...c, 
+            products: c.products.filter(p => p.name !== productName) 
+          } : c
+        )
+      })),
     }),
     {
       name: 'admin-storage',

@@ -852,7 +852,7 @@ export function DoctorDashboardScreen() {
         - Em cada categoria (Importados ou Nacionais), sugira no máximo 1 ÓLEO PRINCIPAL de uso contínuo (ex: CBD ou THC/CBD) e, apenas se houver real justificativa clínica, 1 item de via ou forma complementar diferente (ex: Pomada tópica para dor localizada, Gomas mastigáveis noturnas para insônia, ou Flores in natura para resgate de crises).
 
         CATÁLOGO OFICIAL DISPONÍVEL (Para a Opção Importada):
-        ${cbdGuideData.map(cat => `Categoria: ${cat.title}\n${cat.products.map(p => `- ${p.name} (${p.type})`).join('\n')}`).join('\n\n')}
+        ${productCategories.map(cat => `Categoria: ${cat.title}\n${cat.products.map(p => `- ${p.name} (${p.type})`).join('\n')}`).join('\n\n')}
         
         Formato de Saída Exigido (Markdown estruturado e clínico):
         1. Diagnóstico Sindrômico e Avaliação Clínica
@@ -998,9 +998,9 @@ export function DoctorDashboardScreen() {
       return prev;
     });
 
-    // Find product in cbdGuideData
+    // Find product in productCategories
     let foundProduct = null;
-    for (const category of cbdGuideData) {
+    for (const category of productCategories) {
       const product = category.products.find(p => p.name.toLowerCase() === med.name.toLowerCase());
       if (product) {
         foundProduct = product;
@@ -2586,7 +2586,7 @@ export function DoctorDashboardScreen() {
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                    {cbdGuideData.flatMap(cat => cat.products)
+                    {productCategories.flatMap(cat => cat.products)
                       .filter(p => 
                         p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
                         p.manufacturer.toLowerCase().includes(productSearchTerm.toLowerCase()) ||

@@ -1,3 +1,4 @@
+import { useAdminStore } from '../store/useAdminStore';
 import { useState, useEffect } from 'react';
 import { 
   Search, 
@@ -19,12 +20,13 @@ import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
 
 export function CBDGuideView() {
+  const { productCategories } = useAdminStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>(() => {
     // Open the first category by default
-    if (cbdGuideData.length > 0) {
-      return { [cbdGuideData[0].id]: true };
+    if (productCategories.length > 0) {
+      return { [productCategories[0].id]: true };
     }
     return {};
   });
@@ -51,15 +53,15 @@ export function CBDGuideView() {
 
   // Expand all / Collapse all helper
   const toggleAllCategories = () => {
-    const allExpanded = cbdGuideData.every(cat => expandedCategories[cat.id]);
+    const allExpanded = productCategories.every(cat => expandedCategories[cat.id]);
     const newState: Record<string, boolean> = {};
-    cbdGuideData.forEach(cat => {
+    productCategories.forEach(cat => {
       newState[cat.id] = !allExpanded;
     });
     setExpandedCategories(newState);
   };
 
-  const filteredData = cbdGuideData
+  const filteredData = productCategories
     .filter(category => selectedCategoryFilter === 'all' || category.id === selectedCategoryFilter)
     .map(category => {
       const filteredProducts = category.products.filter(product => 
@@ -156,7 +158,7 @@ export function CBDGuideView() {
           >
             Todas Categorias
           </button>
-          {cbdGuideData.map(cat => (
+          {productCategories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategoryFilter(cat.id)}

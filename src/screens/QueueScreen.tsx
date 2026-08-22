@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
@@ -8,6 +8,40 @@ import { requestNotificationPermission } from '../utils/notifications';
 export function QueueScreen() {
   const navigate = useNavigate();
   const { queuePosition, estimatedWaitTime, updateQueue, startConsultation, pagamento_consulta, consultationActive, subscribeToQueue } = useStore();
+  const [displayPosition, setDisplayPosition] = useState<number | null>(null);
+
+  useEffect(() => {
+    const realPos = queuePosition + 1;
+    if (displayPosition === null) {
+      if (realPos === 1) {
+        setDisplayPosition(Math.floor(Math.random() * 4) + 3); // 3 to 6
+      } else {
+        setDisplayPosition(realPos);
+      }
+    } else if (realPos > displayPosition) {
+      setDisplayPosition(realPos);
+    }
+  }, [queuePosition, displayPosition]);
+
+  useEffect(() => {
+    const realPos = queuePosition + 1;
+    let timer: NodeJS.Timeout;
+    
+    if (displayPosition !== null && displayPosition > Math.max(1, realPos)) {
+      const decreaseQueue = () => {
+        setDisplayPosition(prev => {
+          const target = Math.max(1, queuePosition + 1);
+          if (prev && prev > target) return prev - 1;
+          return prev;
+        });
+      };
+      
+      const nextInterval = Math.floor(Math.random() * 15000) + 10000; // 10s to 25s
+      timer = setTimeout(decreaseQueue, nextInterval);
+    }
+    
+    return () => clearTimeout(timer);
+  }, [displayPosition, queuePosition]);
 
   useEffect(() => {
     const unsubscribe = subscribeToQueue();
@@ -61,7 +95,7 @@ export function QueueScreen() {
           <div className="relative z-20 flex flex-col items-center justify-center">
             <div className="flex flex-col items-center">
               <span className="text-6xl font-black text-mecura-neon drop-shadow-[0_0_15px_rgba(166,255,0,0.8)] tracking-tighter">
-                {queuePosition + 1}
+                {displayPosition || (queuePosition + 1)}
               </span>
               <span className="text-xs font-bold text-mecura-pearl uppercase tracking-widest mt-1">
                 Sua Posição
