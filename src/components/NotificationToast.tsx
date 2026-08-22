@@ -40,7 +40,7 @@ export function NotificationToast() {
               date: new Date(data.timestamp).toISOString()
             });
             showNativeNotification(notifTitle, notifMessage);
-            playNotificationSound();
+            
           }
         }
       });
@@ -69,7 +69,7 @@ export function NotificationToast() {
               date: data.date || new Date().toISOString()
             });
             showNativeNotification(data.title, data.message);
-            playNotificationSound();
+            
           }
         }
       });
