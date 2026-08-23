@@ -665,9 +665,9 @@ export function PharmacyScreen() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-mecura-pearl font-sans relative">
+    <div className="min-h-[100dvh] bg-[#0A0A0F] text-mecura-pearl font-sans relative">
       {/* Mobile constraint wrapper */}
-      <div className="max-w-md mx-auto min-h-screen bg-[#0A0A0F] relative shadow-2xl border-x border-[#1A1A26] pb-40">
+      <div className="max-w-md mx-auto min-h-[100dvh] bg-[#0A0A0F] relative shadow-2xl border-x border-[#1A1A26] pb-40">
         
         <header className="flex items-center gap-4 p-6 pt-8 sticky top-0 bg-[#0A0A0F]/90 backdrop-blur-xl z-50 border-b border-[#1A1A26]">
           <button 

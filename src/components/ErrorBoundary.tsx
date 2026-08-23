@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen bg-[#0A0A0F] flex flex-col items-center justify-center p-6 text-center">
+        <div className="min-h-[100dvh] bg-[#0A0A0F] flex flex-col items-center justify-center p-6 text-center">
           <h1 className="text-2xl font-bold text-white mb-4">Ops! Algo deu errado.</h1>
           <p className="text-[#8A8A9E] mb-6">{errorMessage}</p>
           <button

@@ -97,8 +97,8 @@ export function AppLayout() {
   }, [location.pathname, userName, navigate]);
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center sm:p-4 perspective-[1000px]">
-      <div className="w-full h-screen sm:h-[850px] sm:max-w-[400px] bg-[#0A0A0F] sm:rounded-[44px] sm:border-[8px] sm:border-[#1F1F29] overflow-hidden relative shadow-2xl flex flex-col transform-gpu">
+    <div className="min-h-[100dvh] bg-black flex items-center justify-center sm:p-4 perspective-[1000px]">
+      <div className="w-full h-[100dvh] sm:h-[850px] sm:max-w-[400px] bg-[#0A0A0F] sm:rounded-[44px] sm:border-[8px] sm:border-[#1F1F29] overflow-hidden relative shadow-2xl flex flex-col transform-gpu">
         
         <EnableNotificationsBanner userId={patientId || auth.currentUser?.uid} />
         <NotificationToast />

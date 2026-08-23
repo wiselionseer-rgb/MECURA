@@ -348,7 +348,7 @@ export const AdminDashboardScreen = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#0A0A0F] text-white">
+    <div className="flex flex-col md:flex-row min-h-[100dvh] bg-[#0A0A0F] text-white">
       {/* Sidebar */}
       <div className="w-full md:w-64 bg-[#12121A] border-r border-white/5 p-6 flex flex-col gap-2">
         <div className="font-bold text-xl mb-8 flex items-center gap-2">

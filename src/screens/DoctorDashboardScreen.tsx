@@ -1043,7 +1043,7 @@ export function DoctorDashboardScreen() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-[#050508] text-mecura-pearl overflow-hidden font-sans">
+    <div className="flex flex-col md:flex-row h-[100dvh] bg-[#050508] text-mecura-pearl overflow-hidden font-sans">
       <EnableNotificationsBanner userId={adminId} role="admin" />
       <NotificationToast />
       {/* Left Sidebar - Navigation (Bottom bar on mobile) */}
