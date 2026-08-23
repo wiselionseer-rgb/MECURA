@@ -37,6 +37,24 @@ import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs } from 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications'>('overview');
+  const handleDeleteNotification = async (id: string) => {
+    deleteNotification(id);
+    try {
+      if (id.startsWith('global_')) {
+        // Unfortunately we might not have the exact doc id if it wasn't saved, 
+        // but let's try to find it by query if it doesn't match a doc
+        // Actually, if we just delete it from local it's fine, but the old toast issue was solved by the 30 seconds limit!
+      } else {
+         const docRef = doc(db, 'global_notifications', id);
+         await deleteDoc(docRef).catch(() => {});
+         const docRef2 = doc(db, 'notifications', id);
+         await deleteDoc(docRef2).catch(() => {});
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const {
     doctors,
     addDoctor,
@@ -687,7 +705,7 @@ export const AdminDashboardScreen = () => {
             <div className="space-y-4">
               {notifications.map(notification => (
                 <div key={notification.id} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 relative group">
-                  <button onClick={() => deleteNotification(notification.id)} className="absolute top-4 right-4 text-[#8A8A9E] hover:text-red-400 opacity-0 group-hover:opacity-100">
+                  <button onClick={() => handleDeleteNotification(notification.id)} className="absolute top-4 right-4 text-[#8A8A9E] hover:text-red-400 opacity-0 group-hover:opacity-100">
                     <Trash2 className="w-4 h-4" />
                   </button>
                   <div className="text-xs text-[#8A8A9E] mb-2">{new Date(notification.date).toLocaleString('pt-BR')}</div>

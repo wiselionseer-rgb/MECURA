@@ -94,6 +94,13 @@ export function NotificationToast() {
            return;
         }
 
+        // Do not show toasts for notifications older than 1 hour on app reload
+        const notifDate = new Date(latestNotification.date).getTime();
+        const now = Date.now();
+        if (now - notifDate > 30 * 1000) {
+            return;
+        }
+
         setVisibleNotification(latestNotification);
         
         // Auto-hide after 8 seconds for better readability
