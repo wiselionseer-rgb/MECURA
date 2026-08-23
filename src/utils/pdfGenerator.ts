@@ -772,8 +772,13 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
   }
 
   // Bloco de Assinatura Médica
-  checkPageBreak(45);
-  yPos = Math.max(yPos + 8, pageHeight - 48);
+  if (yPos > pageHeight - 65) {
+    renderFooter(currentPage);
+    doc.addPage();
+    currentPage++;
+    renderHeader(currentPage);
+  }
+  yPos = pageHeight - 50;
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.5);

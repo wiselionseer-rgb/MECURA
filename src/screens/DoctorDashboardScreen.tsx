@@ -135,6 +135,7 @@ export function DoctorDashboardScreen() {
   const [reportPatientName, setReportPatientName] = useState('');
   const [reportBirthDate, setReportBirthDate] = useState('');
   const [reportCpf, setReportCpf] = useState('');
+  const [evolutionNotes, setEvolutionNotes] = useState('');
   const [reportEmissionDate, setReportEmissionDate] = useState('');
   const [reportDoctorName, setReportDoctorName] = useState('Dr. Guilherme Taveira Dias');
   const [reportDoctorCrm, setReportDoctorCrm] = useState('CRM/MT 17259');
@@ -643,20 +644,103 @@ export function DoctorDashboardScreen() {
     });
   };
 
-  const handleOpenMedicalReportEditor = () => {
+  const getCidsFromObjectives = (objs: string[]) => {
+    const cids: string[] = [];
+    objs.forEach(obj => {
+      const lowerObj = obj.toLowerCase();
+      if (lowerObj.includes('ansiedade')) cids.push('F41.9');
+      if (lowerObj.includes('insônia') || lowerObj.includes('sono')) cids.push('G47.0');
+      if (lowerObj.includes('lombar')) cids.push('M54.5');
+      if (lowerObj.includes('dor')) cids.push('R52.2');
+      if (lowerObj.includes('depressão')) cids.push('F32.9');
+      if (lowerObj.includes('estresse')) cids.push('F43.9');
+      if (lowerObj.includes('enxaqueca')) cids.push('G43.9');
+      if (lowerObj.includes('fibromialgia')) cids.push('M79.7');
+      if (lowerObj.includes('autismo') || lowerObj.includes('tea')) cids.push('F84.0');
+      if (lowerObj.includes('tdah') || lowerObj.includes('atenção')) cids.push('F90.0');
+      if (lowerObj.includes('epilepsia') || lowerObj.includes('convulsão')) cids.push('G40.9');
+      if (lowerObj.includes('parkinson')) cids.push('G20');
+      if (lowerObj.includes('alzheimer')) cids.push('G30.9');
+      if (lowerObj.includes('artrose')) cids.push('M19.9');
+      if (lowerObj.includes('artrite')) cids.push('M13.9');
+      if (lowerObj.includes('endometriose')) cids.push('N80.9');
+      if (lowerObj.includes('psoríase')) cids.push('L40.9');
+      if (lowerObj.includes('neuropatia')) cids.push('G62.9');
+    });
+    return [...new Set(cids)]; // remove duplicates
+  };
+
+  const handleOpenMedicalReportEditor = (type: 'inicial' | 'evolutivo' = 'inicial') => {
     const patientAnswers = currentPatient?.answers || answers;
     const pName = currentPatient?.patientName || userName || 'Paciente';
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
+    const objectivesArray = patientAnswers?.objectives || ['Ansiedade'];
     const objectives = patientAnswers?.objectives?.join(', ') || 'Ansiedade, estresse crônico e dores';
+    
+    const matchedCids = getCidsFromObjectives(objectivesArray);
+    let cidPrincipal = '[INSERIR CID PRINCIPAL]';
+    let cidsSecundarios = '[INSERIR SE HOUVER]';
+
+    if (matchedCids.length > 0) {
+      cidPrincipal = matchedCids[0];
+      if (matchedCids.length > 1) {
+        cidsSecundarios = matchedCids.slice(1).join(', ');
+      } else {
+        cidsSecundarios = 'Nenhum reportado adicionalmente';
+      }
+    }
     const intensity = patientAnswers?.intensity ? `${patientAnswers.intensity}/10` : 'Moderada a intensa';
     const duration = patientAnswers?.duration || 'Quadro de evolução crônica';
-    const description = patientAnswers?.description || 'Paciente relata persistência e refratariedade de sintomas clínicos aos tratamentos convencionais de primeira linha, com impacto relevante na qualidade de vida, repouso noturno e funcionalidade global.';
+    
+    let descriptionText = '';
+    if (patientAnswers?.diseaseOrigin) {
+      descriptionText += `Origem / Relato do Paciente: ${patientAnswers.diseaseOrigin}\n\n`;
+    }
+    if (patientAnswers?.description) {
+      descriptionText += `Outros detalhes: ${patientAnswers.description}`;
+    }
+    if (!descriptionText.trim()) {
+      descriptionText = 'Paciente relata persistência e refratariedade de sintomas clínicos aos tratamentos convencionais de primeira linha, com impacto relevante na qualidade de vida, repouso noturno e funcionalidade global.';
+    }
+    const description = descriptionText.trim();
 
-    const defaultClinicalSummary = `O(A) paciente supramencionado(a) compareceu a atendimento médico especializado e foi submetido(a) a minuciosa avaliação clínica. Apresenta sintomatologia compatível com ${objectives}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration}.\n\nHistória da Moléstia: ${description}\n\nTratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Sim' : 'Não'} | Diagnóstico de Comorbidade Crônica: ${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}.`;
+    let defaultClinicalSummary = '';
+    let defaultTherapeuticRationale = '';
 
-    const defaultTherapeuticRationale = `A terapêutica com Fitocanabinoides (Cannabis Medicinal) fundamenta-se na modulação do Sistema Endocanabinoide (SEC), uma complexa rede de sinalização neuromoduladora e imunológica composta por receptores CB1 (sistema nervoso central) e CB2 (sistema imunológico e tecidos periféricos).\n\n- Modulação Neuroquímica e Anti-inflamatória: O Canabidiol (CBD) atua como modulador alostérico negativo de CB1 e inibidor da degradação de anandamida (via enzima FAAH), promovendo expressiva ação ansiolítica, neuroprotetora e redução de citocinas pró-inflamatórias.\n- Efeito Comitiva (Entourage Effect): A administração de extratos integrais (Full Spectrum) contendo canabinoides menores (CBG, CBN e microdosagens de THC) e terpenos sinérgicos proporciona potencialização da resposta terapêutica com menor necessidade de escalonamento de doses.\n- Adequação Clínica: Diante da refratariedade e da necessidade de estabilização sintomática sem os efeitos colaterais deletérios de medicações sedativas ou anti-inflamatórios convencionais a longo prazo, justifica-se a instituição do tratamento fitocanabinoide.`;
+    if (type === 'inicial') {
+      defaultClinicalSummary = `O(A) paciente encontra-se sob meus cuidados médicos, apresentando quadro clínico compatível com ${objectives.toLowerCase()}, demonstrando considerável refratariedade aos tratamentos convencionais de primeira linha. A sintomatologia atual é classificada com intensidade referida de ${intensity} e tempo de evolução caracterizado por ${duration.toLowerCase()}.
+
+Histórico da Moléstia Atual (HMA):
+${description}
+
+Histórico Terapêutico e Refratariedade:
+O(a) paciente já foi submetido(a) a múltiplos esquemas farmacológicos, abrangendo diversas classes medicamentosas ao longo do tratamento. No entanto, não obteve resposta terapêutica satisfatória ou sustentada, além de relatar expressiva intolerância e eventos adversos indesejáveis inerentes ao uso crônico destas substâncias. O quadro clínico atual impõe prejuízo substancial à qualidade de vida do(a) paciente, interferindo negativamente em suas atividades funcionais, rotina diária e bem-estar global.`;
+
+      defaultTherapeuticRationale = `Considerando a fisiopatologia do Sistema Endocanabinoide (SEC) e sua capacidade intrínseca de modular processos álgicos, inflamatórios e neurológicos, a terapêutica fitocanabinoide surge como alternativa embasada e segura.
+
+Indicação Clínica:
+Devido à insuficiência das respostas terapêuticas com as medicações alopáticas convencionais disponíveis, indico formalmente o início do tratamento com Cannabis Medicinal (Fitocanabinoides). O objetivo central desta conduta é promover a neuromodulação, redução do quadro sintomático, e consequentemente, a restituição da qualidade de vida e dignidade do(a) paciente.
+
+CID-10 Principal: ${cidPrincipal}
+CIDs Secundários: ${cidsSecundarios}`;
+    } else {
+      defaultClinicalSummary = `O(A) paciente encontra-se em acompanhamento médico regular sob meus cuidados desde [INSERIR MÊS/ANO], apresentando quadro crônico de ${objectives.toLowerCase()}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration.toLowerCase()}.
+
+Fez diversos tratamentos medicamentosos prévios com diferentes classes de drogas (incluindo Analgésicos, Anti-inflamatórios, Opioides e Benzodiazepínicos), porém sem resposta terapêutica efetiva e com diversos efeitos colaterais adversos (como náuseas, vômitos, cefaleia, letargia, distúrbios gastrointestinais e prejuízo cognitivo).
+
+${evolutionNotes ? evolutionNotes + '\n\n' : ''}Atualmente, o(a) paciente faz uso da terapêutica com Cannabis sativa L. (na forma de óleos de espectro completo e flor in natura), referindo alívio diário e substancial dos sintomas, relatando sono duradouro e reparador, fazendo com que acorde mais disposto(a) para as atividades do dia a dia.
+
+Devido ao alto custo financeiro das medicações à base de cannabis (importadas ou via associações), o(a) paciente iniciou o cultivo artesanal e doméstico da planta para produção de sua própria medicação, obtendo excelentes resultados. Além de permitir o acesso ininterrupto ao remédio e acompanhar todo o processo de produção, o cultivo da planta tornou-se uma atividade ocupacional terapêutica essencial e mais um recurso fundamental para o sucesso do tratamento.`;
+
+      defaultTherapeuticRationale = `As medicações à base de Cannabis provaram ser o recurso terapêutico mais eficaz na promoção de qualidade de vida e estabilização do quadro clínico deste(a) paciente, com o objetivo claro de controlar e diminuir os sintomas refratários relacionados às suas patologias.
+
+Em virtude da grave insuficiência das respostas terapêuticas com as medicações convencionais disponíveis e da nítida melhora clínica alcançada, indico formalmente a CONTINUIDADE do uso da Cannabis medicinal pela via artesanal. Oriento expressamente a não interrupção do tratamento e a manutenção do cultivo próprio, visto que a suspensão do uso poderá acarretar retrocesso imediato do quadro e perdas substanciais na qualidade de vida e saúde do(a) paciente.
+
+CID-10 Principal: ${cidPrincipal}
+CIDs Secundários: ${cidsSecundarios}`;
+    }
 
     const items: PrescriptionItemData[] = [];
     const seenReportNames = new Set<string>();
@@ -740,8 +824,8 @@ export function DoctorDashboardScreen() {
     handleOpenPrescriptionEditor();
   };
 
-  const handleGenerateMedicalReport = () => {
-    handleOpenMedicalReportEditor();
+  const handleGenerateMedicalReport = (type: 'inicial' | 'evolutivo' = 'inicial') => {
+    handleOpenMedicalReportEditor(type);
   };
 
   const handleApplyAccessiblePlan = (
@@ -1359,7 +1443,7 @@ export function DoctorDashboardScreen() {
             </button>
 
             <button
-              onClick={handleGenerateMedicalReport}
+              onClick={() => handleGenerateMedicalReport('inicial')}
               className="w-full p-4 bg-mecura-surface border border-mecura-elevated rounded-2xl flex items-center gap-4 text-left hover:border-amber-500/50 transition-all"
             >
               <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 flex-shrink-0">
@@ -1402,7 +1486,7 @@ export function DoctorDashboardScreen() {
           </div>
         ) : (
           <div className="flex-1 flex flex-col h-full overflow-hidden min-h-0">
-            <div className="h-16 md:h-20 border-b border-mecura-elevated flex items-center justify-between px-4 md:px-8 bg-[#0A0A0F]/80 backdrop-blur-md z-10 flex-shrink-0">
+            <div className="min-h-[64px] md:min-h-[80px] py-3 md:py-4 border-b border-mecura-elevated flex flex-col md:flex-row md:items-start justify-between px-4 md:px-6 bg-[#0A0A0F]/80 backdrop-blur-md z-10 flex-shrink-0 gap-4">
               <div className="flex items-center gap-3 md:gap-4">
                 <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated flex items-center justify-center flex-shrink-0">
                   <User className="w-5 h-5 md:w-6 md:h-6 text-mecura-silver" />
@@ -1414,7 +1498,7 @@ export function DoctorDashboardScreen() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2 md:gap-3 overflow-x-auto custom-scrollbar pb-1 md:pb-0 items-center">
+              <div className="flex gap-2 overflow-x-auto md:overflow-visible md:flex-wrap pb-1 md:pb-0 items-center md:justify-end">
                 <button
                   onClick={async () => {
                     const targetPatient = currentPatient || queue.find(p => p.status === 'waiting');
@@ -1509,11 +1593,18 @@ export function DoctorDashboardScreen() {
                   <Download className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Receita</span><span className="md:hidden">PDF</span>
                 </button>
                 <button 
-                  onClick={handleGenerateMedicalReport}
+                  onClick={() => handleGenerateMedicalReport('inicial')}
                   className="px-3 md:px-4 py-2 md:py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-amber-500/20 hover:border-amber-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(245,158,11,0.1)]"
-                  title="Gerar Laudo Médico Detalhado (PDF)"
+                  title="Gerar Laudo Inicial (PDF)"
                 >
-                  <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-amber-400" /> <span className="hidden md:inline">Laudo Médico</span><span className="md:hidden">Laudo</span>
+                  <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-amber-400" /> <span className="hidden md:inline">Laudo Inicial</span><span className="md:hidden">Inicial</span>
+                </button>
+                <button 
+                  onClick={() => handleGenerateMedicalReport('evolutivo')}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-blue-500/20 hover:border-blue-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                  title="Gerar Laudo Evolutivo (PDF)"
+                >
+                  <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-blue-400" /> <span className="hidden md:inline">Laudo Evolutivo</span><span className="md:hidden">Evol.</span>
                 </button>
                 <button 
                   onClick={handleFinishConsultation}
@@ -2206,6 +2297,22 @@ export function DoctorDashboardScreen() {
             );
           })()}
 
+          
+          {/* Section: Anotações da Triagem (Laudo Evolutivo) */}
+          <section>
+            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
+              <ClipboardList className="w-4 h-4" /> Triagem / Laudo Evolutivo
+            </h3>
+            <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-4">
+              <textarea
+                value={evolutionNotes}
+                onChange={(e) => setEvolutionNotes(e.target.value)}
+                placeholder="Insira as informações chaves aqui. (ex: Histórico laboral, uso prévio de óleos/flor in natura, cultivo artesanal, etc.)"
+                className="w-full bg-transparent border-none text-white text-sm resize-none focus:ring-0 p-0 placeholder-mecura-silver/50 min-h-[80px]"
+              />
+            </div>
+          </section>
+
           {/* Section: Objectives */}
           <section>
             <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
@@ -2430,7 +2537,7 @@ export function DoctorDashboardScreen() {
                   </button>
                   <button 
                     onClick={() => {
-                      handleGenerateMedicalReport();
+                      handleGenerateMedicalReport('inicial');
                     }}
                     className="px-5 py-2.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-xl text-sm font-bold hover:bg-amber-500/30 transition-all flex items-center gap-2"
                   >
