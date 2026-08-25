@@ -61,10 +61,10 @@ export function DashboardScreen() {
     const paymentStatus = params.get('payment');
     
     if (paymentStatus === 'success') {
+      const isBasic = localStorage.getItem('last_offer') === 'basic';
       if (!pagamento_consulta) {
         setPagamentoConsulta(true);
         // Se era a consulta básica, entra na fila
-        const isBasic = localStorage.getItem('last_offer') === 'basic';
         if (isBasic) {
            joinQueue();
         } else {
@@ -73,8 +73,15 @@ export function DashboardScreen() {
       }
       // Limpa os parâmetros da URL
       window.history.replaceState({}, '', window.location.pathname);
+      
+      // Redireciona o paciente direto para a fila ou agendamento premium após pagar
+      if (isBasic) {
+        navigate('/queue');
+      } else {
+        navigate('/scheduling');
+      }
     }
-  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue]);
+  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue, navigate]);
 
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
   const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);

@@ -28,7 +28,7 @@ export function PremiumCheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
 
-  const basePrice = 250.00;
+  const basePrice = 2.00; // TESTE
   const finalPrice = appliedCoupon ? basePrice * (1 - appliedCoupon.discount / 100) : basePrice;
 
   const handleApplyCoupon = () => {
