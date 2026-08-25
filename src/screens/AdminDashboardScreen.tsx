@@ -32,7 +32,7 @@ import { useAdminStore } from '../store/useAdminStore';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { db } from '../firebase';
-import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, deleteDoc } from 'firebase/firestore';
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
@@ -244,7 +244,7 @@ export const AdminDashboardScreen = () => {
               filename: 'Parecer_Tecnico_Agronomico.pdf',
               image: { type: 'jpeg' as 'jpeg', quality: 0.98 },
               html2canvas: { scale: 2 },
-              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
               pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
           };
           html2pdf().set(opt).from(element).save();

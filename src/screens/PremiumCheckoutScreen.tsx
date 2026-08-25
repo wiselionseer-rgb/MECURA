@@ -66,15 +66,32 @@ export function PremiumCheckoutScreen() {
   };
 
   const handleSuccess = () => {
+    alert("Pagamento aprovado! Vamos agendar sua consulta.");
     setPagamentoPremium(true);
     navigate('/scheduling');
   };
 
   useEffect(() => {
+    if (pixData?.id) {
+      pollingInterval.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/payment-status/${pixData.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'approved' || data.status === 'completed') {
+              if (pollingInterval.current) clearInterval(pollingInterval.current);
+              handleSuccess();
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 3000);
+    }
     return () => {
       if (pollingInterval.current) clearInterval(pollingInterval.current);
     };
-  }, []);
+  }, [pixData]);
 
   return (
     <div className="flex flex-col h-full bg-[#0A0A0F] text-mecura-pearl relative font-sans">
