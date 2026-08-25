@@ -62,24 +62,28 @@ export function DashboardScreen() {
     
     if (paymentStatus === 'success') {
       const isBasic = localStorage.getItem('last_offer') === 'basic';
-      if (!pagamento_consulta) {
-        setPagamentoConsulta(true);
-        // Se era a consulta básica, entra na fila
-        if (isBasic) {
-           joinQueue();
-        } else {
-           setPagamentoPremium(true);
-        }
-      }
-      // Limpa os parâmetros da URL
-      window.history.replaceState({}, '', window.location.pathname);
       
-      // Redireciona o paciente direto para a fila ou agendamento premium após pagar
-      if (isBasic) {
-        navigate('/queue');
-      } else {
-        navigate('/scheduling');
-      }
+      const processSuccess = async () => {
+        if (!pagamento_consulta) {
+          setPagamentoConsulta(true);
+          // Se era a consulta básica, entra na fila
+          if (isBasic) {
+             await joinQueue();
+          } else {
+             setPagamentoPremium(true);
+          }
+        }
+        // Limpa os parâmetros da URL
+        window.history.replaceState({}, '', window.location.pathname);
+        
+        // Redireciona o paciente direto para a fila ou agendamento premium após pagar
+        if (isBasic) {
+          navigate('/queue');
+        } else {
+          navigate('/scheduling');
+        }
+      };
+      processSuccess();
     }
   }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue, navigate]);
 

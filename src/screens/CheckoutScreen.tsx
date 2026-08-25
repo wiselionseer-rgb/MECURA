@@ -98,11 +98,11 @@ export function CheckoutScreen() {
     handleSuccess();
   };
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
     alert("Pagamento aprovado! Preparando seu atendimento...");
     setPagamentoConsulta(true);
     if (selectedOffer === 'basic') {
-      joinQueue();
+      await joinQueue();
       navigate('/queue');
     } else {
       setPagamentoPremium(true);

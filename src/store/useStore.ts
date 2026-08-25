@@ -107,7 +107,7 @@ interface AppState {
     cpf?: string;
     phone?: string;
   }>;
-  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string }) => void;
+  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string }) => Promise<void>;
   leaveQueue: (patientId: string) => void;
   updateQueue: (position: number, waitTime: number) => void;
   subscribeToQueue: () => () => void;
