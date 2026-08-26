@@ -31,7 +31,7 @@ export function CheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
 
-  const basePrice = selectedOffer === 'basic' ? 50.00 : 250.00;
+  const basePrice = selectedOffer === 'basic' ? 49.90 : 250.00;
     let finalPrice = basePrice;
   if (appliedCoupon) {
     if (appliedCoupon.discountType === 'fixed') {
@@ -118,8 +118,13 @@ export function CheckoutScreen() {
       }
     }
     
-    // Se der qualquer erro na geração ou for Cartão (que não está implementado real), libera na hora
-    handleSuccess();
+    // Fallback: If it's not PIX, we can let them through for testing
+    if (paymentMethod !== 'pix') {
+        handleSuccess();
+    } else {
+        alert("Falha ao gerar o Pix. Tente novamente.");
+        setIsLoading(false);
+    }
   };
 
   const handleSuccess = async () => {
@@ -420,7 +425,22 @@ export function CheckoutScreen() {
             </Button>
             <Button 
               className="w-full h-14 text-lg font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)]"
-              onClick={() => handleSuccess()}
+              onClick={async () => {
+              try {
+                setIsLoading(true);
+                const response = await fetch(`/api/payment-status/${pixData.id}`);
+                const data = await response.json();
+                setIsLoading(false);
+                if (data.status === 'approved' || data.status === 'completed') {
+                  handleSuccess();
+                } else {
+                  alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+                }
+              } catch (e) {
+                setIsLoading(false);
+                alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+              }
+            }} disabled={isLoading}
             >
               Já Paguei (Entrar na Fila)
             </Button>

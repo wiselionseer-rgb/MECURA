@@ -98,6 +98,20 @@ async function startServer() {
   });
 
   // NOVA ROTA: Criar Pagamento Pix Transparente
+  app.get("/api/check-payment/:id", async (req, res) => {
+    try {
+      if (!mpToken) {
+        return res.status(500).json({ error: "Configuração do Mercado Pago ausente." });
+      }
+      const payment = new Payment(client);
+      const result = await payment.get({ id: req.params.id });
+      res.json({ status: result.status });
+    } catch (error) {
+      console.error("Erro ao checar pagamento:", error);
+      res.status(500).json({ error: "Failed to check payment" });
+    }
+  });
+
   app.post("/api/create-pix-payment", async (req, res) => {
     try {
       const { title, price, email, firstName, lastName } = req.body;

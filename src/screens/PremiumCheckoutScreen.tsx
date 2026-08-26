@@ -303,7 +303,22 @@ export function PremiumCheckoutScreen() {
             </Button>
             <Button 
               className="w-full h-14 text-lg font-bold bg-gradient-to-r from-[#A6FF00] to-[#8BD400] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)]"
-              onClick={() => handleSuccess()}
+              onClick={async () => {
+              try {
+                setIsLoading(true);
+                const response = await fetch(`/api/payment-status/${pixData.id}`);
+                const data = await response.json();
+                setIsLoading(false);
+                if (data.status === 'approved' || data.status === 'completed') {
+                  handleSuccess();
+                } else {
+                  alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+                }
+              } catch (e) {
+                setIsLoading(false);
+                alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+              }
+            }} disabled={isLoading}
             >
               Já Paguei (Liberar Acesso)
             </Button>

@@ -3,81 +3,97 @@ import re
 with open("src/screens/CheckoutScreen.tsx", "r") as f:
     code = f.read()
 
-# Make sure we use useCoupon from useAdminStore
-if "const { coupons } = useAdminStore();" in code:
-    code = code.replace("const { coupons } = useAdminStore();", "const { coupons, useCoupon } = useAdminStore();")
+# Change base price
+code = code.replace("const basePrice = selectedOffer === 'basic' ? 50.00 : 250.00;", "const basePrice = selectedOffer === 'basic' ? 49.90 : 250.00;")
 
-# Handle apply coupon logic
-old_apply = """  const handleApplyCoupon = () => {
-    setCouponError('');
-    const currentUserId = auth.currentUser?.uid;
-    const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
-    
-    if (coupon) {
-      if (coupon.ownerId && coupon.ownerId === currentUserId) {
-        setCouponError('Você não pode usar seu próprio cupom de indicação.');
-        return;
-      }
-      setAppliedCoupon(coupon);
-    } else {
-      setCouponError('Cupom inválido ou expirado.');
+# Handle the handleSuccess method
+old_success = """  const handleSuccess = () => {
+    if (appliedCoupon && auth.currentUser) {
+      useCoupon(appliedCoupon.id, auth.currentUser.uid);
     }
+    setPagamentoConsulta(true);
+    joinQueue();
+    navigate('/queue');
   };"""
 
-new_apply = """  const handleApplyCoupon = () => {
-    setCouponError('');
-    const currentUserId = auth.currentUser?.uid || 'guest_' + Math.random().toString(36).substring(7); // Use a temp id if not logged in just in case, but auth.currentUser should be there
-    const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
-    
-    if (coupon) {
-      if (coupon.ownerId && coupon.ownerId === auth.currentUser?.uid) {
-        setCouponError('Você não pode usar seu próprio cupom de indicação.');
-        return;
-      }
-      
-      // Check quantity
-      if (coupon.quantity && coupon.quantity > 0) {
-        const currentCount = coupon.usedCount || 0;
-        if (currentCount >= coupon.quantity) {
-          setCouponError('Este cupom atingiu o limite máximo de usos.');
+new_success = """  const handleSuccess = async () => {
+    if (pixData) {
+      try {
+        setIsLoading(true);
+        const response = await fetch(`/api/check-payment/${pixData.id}`);
+        const data = await response.json();
+        setIsLoading(false);
+        if (data.status === 'approved') {
+          // Proceed
+        } else {
+          alert('Pagamento ainda não aprovado. Se você já pagou, aguarde alguns instantes e tente novamente.');
           return;
         }
-      }
-      
-      // Check if user already used it
-      if (coupon.usedBy && auth.currentUser?.uid && coupon.usedBy.includes(auth.currentUser.uid)) {
-        setCouponError('Você já utilizou este cupom anteriormente.');
+      } catch (err) {
+        setIsLoading(false);
+        alert('Erro ao verificar pagamento. Tente novamente.');
         return;
       }
-      
-      setAppliedCoupon(coupon);
-    } else {
-      setCouponError('Cupom inválido ou inativo.');
     }
+
+    if (appliedCoupon && auth.currentUser) {
+      useCoupon(appliedCoupon.id, auth.currentUser.uid);
+    }
+    setPagamentoConsulta(true);
+    joinQueue();
+    navigate('/queue');
   };"""
-code = code.replace(old_apply, new_apply)
 
-# We need to call useCoupon when payment completes. 
-# Payment completes at handlePaymentComplete
-old_pay = """      if (selectedOffer === 'premium') {
-        setPagamentoPremium(true);
-        navigate('/schedule/premium');
-      } else {
-        setPagamentoConsulta(true);
-        navigate('/schedule');
-      }"""
+code = code.replace(old_success, new_success)
 
-new_pay = """      if (appliedCoupon && auth.currentUser) {
-        useCoupon(appliedCoupon.id, auth.currentUser.uid);
-      }
-      if (selectedOffer === 'premium') {
-        setPagamentoPremium(true);
-        navigate('/schedule/premium');
-      } else {
-        setPagamentoConsulta(true);
-        navigate('/schedule');
-      }"""
-code = code.replace(old_pay, new_pay)
+# Change the "Já Paguei" button to handle loading state if possible
+code = code.replace("onClick={() => handleSuccess()}", "onClick={() => handleSuccess()} disabled={isLoading}")
 
 with open("src/screens/CheckoutScreen.tsx", "w") as f:
     f.write(code)
+
+with open("src/screens/PremiumCheckoutScreen.tsx", "r") as f:
+    code = f.read()
+
+old_success_prem = """  const handleSuccess = () => {
+    if (appliedCoupon && auth.currentUser) {
+      useCoupon(appliedCoupon.id, auth.currentUser.uid);
+    }
+    setPagamentoPremium(true);
+    incrementBonus(); // +5% for premium upgrade
+    navigate('/schedule/premium');
+  };"""
+
+new_success_prem = """  const handleSuccess = async () => {
+    if (pixData) {
+      try {
+        setIsLoading(true);
+        const response = await fetch(`/api/check-payment/${pixData.id}`);
+        const data = await response.json();
+        setIsLoading(false);
+        if (data.status === 'approved') {
+          // Proceed
+        } else {
+          alert('Pagamento ainda não aprovado. Se você já pagou, aguarde alguns instantes e tente novamente.');
+          return;
+        }
+      } catch (err) {
+        setIsLoading(false);
+        alert('Erro ao verificar pagamento. Tente novamente.');
+        return;
+      }
+    }
+
+    if (appliedCoupon && auth.currentUser) {
+      useCoupon(appliedCoupon.id, auth.currentUser.uid);
+    }
+    setPagamentoPremium(true);
+    incrementBonus(); // +5% for premium upgrade
+    navigate('/schedule/premium');
+  };"""
+code = code.replace(old_success_prem, new_success_prem)
+code = code.replace("onClick={() => handleSuccess()}", "onClick={() => handleSuccess()} disabled={isLoading}")
+
+with open("src/screens/PremiumCheckoutScreen.tsx", "w") as f:
+    f.write(code)
+
