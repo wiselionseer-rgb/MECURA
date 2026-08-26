@@ -42,7 +42,7 @@ import {
   Printer,
   FileDown,
   RotateCcw
-} from 'lucide-react';
+, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
@@ -67,7 +67,7 @@ import { EnableNotificationsBanner } from '../components/EnableNotificationsBann
 import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
 
-import { generatePrescriptionPDF, generateMedicalReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
 
 const calculateAge = (birthDateStr?: string) => {
   if (!birthDateStr) return null;
@@ -412,6 +412,11 @@ export function DoctorDashboardScreen() {
       addMessage({
         text: "Teria alguma dúvida, podemos finalizar?",
         sender: 'doctor'
+      });
+    } else if (action === 'explicar_laudos') {
+      addMessage({
+        sender: 'doctor',
+        text: 'Para ter acesso completo ao seu Laudo Médico Inicial e ao Laudo Psicomotor (essencial para atestar sua aptidão para dirigir e operar máquinas), nós estruturamos a modalidade de Consulta Premium. Nela, além da receita médica, você recebe toda a documentação legal que resguarda o seu tratamento, além do retorno em 90 dias para acompanhamento da sua evolução. Se desejar, posso enviar os detalhes para darmos o próximo passo.'
       });
     } else if (action === 'acompanhamento') {
       addMessage({
@@ -1620,6 +1625,13 @@ CIDs Secundários: ${cidsSecundarios}`;
                   <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-blue-400" /> <span className="hidden md:inline">Laudo Evolutivo</span><span className="md:hidden">Evol.</span>
                 </button>
                 <button 
+                  onClick={() => generatePsychomotorReportPDF(currentPatient?.patientName || userName || 'Paciente', { customPatientName: currentPatient?.patientName || userName || 'Paciente', birthDate: currentPatient?.birthDate, cpf: currentPatient?.cpf, answers: currentPatient?.answers })}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-purple-500/20 hover:border-purple-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+                  title="Gerar Laudo Psicomotor (Lei do Drogômetro)"
+                >
+                  <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-purple-400" /> <span className="hidden md:inline">Laudo Psicomotor</span><span className="md:hidden">Psico.</span>
+                </button>
+                <button 
                   onClick={handleFinishConsultation}
                   className="px-3 md:px-5 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
                 >
@@ -1799,83 +1811,69 @@ CIDs Secundários: ${cidsSecundarios}`;
                       </div>
                     </div>
                   ) : msg.type === 'acompanhamento_card' ? (
-                    <div className="w-[85%] max-w-xl bg-gradient-to-br from-[#1A1A26] to-[#0A0A0F] border border-mecura-neon/40 rounded-3xl p-6 mb-2 relative overflow-hidden shadow-2xl">
-                      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5" />
-                      <div className="absolute -top-16 -right-16 w-32 h-32 bg-mecura-neon/20 blur-[50px] rounded-full" />
+                    <div className="w-[85%] max-w-xl bg-gradient-to-b from-[#111116] to-[#0A0A0F] border border-[#2a2a35] rounded-3xl p-6 sm:p-8 mb-2 relative overflow-hidden shadow-2xl group">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 rounded-full blur-[80px] -z-10 group-hover:bg-mecura-neon/20 transition-all duration-700" />
                       
-                      <div className="relative z-10">
-                        <h2 className="text-mecura-neon font-bold text-2xl mb-4 flex items-center gap-2">
-                          🚀 Dê o próximo passo!
-                        </h2>
-                        <p className="text-white text-base leading-relaxed mb-6">
-                          Estruture seu tratamento com segurança e profissionalismo. Tenha acesso a consultas personalizadas, laudo médico e acompanhamento contínuo.
-                        </p>
-                        
-                        <div className="space-y-4 mb-6">
-                          <div className="flex items-center gap-3 text-base text-white">
-                            <div className="w-6 h-6 rounded-full bg-mecura-neon/10 flex items-center justify-center text-mecura-neon">✅</div>
-                            Consulta individualizada
-                          </div>
-                          <div className="flex items-center gap-3 text-base text-white">
-                            <div className="w-6 h-6 rounded-full bg-mecura-neon/10 flex items-center justify-center text-mecura-neon">✅</div>
-                            Laudo médico inicial
-                          </div>
-                          <div className="flex items-center gap-3 text-base text-white">
-                            <div className="w-6 h-6 rounded-full bg-mecura-neon/10 flex items-center justify-center text-mecura-neon">✅</div>
-                            Retorno em 90 dias
-                          </div>
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-full bg-mecura-neon/20 flex items-center justify-center shadow-[0_0_15px_rgba(166,255,0,0.2)]">
+                          <Star className="w-5 h-5 text-mecura-neon" />
                         </div>
+                        <h2 className="text-white font-bold text-xl sm:text-2xl">Tratamento Premium</h2>
+                      </div>
+                      
+                      <p className="text-gray-400 text-sm sm:text-base leading-relaxed mb-8">
+                        Estruture seu tratamento com total segurança, acompanhamento médico contínuo e todos os documentos legais necessários.
+                      </p>
 
-                        <details className="group mb-6">
-                          <summary className="text-mecura-neon text-base font-bold cursor-pointer hover:underline list-none flex items-center gap-2">
-                            Ler mais <span className="text-sm group-open:rotate-180 transition-transform">▼</span>
-                          </summary>
-                          <div className="mt-4 space-y-4 text-white text-sm leading-relaxed">
-                            <p>Você já deu o primeiro passo. Agora é hora de avançar no tratamento.</p>
-                            <p>Queremos te oferecer um acompanhamento mais profundo e totalmente personalizado para o seu caso. Através de consultas por videochamada, vamos estruturar seu tratamento com segurança, desde o início até a evolução dos resultados. Com o seu laudo médico, você garante muito mais do que um documento — você conquista um documento essencial para entrada em cultivos legais e comprova seu acesso seguro ao tratamento com cannabis medicinal no Brasil. Não pare na receita — sem o laudo, seu acesso ao tratamento fica limitado.</p>
-                            <p><strong className="text-mecura-neon">Isso inclui:</strong></p>
-                            <ul className="list-disc pl-4 space-y-2">
-                              <li>Possibilidade de acesso ao medicamento pelo SUS</li>
-                              <li>Importação de produtos autorizados pela Anvisa</li>
-                              <li>Base legal para solicitação de cultivo próprio (via judicial)</li>
-                            </ul>
-                            <p>Hoje, mais de 1.000 famílias já transformaram sua qualidade de vida com esse passo.</p>
+                      <div className="space-y-4 mb-8">
+                        {[
+                          "Consulta médica individualizada",
+                          "Laudo médico inicial detalhado",
+                          "Laudo psicomotor (Drogômetro)",
+                          "Retorno garantido em 90 dias",
+                          "Suporte via chat e acompanhamento",
+                          "Assessoria para importação e HC"
+                        ].map((item, idx) => (
+                          <div key={idx} className="flex items-start gap-3">
+                            <div className="mt-0.5 w-5 h-5 rounded-full bg-mecura-neon/20 flex items-center justify-center flex-shrink-0">
+                              <Check className="w-3 h-3 text-mecura-neon" />
+                            </div>
+                            <span className="text-gray-200 text-sm sm:text-base">{item}</span>
                           </div>
-                        </details>
+                        ))}
+                      </div>
 
-                        <div className="bg-mecura-surface/50 rounded-2xl p-4 border border-mecura-elevated">
-                          <p className="text-mecura-silver text-xs mb-1">Teleconsulta completa:</p>
-                          <p className="text-white font-bold text-lg">R$ 250,00</p>
+                      <div className="bg-[#181822] border border-[#2a2a35] rounded-2xl p-5 flex items-center justify-between mb-8">
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Teleconsulta Completa</p>
+                          <p className="text-white font-bold text-2xl">R$ 250<span className="text-gray-500 text-sm">,00</span></p>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-mecura-neon/10 flex items-center justify-center">
+                          <ShieldCheck className="w-6 h-6 text-mecura-neon" />
                         </div>
                       </div>
+
+                      <button 
+                        disabled
+                        className="w-full py-5 bg-mecura-neon/50 text-black/50 font-bold text-lg rounded-2xl flex items-center justify-center gap-2 cursor-not-allowed"
+                      >
+                        <span>Desejo dar o Próximo Passo</span>
+                        <ArrowRight className="w-5 h-5" />
+                      </button>
                     </div>
-                  ) : msg.type === 'acompanhamento_options' && msg.sender === 'doctor' ? (
-                    <div className="w-full flex flex-col items-end mb-2">
-                      <div className="w-[75%] max-w-xl flex flex-col gap-3">
-                        <button 
-                          onClick={() => {
-                            setSelectedOffer('premium');
-                            navigate('/premium-checkout');
-                          }}
-                          className="w-full py-4 bg-[#A6FF00] text-black font-bold rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.25)] hover:bg-[#b5ff33] transition-colors"
-                        >
-                          Desejo dar o Próximo Passo
-                        </button>
-                        <button 
-                          onClick={() => addMessage({ text: "Entendido. Fico à disposição caso mude de ideia.", sender: 'doctor' })}
-                          className="w-full py-4 bg-red-500/10 text-red-500 font-bold rounded-2xl border border-red-500/20 hover:bg-red-500/20 transition-colors"
-                        >
-                          Adiar meu Tratamento
-                        </button>
-                        <button 
-                          onClick={() => { resetConsultation(); navigate('/onboarding'); }}
-                          className="w-full py-4 bg-mecura-neon text-black font-bold rounded-2xl shadow-[0_0_20px_rgba(166,255,0,0.2)] hover:bg-[#b5ff33] transition-colors"
-                        >
-                          NOVA CONSULTA
-                        </button>
+                  ) : msg.type === 'acompanhamento_options' && msg.sender === 'doctor' ? null
+                  : msg.type === 'payment_success' ? (
+                    <div className="w-[85%] max-w-xl bg-[#A6FF00]/10 border border-[#A6FF00]/30 rounded-3xl p-4 sm:p-6 mb-2 flex items-center gap-4 shadow-lg">
+                      <div className="w-12 h-12 rounded-full bg-[#A6FF00]/20 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle className="w-6 h-6 text-[#A6FF00]" />
+                      </div>
+                      <div>
+                        <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Confirmado!</h3>
+                        <p className="text-white text-sm">O paciente realizou o pagamento da Consulta Premium (R$ 250,00). Você pode prosseguir com o atendimento e envio dos laudos.</p>
                       </div>
                     </div>
                   ) : (
+
                     <div 
                       className={`max-w-[75%] p-4 rounded-2xl shadow-sm ${
                         msg.sender === 'doctor' 
@@ -1922,10 +1920,16 @@ CIDs Secundários: ${cidsSecundarios}`;
                 Dúvida
               </button>
               <button 
+                onClick={() => handleDoctorAction('explicar_laudos')}
+                className="whitespace-nowrap px-4 py-2 rounded-full bg-mecura-neon/10 border border-mecura-neon/50 text-xs text-mecura-neon hover:bg-mecura-neon/20 transition-colors"
+              >
+                Explicar Laudos
+              </button>
+              <button 
                 onClick={() => handleDoctorAction('acompanhamento')}
                 className="whitespace-nowrap px-4 py-2 rounded-full bg-mecura-neon/10 border border-mecura-neon/50 text-xs text-mecura-neon hover:bg-mecura-neon/20 transition-colors"
               >
-                Acompanhamento
+                Acompanhamento (Oferta)
               </button>
             </div>
 
@@ -2384,6 +2388,31 @@ CIDs Secundários: ${cidsSecundarios}`;
               <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
                 <span className="text-sm text-mecura-silver mb-2">Sexo</span>
                 <span className="text-lg font-bold text-white">{(currentPatient?.answers?.sex || answers?.sex) || '-'}</span>
+              </div>
+            </div>
+          </section>
+
+          {/* Section: Driving & Risks */}
+          <section className="mb-8">
+            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 text-purple-400">
+              Condução de Veículos e Riscos
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+                <span className="text-xs text-purple-300 block mb-2">Dirige Veículos</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.dirige || answers?.dirige) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.dirige || answers?.dirige) ? 'Sim' : 'Não'}</span>
+              </div>
+              <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+                <span className="text-xs text-purple-300 block mb-2">Opera Maquinário</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.maquinario || answers?.maquinario) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.maquinario || answers?.maquinario) ? 'Sim' : 'Não'}</span>
+              </div>
+              <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+                <span className="text-xs text-purple-300 block mb-2">Blitz Frequente</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.blitz || answers?.blitz) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.blitz || answers?.blitz) ? 'Sim' : 'Não'}</span>
+              </div>
+              <div className="bg-purple-500/20 border border-purple-500/40 rounded-2xl p-5">
+                <span className="text-xs text-purple-200 block mb-2 font-bold">Laudo Psicomotor</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.laudo_psicomotor || answers?.laudo_psicomotor) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.laudo_psicomotor || answers?.laudo_psicomotor) ? 'Deseja Solicitar' : 'Não Solicitado'}</span>
               </div>
             </div>
           </section>

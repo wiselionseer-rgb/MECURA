@@ -2,13 +2,18 @@ import { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Check, X, Bell } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Check, X, Bell, Plus, MessageCircle } from 'lucide-react';
 import { format, addDays, startOfWeek, addWeeks, subWeeks, isSameDay, parseISO, isPast, isFuture, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export function DoctorAnalyticsDashboard() {
-  const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory, queue, subscribeToQueue } = useStore();
+  const { allAppointments, confirmAppointment, cancelAppointment, consultationHistory, queue, subscribeToQueue, addAppointment } = useStore();
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ patientName: '', date: format(new Date(), 'yyyy-MM-dd'), time: '10:00', type: 'Retorno' });
+  const uniquePatientsList = Array.from(new Set([...allAppointments.map(a => a.patientName), ...queue.map(p => p.patientName)])).filter(Boolean);
   const [currentDate, setCurrentDate] = useState(new Date());
   const today = new Date();
 
@@ -48,7 +53,7 @@ export function DoctorAnalyticsDashboard() {
   });
   
   // Generate week days
-  const startDate = currentDate;
+  const startDate = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startDate, i));
 
   const nextWeek = () => setCurrentDate(addWeeks(currentDate, 1));
@@ -188,13 +193,21 @@ export function DoctorAnalyticsDashboard() {
                 <CalendarIcon className="w-5 h-5 text-mecura-neon" />
                 Agenda
               </h3>
-              <div className="flex gap-2">
-                <button onClick={prevWeek} className="p-1.5 rounded-lg bg-[#0A0A0F] border border-mecura-elevated text-mecura-silver hover:text-white transition-colors">
-                  <ChevronLeft className="w-4 h-4" />
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setShowScheduleModal(true)}
+                  className="px-3 py-1.5 rounded-lg bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon text-sm font-bold hover:bg-mecura-neon hover:text-black transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" /> Agendar
                 </button>
-                <button onClick={nextWeek} className="p-1.5 rounded-lg bg-[#0A0A0F] border border-mecura-elevated text-mecura-silver hover:text-white transition-colors">
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <div className="flex bg-[#0A0A0F] border border-mecura-elevated rounded-lg overflow-hidden ml-1">
+                  <button onClick={prevWeek} className="p-1.5 text-mecura-silver hover:text-white hover:bg-white/5 transition-colors border-r border-mecura-elevated">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button onClick={nextWeek} className="p-1.5 text-mecura-silver hover:text-white hover:bg-white/5 transition-colors">
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -277,6 +290,21 @@ export function DoctorAnalyticsDashboard() {
                           </button>
                         </div>
                       )}
+                      {item.status === 'confirmed' && (
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              const msg = encodeURIComponent(`Olá ${item.patientName}, passando para lembrar da sua consulta na Mecura amanhã às ${item.time}.`);
+                              window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+                            }}
+                            className="p-1.5 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors border border-[#25D366]/30"
+                            title="Avisar no WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                     {item.status === 'pending' && (
                       <div className="mt-2 text-[10px] font-bold text-mecura-neon uppercase tracking-wider">
@@ -290,7 +318,109 @@ export function DoctorAnalyticsDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Schedule Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-md shadow-2xl relative">
+            <button 
+              onClick={() => setShowScheduleModal(false)}
+              className="absolute top-4 right-4 text-mecura-silver hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5 text-mecura-neon" />
+              Agendar Retorno
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-mecura-silver mb-1.5">Nome do Paciente</label>
+                <input 
+                  type="text" 
+                  list="patientsList"
+                  value={scheduleForm.patientName}
+                  onChange={(e) => setScheduleForm({...scheduleForm, patientName: e.target.value})}
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2.5 text-white focus:border-mecura-neon focus:outline-none transition-colors"
+                  placeholder="Digite ou selecione..."
+                />
+                <datalist id="patientsList">
+                  {uniquePatientsList.map((name, i) => (
+                    <option key={i} value={name} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-mecura-silver mb-1.5">Data</label>
+                  <input 
+                    type="date" 
+                    value={scheduleForm.date}
+                    onChange={(e) => setScheduleForm({...scheduleForm, date: e.target.value})}
+                    className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2.5 text-white focus:border-mecura-neon focus:outline-none transition-colors [color-scheme:dark]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-mecura-silver mb-1.5">Horário</label>
+                  <input 
+                    type="time" 
+                    value={scheduleForm.time}
+                    onChange={(e) => setScheduleForm({...scheduleForm, time: e.target.value})}
+                    className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2.5 text-white focus:border-mecura-neon focus:outline-none transition-colors [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-mecura-silver mb-1.5">Tipo de Consulta</label>
+                <select
+                  value={scheduleForm.type}
+                  onChange={(e) => setScheduleForm({...scheduleForm, type: e.target.value})}
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2.5 text-white focus:border-mecura-neon focus:outline-none transition-colors"
+                >
+                  <option value="Consulta Inicial">Consulta Inicial</option>
+                  <option value="Retorno">Retorno</option>
+                  <option value="Acompanhamento">Acompanhamento</option>
+                  <option value="Emergência">Emergência</option>
+                </select>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                if (scheduleForm.patientName && scheduleForm.date && scheduleForm.time) {
+                  addAppointment({ ...scheduleForm, status: 'confirmed' });
+                  
+                  // Try to find patient ID in queue or history to send chat notification
+                  const patientId = queue.find(p => p.patientName === scheduleForm.patientName)?.id 
+                                 || consultationHistory.find(h => h.patientName === scheduleForm.patientName)?.id;
+                  
+                  if (patientId) {
+                     addDoc(collection(db, 'active_consultations', patientId, 'messages'), {
+                       id: Date.now().toString(),
+                       text: `[SISTEMA] Sua consulta foi agendada para ${format(parseISO(scheduleForm.date), 'dd/MM/yyyy')} às ${scheduleForm.time}.`,
+                       sender: 'doctor',
+                       timestamp: new Date()
+                     }).catch(console.error);
+                  }
+
+                  setShowScheduleModal(false);
+                  setScheduleForm({...scheduleForm, patientName: ''});
+                  setCurrentDate(parseISO(scheduleForm.date));
+                }
+              }}
+              className="w-full mt-6 py-3 bg-mecura-neon text-black font-bold rounded-xl hover:bg-[#b5ff33] transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(166,255,0,0.2)]"
+            >
+              <Check className="w-5 h-5" />
+              Confirmar Agendamento
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Send, FileText, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle } from 'lucide-react';
+import { Send, FileText, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
@@ -416,79 +416,69 @@ export function ChatScreen() {
                 </div>
               </div>
             ) : msg.type === 'acompanhamento_card' ? (
-              <div className="w-[95%] sm:w-[85%] bg-gradient-to-br from-[#1A1A26] to-[#0A0A0F] border border-mecura-gold/40 rounded-3xl p-6 mb-2 relative overflow-hidden shadow-2xl">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5" />
-                <div className="absolute -top-16 -right-16 w-32 h-32 bg-mecura-gold/20 blur-[50px] rounded-full" />
+              <div className="w-[95%] sm:w-[85%] bg-gradient-to-b from-[#111116] to-[#0A0A0F] border border-[#2a2a35] rounded-3xl p-6 sm:p-8 mb-2 relative overflow-hidden shadow-2xl group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 rounded-full blur-[80px] -z-10 group-hover:bg-mecura-neon/20 transition-all duration-700" />
                 
-                <div className="relative z-10">
-                  <h2 className="text-mecura-gold font-bold text-2xl mb-4 flex items-center gap-2">
-                    🚀 Dê o próximo passo!
-                  </h2>
-                  <p className="text-white text-base leading-relaxed mb-6">
-                    Estruture seu tratamento com segurança e profissionalismo. Tenha acesso a consultas personalizadas, laudo médico e acompanhamento contínuo.
-                  </p>
-                  
-                  <div className="space-y-4 mb-6">
-                    <div className="flex items-center gap-3 text-base text-white">
-                      <div className="w-6 h-6 rounded-full bg-mecura-gold/10 flex items-center justify-center text-mecura-gold">✅</div>
-                      Consulta individualizada
-                    </div>
-                    <div className="flex items-center gap-3 text-base text-white">
-                      <div className="w-6 h-6 rounded-full bg-mecura-gold/10 flex items-center justify-center text-mecura-gold">✅</div>
-                      Laudo médico inicial
-                    </div>
-                    <div className="flex items-center gap-3 text-base text-white">
-                      <div className="w-6 h-6 rounded-full bg-mecura-gold/10 flex items-center justify-center text-mecura-gold">✅</div>
-                      Retorno em 90 dias
-                    </div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-full bg-mecura-neon/20 flex items-center justify-center shadow-[0_0_15px_rgba(166,255,0,0.2)]">
+                    <Star className="w-5 h-5 text-mecura-neon" />
                   </div>
- 
-                  <details className="group mb-6">
-                    <summary className="text-mecura-gold text-base font-bold cursor-pointer hover:underline list-none flex items-center gap-2">
-                      Ler mais <span className="text-sm group-open:rotate-180 transition-transform">▼</span>
-                    </summary>
-                    <div className="mt-4 space-y-4 text-white text-sm leading-relaxed">
-                      <p>Você já deu o primeiro passo. Agora é hora de avançar no tratamento.</p>
-                      <p>Queremos te oferecer um acompanhamento mais profundo e totalmente personalizado para o seu caso. Através de consultas por videochamada, vamos estruturar seu tratamento com segurança, desde o início até a evolução dos resultados. Com o seu laudo médico, você garante muito mais do que um documento — você conquista um documento essencial para entrada em cultivos legais e comprova seu acesso seguro ao tratamento com cannabis medicinal no Brasil. Não pare na receita — sem o laudo, seu acesso ao tratamento fica limitado.</p>
-                      <p><strong className="text-mecura-gold">Isso inclui:</strong></p>
-                      <ul className="list-disc pl-4 space-y-2">
-                        <li>Possibilidade de acesso ao medicamento pelo SUS</li>
-                        <li>Importação de produtos autorizados pela Anvisa</li>
-                        <li>Base legal para solicitação de cultivo próprio (via judicial)</li>
-                      </ul>
-                      <p>Hoje, mais de 1.000 famílias já transformaram sua qualidade de vida com esse passo.</p>
-                    </div>
-                  </details>
+                  <h2 className="text-white font-bold text-xl sm:text-2xl">Tratamento Premium</h2>
+                </div>
+                
+                <p className="text-gray-400 text-sm sm:text-base leading-relaxed mb-8">
+                  Estruture seu tratamento com total segurança, acompanhamento médico contínuo e todos os documentos legais necessários.
+                </p>
 
-                  <div className="bg-mecura-surface/50 rounded-2xl p-4 border border-mecura-elevated">
-                    <p className="text-mecura-silver text-xs mb-1">Teleconsulta completa:</p>
-                    <p className="text-white font-bold text-lg">R$ 250,00</p>
+                <div className="space-y-4 mb-8">
+                  {[
+                    "Consulta médica individualizada",
+                    "Laudo médico inicial detalhado",
+                    "Laudo psicomotor (Drogômetro)",
+                    "Retorno garantido em 90 dias",
+                    "Suporte via chat e acompanhamento",
+                    "Assessoria para importação e HC"
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-3">
+                      <div className="mt-0.5 w-5 h-5 rounded-full bg-mecura-neon/20 flex items-center justify-center flex-shrink-0">
+                        <Check className="w-3 h-3 text-mecura-neon" />
+                      </div>
+                      <span className="text-gray-200 text-sm sm:text-base">{item}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-[#181822] border border-[#2a2a35] rounded-2xl p-5 flex items-center justify-between mb-8">
+                  <div>
+                    <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Teleconsulta Completa</p>
+                    <p className="text-white font-bold text-2xl">R$ 250<span className="text-gray-500 text-sm">,00</span></p>
+                  </div>
+                  <div className="w-12 h-12 rounded-full bg-mecura-neon/10 flex items-center justify-center">
+                    <ShieldCheck className="w-6 h-6 text-mecura-neon" />
                   </div>
                 </div>
-              </div>
-            ) : msg.type === 'acompanhamento_options' && msg.sender === 'doctor' ? (
-              <div className="w-[90%] sm:w-[80%] flex flex-col gap-3 mb-8 items-start">
+
                 <Button 
                   onClick={() => {
                     setSelectedOffer('premium');
                     navigate('/premium-checkout');
                   }}
-                  className="w-full py-4 bg-mecura-gold text-black font-bold rounded-2xl shadow-[0_0_20px_rgba(201,168,76,0.25)] hover:bg-mecura-gold-light transition-colors"
+                  className="w-full py-5 bg-mecura-neon text-black font-bold text-lg rounded-2xl shadow-[0_4px_20px_rgba(166,255,0,0.25)] hover:shadow-[0_4px_30px_rgba(166,255,0,0.4)] hover:-translate-y-1 transition-all duration-300 flex items-center justify-center gap-2"
                 >
-                  Desejo dar o Próximo Passo
+                  <span>Desejo dar o Próximo Passo</span>
+                  <ArrowRight className="w-5 h-5" />
                 </Button>
-                <Button 
-                  onClick={() => addMessage({ text: "Entendido. Fico à disposição caso mude de ideia.", sender: 'doctor' })}
-                  className="w-full py-4 bg-red-500/10 text-red-500 font-bold rounded-2xl border border-red-500/20 hover:bg-red-500/20 transition-colors"
-                >
-                  Adiar meu Tratamento
-                </Button>
-                <Button 
-                  onClick={() => { resetConsultation(); navigate('/onboarding'); }}
-                  className="w-full py-4 bg-mecura-neon text-black font-bold rounded-2xl shadow-[0_0_20px_rgba(166,255,0,0.2)] hover:bg-[#b5ff33] transition-colors"
-                >
-                  NOVA CONSULTA
-                </Button>
+              </div>
+            ) : msg.type === 'acompanhamento_options' && msg.sender === 'doctor' ? null
+            : msg.type === 'payment_success' ? (
+              <div className="w-[95%] sm:w-[85%] bg-[#A6FF00]/10 border border-[#A6FF00]/30 rounded-3xl p-4 sm:p-6 mb-2 flex items-center gap-4 shadow-lg">
+                <div className="w-12 h-12 rounded-full bg-[#A6FF00]/20 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="w-6 h-6 text-[#A6FF00]" />
+                </div>
+                <div>
+                  <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Aprovado!</h3>
+                  <p className="text-white text-sm">O pagamento da Consulta Premium (R$ 250,00) foi confirmado. O médico já foi notificado.</p>
+                </div>
               </div>
             ) : (
               <div 

@@ -53,7 +53,7 @@ export const generatePrescriptionPDF = (
 ) => {
   const doc = new jsPDF();
 
-  const sanitize = (text: string) => {
+    const sanitize = (text: string) => {
     return (text || '')
       .replace(/[–—]/g, '-')
       .replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
@@ -432,7 +432,7 @@ export const generateMedicalReportPDF = (
   const contentWidth = pageWidth - (margin * 2);
 
   // Helper for adding sanitized text
-  const sanitize = (text: string) => {
+    const sanitize = (text: string) => {
     return (text || '')
       .replace(/[–—]/g, '-')
       .replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
@@ -549,16 +549,18 @@ export const generateMedicalReportPDF = (
   doc.line(margin, yPos, pageWidth - margin, yPos);
 
   yPos += 8;
-  const objectives = patientAnswers?.objectives?.join(', ') || 'Ansiedade e dor crônica';
-  const intensity = patientAnswers?.intensity ? `${patientAnswers.intensity}/10` : 'Moderada a intensa';
-  const duration = patientAnswers?.duration || 'Quadro de evolução crônica';
-  const description = patientAnswers?.description || 'Paciente relata persistência dos sintomas refratários aos tratamentos convencionais de primeira linha, com impacto expressivo na qualidade de vida, repouso noturno e funcionalidade global.';
+  const objectives = patientAnswers?.objectives?.join(', ') || 'dor crônica e ansiedade';
+  const intensity = patientAnswers?.intensity ? `${patientAnswers.intensity}/10` : 'intensa';
+  const duration = patientAnswers?.duration || 'anos';
+  const patientFirstName = sanitizedUserName.split(' ')[0] || 'O(A) paciente';
 
-  const defaultClinicalSummary = `O(A) paciente supramencionado(a) compareceu a atendimento médico e foi submetido(a) a minuciosa avaliação clínica. Apresenta sintomatologia compatível com ${objectives}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration}. 
+  const defaultClinicalSummary = `${sanitizedUserName} encontra-se em acompanhamento médico regular sob meus cuidados, apresentando quadro clínico relacionado a ${objectives}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration}.
 
-História da Moléstia: ${description}
+Fez diversos tratamentos medicamentosos prévios com diferentes classes de drogas para o seu quadro, porém sem resposta terapêutica efetiva e relatando efeitos colaterais adversos ou resposta subótima.
 
-Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Sim' : 'Não'} | Diagnóstico de Comorbidade Crônica: ${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}.`;
+Atualmente, ${patientFirstName} faz uso da terapêutica com Cannabis sativa L., referindo alívio diário e substancial dos sintomas, relatando melhora na qualidade de vida, o que faz com que acorde mais disposto(a) para as atividades do dia a dia.
+
+Declaro que ${patientFirstName} está ciente e concorda com o plano terapêutico proposto.`;
 
   const clinicalSummary = patientData?.customDiagnosis || defaultClinicalSummary;
 
@@ -805,4 +807,215 @@ Tratamento prévio com fármacos convencionais: ${patientAnswers?.remedios ? 'Si
 
   const fileName = `Laudo_Medico_${sanitizedUserName.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
   doc.save(fileName);
+};
+
+export const generatePsychomotorReportPDF = (
+  userName: string,
+  patientData?: MedicalReportData
+) => {
+  const doc = new jsPDF();
+  const pageWidth = 210;
+  const pageHeight = doc.internal.pageSize.height;
+  const margin = 20;
+  const contentWidth = pageWidth - (margin * 2);
+
+  // Helper for adding sanitized text
+    const sanitize = (text: string) => {
+    return (text || '')
+      .replace(/[–—]/g, '-')
+      .replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+  };
+
+  const storeState = useStore.getState();
+  const patientAnswers = patientData?.answers || storeState.answers;
+  const rawPatientName = patientData?.customPatientName || userName || 'Paciente';
+  const sanitizedUserName = sanitize(rawPatientName);
+  const birthDateText = sanitize(patientData?.birthDate || storeState.userBirthDate || patientAnswers?.birthDate || 'Não informada');
+  const cpfText = sanitize(patientData?.cpf || storeState.userCpf || patientAnswers?.cpf || 'Não informado');
+  const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
+
+  const doctorName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
+  const doctorCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
+  const doctorSpecialty = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
+
+  // Cabeçalho
+  const renderHeader = (pageNumber: number) => {
+    doc.setFillColor(10, 10, 15);
+    doc.rect(0, 0, 210, 42, 'F');
+
+    doc.setTextColor(212, 175, 55); // Dourado
+    doc.setFontSize(26);
+    doc.setFont("helvetica", "bold");
+    doc.text("mecura", margin, 26);
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("LAUDO MÉDICO PSICOMOTOR", 108, 26);
+
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(1);
+    doc.line(0, 42, 210, 42);
+  };
+
+  const renderFooter = (pageNumber: number) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(130, 130, 130);
+    doc.text("Mecura Medicina Integrativa | Documento emitido para fins de acompanhamento e suporte terapêutico", margin, pageHeight - 10);
+    doc.text(`Pág. ${pageNumber}`, pageWidth - margin, pageHeight - 10, { align: "right" });
+  };
+
+  let currentPage = 1;
+  renderHeader(currentPage);
+
+  let yPos = 54;
+
+  const checkPageBreak = (neededSpace: number) => {
+    if (yPos + neededSpace > pageHeight - 35) {
+      renderFooter(currentPage);
+      doc.addPage();
+      currentPage++;
+      renderHeader(currentPage);
+      yPos = 52;
+    }
+  };
+
+  // 1. Dados do Paciente
+  doc.setTextColor(40, 40, 40);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("1. IDENTIFICAÇÃO DO PACIENTE", margin, yPos);
+  
+  yPos += 3;
+  doc.setLineWidth(0.5);
+  doc.setDrawColor(212, 175, 55);
+  doc.line(margin, yPos, pageWidth - margin, yPos);
+
+  yPos += 8;
+  doc.setFontSize(9.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Nome do Paciente:", margin, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  doc.text(sanitizedUserName, margin + 35, yPos);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Data de Emissão:", 135, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  doc.text(emissionDateStr, 167, yPos);
+
+  yPos += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Data de Nasc.:", margin, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  doc.text(birthDateText, margin + 26, yPos);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("CPF:", 135, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  doc.text(cpfText, 145, yPos);
+  
+  yPos += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Sexo:", margin, yPos);
+  const sex = patientAnswers?.sex === 'M' || patientAnswers?.sex?.toLowerCase() === 'masculino' ? 'Masculino' : 
+              (patientAnswers?.sex === 'F' || patientAnswers?.sex?.toLowerCase() === 'feminino' ? 'Feminino' : 'Não informado');
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  doc.text(sex, margin + 11, yPos);
+
+  let age = '';
+  if (patientAnswers?.birthDate || birthDateText) {
+    const b = patientAnswers?.birthDate || birthDateText;
+    const parts = b.split('/');
+    if (parts.length === 3) {
+      const birth = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      const diffMs = Date.now() - birth.getTime();
+      const ageDate = new Date(diffMs);
+      const calculatedAge = Math.abs(ageDate.getUTCFullYear() - 1970);
+      if (!isNaN(calculatedAge)) {
+        age = calculatedAge.toString();
+      }
+    }
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Idade:", 135, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  doc.text(age ? `${age} anos` : '-', 147, yPos);
+
+  yPos += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Endereço:", margin, yPos);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(10, 10, 10);
+  const address = patientAnswers?.address || "Não informado";
+  doc.text(address, margin + 19, yPos);
+
+  yPos += 15;
+  doc.setTextColor(40, 40, 40);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("2. ATESTADO PSICOMOTOR", margin, yPos);
+  
+  yPos += 3;
+  doc.setLineWidth(0.5);
+  doc.setDrawColor(212, 175, 55);
+  doc.line(margin, yPos, pageWidth - margin, yPos);
+  
+  yPos += 8;
+
+  // Body
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(30, 30, 30);
+  
+  const patientFirstName = sanitizedUserName.split(' ')[0] || 'O(A) paciente';
+  const textBody = `Após avaliação clínica de ${sanitizedUserName}, portador(a) do CPF ${cpfText}, atesto que, embora o(a) paciente faça uso de cannabis medicinal com concentração de THC, ele(a) se encontra, no momento da avaliação, apto(a) a conduzir veículos, sem prejuízo à sua capacidade psicomotora.
+${patientFirstName} foi avaliado(a) apresentando condições clínicas estáveis, sem evidência de comprometimento da atenção, reflexos ou coordenação motora, compatíveis com a condução segura de veículos automotores e maquinários.
+Recomendo, no entanto, que ${patientFirstName} evite o uso de cannabis antes de atividades que requeiram alta concentração ou situações de risco, além de seguir as orientações médicas continuamente para o seu acompanhamento.`;
+
+  const splitBody = doc.splitTextToSize(textBody, contentWidth);
+  checkPageBreak(splitBody.length * 6 + 10);
+  doc.text(splitBody, margin, yPos);
+  yPos += splitBody.length * 5 + 30;
+
+  // Footer / Assinatura
+  checkPageBreak(30);
+
+  doc.setLineWidth(0.5);
+  doc.setDrawColor(100, 100, 100);
+  const sigWidth = 80;
+  const sigX = (pageWidth - sigWidth) / 2;
+  doc.line(sigX, yPos, sigX + sigWidth, yPos);
+  
+  yPos += 5;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(30, 30, 30);
+  doc.text(doctorName, pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 5;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(doctorCrm, pageWidth / 2, yPos, { align: "center" });
+  yPos += 4;
+  doc.text(doctorSpecialty, pageWidth / 2, yPos, { align: "center" });
+
+  renderFooter(currentPage);
+
+  const cleanName = sanitizedUserName.replace(/\s+/g, '_').toLowerCase();
+  doc.save(`laudo_psicomotor_${cleanName}.pdf`);
 };

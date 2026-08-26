@@ -14,7 +14,11 @@ export interface Coupon {
   id: string;
   code: string;
   discount: number;
+  discountType?: 'percentage' | 'fixed';
   active: boolean;
+  quantity?: number;
+  usedCount?: number;
+  usedBy?: string[];
   ownerId?: string; // ID of the patient who owns this referral coupon
 }
 
@@ -35,6 +39,7 @@ interface AdminState {
   addCoupon: (coupon: Coupon) => void;
   updateCoupon: (id: string, data: Partial<Coupon>) => void;
   deleteCoupon: (id: string) => void;
+  useCoupon: (id: string, userId: string) => void;
 
   notifications: Notification[];
   addNotification: (notification: Notification) => void;
@@ -78,6 +83,17 @@ export const useAdminStore = create<AdminState>()(
       })),
       deleteCoupon: (id) => set((state) => ({
         coupons: state.coupons.filter((c) => c.id !== id)
+      })),
+      useCoupon: (id, userId) => set((state) => ({
+        coupons: state.coupons.map((c) => {
+          if (c.id === id) {
+            const currentUsedBy = c.usedBy || [];
+            if (!currentUsedBy.includes(userId)) {
+              return { ...c, usedCount: (c.usedCount || 0) + 1, usedBy: [...currentUsedBy, userId] };
+            }
+          }
+          return c;
+        })
       })),
 
       notifications: [],

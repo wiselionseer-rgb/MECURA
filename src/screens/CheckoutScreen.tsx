@@ -1,3 +1,4 @@
+import { db } from '../firebase';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
@@ -17,7 +18,7 @@ const PixIcon = ({ className }: { className?: string }) => (
 export function CheckoutScreen() {
   const navigate = useNavigate();
   const { userName, joinQueue, setPagamentoConsulta, setPagamentoPremium, selectedOffer, incrementBonus } = useStore();
-  const { coupons } = useAdminStore();
+  const { coupons, useCoupon } = useAdminStore();
   const [step, setStep] = useState<'discount' | 'checkout'>('discount');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,22 +31,45 @@ export function CheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
 
-  const basePrice = selectedOffer === 'basic' ? 2.00 : 2.00; // TESTE
-  const finalPrice = appliedCoupon ? basePrice * (1 - appliedCoupon.discount / 100) : basePrice;
+  const basePrice = selectedOffer === 'basic' ? 50.00 : 250.00;
+    let finalPrice = basePrice;
+  if (appliedCoupon) {
+    if (appliedCoupon.discountType === 'fixed') {
+      finalPrice = Math.max(0, basePrice - appliedCoupon.discount);
+    } else {
+      finalPrice = basePrice * (1 - appliedCoupon.discount / 100);
+    }
+  }
 
   const handleApplyCoupon = () => {
     setCouponError('');
-    const currentUserId = auth.currentUser?.uid;
+    const currentUserId = auth.currentUser?.uid || 'guest_' + Math.random().toString(36).substring(7); // Use a temp id if not logged in just in case, but auth.currentUser should be there
     const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
     
     if (coupon) {
-      if (coupon.ownerId && coupon.ownerId === currentUserId) {
+      if (coupon.ownerId && coupon.ownerId === auth.currentUser?.uid) {
         setCouponError('Você não pode usar seu próprio cupom de indicação.');
         return;
       }
+      
+      // Check quantity
+      if (coupon.quantity && coupon.quantity > 0) {
+        const currentCount = coupon.usedCount || 0;
+        if (currentCount >= coupon.quantity) {
+          setCouponError('Este cupom atingiu o limite máximo de usos.');
+          return;
+        }
+      }
+      
+      // Check if user already used it
+      if (coupon.usedBy && auth.currentUser?.uid && coupon.usedBy.includes(auth.currentUser.uid)) {
+        setCouponError('Você já utilizou este cupom anteriormente.');
+        return;
+      }
+      
       setAppliedCoupon(coupon);
     } else {
-      setCouponError('Cupom inválido ou expirado.');
+      setCouponError('Cupom inválido ou inativo.');
     }
   };
 
@@ -119,6 +143,16 @@ export function CheckoutScreen() {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
               if (pollingInterval.current) clearInterval(pollingInterval.current);
+              try {
+                const { collection, addDoc } = await import('firebase/firestore');
+                const { db } = await import('../firebase');
+                await addDoc(collection(db, 'payments'), {
+                  mpId: pixData.id,
+                  type: selectedOffer === 'basic' ? 'Consulta Básica' : 'Consulta Premium',
+                  value: finalPrice,
+                  date: new Date().toISOString()
+                });
+              } catch(err) { console.error(err); }
               handleSuccess();
             }
           }
@@ -306,7 +340,7 @@ export function CheckoutScreen() {
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 px-4 py-2 mt-6 bg-mecura-neon/10 border border-mecura-neon/20 rounded-full shadow-lg">
                     <Ticket className="w-4 h-4 text-mecura-neon" />
                     <span className="text-[13px] font-bold text-mecura-neon uppercase tracking-wide">
-                      Cupom {appliedCoupon.code} aplicado (-{appliedCoupon.discount}%)
+                      Cupom {appliedCoupon.code} aplicado (-{appliedCoupon.discountType === 'fixed' ? `R$ ${appliedCoupon.discount}` : `${appliedCoupon.discount}%`})
                     </span>
                   </motion.div>
                 )}

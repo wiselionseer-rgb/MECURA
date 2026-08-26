@@ -4,6 +4,7 @@ import Markdown from 'react-markdown';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { isToday, isThisWeek, isThisMonth, parseISO, isFuture, startOfDay } from 'date-fns';
 import {
   Users,
   FileText,
@@ -36,7 +37,18 @@ import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, delete
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda'>('overview');
+  const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
+  const [agendaStatusFilter, setAgendaStatusFilter] = useState('all');
+
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [appointmentToCancel, setAppointmentToCancel] = useState<string | null>(null);
+
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [appointmentToReschedule, setAppointmentToReschedule] = useState<string | null>(null);
   const handleDeleteNotification = async (id: string) => {
     deleteNotification(id);
     try {
@@ -77,12 +89,13 @@ export const AdminDashboardScreen = () => {
     updateProduct,
     deleteProduct
   } = useAdminStore();
-  const { allAppointments } = useStore();
+  const { allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
 
   const [patients, setPatients] = useState<any[]>([]);
   const [queueCount, setQueueCount] = useState(0);
+  const [payments, setPayments] = useState<any[]>([]);
 
   useEffect(() => {
     // Fetch users (patients)
@@ -97,9 +110,19 @@ export const AdminDashboardScreen = () => {
       setQueueCount(snapshot.size);
     });
 
-    return () => {
+    const qPayments = query(collection(db, 'payments'));
+    const unsubscribePayments = onSnapshot(qPayments, (snapshot) => {
+      setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenueTotal = revenueFila + revenuePremium;
+
+  return () => {
       unsubscribeUsers();
       unsubscribeQueue();
+      unsubscribePayments();
     };
   }, []);
 
@@ -120,7 +143,11 @@ export const AdminDashboardScreen = () => {
       
       setSupportRequests(activeRequests);
     });
-    return () => unsubscribe();
+    const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenueTotal = revenueFila + revenuePremium;
+
+  return () => unsubscribe();
   }, [supportRequests.length]);
 
   // Modals state
@@ -130,7 +157,7 @@ export const AdminDashboardScreen = () => {
   const [newPassword, setNewPassword] = useState('');
   const [showAgenda, setShowAgenda] = useState<string | null>(null);
   const [showAddCoupon, setShowAddCoupon] = useState(false);
-  const [couponForm, setCouponForm] = useState({ code: '', discount: 10 });
+  const [couponForm, setCouponForm] = useState({ code: '', discount: 10, quantity: 0 });
   const [showSendNotification, setShowSendNotification] = useState(false);
   const [notificationForm, setNotificationForm] = useState({ title: '', message: '' });
 
@@ -273,9 +300,9 @@ export const AdminDashboardScreen = () => {
   };
 
   const handleAddCoupon = () => {
-    addCoupon({ id: Date.now().toString(), active: true, ...couponForm });
+    addCoupon({ id: Date.now().toString(), active: true, usedCount: 0, usedBy: [], ...couponForm });
     setShowAddCoupon(false);
-    setCouponForm({ code: '', discount: 10 });
+    setCouponForm({ code: '', discount: 10, quantity: 0 });
   };
 
   const handleSendNotification = async () => {
@@ -365,6 +392,10 @@ export const AdminDashboardScreen = () => {
     }
   };
 
+  const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenueTotal = revenueFila + revenuePremium;
+
   return (
     <div className="flex flex-col md:flex-row min-h-[100dvh] bg-[#0A0A0F] text-white">
       {/* Sidebar */}
@@ -375,6 +406,7 @@ export const AdminDashboardScreen = () => {
         </div>
         {[
           { id: 'overview', label: 'Visão Geral', icon: BarChart },
+          { id: 'agenda', label: 'Agenda', icon: Calendar },
           { id: 'patients', label: 'Pacientes', icon: UserCircle },
           { id: 'doctors', label: 'Médicos', icon: Users },
           { id: 'chat_patient', label: 'Chat Paciente', icon: MessageCircle },
@@ -385,7 +417,11 @@ export const AdminDashboardScreen = () => {
           { id: 'notifications', label: 'Notificações', icon: Bell }
         ].map((tab) => {
           const Icon = tab.icon;
-          return (
+          const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
+  const revenueTotal = revenueFila + revenuePremium;
+
+  return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
@@ -422,12 +458,12 @@ export const AdminDashboardScreen = () => {
                 <div className="text-3xl font-bold text-white">{allAppointments.length + queueCount}</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">R$ 50 (Fila)</div>
-                <div className="text-3xl font-bold text-mecura-neon">{queueCount}</div>
+                <div className="text-[#8A8A9E] mb-2">Consultas Básicas (Pagas)</div>
+                <div className="text-3xl font-bold text-mecura-neon">{payments.filter(p => p.type === 'Consulta Básica').length}</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">R$ 250 (Premium)</div>
-                <div className="text-3xl font-bold text-purple-400">{allAppointments.length}</div>
+                <div className="text-[#8A8A9E] mb-2">Consultas Premium (Pagas)</div>
+                <div className="text-3xl font-bold text-purple-400">{payments.filter(p => p.type === 'Consulta Premium').length}</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
                 <div className="text-[#8A8A9E] mb-2">Pacientes</div>
@@ -435,25 +471,186 @@ export const AdminDashboardScreen = () => {
               </div>
             </div>
 
-            <h3 className="text-xl font-bold mt-8 mb-4">Faturamento (Lucro)</h3>
+            <h3 className="text-xl font-bold mt-8 mb-4">Faturamento (Lucro - Via Mercado Pago)</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-gradient-to-br from-[#161622] to-[#1a2e20] p-6 rounded-2xl border border-mecura-neon/30">
-                <div className="text-[#8A8A9E] mb-2">Receita Fila (R$ 50)</div>
+                <div className="text-[#8A8A9E] mb-2">Receita Fila (Mercado Pago)</div>
                 <div className="text-3xl font-bold text-mecura-neon">
-                  {(queueCount * 50).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {revenueFila.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
               </div>
               <div className="bg-gradient-to-br from-[#161622] to-[#2e1a2b] p-6 rounded-2xl border border-purple-500/30">
-                <div className="text-[#8A8A9E] mb-2">Receita Premium (R$ 250)</div>
+                <div className="text-[#8A8A9E] mb-2">Receita Premium (Mercado Pago)</div>
                 <div className="text-3xl font-bold text-purple-400">
-                  {(allAppointments.length * 250).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {revenuePremium.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
               </div>
               <div className="bg-gradient-to-br from-[#161622] to-[#262636] p-6 rounded-2xl border border-white/20">
                 <div className="text-[#8A8A9E] mb-2">Faturamento Total</div>
                 <div className="text-3xl font-bold text-white">
-                  {((queueCount * 50) + (allAppointments.length * 250)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  {revenueTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeTab === 'agenda' && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <h2 className="text-2xl font-bold mb-6">Agenda de Consultas</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-[#161622] p-4 rounded-xl border border-[#262636]">
+                <div className="text-[#8A8A9E] text-sm mb-1">Total Filtrado</div>
+                <div className="text-2xl font-bold text-white">
+                  {allAppointments.filter(app => {
+                    if (agendaStatusFilter !== 'all' && app.status !== agendaStatusFilter) return false;
+                    if (agendaTimeFilter !== 'all' && app.date) {
+                      const dateObj = parseISO(app.date);
+                      if (agendaTimeFilter === 'today' && !isToday(dateObj)) return false;
+                      if (agendaTimeFilter === 'week' && !isThisWeek(dateObj)) return false;
+                      if (agendaTimeFilter === 'month' && !isThisMonth(dateObj)) return false;
+                    }
+                    return true;
+                  }).length}
+                </div>
+              </div>
+              <div className="bg-[#161622] p-4 rounded-xl border border-[#262636]">
+                <div className="text-[#8A8A9E] text-sm mb-1">Próximas (Confirmadas)</div>
+                <div className="text-2xl font-bold text-mecura-neon">
+                  {allAppointments.filter(app => app.status === 'confirmed' && app.date && isFuture(startOfDay(parseISO(app.date)))).length}
+                </div>
+              </div>
+              <div className="bg-[#161622] p-4 rounded-xl border border-[#262636]">
+                <div className="text-[#8A8A9E] text-sm mb-1">Pendentes de Confirmação</div>
+                <div className="text-2xl font-bold text-yellow-500">
+                  {allAppointments.filter(app => app.status === 'pending').length}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-4 mb-4">
+              <select 
+                value={agendaTimeFilter}
+                onChange={(e) => setAgendaTimeFilter(e.target.value)}
+                className="bg-[#161622] border border-[#262636] text-white rounded-lg px-4 py-2 outline-none focus:border-mecura-neon"
+              >
+                <option value="all">Todo o período</option>
+                <option value="today">Hoje</option>
+                <option value="week">Esta Semana</option>
+                <option value="month">Este Mês</option>
+              </select>
+              
+              <select 
+                value={agendaStatusFilter}
+                onChange={(e) => setAgendaStatusFilter(e.target.value)}
+                className="bg-[#161622] border border-[#262636] text-white rounded-lg px-4 py-2 outline-none focus:border-mecura-neon"
+              >
+                <option value="all">Todos os Status</option>
+                <option value="pending">Pendentes</option>
+                <option value="confirmed">Confirmados</option>
+                <option value="cancelled">Cancelados</option>
+              </select>
+            </div>
+            
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-4 p-4 border-b border-[#262636] text-[#8A8A9E] font-bold">
+                <div>Paciente</div>
+                <div>Data/Hora</div>
+                <div>Tipo</div>
+                <div>Ações</div>
+              </div>
+              <div className="divide-y divide-[#262636]">
+                {(() => {
+                  const filtered = allAppointments.filter(app => {
+                    if (agendaStatusFilter !== 'all' && app.status !== agendaStatusFilter) return false;
+                    if (agendaTimeFilter !== 'all' && app.date) {
+                      const dateObj = parseISO(app.date);
+                      if (agendaTimeFilter === 'today' && !isToday(dateObj)) return false;
+                      if (agendaTimeFilter === 'week' && !isThisWeek(dateObj)) return false;
+                      if (agendaTimeFilter === 'month' && !isThisMonth(dateObj)) return false;
+                    }
+                    return true;
+                  }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                  
+                  if (filtered.length === 0) {
+                    return <div className="p-8 text-center text-[#8A8A9E]">Nenhuma consulta encontrada com estes filtros</div>;
+                  }
+                  
+                  return filtered.map((item, i) => (
+                    <div key={item.id || i} className="grid grid-cols-4 p-4 items-center hover:bg-white/5 transition-colors">
+                      <div className="font-bold text-white">{item.patientName}</div>
+                      <div>
+                        <div className="text-sm text-white">{item.date}</div>
+                        <div className="text-xs text-[#8A8A9E]">{item.time}</div>
+                      </div>
+                      <div>
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${
+                          item.status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
+                          item.status === 'pending' ? 'bg-mecura-neon/20 text-mecura-neon' :
+                          item.status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
+                          'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {item.status === 'confirmed' ? 'Confirmado' : 
+                           item.status === 'pending' ? 'Pendente' : 
+                           item.status === 'cancelled' ? 'Cancelado' : item.status}
+                        </span>
+                        <div className="text-[10px] text-[#8A8A9E] mt-1">{item.type}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {item.status === 'pending' && (
+                          <>
+                            <button 
+                              onClick={() => confirmAppointment(item.id)}
+                              className="p-2 rounded-lg bg-mecura-neon/20 text-mecura-neon hover:bg-mecura-neon hover:text-black transition-colors"
+                              title="Confirmar"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {(item.status === 'pending' || item.status === 'confirmed') && (
+                          <>
+                            <button 
+                              onClick={() => {
+                                setAppointmentToReschedule(item.id);
+                                setRescheduleDate(item.date || '');
+                                setRescheduleTime(item.time || '');
+                                setRescheduleModalOpen(true);
+                              }}
+                              className="p-2 rounded-lg bg-blue-500/20 text-blue-500 hover:bg-blue-500/30 transition-colors"
+                              title="Remarcar Consulta"
+                            >
+                              <Calendar className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setAppointmentToCancel(item.id);
+                                setCancelReason('');
+                                setCancelModalOpen(true);
+                              }}
+                              className="p-2 rounded-lg bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors"
+                              title="Remover / Cancelar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {item.status === 'confirmed' && (
+                          <button 
+                            onClick={() => {
+                              const msg = encodeURIComponent(`Olá ${item.patientName}, passando para lembrar da sua consulta na Mecura amanhã às ${item.time}.`);
+                              window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+                            }}
+                            className="p-2 rounded-lg bg-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/30 transition-colors border border-[#25D366]/30"
+                            title="Avisar no WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
@@ -678,6 +875,7 @@ export const AdminDashboardScreen = () => {
                   <div>
                     <h3 className="font-bold text-xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
                     <p className="text-[#8A8A9E] text-sm mt-1">{coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador: ${coupon.ownerId})` : ''}</p>
+                    <p className="text-[#8A8A9E] text-xs mt-1">Usados: {coupon.usedCount || 0} / {coupon.quantity ? coupon.quantity : 'Ilimitado'}</p>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className={`px-3 py-1 rounded-full text-xs ${coupon.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -864,6 +1062,7 @@ export const AdminDashboardScreen = () => {
             <h3 className="text-xl font-bold mb-4">Novo Cupom</h3>
             <input type="text" placeholder="Código" value={couponForm.code} onChange={e => setCouponForm({...couponForm, code: e.target.value})} className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4" />
             <input type="number" placeholder="Desconto %" value={couponForm.discount} onChange={e => setCouponForm({...couponForm, discount: Number(e.target.value)})} className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4" />
+            <input type="number" placeholder="Quantidade Máx. (0 = Ilimitado)" value={couponForm.quantity} onChange={e => setCouponForm({...couponForm, quantity: Number(e.target.value)})} className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4" title="Deixe 0 para ilimitado" />
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowAddCoupon(false)}>Cancelar</Button>
               <Button className="flex-1" onClick={handleAddCoupon}>Salvar</Button>
@@ -920,6 +1119,118 @@ export const AdminDashboardScreen = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modals for Agenda */}
+      <AnimatePresence>
+        {cancelModalOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-[#12121A] border border-[#262636] p-6 rounded-2xl w-full max-w-md relative"
+            >
+              <button 
+                onClick={() => setCancelModalOpen(false)}
+                className="absolute top-4 right-4 p-2 text-[#8A8A9E] hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <h3 className="text-xl font-bold text-white mb-2">Cancelar Consulta</h3>
+              <p className="text-[#8A8A9E] text-sm mb-6">Por favor, informe o motivo do cancelamento. Esta informação ficará registrada no sistema.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-white mb-2">Motivo / Observação</label>
+                  <textarea 
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="Ex: Paciente solicitou cancelamento..."
+                    className="w-full bg-[#161622] border border-[#262636] text-white rounded-xl p-4 min-h-[100px] outline-none focus:border-red-500"
+                  />
+                </div>
+                
+                <button 
+                  onClick={() => {
+                    if (appointmentToCancel) {
+                      cancelAppointment(appointmentToCancel, cancelReason);
+                      setCancelModalOpen(false);
+                      setAppointmentToCancel(null);
+                    }
+                  }}
+                  className="w-full py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors"
+                >
+                  Confirmar Cancelamento
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {rescheduleModalOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-[#12121A] border border-[#262636] p-6 rounded-2xl w-full max-w-md relative"
+            >
+              <button 
+                onClick={() => setRescheduleModalOpen(false)}
+                className="absolute top-4 right-4 p-2 text-[#8A8A9E] hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <h3 className="text-xl font-bold text-white mb-2">Remarcar Consulta</h3>
+              <p className="text-[#8A8A9E] text-sm mb-6">Selecione a nova data e o novo horário para esta consulta.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-white mb-2">Nova Data</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8A9E]" />
+                    <input 
+                      type="date"
+                      value={rescheduleDate}
+                      onChange={(e) => setRescheduleDate(e.target.value)}
+                      className="w-full bg-[#161622] border border-[#262636] text-white rounded-xl p-4 pl-12 outline-none focus:border-blue-500 [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-white mb-2">Novo Horário</label>
+                  <div className="relative">
+                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8A8A9E]" />
+                    <input 
+                      type="time"
+                      value={rescheduleTime}
+                      onChange={(e) => setRescheduleTime(e.target.value)}
+                      className="w-full bg-[#161622] border border-[#262636] text-white rounded-xl p-4 pl-12 outline-none focus:border-blue-500 [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => {
+                    if (appointmentToReschedule && rescheduleDate && rescheduleTime) {
+                      rescheduleAppointment(appointmentToReschedule, rescheduleDate, rescheduleTime);
+                      setRescheduleModalOpen(false);
+                      setAppointmentToReschedule(null);
+                    }
+                  }}
+                  className="w-full py-3 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 transition-colors"
+                >
+                  Confirmar Remarcação
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+

@@ -1,3 +1,4 @@
+import { db } from '../firebase';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
@@ -15,8 +16,8 @@ const PixIcon = ({ className }: { className?: string }) => (
 
 export function PremiumCheckoutScreen() {
   const navigate = useNavigate();
-  const { userName, setPagamentoPremium, incrementBonus } = useStore();
-  const { coupons } = useAdminStore();
+  const { userName, setPagamentoPremium, incrementBonus, addMessage } = useStore();
+  const { coupons, useCoupon } = useAdminStore();
   const [step, setStep] = useState<'discount' | 'checkout'>('discount');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,22 +29,45 @@ export function PremiumCheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
 
-  const basePrice = 2.00; // TESTE
-  const finalPrice = appliedCoupon ? basePrice * (1 - appliedCoupon.discount / 100) : basePrice;
+  const basePrice = 250.00;
+    let finalPrice = basePrice;
+  if (appliedCoupon) {
+    if (appliedCoupon.discountType === 'fixed') {
+      finalPrice = Math.max(0, basePrice - appliedCoupon.discount);
+    } else {
+      finalPrice = basePrice * (1 - appliedCoupon.discount / 100);
+    }
+  }
 
   const handleApplyCoupon = () => {
     setCouponError('');
-    const currentUserId = auth.currentUser?.uid;
+    const currentUserId = auth.currentUser?.uid || 'guest_' + Math.random().toString(36).substring(7); // Use a temp id if not logged in just in case, but auth.currentUser should be there
     const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
     
     if (coupon) {
-      if (coupon.ownerId && coupon.ownerId === currentUserId) {
+      if (coupon.ownerId && coupon.ownerId === auth.currentUser?.uid) {
         setCouponError('Você não pode usar seu próprio cupom de indicação.');
         return;
       }
+      
+      // Check quantity
+      if (coupon.quantity && coupon.quantity > 0) {
+        const currentCount = coupon.usedCount || 0;
+        if (currentCount >= coupon.quantity) {
+          setCouponError('Este cupom atingiu o limite máximo de usos.');
+          return;
+        }
+      }
+      
+      // Check if user already used it
+      if (coupon.usedBy && auth.currentUser?.uid && coupon.usedBy.includes(auth.currentUser.uid)) {
+        setCouponError('Você já utilizou este cupom anteriormente.');
+        return;
+      }
+      
       setAppliedCoupon(coupon);
     } else {
-      setCouponError('Cupom inválido ou expirado.');
+      setCouponError('Cupom inválido ou inativo.');
     }
   };
 
@@ -66,9 +90,13 @@ export function PremiumCheckoutScreen() {
   };
 
   const handleSuccess = () => {
-    alert("Pagamento aprovado! Vamos agendar sua consulta.");
     setPagamentoPremium(true);
-    navigate('/scheduling');
+    addMessage({
+      sender: 'system',
+      type: 'payment_success',
+      text: 'Pagamento da Consulta Premium (R$ 250,00) aprovado com sucesso!'
+    });
+    navigate('/chat');
   };
 
   useEffect(() => {
@@ -80,6 +108,16 @@ export function PremiumCheckoutScreen() {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
               if (pollingInterval.current) clearInterval(pollingInterval.current);
+              try {
+                const { collection, addDoc } = await import('firebase/firestore');
+                const { db } = await import('../firebase');
+                await addDoc(collection(db, 'payments'), {
+                  mpId: pixData.id,
+                  type: selectedOffer === 'basic' ? 'Consulta Básica' : 'Consulta Premium',
+                  value: finalPrice,
+                  date: new Date().toISOString()
+                });
+              } catch(err) { console.error(err); }
               handleSuccess();
             }
           }
@@ -195,7 +233,7 @@ export function PremiumCheckoutScreen() {
               </div>
               {appliedCoupon && (
                 <p className="text-sm text-mecura-neon mt-2">
-                  Cupom {appliedCoupon.code} aplicado (-{appliedCoupon.discount}%)
+                  Cupom {appliedCoupon.code} aplicado (-{appliedCoupon.discountType === 'fixed' ? `R$ ${appliedCoupon.discount}` : `${appliedCoupon.discount}%`})
                 </p>
               )}
             </div>

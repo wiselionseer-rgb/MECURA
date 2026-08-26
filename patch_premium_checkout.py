@@ -1,6 +1,6 @@
 import re
 
-with open("src/screens/CheckoutScreen.tsx", "r") as f:
+with open("src/screens/PremiumCheckoutScreen.tsx", "r") as f:
     code = f.read()
 
 # Make sure we use useCoupon from useAdminStore
@@ -57,27 +57,22 @@ new_apply = """  const handleApplyCoupon = () => {
   };"""
 code = code.replace(old_apply, new_apply)
 
-# We need to call useCoupon when payment completes. 
-# Payment completes at handlePaymentComplete
-old_pay = """      if (selectedOffer === 'premium') {
-        setPagamentoPremium(true);
-        navigate('/schedule/premium');
-      } else {
-        setPagamentoConsulta(true);
-        navigate('/schedule');
-      }"""
+# Handle calling useCoupon on success
+old_success = """  const handleSuccess = () => {
+    setPagamentoPremium(true);
+    incrementBonus(); // +5% for premium upgrade
+    navigate('/schedule/premium');
+  };"""
 
-new_pay = """      if (appliedCoupon && auth.currentUser) {
-        useCoupon(appliedCoupon.id, auth.currentUser.uid);
-      }
-      if (selectedOffer === 'premium') {
-        setPagamentoPremium(true);
-        navigate('/schedule/premium');
-      } else {
-        setPagamentoConsulta(true);
-        navigate('/schedule');
-      }"""
-code = code.replace(old_pay, new_pay)
+new_success = """  const handleSuccess = () => {
+    if (appliedCoupon && auth.currentUser) {
+      useCoupon(appliedCoupon.id, auth.currentUser.uid);
+    }
+    setPagamentoPremium(true);
+    incrementBonus(); // +5% for premium upgrade
+    navigate('/schedule/premium');
+  };"""
+code = code.replace(old_success, new_success)
 
-with open("src/screens/CheckoutScreen.tsx", "w") as f:
+with open("src/screens/PremiumCheckoutScreen.tsx", "w") as f:
     f.write(code)

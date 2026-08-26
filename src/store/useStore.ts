@@ -82,9 +82,10 @@ interface AppState {
     status: 'pending' | 'confirmed' | 'cancelled';
     type: string;
   }>;
-  addAppointment: (appointment: { patientName: string; date: string; time: string; type: string }) => void;
+  addAppointment: (appointment: { patientName: string; date: string; time: string; type: string; status?: 'pending' | 'confirmed' | 'cancelled' }) => void;
   confirmAppointment: (id: string) => void;
-  cancelAppointment: (id: string) => void;
+  cancelAppointment: (id: string, reason?: string) => void;
+  rescheduleAppointment: (id: string, date: string, time: string) => Promise<void>;
   
   // Queue System
   patientId: string | null;
@@ -202,11 +203,10 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const docRef = await addDoc(collection(db, 'appointments'), {
         ...appointment,
-        status: 'pending' as const
+        status: appointment.status || 'pending'
       });
-      set((state) => ({
-        allAppointments: [...state.allAppointments, { ...appointment, id: docRef.id, status: 'pending' as const }]
-      }));
+      // Let onSnapshot handle state update to avoid duplicates
+      // We don't manually append it here.
     } catch (error) {
       console.error("Error adding appointment to Firestore:", error);
     }
@@ -233,16 +233,32 @@ export const useStore = create<AppState>((set, get) => ({
       console.error("Error confirming appointment in Firestore:", error);
     }
   },
-  cancelAppointment: async (id) => {
+  cancelAppointment: async (id, reason) => {
     try {
-      await updateDoc(doc(db, 'appointments', id), { status: 'cancelled' });
+      const updateData: any = { status: 'cancelled' };
+      if (reason) {
+        updateData.cancelReason = reason;
+      }
+      await updateDoc(doc(db, 'appointments', id), updateData);
       set((state) => ({
         allAppointments: state.allAppointments.map((app) => 
-          app.id === id ? { ...app, status: 'cancelled' as const } : app
+          app.id === id ? { ...app, status: 'cancelled' as const, cancelReason: reason } : app
         )
       }));
     } catch (error) {
       console.error("Error cancelling appointment in Firestore:", error);
+    }
+  },
+  rescheduleAppointment: async (id, date, time) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { date, time, status: 'confirmed' });
+      set((state) => ({
+        allAppointments: state.allAppointments.map((app) => 
+          app.id === id ? { ...app, date, time, status: 'confirmed' as const } : app
+        )
+      }));
+    } catch (error) {
+      console.error("Error rescheduling appointment in Firestore:", error);
     }
   },
   

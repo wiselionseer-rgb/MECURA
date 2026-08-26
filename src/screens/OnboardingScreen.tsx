@@ -66,6 +66,13 @@ const SOCIAL_QUESTIONS = [
   { id: 'exercicio', label: 'Pratica atividades físicas?' },
 ];
 
+const DRIVING_QUESTIONS = [
+  { id: 'dirige', label: 'Você dirige veículos automotores regularmente? (Carro, moto, etc)', hasDetails: true },
+  { id: 'maquinario', label: 'Opera maquinário pesado ou realiza atividades de risco?', hasDetails: true },
+  { id: 'blitz', label: 'Passa frequentemente por fiscalizações (ex: lei do drogômetro)?' },
+  { id: 'laudo_psicomotor', label: 'Deseja solicitar o Laudo Psicomotor (disponível apenas na Consulta Premium)?' }
+];
+
 const HEALTH_QUESTIONS = [
   { id: 'tratamento_atual', label: 'Atualmente, faz algum tratamento?', hasDetails: true },
   { id: 'remedios', label: 'Faz uso frequente de remédios?', hasDetails: true },
@@ -103,6 +110,7 @@ const STEPS = [
   { id: 'objective', title: 'Selecione os objetivos que busca com o tratamento', subtitle: 'Você pode selecionar quantas opções quiser.' },
   { id: 'objective_details', title: 'Agora sobre os motivos selecionados:', subtitle: 'Detalhe um pouco mais para o médico.' },
   { id: 'physical', title: 'Informações sobre suas características físicas:', subtitle: 'Dados importantes para dosagem.' },
+  { id: 'driving', title: 'Condução de Veículos e Riscos', subtitle: 'Importante para a nova Lei do Drogômetro e emissão do Laudo Psicomotor.' },
   { id: 'social', title: 'Sobre a sua vida social:', subtitle: 'Responda com muita atenção.', warning: true },
   { id: 'health', title: 'Sobre a sua saúde:', subtitle: 'Responda com muita atenção.', warning: true },
   { id: 'emotional', title: 'Sobre o seu estado emocional atual:', subtitle: 'Responda com muita atenção.', warning: true },
@@ -595,6 +603,9 @@ const STEPS = [
 
           {/* Step: Health */}
           {step.id === 'health' && renderBooleanList(HEALTH_QUESTIONS)}
+
+          {/* Step: Driving */}
+          {step.id === 'driving' && renderBooleanList(DRIVING_QUESTIONS)}
 
           {/* Step: Emotional */}
           {step.id === 'emotional' && renderBooleanList(EMOTIONAL_QUESTIONS)}

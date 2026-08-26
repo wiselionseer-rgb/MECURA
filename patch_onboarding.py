@@ -1,45 +1,39 @@
 import re
-
 with open("src/screens/OnboardingScreen.tsx", "r") as f:
     code = f.read()
 
-old_block = """              <div className="space-y-4">
-                <label className="text-mecura-pearl font-bold">3. Se houver, descreva mais informações:</label>
-                <p className="text-xs text-mecura-silver">Histórico familiar, frequência que sente, tratamentos atuais, etc.</p>
-                <textarea 
-                  value={answers.description || ''}
-                  onChange={(e) => setAnswer('description', e.target.value)}
-                  placeholder="Use esse campo para descrever (Opcional)"
-                  className="w-full h-32 rounded-xl border border-mecura-elevated bg-mecura-surface-light p-4 text-mecura-pearl placeholder:text-mecura-silver focus:outline-none focus:border-mecura-neon resize-none"
-                />
-              </div>"""
+driving_questions = """const DRIVING_QUESTIONS = [
+  { id: 'dirige', label: 'Você dirige veículos automotores regularmente? (Carro, moto, etc)', hasDetails: true },
+  { id: 'maquinario', label: 'Opera maquinário pesado ou realiza atividades de risco?', hasDetails: true },
+  { id: 'blitz', label: 'Passa frequentemente por fiscalizações (ex: lei do drogômetro)?' },
+  { id: 'laudo_psicomotor', label: 'Deseja solicitar o Laudo Psicomotor (disponível apenas na Consulta Premium)?' }
+];
 
-new_block = """              <div className="space-y-4">
-                <label className="text-mecura-pearl font-bold">3. Como tudo começou? (Resumo da sua condição)</label>
-                <p className="text-xs text-mecura-silver">Conte brevemente sobre a origem da sua doença ou problema. Ex: "Tive um acidente que causou a dor nas costas", "Fui diagnosticado há 5 anos", "Começou do nada e foi piorando". Isso é fundamental para o seu laudo.</p>
-                <textarea 
-                  value={answers.diseaseOrigin || ''}
-                  onChange={(e) => setAnswer('diseaseOrigin', e.target.value)}
-                  placeholder="Escreva aqui a história do seu problema..."
-                  className="w-full h-24 rounded-xl border border-mecura-elevated bg-mecura-surface-light p-4 text-mecura-pearl placeholder:text-mecura-silver focus:outline-none focus:border-mecura-neon resize-none"
-                />
-              </div>
+const HEALTH_QUESTIONS = ["""
 
-              <div className="space-y-4">
-                <label className="text-mecura-pearl font-bold">4. Outros detalhes (Opcional):</label>
-                <p className="text-xs text-mecura-silver">Histórico familiar, frequência dos sintomas, etc.</p>
-                <textarea 
-                  value={answers.description || ''}
-                  onChange={(e) => setAnswer('description', e.target.value)}
-                  placeholder="Use esse campo para descrever mais detalhes se necessário"
-                  className="w-full h-20 rounded-xl border border-mecura-elevated bg-mecura-surface-light p-4 text-mecura-pearl placeholder:text-mecura-silver focus:outline-none focus:border-mecura-neon resize-none"
-                />
-              </div>"""
+code = code.replace("const HEALTH_QUESTIONS = [", driving_questions)
 
-if old_block in code:
-    code = code.replace(old_block, new_block)
-    with open("src/screens/OnboardingScreen.tsx", "w") as f:
-        f.write(code)
-    print("Onboarding updated successfully.")
-else:
-    print("Error: Old block not found in OnboardingScreen.tsx.")
+old_steps = """  { id: 'physical', title: 'Informações sobre suas características físicas:', subtitle: 'Dados importantes para dosagem.' },
+  { id: 'social', title: 'Sobre a sua vida social:', subtitle: 'Responda com muita atenção.', warning: true },"""
+
+new_steps = """  { id: 'physical', title: 'Informações sobre suas características físicas:', subtitle: 'Dados importantes para dosagem.' },
+  { id: 'driving', title: 'Condução de Veículos e Riscos', subtitle: 'Importante para a nova Lei do Drogômetro e emissão do Laudo Psicomotor.' },
+  { id: 'social', title: 'Sobre a sua vida social:', subtitle: 'Responda com muita atenção.', warning: true },"""
+
+code = code.replace(old_steps, new_steps)
+
+old_render = """          {/* Step: Emotional */}
+          {step.id === 'emotional' && renderBooleanList(EMOTIONAL_QUESTIONS)}"""
+
+new_render = """          {/* Step: Driving */}
+          {step.id === 'driving' && renderBooleanList(DRIVING_QUESTIONS)}
+
+          {/* Step: Emotional */}
+          {step.id === 'emotional' && renderBooleanList(EMOTIONAL_QUESTIONS)}"""
+
+code = code.replace(old_render, new_render)
+
+with open("src/screens/OnboardingScreen.tsx", "w") as f:
+    f.write(code)
+
+print("OnboardingScreen patched.")
