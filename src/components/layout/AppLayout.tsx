@@ -5,7 +5,8 @@ import { NotificationToast } from '../NotificationToast';
 import { EnableNotificationsBanner } from '../EnableNotificationsBanner';
 import { subscribeToBackgroundNotifications } from '../../utils/notifications';
 import { useStore } from '../../store/useStore';
-import { auth } from '../../firebase';
+import { auth, db } from '../../firebase';
+import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
@@ -61,8 +62,16 @@ export function AppLayout() {
     // Set up event listeners for user activity
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     
+    let lastUpdate = 0;
     const handleActivity = () => {
       resetTimeout();
+      const now = Date.now();
+      if (now - lastUpdate > 60000 && auth.currentUser) {
+        lastUpdate = now;
+        setDoc(doc(db, 'users', auth.currentUser.uid), {
+          lastActive: serverTimestamp()
+        }, { merge: true }).catch(() => {});
+      }
     };
 
     events.forEach(event => {

@@ -38,7 +38,29 @@ import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, delete
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda'>('overview');
-  const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
+  
+  const forceSendToQueue = async (patient: any) => {
+    try {
+      await setDoc(doc(db, 'queue', patient.id), {
+        patientId: patient.id,
+        patientName: patient.name || 'Sem nome',
+        email: patient.email || 'sem-email@mecura.com',
+        tier: patient.tier || 'basic',
+        status: 'waiting',
+        joinedAt: new Date().toISOString(),
+      });
+      setSupportToastMessage(`${patient.name || 'Sem nome'} enviado para a fila!`);
+      setShowSupportToast(true);
+      setTimeout(() => setShowSupportToast(false), 3000);
+    } catch (e) {
+      console.error(e);
+      setSupportToastMessage('Erro ao enviar para a fila.');
+      setShowSupportToast(true);
+      setTimeout(() => setShowSupportToast(false), 3000);
+    }
+  };
+const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
+  const [patientSearch, setPatientSearch] = useState('');
   const [agendaStatusFilter, setAgendaStatusFilter] = useState('all');
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -657,33 +679,58 @@ export const AdminDashboardScreen = () => {
         )}
         {activeTab === 'patients' && (
           <div className="max-w-4xl mx-auto space-y-6">
-            <h2 className="text-2xl font-bold mb-6">Pacientes Cadastrados</h2>
+            <div className="flex justify-between items-center mb-6">
+               <h2 className="text-2xl font-bold">Pacientes Cadastrados</h2>
+               <input 
+                  type="text" 
+                  placeholder="Buscar paciente..." 
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  className="bg-[#161622] border border-[#262636] rounded-lg px-4 py-2 outline-none focus:border-mecura-neon w-64"
+               />
+            </div>
             <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden">
-              <div className="grid grid-cols-4 p-4 border-b border-[#262636] text-[#8A8A9E] font-bold">
+              <div className="grid grid-cols-5 p-4 border-b border-[#262636] text-[#8A8A9E] font-bold text-sm">
                 <div>Nome</div>
                 <div>Email</div>
                 <div>Plano</div>
-                <div>Status</div>
+                <div>Status / Online</div>
+                <div>Ações</div>
               </div>
               <div className="divide-y divide-[#262636]">
-                {patients.length > 0 ? patients.map(p => (
-                  <div key={p.id} className="grid grid-cols-4 p-4 items-center">
-                    <div className="font-bold text-white">{p.name || 'Sem nome'}</div>
-                    <div className="text-[#8A8A9E] text-sm">{p.email || 'N/A'}</div>
+                {patients.length > 0 ? patients.filter(p => {
+                    const search = patientSearch.toLowerCase();
+                    if (!search) return true; 
+                    return p.name?.toLowerCase().includes(search) || p.email?.toLowerCase().includes(search);
+                }).map(p => {
+                  const lastActiveMs = p.lastActive?.toMillis ? p.lastActive.toMillis() : (p.lastActive?.seconds ? p.lastActive.seconds * 1000 : (p.lastActive ? new Date(p.lastActive).getTime() : 0));
+                  const isOnline = lastActiveMs > 0 && (Date.now() - lastActiveMs) < 5 * 60000;
+                  return (
+                  <div key={p.id} className="grid grid-cols-5 p-4 items-center gap-2">
+                    <div className="font-bold text-white text-sm break-words">{p.name || 'Sem nome'}</div>
+                    <div className="text-[#8A8A9E] text-xs break-all">{p.email || 'N/A'}</div>
                     <div>
                        <span className={`px-2 py-1 rounded-full text-xs ${p.tier === 'Premium' ? 'bg-purple-500/20 text-purple-400' : 'bg-mecura-neon/20 text-mecura-neon'}`}>
                          {p.tier || 'Essencial'}
                        </span>
                     </div>
-                    <div>
+                    <div className="flex flex-col gap-1 items-start">
                        {p.hasCompletedOnboarding ? (
-                          <span className="text-green-400 text-sm">Ativo</span>
+                          <span className="text-green-400 text-xs">Ativo</span>
                        ) : (
-                          <span className="text-yellow-400 text-sm">Pendente</span>
+                          <span className="text-yellow-400 text-xs">Pendente</span>
+                       )}
+                       {isOnline ? (
+                          <span className="flex items-center gap-1 text-[10px] text-mecura-neon"><span className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse"></span> Online</span>
+                       ) : (
+                          <span className="text-[10px] text-[#8A8A9E]">Offline</span>
                        )}
                     </div>
+                    <div className="flex flex-col gap-1">
+                       <Button variant="outline" className="text-xs h-8 px-2 w-full" onClick={() => forceSendToQueue(p)}>Mover p/ Fila</Button>
+                       <Button variant="outline" className="text-xs h-8 px-2 w-full" onClick={() => setShowAgenda(p.id)}><Calendar className="w-3 h-3 mr-1"/> Agenda</Button>
+                    </div>
                   </div>
-                )) : (
+                )}) : (
                   <div className="p-8 text-center text-[#8A8A9E]">Nenhum paciente encontrado.</div>
                 )}
               </div>
@@ -1089,12 +1136,51 @@ export const AdminDashboardScreen = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
           <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-3xl max-h-[80vh] flex flex-col">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Agenda</h3>
+              <h3 className="text-xl font-bold">Agenda do Paciente</h3>
               <button onClick={() => setShowAgenda(null)}><XCircle className="w-6 h-6" /></button>
             </div>
+            
+            <div className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl mb-4">
+               <h4 className="font-bold mb-3">Agendar Nova Consulta</h4>
+               <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  const form = e.target as HTMLFormElement;
+                  const date = (form.elements.namedItem('date') as HTMLInputElement).value;
+                  const time = (form.elements.namedItem('time') as HTMLInputElement).value;
+                  const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
+                  
+                  if(!date || !time) return;
+                  
+                  try {
+                    await addDoc(collection(db, 'appointments'), {
+                      patientId: showAgenda,
+                      patientName: patients.find(p => p.id === showAgenda)?.name || 'Paciente',
+                      date,
+                      time,
+                      type,
+                      status: 'pending',
+                      createdAt: new Date().toISOString()
+                    });
+                    form.reset();
+                    setSupportToastMessage('Agendado com sucesso!');
+                    setShowSupportToast(true);
+                    setTimeout(() => setShowSupportToast(false), 3000);
+                  } catch(err) {
+                    console.error(err);
+                  }
+               }} className="grid grid-cols-2 gap-3">
+                 <input type="date" name="date" required className="bg-[#161622] border border-[#262636] rounded-lg px-3 py-2 text-sm" />
+                 <input type="time" name="time" required className="bg-[#161622] border border-[#262636] rounded-lg px-3 py-2 text-sm" />
+                 <select name="type" className="bg-[#161622] border border-[#262636] rounded-lg px-3 py-2 text-sm col-span-2">
+                   <option value="Consulta Básica">Consulta Básica</option>
+                   <option value="Consulta Premium">Consulta Premium</option>
+                 </select>
+                 <Button type="submit" className="col-span-2 text-sm py-2 h-auto">Confirmar Agendamento</Button>
+               </form>
+            </div>
             <div className="flex-1 overflow-y-auto space-y-4">
-              {allAppointments.length > 0 ? (
-                allAppointments.map(app => (
+              {allAppointments.filter(app => app.doctorId === showAgenda || app.patientId === showAgenda).length > 0 ? (
+                allAppointments.filter(app => app.doctorId === showAgenda || app.patientId === showAgenda).map(app => (
                   <div key={app.id} className="bg-[#0A0A0F] border border-[#262636] rounded-2xl p-4 flex justify-between">
                     <div>
                       <div className="font-bold">{app.patientName}</div>
