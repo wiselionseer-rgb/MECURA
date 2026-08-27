@@ -1,70 +1,32 @@
 import re
 
-with open("src/screens/DashboardScreen.tsx", "r") as f:
+with open("src/screens/AdminDashboardScreen.tsx", "r") as f:
     code = f.read()
 
-old_block = """            <button
-              onClick={() => {
-                if (promoModal === 'sementes') {
-                  window.open('https://super.sementesagrada.com/', '_blank');
-                } else {
-                  window.open('https://instmecura.sementesagrada.com/', '_blank');
-                }
-                setPromoModal(null);
-              }}
-              className="w-full h-12 bg-mecura-neon hover:bg-[#8FFF00] text-[#0A0A0F] rounded-[16px] font-bold text-[15px] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(166,255,0,0.3)]"
-            >
-              Acessar Site
-            </button>
-            <button 
-              onClick={() => setPromoModal(null)}
-              className="w-full mt-3 h-10 text-[#8A8A9E] hover:text-white font-medium text-[13px] transition-colors cursor-pointer"
-            >
-              Voltar
-            </button>"""
+# Make sure we have the required icons
+if "Key" not in code or "MessageCircle" not in code:
+    code = code.replace("import { Users, UserCircle, Settings, Plus, FileText, Trash2, Calendar, Pill, Ticket, Bell, XCircle } from 'lucide-react';", 
+                        "import { Users, UserCircle, Settings, Plus, FileText, Trash2, Calendar, Pill, Ticket, Bell, XCircle, Key, MessageCircle, AlertTriangle } from 'lucide-react';")
 
-new_block = """            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  const msgs: Record<string, string> = {
-                    hc: 'Olá! Gostaria de saber mais sobre a estruturação para o Habeas Corpus de cultivo.',
-                    consultoria: 'Olá! Gostaria de saber mais sobre a consultoria de cultivo do zero.',
-                    sementes: 'Olá! Gostaria de saber mais sobre as Sementes da Europa para cultivo terapêutico.'
-                  };
-                  window.open(`https://wa.me/5566996280883?text=${encodeURIComponent(msgs[promoModal || 'hc'])}`, '_blank');
-                  setPromoModal(null);
-                }}
-                className="w-full h-12 bg-[#25D366] hover:bg-[#20b858] text-white rounded-[16px] font-bold text-[15px] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
-              >
-                Falar no WhatsApp
-              </button>
+# Replace the Actions column buttons
+old_actions = """                    <div className="flex flex-col gap-1">
+                       <Button variant="outline" className="text-xs h-8 px-2 w-full" onClick={() => forceSendToQueue(p)}>Mover p/ Fila</Button>
+                       <Button variant="outline" className="text-xs h-8 px-2 w-full" onClick={() => setShowAgenda(p.id)}><Calendar className="w-3 h-3 mr-1"/> Agenda</Button>
+                    </div>"""
 
-              <button
-                onClick={() => {
-                  if (promoModal === 'sementes') {
-                    window.open('https://super.sementesagrada.com/', '_blank');
-                  } else {
-                    window.open('https://instmecura.sementesagrada.com/', '_blank');
-                  }
-                  setPromoModal(null);
-                }}
-                className="w-full h-12 bg-[#1A1A24] border border-[#A6FF00]/30 hover:border-[#A6FF00] text-white rounded-[16px] font-bold text-[15px] flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                Acessar Site
-              </button>
+new_actions = """                    <div className="flex flex-col gap-1">
+                       <div className="grid grid-cols-2 gap-1">
+                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon" onClick={() => forceSendToQueue(p)} title="Mover para Fila">Fila</Button>
+                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-blue-500/20 hover:text-blue-400" onClick={() => setShowAgenda(p.id)} title="Agenda"><Calendar className="w-3 h-3 mr-1"/> Agend.</Button>
+                       </div>
+                       <div className="grid grid-cols-3 gap-1">
+                         <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-green-500/20 hover:text-green-400" onClick={() => window.open(`https://wa.me/55${(p.phone || '').replace(/\D/g, '')}`, '_blank')} title="WhatsApp"><MessageCircle className="w-3 h-3"/></Button>
+                         <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-yellow-500/20 hover:text-yellow-400" onClick={() => setShowEditPatientPassword(p.id)} title="Trocar Senha"><Key className="w-3 h-3"/></Button>
+                         <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-red-500/20 hover:text-red-400" onClick={() => setDeletePatientConfirm(p.id)} title="Excluir Paciente"><Trash2 className="w-3 h-3"/></Button>
+                       </div>
+                    </div>"""
 
-              <button 
-                onClick={() => setPromoModal(null)}
-                className="w-full h-10 text-[#8A8A9E] hover:text-white font-medium text-[13px] transition-colors cursor-pointer"
-              >
-                Voltar
-              </button>
-            </div>"""
+code = code.replace(old_actions, new_actions)
 
-if old_block in code:
-    code = code.replace(old_block, new_block)
-    with open("src/screens/DashboardScreen.tsx", "w") as f:
-        f.write(code)
-    print("Replaced buttons.")
-else:
-    print("Could not find block.")
+with open("src/screens/AdminDashboardScreen.tsx", "w") as f:
+    f.write(code)
