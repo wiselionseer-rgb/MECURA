@@ -650,7 +650,7 @@ export function DoctorDashboardScreen() {
         await addMessage({
           sender: 'doctor',
           type: 'product',
-          productData: item
+          productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
         });
       }
       

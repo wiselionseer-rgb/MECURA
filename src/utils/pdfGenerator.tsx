@@ -51,8 +51,8 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
 export const generatePrescriptionPDF = async (
   userName: string, 
   messages: Message[],
-  patientData?: PatientPrescriptionData
-) => {
+  patientData?: PatientPrescriptionData & { returnBlob?: boolean }
+): Promise<Blob | void> => {
   const sanitize = (text: string) => {
     return (text || '')
       .replace(/[–—]/g, '-')
@@ -277,10 +277,17 @@ export const generatePrescriptionPDF = async (
   const opt = {
     margin: 0,
     filename: `Receita_Medica_${sanitizedUserName}.pdf`,
-    image: { type: 'jpeg', quality: 1 },
+    image: { type: 'jpeg' as const, quality: 1 },
     html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
   };
+
+  if (patientData?.returnBlob) {
+    const pdfBlob = await html2pdf().set(opt).from(container).output('blob');
+    root.unmount();
+    document.body.removeChild(container);
+    return pdfBlob;
+  }
 
   await html2pdf().set(opt).from(container).save();
 

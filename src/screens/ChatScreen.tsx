@@ -18,6 +18,25 @@ export function ChatScreen() {
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
   const [prevMessageCount, setPrevMessageCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+  useEffect(() => {
+    if (messages.some(m => m.type === 'prescription') && !pdfBlob && !isGeneratingPDF) {
+      setIsGeneratingPDF(true);
+      generatePrescriptionPDF(userName, messages, {
+        birthDate: userBirthDate || (answers && answers.birthDate),
+        cpf: userCpf || (answers && answers.cpf),
+        returnBlob: true
+      }).then(url => {
+        if (url instanceof Blob) setPdfBlob(url);
+        setIsGeneratingPDF(false);
+      }).catch(err => {
+        console.error(err);
+        setIsGeneratingPDF(false);
+      });
+    }
+  }, [messages, pdfBlob, isGeneratingPDF, userName, userBirthDate, userCpf, answers]);
 
   useEffect(() => {
     if (patientId) {
@@ -81,11 +100,46 @@ export function ChatScreen() {
     }
   }, [activeConsultationId, patientId, currentUid, subscribeToMessages]);
 
-  const handleGeneratePDF = () => {
-    generatePrescriptionPDF(userName, messages, {
-      birthDate: userBirthDate || (answers && answers.birthDate),
-      cpf: userCpf || (answers && answers.cpf)
-    });
+  const handleGeneratePDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      const blob = await generatePrescriptionPDF(userName, messages, {
+        birthDate: userBirthDate || (answers && answers.birthDate),
+        cpf: userCpf || (answers && answers.cpf),
+        returnBlob: true
+      });
+      if (blob instanceof Blob) {
+        setPdfBlob(blob);
+        triggerDownloadOrShare(blob);
+      }
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const triggerDownloadOrShare = async (blob: Blob) => {
+    const fileName = `Receita_${userName || 'Paciente'}.pdf`;
+    if (navigator.share && navigator.canShare) {
+      try {
+        const file = new File([blob], fileName, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Receita Médica' });
+          return;
+        }
+      } catch (e) {
+        console.log('Share API falhou, usando fallback', e);
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   };
 
   useEffect(() => {
@@ -390,24 +444,45 @@ export function ChatScreen() {
                   <p className="text-mecura-silver text-xs mb-6 font-mono">ID: RX-{Math.random().toString(36).substring(2, 8).toUpperCase()}</p>
                   
                   <div className="flex flex-col gap-3">
-                    <Button 
-                      onClick={() => {
-                        if (msg.attachment) {
+                    {msg.attachment ? (
+                      <Button 
+                        onClick={() => {
                           const a = document.createElement('a');
                           a.href = msg.attachment.url;
                           a.download = msg.attachment.name;
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);
-                        } else {
-                          handleGeneratePDF();
-                        }
-                      }} 
-                      className="w-full bg-mecura-neon text-black hover:bg-[#b5ff33] font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Baixar PDF
-                    </Button>
+                        }} 
+                        className="w-full bg-mecura-neon text-black hover:bg-[#b5ff33] font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Baixar PDF
+                      </Button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                           e.preventDefault();
+                           if (pdfBlob) {
+                             triggerDownloadOrShare(pdfBlob);
+                           } else if (!isGeneratingPDF) {
+                             handleGeneratePDF();
+                           }
+                        }}
+                        className={`w-full flex items-center justify-center bg-mecura-neon text-black font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 ${!pdfBlob ? 'opacity-70 cursor-wait' : 'hover:bg-[#b5ff33]'}`}
+                      >
+                        {isGeneratingPDF ? (
+                          <span className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                            Gerando PDF...
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <Download className="w-4 h-4" /> Baixar PDF
+                          </span>
+                        )}
+                      </button>
+                    )}
                     <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/5 rounded-xl h-12" onClick={() => navigate('/pharmacy')}>
                       <ShoppingCart className="w-4 h-4 mr-2" />
                       Ir para a Loja
