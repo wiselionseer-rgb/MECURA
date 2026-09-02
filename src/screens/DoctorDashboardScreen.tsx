@@ -261,7 +261,7 @@ export function DoctorDashboardScreen() {
           ? patient.answers.objectives.join(", ") 
           : "suas queixas e histórico";
           
-        const greetingMsg = `Olá ${patient.patientName.split(' ')[0]}, sou o Dr. Guilherme. Analisei sua queixa de ${objectivesStr}. Como você está se sentindo hoje?`;
+        const greetingMsg = `Olá ${(patient.patientName || 'Paciente').split(' ')[0]}, sou o Dr. Guilherme. Analisei sua queixa de ${objectivesStr}. Como você está se sentindo hoje?`;
         
         addMessage({
           text: greetingMsg,
@@ -1279,8 +1279,8 @@ CIDs Secundários: ${cidsSecundarios}`;
               </div>
         
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 custom-scrollbar">
-          {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && p.patientName.toLowerCase().includes(queueSearchTerm.toLowerCase())).length > 0 ? (
-            [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && p.patientName.toLowerCase().includes(queueSearchTerm.toLowerCase())).sort((a, b) => {
+          {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes(queueSearchTerm.toLowerCase())).length > 0 ? (
+            [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes(queueSearchTerm.toLowerCase())).sort((a, b) => {
               // 1. Unread messages first
               if (a.hasUnread && !b.hasUnread) return -1;
               if (!a.hasUnread && b.hasUnread) return 1;
@@ -2929,7 +2929,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                 {!selectedHistoryItem ? (
                   <>
                     {useStore.getState().consultationHistory
-                      .filter(h => h.patientName.toLowerCase().includes(historySearchTerm.toLowerCase()))
+                      .filter(h => (h.patientName || '').toLowerCase().includes(historySearchTerm.toLowerCase()))
                       .sort((a, b) => b.date.getTime() - a.date.getTime())
                       .map((history) => (
                         <div 
@@ -2966,7 +2966,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                         </div>
                       ))}
                     
-                    {useStore.getState().consultationHistory.filter(h => h.patientName.toLowerCase().includes(historySearchTerm.toLowerCase())).length === 0 && (
+                    {useStore.getState().consultationHistory.filter(h => (h.patientName || '').toLowerCase().includes(historySearchTerm.toLowerCase())).length === 0 && (
                       <div className="text-center py-12">
                         <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto mb-4">
                           <Search className="w-8 h-8 text-mecura-elevated" />

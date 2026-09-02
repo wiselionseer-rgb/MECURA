@@ -116,7 +116,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     updateProduct,
     deleteProduct
   } = useAdminStore();
-  const { allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment } = useStore();
+  const { queue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
   const passwordRequests = supportRequests.filter(req => req.userId === 'recovery');
@@ -751,7 +751,12 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   const isOnline = lastActiveMs > 0 && (Date.now() - lastActiveMs) < 5 * 60000;
                   return (
                   <div key={p.id} className="grid grid-cols-5 p-4 items-center gap-2">
-                    <div className="font-bold text-white text-sm break-words">{p.name || 'Sem nome'}</div>
+                    <div className="font-bold text-white text-sm break-words flex items-center gap-2">
+  {p.name || 'Sem nome'}
+  {queue.find(q => q.id === p.id && q.status === 'waiting') && (
+    <span className="bg-mecura-neon/20 text-mecura-neon text-[9px] px-1.5 py-0.5 rounded-full whitespace-nowrap">Na Fila</span>
+  )}
+</div>
                     <div className="text-[#8A8A9E] text-xs break-all">{p.email || 'N/A'}</div>
                     <div>
                        <span className={`px-2 py-1 rounded-full text-xs ${p.tier === 'Premium' ? 'bg-purple-500/20 text-purple-400' : 'bg-mecura-neon/20 text-mecura-neon'}`}>
