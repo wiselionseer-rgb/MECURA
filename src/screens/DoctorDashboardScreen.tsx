@@ -446,7 +446,7 @@ export function DoctorDashboardScreen() {
     
     const dosageString = `${dosageInput} ${periods.length > 0 ? `(${periods.join(', ')})` : ''}`;
     
-    const fullDosage = `${dosageString}\n\n${adminInstructions}\n\nBLOCO IMPORTANTE:\nUso sob orientação de profissional de saúde. Pode causar sonolência. Evitar dirigir ou operar máquinas. Manter fora do alcance de crianças.`;
+    const fullDosage = adminInstructions ? `${dosageString}\n\n${adminInstructions}` : dosageString;
     
     // Enrich product data dynamically if missing
     let details = selectedProduct.details || [selectedProduct.type];
@@ -630,7 +630,13 @@ export function DoctorDashboardScreen() {
         }
       ]);
     }
-    setPrescNotes(notes || 'Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n- Administrar com alimentos gordurosos (preferencia, não obrigatorio) - podendo aumentar em até 5x a absorção.\n- Se observado sonolencia durante o dia apos a administração do medicamento, reduzir em 1/3 a dose da manhã e 2/3 a noite.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos continuos.');
+    const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferencia, não obrigatorio) - podendo aumentar em até 5x a absorção.\n- Se observado sonolencia durante o dia apos a administração do medicamento, reduzir em 1/3 a dose da manhã e 2/3 a noite.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos continuos.';
+    
+    let finalNotes = notes || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
+    if (notes && !notes.includes('alimentos gordurosos')) {
+      finalNotes += '\n\n' + defaultNotesToAdd;
+    }
+    setPrescNotes(finalNotes);
     setPrescriptionTab('edit');
     setShowPrescriptionEditorModal(true);
   };
@@ -2837,7 +2843,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                         }}
                       >
                         <option value="">Selecione a via...</option>
-                        <option value="Sublingual (óleo de cannabis)&#10;Depositar as gotas sob a língua&#10;Manter por 60-90 segundos antes de engolir&#10;Evitar ingerir alimentos ou líquidos logo após&#10;Iniciar com dose baixa e ajustar gradualmente">Sublingual (óleo de cannabis)</option>
+                        <option value="Sublingual (óleo de cannabis)&#10;Depositar as gotas sob a língua&#10;Manter por 60-90 segundos antes de engolir&#10;Iniciar com dose baixa e ajustar gradualmente">Sublingual (óleo de cannabis)</option>
                         <option value="Oral (cápsulas / comestíveis)&#10;Ingerir a dose com água ou conforme orientação&#10;Pode ser consumido junto com alimentos&#10;O efeito pode levar de 30 minutos a 2 horas&#10;Evitar repetir a dose antes do tempo de ação">Oral (cápsulas / comestíveis)</option>
                         <option value="Inalação (vaporizador)&#10;Inalar lentamente o vapor&#10;Segurar por alguns segundos antes de expirar&#10;Efeito rápido (poucos minutos)&#10;Iniciar com pequenas quantidades">Inalação (vaporizador)</option>
                         <option value="Tópico (cremes / pomadas com cannabis)&#10;Aplicar na região desejada&#10;Massagear até completa absorção&#10;Uso local para alívio de dor ou inflamação&#10;Não aplicar em feridas abertas">Tópico (cremes / pomadas com cannabis)</option>
@@ -2849,10 +2855,6 @@ CIDs Secundários: ${cidsSecundarios}`;
                       </div>
                     </div>
 
-                    <div className="text-xs text-red-400 bg-red-400/10 p-3 rounded-xl border border-red-400/20">
-                      <p className="font-bold mb-1">⚠️ BLOCO IMPORTANTE</p>
-                      <p>Uso sob orientação de profissional de saúde<br/>Pode causar sonolência<br/>Evitar dirigir ou operar máquinas<br/>Manter fora do alcance de crianças</p>
-                    </div>
                   </div>
 
                   <div className="flex justify-end gap-3 pt-4 border-t border-mecura-elevated">

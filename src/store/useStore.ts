@@ -186,8 +186,8 @@ export const useStore = create<AppState>((set, get) => ({
     answers: { ...state.answers, [key]: value } 
   })),
   
-  pagamento_consulta: false,
-  setPagamentoConsulta: (status) => set({ pagamento_consulta: status }),
+  pagamento_consulta: typeof window !== 'undefined' ? localStorage.getItem('mecura_pagamento') === 'true' : false,
+  setPagamentoConsulta: (status) => { if (typeof window !== 'undefined') { localStorage.setItem('mecura_pagamento', status.toString()); } set({ pagamento_consulta: status }); },
   pagamento_premium: false,
   setPagamentoPremium: (status) => set({ pagamento_premium: status }),
   selectedOffer: null,
@@ -262,8 +262,8 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   
-  patientId: null,
-  setPatientId: (id) => set({ patientId: id }),
+  patientId: typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null,
+  setPatientId: (id) => { if (typeof window !== 'undefined') { if (id) localStorage.setItem('mecura_patientId', id); else localStorage.removeItem('mecura_patientId'); } set({ patientId: id }); },
   
   inQueue: false,
   queuePosition: 0,
@@ -274,6 +274,7 @@ export const useStore = create<AppState>((set, get) => ({
     const currentUserId = auth.currentUser?.uid || state.patientId || `anon_${Date.now()}`;
     
     // Save the generated or existing ID
+    if (typeof window !== 'undefined') { localStorage.setItem('mecura_patientId', currentUserId); localStorage.setItem('mecura_pagamento', 'true'); }
     set({ 
       patientId: currentUserId,
       inQueue: true,
@@ -482,7 +483,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       } else if (!isDoctorRoute) {
         // Handle anonymous users based on their local state
-        if (state.inQueue || state.consultationActive || state.isConsultationFinished) {
+        if (state.patientId) {
           // Find their position based on their generated ID if possible, or just rely on local state
           const myIndex = queueData.findIndex(p => p.id === state.patientId);
           if (myIndex !== -1) {
@@ -692,13 +693,13 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
   setIsConsultationFinished: (status) => set({ isConsultationFinished: status }),
-  resetConsultation: () => set({ 
+  resetConsultation: () => { if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento'); return set({ 
     consultationActive: false, 
     isConsultationFinished: false,
     pagamento_consulta: false, 
     answers: { objectives: [] }, 
     messages: [] 
-  }),
+  }) },
   
   messages: [],
   addMessage: async (msg) => {
@@ -893,7 +894,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   
-  reset: () => set({
+  reset: () => { if (typeof window !== 'undefined') { localStorage.removeItem('mecura_patientId'); localStorage.removeItem('mecura_pagamento'); } return set({
     userName: '',
     userEmail: '',
     userPhone: '',
@@ -917,5 +918,5 @@ export const useStore = create<AppState>((set, get) => ({
     isConsultationFinished: false,
     activeConsultationId: null,
     messages: []
-  }),
+  }) },
 }));

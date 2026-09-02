@@ -27,11 +27,11 @@ code = code.replace(
 
 // Update joinQueue
 code = code.replace(
-  "set({ \n      patientId: currentUserId,",
-  "if (typeof window !== 'undefined') { localStorage.setItem('mecura_patientId', currentUserId); localStorage.setItem('mecura_pagamento', 'true'); }\n    set({ \n      patientId: currentUserId,"
+  "set({\n      patientId: currentUserId,",
+  "if (typeof window !== 'undefined') { localStorage.setItem('mecura_patientId', currentUserId); localStorage.setItem('mecura_pagamento', 'true'); }\n    set({\n      patientId: currentUserId,"
 );
 code = code.replace(
-  "set({\n      patientId: currentUserId,",
+  "set({ \n      patientId: currentUserId,",
   "if (typeof window !== 'undefined') { localStorage.setItem('mecura_patientId', currentUserId); localStorage.setItem('mecura_pagamento', 'true'); }\n    set({\n      patientId: currentUserId,"
 );
 
