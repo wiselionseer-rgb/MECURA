@@ -623,19 +623,47 @@ export function DoctorDashboardScreen() {
           quantity: defaultEnriched.quantity,
           administrationRoute: defaultEnriched.administrationRoute,
           dosage: [
-            'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
+            'Tomar 03 gotas de 12/12 horas (sublingual).',
             'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).'
           ],
           description: 'Extrato integral rico em Canabidiol com excelente rendimento e custo-benefício.'
         }
       ]);
     }
-    setPrescNotes(notes || 'Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.');
+    setPrescNotes(notes || 'Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n- Administrar com alimentos gordurosos (preferencia, não obrigatorio) - podendo aumentar em até 5x a absorção.\n- Se observado sonolencia durante o dia apos a administração do medicamento, reduzir em 1/3 a dose da manhã e 2/3 a noite.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos continuos.');
     setPrescriptionTab('edit');
     setShowPrescriptionEditorModal(true);
   };
 
-  const handleDownloadPrescriptionFromEditor = () => {
+  const handleDownloadPrescriptionFromEditor = async () => {
+    // 1. Atualizar o chat (banco de dados) com a versão final editada para o paciente ver
+    if (currentPatient && currentPatient.id) {
+      await clearPrescriptionMessages(currentPatient.id);
+      
+      for (const item of prescItems) {
+        await addMessage({
+          sender: 'doctor',
+          type: 'product',
+          productData: item
+        });
+      }
+      
+      if (prescNotes && prescNotes.trim()) {
+        await addMessage({
+          sender: 'doctor',
+          type: 'prescription_notes',
+          text: prescNotes
+        });
+      }
+
+      // Adicionar o card de download da receita novamente para o paciente
+      await addMessage({
+        sender: 'doctor',
+        type: 'prescription'
+      });
+    }
+
+    // 2. Gerar o PDF com os dados editados
     generatePrescriptionPDF(prescPatientName, messages, {
       customPatientName: prescPatientName,
       birthDate: prescBirthDate,
@@ -787,7 +815,7 @@ CIDs Secundários: ${cidsSecundarios}`;
       : `1. ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (Associação Brasileira / Nacional)
    Princípio Ativo: Canabidiol (CBD) Full Spectrum 100mg/ml, Delta-9-THC < 0,2%, Terpenos
    Apresentação / Via: Solução Oleosa Gotas • 01 Frasco 30ml • Via Sublingual
-   Posologia: Tomar 03 gotas pela manhã e 03 gotas à noite, aumentando 01 gota a cada 05 dias até controle dos sintomas.
+   Posologia: Tomar 03 gotas de 12/12 horas, aumentando 01 gota a cada 05 dias até controle dos sintomas.
    Finalidade: Modulação ansiolítica, regulação do ciclo circadiano e analgesia inflamatória.`;
 
     const defaultMonitoringText = `- Titulação Lenta e Progressiva ("Start Low, Go Slow"): Ajustar a dosagem gradualmente a cada 4 a 5 dias até atingir a janela terapêutica ideal com controle pleno de sintomas e ausência de efeitos adversos.\n- Monitoramento de Segurança: Acompanhar potenciais interações no citocromo hepático CYP3A4 / CYP2C19 caso haja uso concomitante de outros fármacos.\n- Retorno Médico: Reavaliação clínica agendada em 30 (trinta) dias para ajuste posológico e consolidação do desfecho clínico.`;
@@ -842,7 +870,7 @@ CIDs Secundários: ${cidsSecundarios}`;
     let prodName = 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml';
     let prodDesc = 'Óleo integral concentrado de Associação Brasileira com excelente custo-benefício. Indicado para controle de ansiedade, estresse, regulação do humor e inflamação crônica.';
     let dosage = [
-      'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
+      'Tomar 03 gotas de 12/12 horas (sublingual).',
       'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).',
       '01 Frasco de 30ml rende de 45 a 60 dias de tratamento contínuo.'
     ];
@@ -851,7 +879,7 @@ CIDs Secundários: ${cidsSecundarios}`;
       prodName = 'ÓLEO INTEGRAL THC/CBD 100mg/ml';
       prodDesc = 'Óleo integral balanceado de Associação Brasileira com proporção 1:1. Indicado para dores crônicas, fibromialgia, espasticidade e rigidez.';
       dosage = [
-        'Tomar 03 gotas de 12 em 12 horas (sublingual).',
+        'Tomar 03 gotas de 12/12 horas (sublingual).',
         'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.',
         '01 Frasco de 30ml rende até 60 dias.'
       ];
@@ -899,7 +927,7 @@ CIDs Secundários: ${cidsSecundarios}`;
     });
 
     // 3. Add prescription notes
-    const protocolNotes = `PROTOCOLO DE ENTRADA ACESSÍVEL (FASE 1):\n- Medicamento Inicial: ${prodName} (Associação Brasileira)\n- Posologia Econômica: ${dosage.join(' ')}\n- Rendimento estimado: 45 a 60 dias.\n- Fase 2 (Evolução): Reavaliação em 30 a 45 dias para verificar resposta terapêutica e evolução progressiva se necessário.`;
+    const protocolNotes = `PROTOCOLO DE ENTRADA ACESSÍVEL (FASE 1):\n- Medicamento Inicial: ${prodName} (Associação Brasileira)\n- Posologia Econômica: ${dosage.join(' ')}\n- Rendimento estimado: 45 a 60 dias.\n- Fase 2 (Evolução): Reavaliação em 30 a 45 dias para verificar resposta terapêutica e evolução progressiva se necessário.\n- Administrar com alimentos gordurosos (preferencia, não obrigatorio) - podendo aumentar em até 5x a absorção.\n- Se observado sonolencia durante o dia apos a administração do medicamento, reduzir em 1/3 a dose da manhã e 2/3 a noite.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos continuos.`;
 
     addMessage({
       sender: 'doctor',
@@ -958,7 +986,7 @@ CIDs Secundários: ${cidsSecundarios}`;
            (Para cada produto importado sugerido, use EXATAMENTE este bloco)
            **Medicamento**: (Nome fiel ao catálogo)
            **Indicação/Doença**: (Condição primária alvo)
-           **Modo de Uso**: (Posologia e titulação, ex: 2 gotas, 12 em 12 horas)
+           **Modo de Uso**: (Posologia e titulação, ex: 2 gotas, 12/12 horas)
            **Observações**: (Dicas de administração)
 
            **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):**

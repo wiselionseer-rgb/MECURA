@@ -84,7 +84,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
-          'Tomar 03 gotas pela manhã e 03 gotas no final da tarde (sublingual).',
+          'Tomar 03 gotas de 12/12 horas (sublingual).',
           'Aumentar 01 gota a cada 05 dias até atingir a dose de controle homeostático.'
         ],
         description: 'Extrato integral rico em CBD com alto rendimento terapêutico.'
@@ -101,7 +101,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
-          'Tomar 03 gotas de 12 em 12 horas (sublingual).',
+          'Tomar 03 gotas de 12/12 horas (sublingual).',
           'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.'
         ],
         description: 'Extrato balanceado 1:1 indicado para analgesia e rigidez.'
@@ -151,7 +151,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
-          'Tomar 08 a 10 gotas sublinguais de 12 em 12 horas. Reter sob a língua por 60 segundos antes de deglutir.'
+          'Tomar 08 a 10 gotas sublinguais de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir.'
         ],
         description: 'Canabidiol Full Spectrum importado de alta pureza.'
       };
