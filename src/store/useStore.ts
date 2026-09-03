@@ -378,7 +378,7 @@ export const useStore = create<AppState>((set, get) => ({
         return {
           id: doc.id,
           ...data,
-          joinedAt: new Date(data.joinedAt)
+          joinedAt: data.joinedAt?.toDate ? data.joinedAt.toDate() : (data.joinedAt ? new Date(data.joinedAt) : new Date())
         };
       }) as any[];
 
@@ -620,7 +620,8 @@ export const useStore = create<AppState>((set, get) => ({
         const state = get();
         const patient = state.queue.find(p => p.id === patientId);
         
-        const updates: any = { hasUnread: false, status: 'in-consultation', joinedAt: patient ? patient.joinedAt : new Date().toISOString() };
+        const validJoinedAt = patient && patient.joinedAt && !isNaN(new Date(patient.joinedAt).getTime()) ? (patient.joinedAt instanceof Date ? patient.joinedAt.toISOString() : new Date(patient.joinedAt).toISOString()) : new Date().toISOString();
+        const updates: any = { hasUnread: false, status: 'in-consultation', joinedAt: validJoinedAt };
         if (!patient || patient.status === 'waiting' || patient.status === 'finished') {
           triggerBackgroundPush(
             patientId,

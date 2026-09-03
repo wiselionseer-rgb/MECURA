@@ -715,8 +715,8 @@ export function DoctorDashboardScreen() {
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
-    const objectivesArray = patientAnswers?.objectives || ['Ansiedade'];
-    const objectives = patientAnswers?.objectives?.join(', ') || 'Ansiedade, estresse crônico e dores';
+    const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
+    const objectives = objectivesArray.join(', ');
     
     const matchedCids = getCidsFromObjectives(objectivesArray);
     let cidPrincipal = '[INSERIR CID PRINCIPAL]';

@@ -951,8 +951,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                            <p>A IA está calculando as dosagens e projetando o cultivo...</p>
                         </div>
                      ) : agronomicResult ? (
-                        <div className="bg-white p-6 rounded-xl overflow-x-auto relative text-black">
-                           <div contentEditable={isEditingAgronomic} suppressContentEditableWarning={true} onBlur={(e) => setAgronomicResult(e.currentTarget.innerHTML)} dangerouslySetInnerHTML={{ __html: agronomicResult.replace(/```html/g, "").replace(/```/g, "") }} id="agronomic-report-container" className={`text-black bg-white p-4 rounded outline-none transition-all ${isEditingAgronomic ? 'ring-4 ring-mecura-neon/50' : ''}`} />
+                        <div className="bg-[#FFFFFF] p-6 rounded-xl overflow-x-auto relative text-[#000000]">
+                           <div contentEditable={isEditingAgronomic} suppressContentEditableWarning={true} onBlur={(e) => setAgronomicResult(e.currentTarget.innerHTML)} dangerouslySetInnerHTML={{ __html: agronomicResult.replace(/```html/g, "").replace(/```/g, "") }} id="agronomic-report-container" className={`text-[#000000] bg-[#FFFFFF] p-4 rounded outline-none transition-all ${isEditingAgronomic ? 'ring-4 ring-mecura-neon/50' : ''}`} />
                         </div>
                      ) : (
                         <div className="h-full flex flex-col items-center justify-center text-[#8A8A9E]">
