@@ -66,6 +66,7 @@ import { NotificationToast } from '../components/NotificationToast';
 import { EnableNotificationsBanner } from '../components/EnableNotificationsBanner';
 import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
+import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEditorModal';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
 
@@ -128,6 +129,10 @@ export function DoctorDashboardScreen() {
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queueSearchTerm, setQueueSearchTerm] = useState('');
   const [mobileTab, setMobileTab] = useState<'chat' | 'ficha' | 'actions'>('chat');
+
+  // Psychomotor Report Editor States
+  const [showPsychomotorReportEditorModal, setShowPsychomotorReportEditorModal] = useState(false);
+  const [psychomotorReportText, setPsychomotorReportText] = useState('');
 
   // Medical Report (Laudo Médico) Editor & Preview States
   const [showMedicalReportEditorModal, setShowMedicalReportEditorModal] = useState(false);
@@ -839,6 +844,40 @@ CIDs Secundários: ${cidsSecundarios}`;
     setReportMonitoring(defaultMonitoringText);
     setMedicalReportTab('edit');
     setShowMedicalReportEditorModal(true);
+  };
+
+  
+  const handleOpenPsychomotorReportEditor = () => {
+    const pName = currentPatient?.patientName || userName || 'Paciente';
+    const patientAnswers = currentPatient?.answers || answers;
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+    
+    setReportPatientName(pName);
+    setReportBirthDate(pBirthDate);
+    setReportCpf(pCpf);
+    setReportEmissionDate(new Date().toLocaleDateString('pt-BR'));
+    setReportDoctorName('Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm('CRM/MT 17259');
+    setReportDoctorSpecialty('Especialista em Medicina Canabinoide');
+
+    const defaultPsychomotorText = `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${pName}</strong>, inscrito(a) no CPF <strong>${pCpf}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.\n\nO(a) paciente faz uso terapêutico de produtos derivados de Cannabis, estritamente conforme prescrição médica, sob supervisão e com acompanhamento clínico contínuo.\n\nAtesto, baseado em exames clínicos e testes de rastreio de capacidade psicomotora realizados durante as consultas de monitoramento, que o uso das medicações prescritas, nas doses estipuladas, <strong> NÃO RESULTA </strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou comprometimento dos reflexos e estado de alerta do paciente.\n\nO tratamento prescrito não interfere em sua capacidade de operar máquinas complexas, conduzir veículos automotores ou exercer atividades laborais que exijam atenção e precisão, não configurando infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).\n\nRessalto que os canabinoides prescritos têm finalidade exclusivamente terapêutica, sendo legalmente importados (RDC 660/2022 ANVISA) e/ou adquiridos via Associações de Pacientes, e não se enquadram como substâncias psicoativas entorpecentes de uso recreativo capazes de causar dependência ou prejuízo sensório-motor nas doses tituladas.`;
+
+    setPsychomotorReportText(defaultPsychomotorText);
+    setShowPsychomotorReportEditorModal(true);
+  };
+
+  const handleDownloadPsychomotorReportFromEditor = () => {
+    generatePsychomotorReportPDF(reportPatientName, {
+      customPatientName: reportPatientName,
+      birthDate: reportBirthDate,
+      cpf: reportCpf,
+      emissionDate: reportEmissionDate,
+      customDoctorName: reportDoctorName,
+      customDoctorCrm: reportDoctorCrm,
+      customDoctorSpecialty: reportDoctorSpecialty,
+      customPsychomotorText: psychomotorReportText
+    });
   };
 
   const handleDownloadMedicalReportFromEditor = () => {
@@ -1659,7 +1698,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                   <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-blue-400" /> <span className="hidden md:inline">Laudo Evolutivo</span><span className="md:hidden">Evol.</span>
                 </button>
                 <button 
-                  onClick={() => generatePsychomotorReportPDF(currentPatient?.patientName || userName || 'Paciente', { customPatientName: currentPatient?.patientName || userName || 'Paciente', birthDate: currentPatient?.birthDate, cpf: currentPatient?.cpf, answers: currentPatient?.answers })}
+                  onClick={handleOpenPsychomotorReportEditor}
                   className="px-3 md:px-4 py-2 md:py-2.5 bg-purple-500/10 border border-purple-500/30 text-purple-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-purple-500/20 hover:border-purple-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(168,85,247,0.1)]"
                   title="Gerar Laudo Psicomotor (Lei do Drogômetro)"
                 >
@@ -3367,6 +3406,29 @@ CIDs Secundários: ${cidsSecundarios}`;
         monitoring={reportMonitoring}
         setMonitoring={setReportMonitoring}
         onDownloadPDF={handleDownloadMedicalReportFromEditor}
+      />
+
+      {/* Psychomotor Report View & Edit Modal */}
+      <PsychomotorReportEditorModal
+        isOpen={showPsychomotorReportEditorModal}
+        onClose={() => setShowPsychomotorReportEditorModal(false)}
+        patientName={reportPatientName}
+        setPatientName={setReportPatientName}
+        birthDate={reportBirthDate}
+        setBirthDate={setReportBirthDate}
+        cpf={reportCpf}
+        setCpf={setReportCpf}
+        emissionDate={reportEmissionDate}
+        setEmissionDate={setReportEmissionDate}
+        doctorName={reportDoctorName}
+        setDoctorName={setReportDoctorName}
+        doctorCrm={reportDoctorCrm}
+        setDoctorCrm={setReportDoctorCrm}
+        doctorSpecialty={reportDoctorSpecialty}
+        setDoctorSpecialty={setReportDoctorSpecialty}
+        psychomotorText={psychomotorReportText}
+        setPsychomotorText={setPsychomotorReportText}
+        onDownloadPDF={handleDownloadPsychomotorReportFromEditor}
       />
     </div>
   );
