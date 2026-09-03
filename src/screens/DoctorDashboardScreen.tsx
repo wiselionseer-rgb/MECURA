@@ -1741,7 +1741,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                               </button>
                             </div>
                             <ul className={`${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-600'} text-xs space-y-1 mb-2`}>
-                              {msg.productData.details.map((detail, idx) => (
+                              {(msg.productData.details || []).map((detail, idx) => (
                                 <li key={idx} className="flex items-center gap-1.5">
                                   <span className="w-1 h-1 rounded-full bg-gray-400" />
                                   {detail}
@@ -1770,7 +1770,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                             Iniciar tratamento com:
                           </h4>
                           <ul className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} text-sm space-y-1 mb-4`}>
-                            {msg.productData.dosage.map((dose, idx) => (
+                            {(msg.productData.dosage || []).map((dose, idx) => (
                               <li key={idx}>
                                 {dose}
                               </li>
@@ -2371,7 +2371,7 @@ CIDs Secundários: ${cidsSecundarios}`;
             </h3>
             <div className="flex flex-wrap gap-2">
               {(currentPatient?.answers?.objectives || answers?.objectives)?.length ? (
-                (currentPatient?.answers?.objectives || answers.objectives).map((obj: string, i: number) => (
+                (currentPatient?.answers?.objectives || answers?.objectives || []).map((obj: string, i: number) => (
                   <span key={i} className="px-4 py-2 bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon rounded-lg text-base font-medium shadow-[0_0_10px_rgba(166,255,0,0.05)]">
                     {obj}
                   </span>
@@ -3042,7 +3042,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                                   <h5 className="text-white font-bold">{msg.productData.name}</h5>
                                   <p className="text-xs text-mecura-neon mt-1">{msg.productData.brand}</p>
                                   <div className="mt-2 space-y-1">
-                                    {msg.productData.dosage.map((d: string, i: number) => (
+                                    {(msg.productData.dosage || []).map((d: string, i: number) => (
                                       <p key={i} className="text-xs text-mecura-silver">• {d}</p>
                                     ))}
                                   </div>

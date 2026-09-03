@@ -14,7 +14,7 @@ const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userName, patientId, resetConsultation, subscribeToQueue } = useStore();
+  const { userName, patientId, resetConsultation, subscribeToQueue, fetchConsultationHistory } = useStore();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Show gamification header only on specific screens
@@ -25,6 +25,16 @@ export function AppLayout() {
     const unsubscribe = subscribeToQueue();
     return () => unsubscribe();
   }, [subscribeToQueue]);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      const uid = patientId || user?.uid;
+      if (uid) {
+        fetchConsultationHistory(uid);
+      }
+    });
+    return () => unsubscribe();
+  }, [patientId, fetchConsultationHistory]);
 
   // Auto-subscribe to notifications for anonymous patients (patientId)
   useEffect(() => {

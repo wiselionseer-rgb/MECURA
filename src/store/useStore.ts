@@ -133,6 +133,7 @@ interface AppState {
   endConsultation: () => void;
   setIsConsultationFinished: (status: boolean) => void;
   resetConsultation: () => void;
+  fetchConsultationHistory: (patientId: string) => Promise<void>;
   
   // Chat
   messages: Message[];
@@ -187,9 +188,9 @@ export const useStore = create<AppState>((set, get) => ({
   })),
   
   pagamento_consulta: typeof window !== 'undefined' ? localStorage.getItem('mecura_pagamento') === 'true' : false,
-  setPagamentoConsulta: (status) => { if (typeof window !== 'undefined') { localStorage.setItem('mecura_pagamento', status.toString()); } set({ pagamento_consulta: status }); },
+  setPagamentoConsulta: (status) => { if (typeof window !== 'undefined') { localStorage.setItem('mecura_pagamento', status.toString()); } set({ pagamento_consulta: status }); if (status) set({ isConsultationFinished: false }); },
   pagamento_premium: false,
-  setPagamentoPremium: (status) => set({ pagamento_premium: status }),
+  setPagamentoPremium: (status) => { set({ pagamento_premium: status }); if (status) set({ isConsultationFinished: false }); },
   selectedOffer: null,
   setSelectedOffer: (offer) => set({ selectedOffer: offer }),
   
@@ -279,6 +280,7 @@ export const useStore = create<AppState>((set, get) => ({
       patientId: currentUserId,
       inQueue: true,
       isConsultationFinished: false,
+
       consultationActive: false,
       pagamento_consulta: true,
       messages: []
@@ -530,6 +532,29 @@ export const useStore = create<AppState>((set, get) => ({
   
   consultationActive: false,
   isConsultationFinished: false,
+  fetchConsultationHistory: async (patientId) => {
+    try {
+      const historyRef = collection(db, 'users', patientId, 'consultations');
+      const snap = await getDocs(historyRef);
+      const history = snap.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          date: new Date(data.date)
+        };
+      });
+      set({ consultationHistory: history });
+      if (history.length > 0) {
+        const state = get();
+        if (!state.inQueue && !state.consultationActive) {
+          set({ isConsultationFinished: true });
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching history:", error);
+    }
+  },
   bonusBalance: 0,
   incrementBonus: async (amount: number, userId?: string) => {
     const targetId = userId || auth.currentUser?.uid || get().patientId;
@@ -595,9 +620,8 @@ export const useStore = create<AppState>((set, get) => ({
         const state = get();
         const patient = state.queue.find(p => p.id === patientId);
         
-        const updates: any = { hasUnread: false };
-        if (patient && patient.status === 'waiting') {
-          updates.status = 'in-consultation';
+        const updates: any = { hasUnread: false, status: 'in-consultation', joinedAt: patient ? patient.joinedAt : new Date().toISOString() };
+        if (!patient || patient.status === 'waiting' || patient.status === 'finished') {
           triggerBackgroundPush(
             patientId,
             'Sua vez chegou!',
@@ -606,7 +630,7 @@ export const useStore = create<AppState>((set, get) => ({
           );
         }
         
-        await updateDoc(doc(db, 'queue', patientId), updates);
+        await setDoc(doc(db, 'queue', patientId), updates, { merge: true });
       } catch (e) {
         console.error("Error updating queue status", e);
       }
