@@ -1,51 +1,29 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/utils/pdfGenerator.tsx', 'utf-8');
 
-// Update Medical Report PDF
+// Add page break avoid to items
 code = code.replace(
-  "html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollY: 0, scrollX: 0 },\n    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }",
-  "html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollY: 0, scrollX: 0 },\n    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },\n    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }"
+  '<div key={idx} className="border-b border-[#F1F5F9] pb-5">',
+  '<div key={idx} className="border-b border-[#F1F5F9] pb-5" style={{ pageBreakInside: "avoid" }}>'
 );
 
-// We need to also apply pageBreakInside: 'avoid' to the blocks inside Medical Report
-code = code.replace(
-  /<p className="text-sm text-\[#334155\] leading-relaxed whitespace-pre-wrap">\{patientData\.customDiagnosis\}<\/p>/g,
-  '<div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customDiagnosis.split(\'\\n\').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>'
-);
-code = code.replace(
-  /<p className="text-sm text-\[#334155\] leading-relaxed whitespace-pre-wrap">\{patientData\.customRationale\}<\/p>/g,
-  '<div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customRationale.split(\'\\n\').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>'
-);
-code = code.replace(
-  /<p className="text-sm text-\[#334155\] leading-relaxed whitespace-pre-wrap">\{patientData\.customTreatmentPlan\}<\/p>/g,
-  '<div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customTreatmentPlan.split(\'\\n\').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>'
-);
-code = code.replace(
-  /<p className="text-sm text-\[#334155\] leading-relaxed whitespace-pre-wrap">\{patientData\.customMonitoring\}<\/p>/g,
-  '<div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customMonitoring.split(\'\\n\').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>'
-);
+// Map customNotesText into multiple paragraphs with avoid
+const oldNotes = `<div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-4 text-xs text-[#334155] mt-6 rounded-r">
+                  <span className="font-bold block text-[11px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
+                  <p className="whitespace-pre-line text-[11px] leading-relaxed m-0">{customNotesText}</p>
+                </div>`;
 
-// We need to also apply pageBreakInside: 'avoid' to the blocks inside Psychomotor Report
-code = code.replace(
-  /<p>\n\s*Declaro, para os devidos fins de direito/g,
-  '<p style={{ pageBreakInside: "avoid" }}>\n                Declaro, para os devidos fins de direito'
-);
-code = code.replace(
-  /<p>\n\s*O\(a\) paciente faz uso terapêutico de produtos/g,
-  '<p style={{ pageBreakInside: "avoid" }}>\n                O(a) paciente faz uso terapêutico de produtos'
-);
-code = code.replace(
-  /<p>\n\s*Atesto, baseado em exames clínicos/g,
-  '<p style={{ pageBreakInside: "avoid" }}>\n                Atesto, baseado em exames clínicos'
-);
-code = code.replace(
-  /<p>\n\s*O tratamento prescrito não interfere/g,
-  '<p style={{ pageBreakInside: "avoid" }}>\n                O tratamento prescrito não interfere'
-);
-code = code.replace(
-  /<p>\n\s*Ressalto que os canabinoides prescritos têm finalidade/g,
-  '<p style={{ pageBreakInside: "avoid" }}>\n                Ressalto que os canabinoides prescritos têm finalidade'
-);
+const newNotes = `<div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-4 text-xs text-[#334155] mt-6 rounded-r">
+                  <span className="font-bold block text-[11px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
+                  <div className="flex flex-col gap-1.5">
+                    {customNotesText.split('\\n').map((p, i) => p.trim() ? <p key={i} className="text-[11px] leading-relaxed m-0" style={{ pageBreakInside: "avoid" }} dangerouslySetInnerHTML={{ __html: p }}></p> : null)}
+                  </div>
+                </div>`;
 
+if (code.includes(oldNotes)) {
+    code = code.replace(oldNotes, newNotes);
+} else {
+    console.log("Could not find old notes");
+}
 
 fs.writeFileSync('src/utils/pdfGenerator.tsx', code);

@@ -145,7 +145,7 @@ export const generatePrescriptionPDF = async (
     return (
       <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
         {guidesToRender.map((guide, gIdx) => (
-          <div key={gIdx} className="relative p-12 border border-[#E2E8F0] box-border flex flex-col justify-between" style={{ width: "794px", height: "1123px", backgroundColor: "#FFFFFF", color: "#111827", pageBreakAfter: gIdx < guidesToRender.length - 1 ? "always" : "auto" }}>
+          <div key={gIdx} className="relative p-12 border border-[#E2E8F0] box-border flex flex-col justify-between" style={{ width: "794px", minHeight: "1123px", backgroundColor: "#FFFFFF", color: "#111827", pageBreakAfter: gIdx < guidesToRender.length - 1 ? "always" : "auto" }}>
             {/* Guide Badge */}
             <div className="absolute top-6 right-6 bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
               {guide.badge}
@@ -203,7 +203,7 @@ export const generatePrescriptionPDF = async (
                     const admRoute = item.administrationRoute || enriched.administrationRoute;
 
                     return (
-                      <div key={idx} className="border-b border-[#F1F5F9] pb-5">
+                      <div key={idx} className="border-b border-[#F1F5F9] pb-5" style={{ pageBreakInside: "avoid" }}>
                         <div className="flex items-baseline justify-between mb-2">
                           <span className="text-sm font-bold text-[#0F172A] m-0">
                             {idx + 1}. {item.name}
@@ -236,7 +236,9 @@ export const generatePrescriptionPDF = async (
               {customNotesText && (
                 <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-4 text-xs text-[#334155] mt-6 rounded-r">
                   <span className="font-bold block text-[11px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
-                  <p className="whitespace-pre-line text-[11px] leading-relaxed m-0">{customNotesText}</p>
+                  <div className="flex flex-col gap-1.5">
+                    {customNotesText.split('\n').map((p, i) => p.trim() ? <p key={i} className="text-[11px] leading-relaxed m-0" style={{ pageBreakInside: "avoid" }} dangerouslySetInnerHTML={{ __html: p }}></p> : null)}
+                  </div>
                 </div>
               )}
             </div>
@@ -276,13 +278,19 @@ export const generatePrescriptionPDF = async (
   // Wait for React to render and Tailwind to apply styles
   await new Promise(resolve => setTimeout(resolve, 800));
 
-  const reportDiv = container.firstElementChild?.firstElementChild as HTMLElement;
-  if (reportDiv && reportDiv.style.minHeight === '1123px') {
-    const currentHeight = reportDiv.getBoundingClientRect().height;
-    const a4Height = 1123;
-    if (currentHeight > a4Height) {
-      const pages = Math.ceil(currentHeight / a4Height);
-      reportDiv.style.height = `${pages * a4Height}px`;
+  const wrapperDiv = container.firstElementChild as HTMLElement;
+  if (wrapperDiv) {
+    const guideDivs = Array.from(wrapperDiv.children);
+    for (const el of guideDivs) {
+      const guideDiv = el as HTMLElement;
+      if (guideDiv.style.minHeight === '1123px') {
+        const currentHeight = guideDiv.getBoundingClientRect().height;
+        const a4Height = 1123;
+        if (currentHeight > a4Height) {
+          const pages = Math.ceil(currentHeight / a4Height);
+          guideDiv.style.height = `${pages * a4Height}px`;
+        }
+      }
     }
   }
 

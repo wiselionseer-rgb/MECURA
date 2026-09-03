@@ -286,7 +286,7 @@ export const useStore = create<AppState>((set, get) => ({
       messages: []
     });
     
-    const newPatient = patient || { 
+    let newPatient = patient || { 
       id: currentUserId, 
       patientName: state.userName || 'Paciente Anônimo', 
       email: state.userEmail || 'sem-email@mecura.com',
@@ -299,6 +299,31 @@ export const useStore = create<AppState>((set, get) => ({
         cpf: state.userCpf || state.answers?.cpf || '',
       }
     };
+    
+    if (!patient && auth.currentUser) {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          newPatient.patientName = data.name || newPatient.patientName;
+          newPatient.email = data.email || newPatient.email;
+          newPatient.phone = data.phone || newPatient.phone;
+          newPatient.cpf = data.cpf || newPatient.cpf;
+          newPatient.birthDate = data.birthDate || newPatient.birthDate;
+          newPatient.answers = { ...newPatient.answers, ...(data.answers || {}) };
+          
+          if (data.name) get().setUserName(data.name);
+          if (data.phone) get().setUserPhone(data.phone);
+          if (data.cpf) get().setUserCpf(data.cpf);
+          if (data.birthDate) get().setUserBirthDate(data.birthDate);
+          if (data.answers) {
+            Object.entries(data.answers).forEach(([k, v]) => get().setAnswer(k, v));
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch user data for queue hydration:", e);
+      }
+    }
     
     try {
       // Clear previous messages from active_consultations to prevent leaking previous session

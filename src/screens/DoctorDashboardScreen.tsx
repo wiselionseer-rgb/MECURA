@@ -253,9 +253,32 @@ export function DoctorDashboardScreen() {
     }
   }, [messages, currentPatient?.id]);
 
-  const handleStartConsultation = (patient: any) => {
+  const handleStartConsultation = async (patient: any) => {
     console.log("Starting consultation for:", patient);
-    setCurrentPatient(patient);
+    
+    let enrichedPatient = { ...patient };
+    // Fetch answers from users collection if they are missing
+    if (!enrichedPatient.answers || Object.keys(enrichedPatient.answers).length === 0) {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('../firebase');
+        const userDoc = await getDoc(doc(db, 'users', patient.id));
+        if (userDoc.exists()) {
+           const userData = userDoc.data();
+           if (userData.answers) {
+             enrichedPatient.answers = userData.answers;
+           }
+           enrichedPatient.patientName = userData.name || enrichedPatient.patientName;
+           enrichedPatient.cpf = userData.cpf || enrichedPatient.cpf;
+           enrichedPatient.birthDate = userData.birthDate || enrichedPatient.birthDate;
+           enrichedPatient.phone = userData.phone || enrichedPatient.phone;
+        }
+      } catch (e) {
+        console.warn("Failed to enrich patient data", e);
+      }
+    }
+
+    setCurrentPatient(enrichedPatient);
     setAnalysisResult(null); // Reset previous analysis to allow fresh generation
     startConsultation(patient.id);
     
