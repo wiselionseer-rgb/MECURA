@@ -1,4 +1,5 @@
 import { useAdminStore } from '../store/useAdminStore';
+import { cbdGuideData } from '../data/cbdGuide';
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
@@ -94,7 +95,8 @@ const calculateAge = (birthDateStr?: string) => {
 };
 
 export function DoctorDashboardScreen() {
-  const { productCategories } = useAdminStore();
+  const { productCategories: storeProductCategories } = useAdminStore();
+  const productCategories = cbdGuideData; // Force using latest code data to include newly added meds
   const adminId = auth.currentUser?.uid;
   const { 
     userName, userCpf, userBirthDate, userPhone, answers, messages, 
@@ -1032,7 +1034,7 @@ CIDs Secundários: ${cidsSecundarios}`;
         DIRETRIZ DE PRESCRIÇÃO (IMPORTADOS E NACIONAIS):
         Você DEVE sugerir DUAS frentes de tratamento para o médico escolher, cobrindo opções Importadas e Nacionais.
         1. Opção de Importados: Utilize EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo.
-        2. Opção de Associações Nacionais: Sugira formulações de associações brasileiras (ex: Óleo Integral THC/CBD 100mg/ml, Pomada Canábica, Gomas Terapêuticas, ou Flores in natura), adequadas à fisiopatologia do paciente.
+        2. Opção de Associações Nacionais: Sugira formulações de associações brasileiras (ex: Óleo Integral THC/CBD 100mg/ml, Pomada Canábica, Gomas Terapêuticas, Flores in natura, ou Extrações e Concentrados), adequadas à fisiopatologia do paciente. Lembre-se que as Extrações e Concentrados (como Crumble, Live Resin, Diamonds) devem aparecer nas recomendações de acordo com cada paciente, igual aos outros medicamentos, principalmente para casos severos ou pacientes experientes.
 
         REGRA CLÍNICA CRÍTICA (NÃO DUPLICAR MEDICAMENTOS SIMILARES):
         - NUNCA sugira dois óleos de CBD ou dois produtos com o mesmo princípio ativo e a mesma via sublingual para o mesmo paciente.

@@ -1,4 +1,5 @@
 import { useAdminStore } from '../store/useAdminStore';
+import { cbdGuideData } from '../data/cbdGuide';
 import { useState, useEffect } from 'react';
 import { 
   Search, 
@@ -20,7 +21,8 @@ import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
 
 export function CBDGuideView() {
-  const { productCategories } = useAdminStore();
+  const { productCategories: storeCategories } = useAdminStore();
+  const productCategories = cbdGuideData;
   const [searchTerm, setSearchTerm] = useState('');
   const [diseaseFilter, setDiseaseFilter] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
