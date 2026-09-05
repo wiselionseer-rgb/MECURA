@@ -729,6 +729,7 @@ export function CBDGuideView() {
                             <div className="bg-black/20 p-2 rounded">
                               <span className="block font-bold text-mecura-pearl mb-0.5">Apresentação:</span>
                               {enriched.pharmaceuticalForm} • {enriched.quantity}
+                              {enriched.administrationRoute && <span className="block mt-0.5"><span className="font-bold">Via:</span> {enriched.administrationRoute}</span>}
                             </div>
                           </div>
                           

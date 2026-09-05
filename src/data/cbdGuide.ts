@@ -847,170 +847,143 @@ export function enrichMedicationDetails(
   const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
-
-  // 1. Pomadas
-  if (/Pomada|Tópico|Cream|Balm/i.test(pName)) {
+  const typeLower = (type || '').toLowerCase();
+  const nameLower = pName.toLowerCase();
+  
+  // Custom parsing for the newly added products to give them correct presentation
+  if (typeLower.includes('cápsula') || nameLower.includes('cápsula')) {
     return {
       name: pName,
-      activeIngredients: 'Extrato Canábico Rico em Fitocanabinoides (CBD + CBG) 500mg com Terpenos Anti-inflamatórios',
-      concentration: '10mg/g (500mg de Canabinoides Totais)',
-      pharmaceuticalForm: 'Pomada Terapêutica de Uso Tópico',
-      quantity: '01 Pote com 50g',
-      administrationRoute: 'Uso Tópico / Dérmico',
+      activeIngredients: pName.includes('Isolado') ? 'Canabidiol (CBD) Isolado' : (pName.includes('CBG') ? 'Canabidiol (CBD) + Canabigerol (CBG)' : 'Canabidiol (CBD) + Canabinol (CBN)'),
+      concentration: 'Conforme rótulo',
+      pharmaceuticalForm: 'Cápsulas Gelatinosas (Via Oral)',
+      quantity: '01 Frasco',
+      administrationRoute: 'Via Oral',
       brand: manufacturer,
       origin: prodOrigin,
-      description: 'Pomada fitocanabinoide de uso tópico para alívio localizado de dores musculares, articulares e processos inflamatórios.',
-      usageInstructions: '• Aplicar uma fina camada sobre a região afetada e massagear suavemente até completa absorção, 2 a 3 vezes ao dia, ou conforme necessidade para alívio da dor.'
+      description: 'Cápsulas para liberação prolongada ou entérica.',
+      usageInstructions: '• Ingerir 1 cápsula via oral conforme orientação médica. Não partir ou mastigar cápsulas gastrorresistentes.'
     };
   }
 
-  // 2. Flores in natura
-  if (/Flores|Flor|In natura/i.test(pName)) {
-    const isTHC = /THC/i.test(pName);
+  if (typeLower.includes('spray') || nameLower.includes('spray')) {
     return {
       name: pName,
-      activeIngredients: isTHC 
-        ? 'Inflorescências Secas de Cannabis sativa L. com Alto Teor de Delta-9-THC (15% a 20%) e Terpenos Mirceno/Beta-Cariofileno'
-        : 'Inflorescências Secas de Cannabis sativa L. com Alto Teor de Canabidiol (CBD 10% a 15%) e Delta-9-THC < 0,3%',
-      concentration: isTHC ? 'THC ~18% | CBD < 1%' : 'CBD ~14% | THC < 0,3%',
-      pharmaceuticalForm: 'Inflorescências Secas Padronizadas para Vaporização Medicinal',
-      quantity: '01 Embalagem hermética de 15g',
-      administrationRoute: 'Via Inalatória (Vaporização Medicinal - Não Comburente)',
+      activeIngredients: pName.includes('THC') ? 'Tetrahidrocanabinol (THC) + Canabidiol (CBD)' : 'Canabidiol (CBD) Broad Spectrum',
+      concentration: 'Conforme rótulo',
+      pharmaceuticalForm: 'Spray Sublingual/Oral',
+      quantity: '01 Frasco',
+      administrationRoute: 'Via Sublingual ou Mucosa Oral',
       brand: manufacturer,
       origin: prodOrigin,
-      description: 'Inalação vaporizada para rápida absorção e efeito analgésico ou ansiolítico imediato em momentos de crise.',
-      usageInstructions: '• Vaporizar a 180°C - 200°C através de vaporizador de ervas secas. Iniciar com 1 a 2 inalações profundas em momentos de crise (dor aguda, pico de ansiedade) e aguardar 15 minutos para avaliar o efeito.'
+      description: 'Absorção rápida pelas mucosas.',
+      usageInstructions: '• Borrifar diretamente sob a língua ou na mucosa oral (parte interna da bochecha). Aguardar 1 minuto antes de engolir.'
     };
   }
 
-  // 3. Gomas
-  if (/Goma|Gummies|Gummy|Drops/i.test(pName)) {
-    const hasCBN = /CBN/i.test(pName);
-    const hasTHC = /THC/i.test(pName) && !/CBN/i.test(pName);
+  if (typeLower.includes('adesivo') || typeLower.includes('transdérmico') || nameLower.includes('adesivo')) {
     return {
       name: pName,
-      activeIngredients: hasCBN
-        ? 'Fitocanabinoides Padronizados: Canabidiol (CBD 10mg) + Canabinol (CBN 2.5mg) + Delta-9-THC (1mg)'
-        : (hasTHC ? 'Fitocanabinoides Padronizados: Canabidiol (CBD 10mg) + Delta-9-THC (10mg)' : 'Canabidiol (CBD Isolado / Broad Spectrum 25mg)'),
-      concentration: '25mg de Fitocanabinoides por unidade',
+      activeIngredients: 'Canabidiol (CBD) + Tetrahidrocanabinol (THC) 1:1',
+      concentration: '20mg CBD + 20mg THC / adesivo',
+      pharmaceuticalForm: 'Adesivo Transdérmico (Patch)',
+      quantity: '01 Caixa',
+      administrationRoute: 'Via Transdérmica',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Liberação lenta e contínua.',
+      usageInstructions: '• Aplicar 1 adesivo em área limpa, seca e sem pelos (ex: ombro, costas, face interna do braço). Trocar a cada 72 horas. Alternar o local de aplicação.'
+    };
+  }
+
+  if (typeLower.includes('supositório') || nameLower.includes('supositório')) {
+    return {
+      name: pName,
+      activeIngredients: 'Canabidiol (CBD) + Tetrahidrocanabinol (THC)',
+      concentration: '50mg CBD + 10mg THC / unidade',
+      pharmaceuticalForm: 'Supositório Pélvico/Vaginal',
+      quantity: '01 Caixa',
+      administrationRoute: 'Via Intravaginal / Retal',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Ação localizada no plexo pélvico.',
+      usageInstructions: '• Inserir 1 unidade via intravaginal ou retal em momentos de crise aguda (cólicas fortes). Recomenda-se deitar por 15-20 minutos após a inserção.'
+    };
+  }
+
+  if (typeLower.includes('tópica') || typeLower.includes('creme') || typeLower.includes('pomada') || nameLower.includes('creme') || nameLower.includes('pomada')) {
+    return {
+      name: pName,
+      activeIngredients: pName.includes('CBG') ? 'Canabidiol (CBD) + Canabigerol (CBG)' : 'Fitocanabinoides (CBD predominante)',
+      concentration: 'Conforme rótulo',
+      pharmaceuticalForm: 'Creme / Pomada Tópica',
+      quantity: '01 Bisnaga/Pote',
+      administrationRoute: 'Via Tópica (Uso Externo)',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Ação local em receptores cutâneos e articulares.',
+      usageInstructions: '• Aplicar fina camada sobre a área afetada 2 a 3 vezes ao dia, massageando suavemente até completa absorção. Não aplicar em feridas abertas profundas.'
+    };
+  }
+
+  if (typeLower.includes('flor') || typeLower.includes('in natura') || nameLower.includes('flor')) {
+    return {
+      name: pName,
+      activeIngredients: 'Canabidiol (CBD) e Fitocanabinoides (In Natura)',
+      concentration: '~15% CBD (Variável por safra)',
+      pharmaceuticalForm: 'Flor Seca de Cânhamo (In Natura)',
+      quantity: '01 Embalagem',
+      administrationRoute: 'Via Inalatória (Vaporização)',
+      brand: manufacturer,
+      origin: prodOrigin,
+      description: 'Rápida biodisponibilidade para resgate.',
+      usageInstructions: '• Utilizar em vaporizador de ervas secas em temperatura de 170°C a 195°C para extração de terpenos e CBD sem combustão. Utilizar em crises agudas.'
+    };
+  }
+  
+  if (typeLower.includes('goma') || typeLower.includes('comestível') || nameLower.includes('goma') || nameLower.includes('gummies')) {
+    return {
+      name: pName,
+      activeIngredients: nameLower.includes('thc') ? 'Fitocanabinoides Padronizados: Canabidiol (CBD) + Delta-9-THC' : 'Canabidiol (CBD) Broad Spectrum (0% THC)',
+      concentration: '10mg a 20mg por goma (Verificar rótulo)',
       pharmaceuticalForm: 'Gomas Mastigáveis (Forma Farmacêutica Comestível)',
-      quantity: '01 Frasco com 20 a 30 unidades mastigáveis',
-      administrationRoute: 'Via Oral (Mastigável)',
+      quantity: '01 Frasco',
+      administrationRoute: 'Via Oral (Comestível)',
       brand: manufacturer,
       origin: prodOrigin,
-      description: 'Gomas mastigáveis com liberação gradual e prolongada para relaxamento sustentado e sono reparador.',
-      usageInstructions: '• Ingerir 1/2 a 1 goma mastigável, 1 vez ao dia (ou cerca de 45 minutos antes de dormir em caso de insônia). Não ultrapassar 2 gomas ao dia sem orientação médica.'
+      description: 'Sinergia terapêutica e fácil administração.',
+      usageInstructions: '• Ingerir 1/2 a 1 goma mastigável, 1 vez ao dia. Não ultrapassar 2 gomas ao dia sem orientação médica. Efeito pode demorar até 2h para iniciar.'
     };
   }
-
-  // 5. Concentrados e Extrações (Vaporização)
-  if (/Stirred|Granulated|Crystalized|Dried Hemp|Isolate/i.test(pName)) {
-    const isIsolate = /Isolate/i.test(pName);
-    const isTHCa = /THCa/i.test(pName);
-    return {
+  
+  if (typeLower.includes('concentrado') || typeLower.includes('extrato pastoso') || nameLower.includes('rick simpson') || nameLower.includes('rso')) {
+     return {
       name: pName,
-      activeIngredients: isIsolate 
-        ? (isTHCa ? 'Cristais Isolados de THCa (Tetrahidrocanabinol Ácido) de Alta Pureza' : 'Cristais Isolados de Canabidiol (CBD) de Alta Pureza')
-        : 'Extrato Concentrado de Cannabis Rico em Canabinoides e Terpenos',
-      concentration: isTHCa ? 'Alto Teor de THCa (>350mg/dose)' : 'Alto Teor de CBD',
-      pharmaceuticalForm: 'Extrato Concentrado para Vaporização',
-      quantity: '01 Embalagem (5g a 20g)',
-      administrationRoute: 'Via Inalatória (Vaporizador Dosimetrado, 160°C - 210°C)',
+      activeIngredients: 'Fitocanabinoides Altamente Concentrados (CBD ou THC predominante)',
+      concentration: 'Alta Potência (Aprox. 700mg a 800mg por grama)',
+      pharmaceuticalForm: 'Extrato Concentrado Sólido/Pastoso',
+      quantity: '01 Seringa ou Pote (1g a 10g)',
+      administrationRoute: 'Via Sublingual ou Vaporização',
       brand: manufacturer,
       origin: prodOrigin,
-      description: 'Absorção pulmonar rápida sem combustão, oferecendo pico plasmático em minutos para resposta terapêutica ágil.',
-      usageInstructions: '• Vaporizar a 160°C - 210°C usando vaporizador apropriado para concentrados. Realizar 1 inalação em momentos de crise aguda (dor, ansiedade, espasticidade) e aguardar 10-15 minutos.'
+      description: 'Extrato potente para quadros severos e refratários.',
+      usageInstructions: '• Dose inicial do tamanho de um "grão de arroz" via sublingual ou diluído. Altamente potente, titular com extrema cautela.'
     };
   }
 
-  // 4. Óleos e Extratos
-  if (/THC\/CBD|1:1|Balanceado/i.test(pName)) {
-    return {
-      name: pName,
-      activeIngredients: 'Extrato Integral de Cannabis Full Spectrum com Proporção Balanceada THC:CBD (1:1) 50mg/ml THC + 50mg/ml CBD',
-      concentration: '100mg/ml (50mg/ml THC + 50mg/ml CBD) - 3000mg totais',
-      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
-      quantity: '01 Frasco de 30ml',
-      administrationRoute: 'Via Sublingual / Oral',
-      brand: manufacturer,
-      origin: prodOrigin,
-      description: 'Extrato balanceado 1:1 indicado para analgesia potente, dores neuropáticas, rigidez e espasticidade.',
-      usageInstructions: '• Iniciar com 2 a 3 gotas (12/12 horas) via sublingual. Aumentar 1 gota por dose a cada 3 a 5 dias conforme tolerância e resposta analgésica.'
-    };
-  }
-
-  if (/PREDOMINANTE THC|Rico em THC|High THC/i.test(pName)) {
-    return {
-      name: pName,
-      activeIngredients: 'Extrato Integral de Cannabis com Predominância de Tetrahidrocanabinol (Delta-9-THC 100mg/ml) + Canabinoides Menores',
-      concentration: '100mg/ml Delta-9-THC (3000mg totais)',
-      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
-      quantity: '01 Frasco de 30ml',
-      administrationRoute: 'Via Sublingual / Oral',
-      brand: manufacturer,
-      origin: prodOrigin,
-      description: 'Extrato predominante em THC para analgesia em dores intratáveis, insônia refratária e relaxamento neuromuscular.',
-      usageInstructions: '• Iniciar com 1 a 2 gotas exclusivamente à noite via sublingual. Aumentar 1 gota a cada 3 a 5 dias. Uso diurno apenas sob estrita recomendação médica devido ao efeito psicoativo.'
-    };
-  }
-
-  if (/CBG/i.test(pName)) {
-    return {
-      name: pName,
-      activeIngredients: 'Extrato de Canabigerol (CBG) + Canabidiol (CBD) Full Spectrum com Terpenos Energizantes',
-      concentration: '50mg/ml a 80mg/ml de Canabinoides Totais (Frasco 30ml)',
-      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
-      quantity: '01 Frasco de 30ml',
-      administrationRoute: 'Via Sublingual / Oral',
-      brand: manufacturer,
-      origin: prodOrigin,
-      description: 'Formulação rica em CBG para clareza mental, foco, suporte anti-inflamatório sistêmico e imunológico.',
-      usageInstructions: '• Iniciar com 3 a 5 gotas via sublingual pela manhã ou início da tarde. Aumentar gradualmente conforme resposta para foco e modulação do humor. Evitar uso próximo ao horário de dormir.'
-    };
-  }
-
-  if (/6000/i.test(pName)) {
-    return {
-      name: pName,
-      activeIngredients: 'Canabidiol (CBD) Full Spectrum 200mg/ml (6000mg totais) + Terpenos Naturais + Delta-9-THC < 0,2%',
-      concentration: '200mg/ml (6000mg CBD por frasco de 30ml - Aprox. 5mg/gota)',
-      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
-      quantity: '01 Frasco de 30ml',
-      administrationRoute: 'Via Sublingual / Oral',
-      brand: manufacturer,
-      origin: prodOrigin,
-      description: 'Canabidiol de altíssima concentração para quadros de ansiedade severa, dores refratárias e regulação do humor.',
-      usageInstructions: '• Iniciar com 5-10 mg de CBD (aproximadamente 2-4 gotas, considerando que 1 gota = 5 mg de CBD a 200mg/ml) sublingual, 1 vez ao dia (preferencialmente à noite para iniciar). Aumentar gradualmente em 2-4 gotas a cada 3-5 dias, conforme tolerância e resposta, até 10-20 mg de CBD (aproximadamente 4-8 gotas) 2 vezes ao dia (12/12 horas).'
-    };
-  }
-
-  if (/3000/i.test(pName)) {
-    return {
-      name: pName,
-      activeIngredients: 'Canabidiol (CBD) Full Spectrum 100mg/ml (3000mg totais) + Blend Terpênico Mirceno/Linalol + Delta-9-THC < 0,2%',
-      concentration: '100mg/ml (3000mg CBD por frasco de 30ml - Aprox. 2,5mg/gota)',
-      pharmaceuticalForm: 'Solução Oleosa Sublingual com Conta-gotas',
-      quantity: '01 Frasco de 30ml',
-      administrationRoute: 'Via Sublingual / Oral',
-      brand: manufacturer,
-      origin: prodOrigin,
-      description: 'Extrato Full Spectrum enriquecido com terpenos calmantes para relaxamento, inflamação e alívio da dor.',
-      usageInstructions: '• Iniciar com 3-5 gotas (aprox. 7,5 - 12,5 mg de CBD) sublingual, 1 a 2 vezes ao dia. Aumentar 2 gotas a cada 3 a 5 dias até controle dos sintomas ou conforme indicação clínica.'
-    };
-  }
-
-  // Padrão Geral
+  // DEFAULT (ÓLEOS)
   return {
     name: pName,
     activeIngredients: isNational 
-      ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD) e Fitocanabinoides' 
-      : 'Canabidiol (CBD) Full Spectrum com Terpenos Naturais (Delta-9-THC < 0,2%)',
-    concentration: 'Variável conforme apresentação',
-    pharmaceuticalForm: 'Solução Oleosa Sublingual / Comestível / Extrato',
-    quantity: '01 Embalagem padrão',
-    administrationRoute: 'Conforme produto',
+      ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD)' 
+      : 'Canabidiol (CBD) Full Spectrum / Broad Spectrum',
+    concentration: 'Variável (Verificar concentração no rótulo)',
+    pharmaceuticalForm: 'Solução Oleosa Sublingual (aprox. 20 a 30 gotas por mL)',
+    quantity: '01 Frasco de 30ml',
+    administrationRoute: 'Via Sublingual',
     brand: manufacturer,
     origin: prodOrigin,
-    description: 'Modulação terapêutica do Sistema Endocanabinoide.'
+    description: 'Modulação terapêutica do Sistema Endocanabinoide.',
+    usageInstructions: '• Pingar as gotas recomendadas sob a língua e aguardar 1 a 2 minutos antes de engolir. (Nota: 1 mL equivale a cerca de 20-30 gotas, consulte o medidor do fabricante).'
   };
 }

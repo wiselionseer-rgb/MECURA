@@ -1,11 +1,10 @@
 const fs = require('fs');
 
-let viewPath = 'src/components/CBDGuideView.tsx';
-let code = fs.readFileSync(viewPath, 'utf8');
+const path = 'src/data/cbdGuide.ts';
+let code = fs.readFileSync(path, 'utf8');
 
-// Replace the fragment with a simple div
-code = code.replace(/<\/>\s*\n\s*\)\}/g, "</div>\n        )}");
-code = code.replace(/\) :\s*\(\s*<>/g, ") : (\n          <div className=\"space-y-6\">");
+// There's a missing brace for the enrichMedicationDetails function at the very end
+code = code + "\n}\n";
 
-fs.writeFileSync(viewPath, code);
-console.log('Fixed syntax');
+fs.writeFileSync(path, code);
+console.log('Fixed syntax error');
