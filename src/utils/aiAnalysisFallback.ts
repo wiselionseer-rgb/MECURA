@@ -11,7 +11,7 @@ export function generateClinicalAnalysisFallback(promptText: string): string {
         notes: "Reter sob a língua por 60 a 90 segundos antes de engolir para rápida absorção e maior biodisponibilidade."
       },
       {
-        name: "IgniteCBD by Isospec Health 1200mg:1200mg CBD:CBG - 30ml - Mint",
+        name: "GreenBudz Super Vibe Oil 3000mg • 100 mg/ml",
         indication: "Clareza Mental, Foco Diurno e Controle da Ansiedade",
         usage: "**5 a 8 gotas** pela manhã após alimentação",
         notes: "O CBG atua em sinergia promovendo neuroproteção e equilíbrio emocional sem sonolência."
@@ -80,7 +80,7 @@ export function generateClinicalAnalysisFallback(promptText: string): string {
       primaryCondition = "Distúrbios do Sono, Insônia Crônica e Fragmentação Noturna";
       importedProducts = [
         {
-          name: "IgniteCBD by Isospec Health 1200mg:1200mg CBD:CBN - 30ml - Mint",
+          name: "Drops By GreenBudz Goma Nightshade CBD CBN e THC",
           indication: "Indução e Manutenção do Sono Reparador (Óleo Sublingual com CBN)",
           usage: "**10 a 12 gotas** por via sublingual, **30 a 45 minutos antes de deitar**",
           notes: "O Canabinol (CBN) é o fitocanabinoide de escolha para arquitetura do sono profundo."

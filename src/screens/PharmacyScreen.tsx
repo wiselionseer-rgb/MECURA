@@ -124,12 +124,7 @@ export function PharmacyScreen() {
         const remainder = qty % 2;
         itemTotal = (setsOf2 * 49.90 * exchangeRate) + (remainder * basePrice);
       }
-      // 4. Ignite - Óleos
-      else if (nameLower.includes('ignite') && (nameLower.includes('óleo') || nameLower.includes('oil') || nameLower.includes('30ml'))) {
-        const setsOf3 = Math.floor(qty / 3);
-        const remainder = qty % 3;
-        itemTotal = (setsOf3 * 2 * basePrice) + (remainder * basePrice);
-      }
+
       
       total += itemTotal;
     });
@@ -399,8 +394,6 @@ export function PharmacyScreen() {
                         itemTotal = (Math.floor(qty / 10) * 350 * exchangeRate) + ((qty % 10) * basePrice);
                       } else if (nameLower.includes('drops by greenbudz') && nameLower.includes('gumm')) {
                         itemTotal = (Math.floor(qty / 2) * 49.90 * exchangeRate) + ((qty % 2) * basePrice);
-                      } else if (nameLower.includes('ignite') && (nameLower.includes('óleo') || nameLower.includes('oil') || nameLower.includes('30ml'))) {
-                        itemTotal = (Math.floor(qty / 3) * 2 * basePrice) + ((qty % 3) * basePrice);
                       }
                       
                       return itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -727,11 +720,24 @@ export function PharmacyScreen() {
                         return `- ${qty}x ${item.name}`;
                       }).join('\n');
                       
-                      const addressText = `${address.street}, ${address.number} ${address.complement ? `(${address.complement})` : ''}\n${address.neighborhood}, ${address.city} - ${address.state}\nCEP: ${address.cep}`;
+                      const addressText = `${address.street}, ${address.number} ${address.complement ? `(${address.complement})` : ''}
+${address.neighborhood}, ${address.city} - ${address.state}
+CEP: ${address.cep}`;
                       
                       const paymentMethodText = paymentMethod === 'pix' ? 'PIX' : `Cartão de Crédito (${installments}x)`;
                       
-                      const message = `Olá, vim pelo aplicativo Mecura e gostaria de finalizar a compra da minha receita! 🌿\n\n📦 *ITENS DA PRESCRIÇÃO:*\n${itemsText}\n\n🚚 *ENTREGA:*\nEndereço:\n${addressText}\n\n💳 *PAGAMENTO:*\nMétodo escolhido: ${paymentMethodText}\n💰 *Valor Total: ${finalTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}*`;
+                      const message = `Olá, vim pelo aplicativo Mecura e gostaria de finalizar a compra da minha receita! 🌿
+
+📦 *ITENS DA PRESCRIÇÃO:*
+${itemsText}
+
+🚚 *ENTREGA:*
+Endereço:
+${addressText}
+
+💳 *PAGAMENTO:*
+Método escolhido: ${paymentMethodText}
+💰 *Valor Total: ${finalTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}*`;
                       
                       const whatsappUrl = `https://wa.me/5566996280883?text=${encodeURIComponent(message)}`;
                       window.open(whatsappUrl, '_blank');

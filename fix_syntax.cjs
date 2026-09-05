@@ -1,4 +1,11 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/utils/pdfGenerator.tsx', 'utf-8');
-code = code.replace(/\\`Receita_Medica_\\\${sanitizedUserName}\.pdf\\`/g, "\`Receita_Medica_\${sanitizedUserName}.pdf\`");
-fs.writeFileSync('src/utils/pdfGenerator.tsx', code);
+
+let viewPath = 'src/components/CBDGuideView.tsx';
+let code = fs.readFileSync(viewPath, 'utf8');
+
+// Replace the fragment with a simple div
+code = code.replace(/<\/>\s*\n\s*\)\}/g, "</div>\n        )}");
+code = code.replace(/\) :\s*\(\s*<>/g, ") : (\n          <div className=\"space-y-6\">");
+
+fs.writeFileSync(viewPath, code);
+console.log('Fixed syntax');

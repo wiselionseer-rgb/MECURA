@@ -1,6 +1,5 @@
 import { useAdminStore } from '../store/useAdminStore';
-import { cbdGuideData } from '../data/cbdGuide';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   ChevronDown, 
@@ -17,7 +16,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
+import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
 
 export function CBDGuideView() {
@@ -36,6 +35,20 @@ export function CBDGuideView() {
   const [showWarning, setShowWarning] = useState(true);
   const [warningDismissed, setWarningDismissed] = useState(false);
   const { exchangeRate } = useStore();
+  const [viewMode, setViewMode] = useState<'categories' | 'diseases'>('categories');
+  const [selectedDisease, setSelectedDisease] = useState<{name: string, category: CBDCategory} | null>(null);
+
+  const allDiseases = React.useMemo(() => {
+    const diseases = [];
+    productCategories.forEach(cat => {
+      if (cat.indicationsList) {
+        cat.indicationsList.forEach(ind => {
+          diseases.push({ name: ind, category: cat });
+        });
+      }
+    });
+    return diseases.sort((a, b) => a.name.localeCompare(b.name));
+  }, [productCategories]);
 
   // Auto-dismiss warning after 8 seconds if not manually interacted with
   useEffect(() => {
@@ -115,6 +128,26 @@ export function CBDGuideView() {
                 <span>Aviso</span>
               </button>
             )}
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex bg-mecura-surface border border-mecura-elevated p-1 rounded-xl w-full md:w-auto mb-2 md:mb-0">
+            <button
+              onClick={() => setViewMode('categories')}
+              className={`flex-1 md:flex-none px-4 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-colors ${
+                viewMode === 'categories' ? 'bg-mecura-surface-light text-white shadow-sm' : 'text-mecura-silver hover:text-white'
+              }`}
+            >
+              Visualizar por Categorias
+            </button>
+            <button
+              onClick={() => setViewMode('diseases')}
+              className={`flex-1 md:flex-none px-4 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-colors ${
+                viewMode === 'diseases' ? 'bg-mecura-surface-light text-white shadow-sm' : 'text-mecura-silver hover:text-white'
+              }`}
+            >
+              Visualizar por Doenças
+            </button>
           </div>
 
           {/* Search & Actions Bar */}
@@ -254,6 +287,45 @@ export function CBDGuideView() {
       {/* Content Area */}
       <div id="cbd-guide-content" className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar min-h-0">
         <div className="max-w-5xl mx-auto space-y-4 md:space-y-6">
+        
+        {viewMode === 'diseases' ? (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-white mb-2">Protocolos por Patologia</h2>
+              <p className="text-mecura-silver text-sm">Selecione uma doença para ver orientações profundas e os medicamentos indicados correspondentes da categoria de tratamento.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {allDiseases
+                .filter(d => d.name.toLowerCase().includes(diseaseFilter.toLowerCase()) || d.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map((disease, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedDisease(disease)}
+                  className="bg-mecura-surface hover:bg-mecura-surface-light border border-mecura-elevated hover:border-mecura-neon/50 rounded-xl p-4 text-left transition-all group flex flex-col h-full"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-bold text-white group-hover:text-mecura-neon transition-colors">{disease.name}</h3>
+                    <ChevronDown className="w-4 h-4 text-mecura-silver opacity-0 group-hover:opacity-100 transition-opacity rotate-[-90deg]" />
+                  </div>
+                  <div className="mt-auto pt-3 border-t border-white/5">
+                    <span className="text-[10px] text-mecura-silver uppercase tracking-wider block mb-1">Categoria de Tratamento</span>
+                    <span className="text-xs text-mecura-pearl line-clamp-1">{disease.category.title}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            {allDiseases.filter(d => d.name.toLowerCase().includes(diseaseFilter.toLowerCase()) || d.name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+              <div className="text-center py-12">
+                <Search className="w-8 h-8 text-mecura-silver mx-auto mb-3 opacity-40" />
+                <p className="text-white font-bold">Nenhuma patologia encontrada</p>
+                <p className="text-sm text-mecura-silver">Tente ajustar seus filtros de busca.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6">
           {filteredData.map((category) => {
             const isExpanded = expandedCategories[category.id] ?? false;
 
@@ -277,9 +349,21 @@ export function CBDGuideView() {
                         {category.products.length} {category.products.length === 1 ? 'produto' : 'produtos'}
                       </span>
                     </div>
-                    <p className="text-xs md:text-sm text-mecura-silver mt-1 leading-relaxed">
+                    <p className="text-xs md:text-sm text-mecura-silver mt-2 leading-relaxed">
                       {category.description}
                     </p>
+                    {category.indicationsList && category.indicationsList.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {category.indicationsList.map((indication, iIdx) => (
+                          <span 
+                            key={iIdx} 
+                            className="bg-mecura-neon/10 text-mecura-neon text-[10px] md:text-[11px] px-2.5 py-1 rounded-md border border-mecura-neon/20 font-semibold"
+                          >
+                            {indication}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex-shrink-0 p-2 rounded-xl bg-mecura-surface-light/80 border border-mecura-elevated text-mecura-silver">
                     {isExpanded ? (
@@ -294,6 +378,43 @@ export function CBDGuideView() {
                 {isExpanded && (
                   <div className="p-4 md:p-6 border-t border-mecura-elevated space-y-4">
                     {/* Dosage Guidance Card */}
+                    {category.products.some(p => p.type.includes('Concentrado')) && (
+                      <div className="p-4 md:p-5 bg-black/40 border border-mecura-neon/30 rounded-xl mb-4">
+                        <h4 className="font-bold text-mecura-neon mb-2 flex items-center gap-2">
+                          <Sparkles className="w-5 h-5" /> Guia de Apoio à Prescrição Médica: Qual Extração Escolher?
+                        </h4>
+                        <p className="text-[11px] md:text-xs text-mecura-silver leading-relaxed mb-4">
+                          As extrações concentradas possuem <strong>Cepas (Strains)</strong> específicas com perfis de terpenos desenhados para diferentes patologias. Escolha o formato da extração com base na preferência de manuseio e a <strong>Cepa</strong> com base no objetivo clínico:
+                        </p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="p-3 bg-mecura-neon/5 rounded-lg border border-mecura-neon/10">
+                            <div className="font-bold text-mecura-pearl text-xs md:text-sm mb-1">Dor Aguda e Insônia Profunda</div>
+                            <div className="text-[11px] text-mecura-silver mb-1"><strong>Cepas Indicadas:</strong> LC (Stirred) e BM (Granulated, Dried)</div>
+                            <div className="text-[10px] text-mecura-silver/80"><strong>Terpenos:</strong> Mirceno + Cariofileno (Sedativo e Analgésico)</div>
+                          </div>
+                          
+                          <div className="p-3 bg-mecura-neon/5 rounded-lg border border-mecura-neon/10">
+                            <div className="font-bold text-mecura-pearl text-xs md:text-sm mb-1">Ansiedade Severa e Inflamação</div>
+                            <div className="text-[11px] text-mecura-silver mb-1"><strong>Cepas Indicadas:</strong> ICC (Stirred, Crystalized) e AH (Stirred)</div>
+                            <div className="text-[10px] text-mecura-silver/80"><strong>Terpenos:</strong> Mirceno + Limoneno + Linalol (Relaxante e Anti-inflamatório)</div>
+                          </div>
+
+                          <div className="p-3 bg-mecura-neon/5 rounded-lg border border-mecura-neon/10">
+                            <div className="font-bold text-mecura-pearl text-xs md:text-sm mb-1">Foco, TDAH, Depressão e Fadiga</div>
+                            <div className="text-[11px] text-mecura-silver mb-1"><strong>Cepas Indicadas:</strong> TW (Stirred, Granulated) e PR (Dried)</div>
+                            <div className="text-[10px] text-mecura-silver/80"><strong>Terpenos:</strong> Terpinoleno + Limoneno + Pineno (Estimulante e Focado)</div>
+                          </div>
+
+                          <div className="p-3 bg-mecura-neon/5 rounded-lg border border-mecura-neon/10">
+                            <div className="font-bold text-mecura-pearl text-xs md:text-sm mb-1">Flexibilidade Analgésica (Sem sedar)</div>
+                            <div className="text-[11px] text-mecura-silver mb-1"><strong>Cepas Indicadas:</strong> CD (Granulated) e DS (Dried)</div>
+                            <div className="text-[10px] text-mecura-silver/80"><strong>Terpenos:</strong> Cariofileno + Limoneno (Relaxante, Analgésico sem sedação pesada)</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="p-3.5 md:p-4 bg-mecura-neon/5 border border-mecura-neon/20 rounded-xl flex gap-3 items-start">
                       <Info className="w-4 h-4 md:w-5 md:h-5 text-mecura-neon flex-shrink-0 mt-0.5" />
                       <div className="flex-1 text-xs md:text-sm">
@@ -327,6 +448,31 @@ export function CBDGuideView() {
                                   <span className="font-bold opacity-75 mr-1">Indicações:</span> {product.indications}
                                 </p>
                               )}
+                              
+                          {/* Rich Details */}
+                          {(() => {
+                            const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                            return (
+                              <div className="mt-2 space-y-1 p-2.5 bg-black/20 border border-white/5 rounded-lg">
+                                <p className="text-[10px] leading-relaxed text-mecura-silver">
+                                  <strong className="text-mecura-pearl">Princípio Ativo:</strong> {enriched.activeIngredients} - {enriched.concentration} - {enriched.concentration}
+                                </p>
+                                <p className="text-[10px] leading-relaxed text-mecura-silver">
+                                  <strong className="text-mecura-pearl">Apresentação & Via:</strong> {enriched.pharmaceuticalForm} • Qtd: {enriched.quantity} • {enriched.administrationRoute}
+                                </p>
+                                {enriched.usageInstructions && (
+                                  <div className="pt-1.5 mt-1.5 border-t border-white/5">
+                                    <p className="text-[10px] leading-relaxed text-mecura-silver">
+                                      <strong className="text-mecura-pearl block mb-0.5">Posologia e Modo de Uso:</strong> 
+                                      {enriched.usageInstructions}
+                                    </p>
+                                  </div>
+                                )}
+                                
+                              </div>
+                            );
+                          })()}
+
                             </div>
                             <div className="text-right flex-shrink-0">
                               <span className="text-sm font-black text-mecura-neon block">
@@ -375,7 +521,7 @@ export function CBDGuideView() {
                       <table className="w-full text-left text-sm">
                         <thead>
                           <tr className="border-b border-mecura-elevated bg-mecura-surface-light/40 text-mecura-silver text-xs uppercase tracking-wider">
-                            <th className="py-3 px-4 font-semibold w-1/3">Produto & Descrição</th>
+                            <th className="py-3 px-4 font-semibold w-[40%]">Produto & Descrição</th>
                             <th className="py-3 px-4 font-semibold w-1/5">Fabricante</th>
                             <th className="py-3 px-4 font-semibold w-1/6">Tipo</th>
                             <th className="py-3 px-4 font-semibold">Especificações</th>
@@ -399,6 +545,31 @@ export function CBDGuideView() {
                                     <span className="font-bold opacity-75 mr-1">Indicações:</span> {product.indications}
                                   </p>
                                 )}
+                                
+                                {/* Rich Details Desktop */}
+                                {(() => {
+                                  const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                                  return (
+                                    <div className="mt-3 space-y-1 p-3 bg-black/20 border border-white/5 rounded-lg">
+                                      <p className="text-[11px] leading-relaxed text-mecura-silver">
+                                        <strong className="text-mecura-pearl">Princípio Ativo:</strong> {enriched.activeIngredients}
+                                      </p>
+                                      <p className="text-[11px] leading-relaxed text-mecura-silver">
+                                        <strong className="text-mecura-pearl">Apresentação & Via:</strong> {enriched.pharmaceuticalForm} • Qtd: {enriched.quantity} • Via {enriched.administrationRoute}
+                                      </p>
+                                      {enriched.usageInstructions && (
+                                        <div className="pt-2 mt-2 border-t border-white/5">
+                                          <p className="text-[11px] leading-relaxed text-mecura-silver">
+                                            <strong className="text-mecura-pearl block mb-0.5">Posologia e Modo de Uso:</strong> 
+                                            {enriched.usageInstructions}
+                                          </p>
+                                        </div>
+                                      )}
+                                      
+                                    </div>
+                                  );
+                                })()}
+
                               </td>
                               <td className="py-3.5 px-4 text-mecura-silver text-xs align-top">
                                 <span className="font-semibold text-mecura-pearl block">{product.manufacturer}</span>
@@ -455,8 +626,139 @@ export function CBDGuideView() {
               </button>
             </div>
           )}
+          </div>
+        )}
         </div>
       </div>
+
+      {/* Disease Detail Modal */}
+      <AnimatePresence>
+        {selectedDisease && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-mecura-surface border border-mecura-elevated rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+            >
+              {/* Modal Header */}
+              <div className="p-4 md:p-6 border-b border-mecura-elevated flex items-start justify-between bg-gradient-to-r from-mecura-surface to-mecura-surface-light">
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-mecura-neon font-bold mb-1 block">Protocolo Clínico Sugerido</span>
+                  <h2 className="text-xl md:text-2xl font-bold text-white">{selectedDisease.name}</h2>
+                  <p className="text-sm text-mecura-silver mt-1">
+                    Tratamento classificado em: <strong className="text-mecura-pearl">{selectedDisease.category.title}</strong>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedDisease(null)}
+                  className="p-2 hover:bg-white/5 rounded-xl text-mecura-silver hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 md:p-6 overflow-y-auto space-y-6">
+                
+                {/* Orientations Card */}
+                <div className="bg-black/40 border border-white/5 rounded-xl p-5">
+                  <h3 className="font-bold text-white flex items-center gap-2 mb-3">
+                    <Info className="w-5 h-5 text-mecura-neon" />
+                    Orientações e Perfil de Tratamento
+                  </h3>
+                  <p className="text-sm text-mecura-silver leading-relaxed mb-4">
+                    {selectedDisease.category.description}
+                  </p>
+                  
+                  <div className="bg-mecura-neon/5 border border-mecura-neon/20 rounded-lg p-4">
+                    <h4 className="text-xs font-bold text-mecura-neon uppercase tracking-wider mb-2">Posologia e Titulação Recomendada</h4>
+                    <p className="text-sm text-mecura-pearl font-medium leading-relaxed">
+                      {selectedDisease.category.dosageGuidance}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Specific Category Tips (like we have for category extracts) */}
+                {selectedDisease.category.products.some(p => p.type.includes('Concentrado')) && (
+                  <div className="p-4 md:p-5 bg-[#0A0A0F] border border-white/10 rounded-xl">
+                    <h4 className="font-bold text-white mb-2 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-yellow-400" /> Guia de Cepas (Strains) e Terpenos
+                    </h4>
+                    <p className="text-xs text-mecura-silver leading-relaxed mb-3">
+                      Ao prescrever extrações (Stirred, Dried, Granulated) para {selectedDisease.name}, leve em consideração o perfil de terpenos:
+                    </p>
+                    <ul className="text-xs text-mecura-silver space-y-2 list-disc list-inside">
+                      <li><strong>Para relaxamento e analgesia:</strong> Cepas ricas em Mirceno e Linalol (ex: LC, ICC, BM)</li>
+                      <li><strong>Para foco e disposição:</strong> Cepas ricas em Limoneno, Pineno e Terpinoleno (ex: TW, PR)</li>
+                      <li><strong>Para analgesia sem sedação severa:</strong> Cepas ricas em Cariofileno (ex: CD, DS)</li>
+                    </ul>
+                  </div>
+                )}
+
+                {/* Recommended Products */}
+                <div>
+                  <h3 className="font-bold text-white mb-3">Medicamentos e Produtos Recomendados ({selectedDisease.category.products.length})</h3>
+                  <div className="space-y-3">
+                    {selectedDisease.category.products.map((product, idx) => {
+                      const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                      return (
+                        <div key={idx} className="bg-mecura-surface-light/30 border border-mecura-elevated rounded-xl p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="font-bold text-white text-sm">{product.name}</h4>
+                              <span className="text-[10px] text-mecura-silver uppercase tracking-wide">{product.manufacturer} • {product.type}</span>
+                            </div>
+                            {product.priceUSD && (
+                              <span className="text-sm font-bold text-mecura-neon whitespace-nowrap bg-mecura-neon/10 px-2 py-1 rounded-lg">
+                                R$ {(product.priceUSD * exchangeRate).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-mecura-silver">
+                            <div className="bg-black/20 p-2 rounded">
+                              <span className="block font-bold text-mecura-pearl mb-0.5">Princípio Ativo:</span>
+                              {enriched.activeIngredients}
+                            </div>
+                            <div className="bg-black/20 p-2 rounded">
+                              <span className="block font-bold text-mecura-pearl mb-0.5">Apresentação:</span>
+                              {enriched.pharmaceuticalForm} • {enriched.quantity}
+                            </div>
+                          </div>
+                          
+                          {enriched.usageInstructions && (
+                            <div className="mt-2 bg-black/20 p-2 rounded text-[11px] text-mecura-silver border border-white/5">
+                              <span className="block font-bold text-mecura-pearl mb-0.5">Sugestão de Posologia Bula:</span>
+                              {enriched.usageInstructions}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+              </div>
+              
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-mecura-elevated bg-[#0A0A0F] flex justify-end">
+                <button
+                  onClick={() => setSelectedDisease(null)}
+                  className="px-6 py-2 bg-mecura-neon text-black font-bold rounded-xl hover:bg-mecura-neon/90 transition-colors"
+                >
+                  Fechar Protocolo
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

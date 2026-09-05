@@ -36,26 +36,21 @@ const formatCpf = (val: string) => {
 
 // --- CONSTANTS ---
 const OBJECTIVES_MAIN = [
-  { id: 'sono', title: 'Melhora do Sono', desc: 'Ajuda para dormir e manter o descanso.' },
-  { id: 'calma', title: 'Equilíbrio emocional', desc: 'Controle da agitação e do nervosismo diário.' },
-  { id: 'foco', title: 'Aumento do Foco', desc: 'Mais concentração nas suas atividades.' },
-  { id: 'estresse', title: 'Menos Estresse', desc: 'Melhora do estresse e exaustão diária.' },
-  { id: 'ansiedade', title: 'Controle da Ansiedade', desc: 'Busca por mais equilíbrio emocional.' },
-  { id: 'dor', title: 'Dor Crônica', desc: 'Alívio de dores constantes.' },
-  { id: 'esporte', title: 'Melhora no Esporte', desc: 'Mais energia e menos fadiga muscular.' },
-  { id: 'libido', title: 'Aumento da Libido', desc: 'Recupere a sensação de prazer.' },
-  { id: 'enxaqueca', title: 'Enxaqueca', desc: 'Alívio para dores de cabeça fortes.' },
-  { id: 'tpm', title: 'Controle da TPM', desc: 'Controle para mudanças de humor e irritação.' },
+  { id: 'ansiedade', title: 'Ansiedade, Estresse e Transtornos Mentais', desc: 'Ansiedade, Depressão, Estresse, Burnout, TDAH e distúrbios do humor.' },
+  { id: 'dor', title: 'Dor Crônica e Inflamação', desc: 'Dor Crônica, Enxaqueca, Fibromialgia, Artrite/Artrose, Hérnia de Disco, Esclerose Múltipla, Asma e Glaucoma.' },
+  { id: 'sono', title: 'Insônia e Distúrbios do Sono', desc: 'Insônia, Bruxismo, Síndrome das Pernas Inquietas e agitação noturna.' },
+  { id: 'energia', title: 'Energia, Foco e Metabolismo', desc: 'Burnout, Obesidade, Melhora no Esporte, Foco, Disposição e controle metabólico.' },
+  { id: 'mulher', title: 'Saúde da Mulher', desc: 'TPM, Menopausa, Endometriose, Equilíbrio hormonal e alívio de cólicas.' },
+  { id: 'gastro', title: 'Gastrointestinal', desc: 'Doença de Crohn, Colite, Anorexia, Modulação da inflamação intestinal.' },
+  { id: 'neuro', title: 'Doenças Neurodegenerativas', desc: 'Parkinson, Alzheimer, Demência e idosos.' },
+  { id: 'epilepsia', title: 'Epilepsia e Convulsões Refratárias', desc: 'Controle de crises convulsivas e epilepsia.' },
+  { id: 'tea', title: 'Transtorno do Espectro Autista (TEA)', desc: 'Autismo (TEA), regulação sensorial e comportamental.' },
+  { id: 'dermato', title: 'Dermatologia', desc: 'Psoríase, Dermatite, controle da inflamação cutânea e alívio do prurido.' },
+  { id: 'vicios', title: 'Redução de Vícios e Danos', desc: 'Controle de fissuras (craving) na retirada de medicamentos e vícios.' },
+  { id: 'onco', title: 'Oncologia e Cuidados Paliativos', desc: 'Suporte no câncer, cuidados paliativos, dor oncológica e náuseas.' }
 ];
 
-const OBJECTIVES_OTHER = [
-  'TDAH', 'Depressão', 'Fibromialgia', 'Parkinson', 'Burnout', 'Síndrome de Epilepsia',
-  'Alzheimer', 'Redução de Vícios', 'Autismo (TEA)', 'Obesidade', 'Bruxismo',
-  'Menopausa', 'Câncer (suporte)', 'Esclerose Múltipla', 'Asma', 'Demência',
-  'Glaucoma', 'Cuidados Paliativos', 'Anorexia', 
-  'Endometriose', 'Doença de Crohn / Colite', 'Artrite / Artrose', 'Psoríase / Dermatite',
-  'Hérnia de Disco / Coluna', 'Dores Neuropáticas', 'Síndrome das Pernas Inquietas', 'Outros'
-];
+const OBJECTIVES_OTHER = ['Outros'];
 
 const SOCIAL_QUESTIONS = [
   { id: 'casado', label: 'Você é casado?' },
@@ -183,7 +178,8 @@ const STEPS = [
         setAuthError('');
         try {
           if (isLogin) {
-            const userCredential = await signInWithEmailAndPassword(auth, userEmail, password);
+            const trimmedEmail = userEmail.trim();
+            const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
             // Check if user has completed onboarding
             const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
             if (userDoc.exists()) {
@@ -209,7 +205,8 @@ const STEPS = [
               }
             }
           } else {
-            await createUserWithEmailAndPassword(auth, userEmail, password);
+            const trimmedEmail = userEmail.trim();
+            await createUserWithEmailAndPassword(auth, trimmedEmail, password);
           }
           setCurrentStep(prev => prev + 1);
           setOnboardingStep(currentStep + 1);
@@ -223,6 +220,8 @@ const STEPS = [
             setAuthError('A senha deve ter pelo menos 6 caracteres.');
           } else if (error.code === 'auth/operation-not-allowed') {
             setAuthError('Você precisa ativar o provedor de Email/Senha no console do Firebase > Authentication > Sign-in method.');
+          } else if (error.code === 'auth/invalid-email') {
+            setAuthError('O formato do email é inválido. Verifique se há espaços extras ou erros de digitação.');
           } else {
             setAuthError(`Ocorreu um erro: ${error.message || 'Tente novamente.'}`);
           }

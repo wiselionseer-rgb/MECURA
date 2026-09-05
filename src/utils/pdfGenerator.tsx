@@ -297,7 +297,7 @@ export const generatePrescriptionPDF = async (
   const opt = {
     margin: 0,
     filename: `Receita_Medica_${sanitizedUserName}.pdf`,
-    image: { type: 'jpeg' as const, quality: 1 },
+    image: { type: "jpeg" as any as const, quality: 1 },
     html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollY: 0, scrollX: 0 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
   };
@@ -445,7 +445,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const opt = {
     margin: 0,
     filename: `Laudo_Medico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`,
-    image: { type: 'jpeg', quality: 1 },
+    image: { type: "jpeg" as any, quality: 1 },
     html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollY: 0, scrollX: 0 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
@@ -601,7 +601,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const opt = {
     margin: 0,
     filename: `Laudo_Psicomotor_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`,
-    image: { type: 'jpeg', quality: 1 },
+    image: { type: "jpeg" as any, quality: 1 },
     html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollY: 0, scrollX: 0 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }

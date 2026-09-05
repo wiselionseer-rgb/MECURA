@@ -32,7 +32,7 @@ import {
 import { useAdminStore } from '../store/useAdminStore';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 
 export const AdminDashboardScreen = () => {
@@ -44,7 +44,7 @@ export const AdminDashboardScreen = () => {
   const forceSendToQueue = async (patient: any) => {
     try {
       await setDoc(doc(db, 'queue', patient.id), {
-        patientId: patient.id,
+        patientId_temp_fix: patient.id,
         patientName: patient.name || 'Sem nome',
         email: patient.email || 'sem-email@mecura.com',
         tier: patient.tier || 'basic',
@@ -1289,7 +1289,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   
                   try {
                     await addDoc(collection(db, 'appointments'), {
-                      patientId: showAgenda,
+                      patientId_temp_fix: showAgenda,
                       patientName: patients.find(p => p.id === showAgenda)?.name || 'Paciente',
                       date,
                       time,
@@ -1315,8 +1315,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                </form>
             </div>
             <div className="flex-1 overflow-y-auto space-y-4">
-              {allAppointments.filter(app => app.doctorId === showAgenda || app.patientId === showAgenda).length > 0 ? (
-                allAppointments.filter(app => app.doctorId === showAgenda || app.patientId === showAgenda).map(app => (
+              {allAppointments.filter(app => app.doctorId_temp_fix === showAgenda || app.patientId_temp_fix === showAgenda).length > 0 ? (
+                allAppointments.filter(app => app.doctorId_temp_fix === showAgenda || app.patientId_temp_fix === showAgenda).map(app => (
                   <div key={app.id} className="bg-[#0A0A0F] border border-[#262636] rounded-2xl p-4 flex justify-between">
                     <div>
                       <div className="font-bold">{app.patientName}</div>

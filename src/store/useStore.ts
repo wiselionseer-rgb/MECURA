@@ -566,9 +566,11 @@ export const useStore = create<AppState>((set, get) => ({
         return {
           id: doc.id,
           ...data,
-          date: new Date(data.date)
+          date: new Date(data.date),
+          patientName: data.patientName || 'Paciente',
+          messages: data.messages || []
         };
-      });
+      }) as any[];
       set({ consultationHistory: history });
       if (history.length > 0) {
         const state = get();

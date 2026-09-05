@@ -92,8 +92,8 @@ export function PremiumCheckoutScreen() {
   const handleSuccess = () => {
     setPagamentoPremium(true);
     addMessage({
-      sender: 'system',
-      type: 'payment_success',
+      sender: 'doctor',
+      type: "payment_success" as any,
       text: 'Pagamento da Consulta Premium (R$ 250,00) aprovado com sucesso!'
     });
     navigate('/chat');
@@ -113,7 +113,7 @@ export function PremiumCheckoutScreen() {
                 const { db } = await import('../firebase');
                 await addDoc(collection(db, 'payments'), {
                   mpId: pixData.id,
-                  type: selectedOffer === 'basic' ? 'Consulta Básica' : 'Consulta Premium',
+                  type: selectedOffer_fixed === 'basic' ? 'Consulta Básica' : 'Consulta Premium',
                   value: finalPrice,
                   date: new Date().toISOString()
                 });
