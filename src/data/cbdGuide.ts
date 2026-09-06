@@ -131,7 +131,7 @@ export const cbdGuideData: CBDCategory[] = [
     id: "dor_cronica",
     title: "2. DOR CRÔNICA E INFLAMAÇÃO",
     description: "Formulações focadas em analgesia sistêmica e relaxamento muscular profundo.",
-    indicationsList: ["Dor Crônica", "Enxaqueca", "Fibromialgia", "Artrite / Artrose", "Hérnia de Disco", "Dores Neuropáticas", "Esclerose Múltipla", "Asma", "Glaucoma"],
+    indicationsList: ["Dor Crônica", "Enxaqueca", "Fibromialgia", "Artrite / Artrose", "Hérnia de Disco", "Dores Neuropáticas", "Neuropatia Diabética", "Esclerose Múltipla", "Asma", "Glaucoma"],
     dosageGuidance: "Dose inicial moderada. Aumentar conforme dor referida e tolerabilidade. Uso 2 a 3 vezes ao dia.",
     products: [
             {
@@ -289,7 +289,7 @@ export const cbdGuideData: CBDCategory[] = [
     id: "energia_foco",
     title: "4. ENERGIA, FOCO, METABOLISMO E TDAH",
     description: "Canabinoides como THCV, CBG e terpenos estimulantes (ex: limoneno) para disposição física e mental.",
-    indicationsList: ["TDAH", "Burnout", "Foco e Concentração", "Obesidade e Controle Metabólico", "Melhora no Esporte", "Fadiga Crônica"],
+    indicationsList: ["TDAH", "Burnout", "Foco e Concentração", "Obesidade e Controle Metabólico", "Diabetes e Resistência Insulínica", "Melhora no Esporte", "Fadiga Crônica"],
     dosageGuidance: "Uso diurno. Evitar após as 16h para não interferir no sono.",
     products: [
             {
@@ -319,7 +319,7 @@ export const cbdGuideData: CBDCategory[] = [
         priceUSD: 120.00,
         image: "https://placehold.co/400x400/a3e635/ffffff?text=Slim+Vibe",
         details: ["Frasco 30ml", "aprox. 1,75 mg CBD + 1,75mg THCv/gota", "THCv não possui efeito psicoativo", "Sabor hortelã"],
-        description: "Desenvolvido para promover equilíbrio metabólico e bem-estar. Base de óleo MCT e sabor natural de hortelã."
+        description: "Desenvolvido para promover equilíbrio metabólico e bem-estar. O THCv atua como coadjuvante no manejo da Diabetes, regulação da glicemia e controle de peso. Base de óleo MCT e sabor natural de hortelã."
       },
       {
         name: "Drops By GreenBudz Goma Rodeo Queen THCV CBG e THC",
@@ -972,19 +972,25 @@ export function enrichMedicationDetails(
   }
 
   // DEFAULT (ÓLEOS)
+  const isImported = prodOrigin.toLowerCase() === 'importado';
+  const dropsPerMl = isImported ? 'aprox. 40 gotas por mL' : 'aprox. 20 a 30 gotas por mL';
+  const dropsNote = isImported 
+    ? '(Nota p/ Importados: 1 mL costuma equivaler a ~40 gotas devido ao gotejador padrão americano/europeu. Verifique a bula).'
+    : '(Nota p/ Nacionais: 1 mL costuma equivaler a cerca de 20-30 gotas, dependendo do dosador do frasco).';
+
   return {
     name: pName,
     activeIngredients: isNational 
       ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD)' 
       : 'Canabidiol (CBD) Full Spectrum / Broad Spectrum',
     concentration: 'Variável (Verificar concentração no rótulo)',
-    pharmaceuticalForm: 'Solução Oleosa Sublingual (aprox. 20 a 30 gotas por mL)',
+    pharmaceuticalForm: `Solução Oleosa Sublingual (${dropsPerMl})`,
     quantity: '01 Frasco de 30ml',
     administrationRoute: 'Via Sublingual',
     brand: manufacturer,
     origin: prodOrigin,
     description: 'Modulação terapêutica do Sistema Endocanabinoide.',
-    usageInstructions: '• Pingar as gotas recomendadas sob a língua e aguardar 1 a 2 minutos antes de engolir. (Nota: 1 mL equivale a cerca de 20-30 gotas, consulte o medidor do fabricante).'
+    usageInstructions: `• Pingar as gotas recomendadas sob a língua e aguardar 1 a 2 minutos antes de engolir. ${dropsNote}`
   };
 }
 
