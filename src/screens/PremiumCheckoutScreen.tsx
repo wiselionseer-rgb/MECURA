@@ -113,7 +113,7 @@ export function PremiumCheckoutScreen() {
                 const { db } = await import('../firebase');
                 await addDoc(collection(db, 'payments'), {
                   mpId: pixData.id,
-                  type: selectedOffer_fixed === 'basic' ? 'Consulta Básica' : 'Consulta Premium',
+                  type: 'Consulta Premium',
                   value: finalPrice,
                   date: new Date().toISOString()
                 });

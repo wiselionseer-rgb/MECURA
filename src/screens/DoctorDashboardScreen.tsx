@@ -42,7 +42,7 @@ import {
   Printer,
   FileDown,
   RotateCcw
-, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
+, Star, Check, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
@@ -119,6 +119,9 @@ export function DoctorDashboardScreen() {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any>(null);
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [showAccessiblePlanModal, setShowAccessiblePlanModal] = useState(false);
+  const [showAccessibleImportModal, setShowAccessibleImportModal] = useState(false);
+  const [accessibleImportType, setAccessibleImportType] = useState<'cbd' | 'balanced' | 'thc'>('cbd');
+  const [accessibleImportCustomMessage, setAccessibleImportCustomMessage] = useState('');
   const [accessibleType, setAccessibleType] = useState<'cbd' | 'balanced' | 'thc'>('cbd');
   const [accessibleCustomMessage, setAccessibleCustomMessage] = useState('');
   const [prescriptionInput, setPrescriptionInput] = useState('');
@@ -485,7 +488,7 @@ export function DoctorDashboardScreen() {
 
     // Always determine a fallback image based on type if none is provided
     if (!image) {
-      const typeLower = selectedProduct.type.toLowerCase();
+      const typeLower = (selectedProduct.type || '').toLowerCase();
       const nameLower = selectedProduct.name.toLowerCase();
       
       if (typeLower.includes('óleo') || typeLower.includes('oil') || nameLower.includes('óleo') || nameLower.includes('oil')) {
@@ -507,29 +510,29 @@ export function DoctorDashboardScreen() {
       if (selectedProduct.concentration) {
         details.push(`Concentração: ${selectedProduct.concentration}`);
       } else {
-        if (selectedProduct.type.includes('Full Spectrum')) details.push("Alta Concentração de Canabinóides");
-        else if (selectedProduct.type.includes('Isolado')) details.push("Puro CBD (0% THC)");
-        else if (selectedProduct.type.includes('Tópico') || selectedProduct.type.includes('Bálsamo')) details.push("Uso Externo / Local");
+        if ((selectedProduct.type || '').includes('Full Spectrum')) details.push("Alta Concentração de Canabinóides");
+        else if ((selectedProduct.type || '').includes('Isolado')) details.push("Puro CBD (0% THC)");
+        else if ((selectedProduct.type || '').includes('Tópico') || (selectedProduct.type || '').includes('Bálsamo')) details.push("Uso Externo / Local");
       }
     }
 
     if (!selectedProduct.description) {
-      if (selectedProduct.type.includes('Full Spectrum')) {
+      if ((selectedProduct.type || '').includes('Full Spectrum')) {
         if (!selectedProduct.details) details.push("Efeito Entourage Potencializado");
         italicText = "Contém traços de THC (<0.3%). Pode causar leve sonolência.";
         description = `O ${selectedProduct.name} da ${selectedProduct.manufacturer} é um extrato de espectro completo, preservando todos os canabinóides, terpenos e flavonoides naturais da planta. Ideal para um tratamento abrangente, aproveitando o efeito comitiva para maior eficácia terapêutica.`;
-      } else if (selectedProduct.type.includes('Isolado')) {
+      } else if ((selectedProduct.type || '').includes('Isolado')) {
         if (!selectedProduct.details) details.push("Zero THC garantido");
         italicText = "Sem efeitos psicoativos. Seguro para testes toxicológicos.";
         description = `O ${selectedProduct.name} oferece CBD em sua forma mais pura. Fabricado pela ${selectedProduct.manufacturer}, este produto passa por um rigoroso processo de purificação para remover todos os outros compostos da planta, garantindo 0% de THC. Excelente para pacientes com sensibilidade a outros canabinóides.`;
-      } else if (selectedProduct.type.includes('Tópico') || selectedProduct.type.includes('Bálsamo') || selectedProduct.type.includes('Gel')) {
+      } else if ((selectedProduct.type || '').includes('Tópico') || (selectedProduct.type || '').includes('Bálsamo') || (selectedProduct.type || '').includes('Gel')) {
         if (!selectedProduct.details) {
           details.push("Absorção Rápida");
           details.push("Alívio Direcionado");
         }
         italicText = "Apenas para uso externo. Evitar contato com os olhos.";
         description = `Formulado especificamente para aplicação local, o ${selectedProduct.name} da ${selectedProduct.manufacturer} proporciona alívio direcionado exatamente onde você precisa. Sua base de rápida absorção permite que os canabinóides atuem diretamente nos receptores da pele e músculos.`;
-      } else if (selectedProduct.type.includes('Goma') || selectedProduct.type.includes('Comestível')) {
+      } else if ((selectedProduct.type || '').includes('Goma') || (selectedProduct.type || '').includes('Comestível')) {
         if (!selectedProduct.details) {
           details.push("Dose Precisa");
           details.push("Fácil Ingestão");
@@ -1031,13 +1034,14 @@ CIDs Secundários: ${cidsSecundarios}`;
         - Histórico Médico: Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}), Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' : 'Não'}), Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}), Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' : 'Não'})
         
         DIRETRIZ DE PRESCRIÇÃO (IMPORTADOS E NACIONAIS):
-        Você DEVE sugerir DUAS frentes de tratamento para o médico escolher, cobrindo opções Importadas e Nacionais.
-        1. Opção de Importados: Utilize EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo.
-        2. Opção de Associações Nacionais: Sugira formulações de associações brasileiras (ex: Óleo Integral THC/CBD 100mg/ml, Pomada Canábica, Gomas Terapêuticas, Flores in natura, ou Extrações e Concentrados), adequadas à fisiopatologia do paciente. Lembre-se que as Extrações e Concentrados (como Crumble, Live Resin, Diamonds) devem aparecer nas recomendações de acordo com cada paciente, igual aos outros medicamentos, principalmente para casos severos ou pacientes experientes.
+        Você DEVE sugerir DUAS frentes de tratamento INDEPENDENTES E COMPLETAS para o médico escolher.
+        Se a condição do paciente exigir 3 produtos (ex: um óleo, uma goma e uma flor para resgate), você DEVE prescrever os 3 produtos equivalentes na via IMPORTADA e os mesmos 3 produtos equivalentes na via NACIONAL. O objetivo é que o paciente escolha fazer o tratamento INTEIRO apenas com importados, ou INTEIRO apenas com nacionais.
 
-        REGRA CLÍNICA CRÍTICA (NÃO DUPLICAR MEDICAMENTOS SIMILARES):
-        - NUNCA sugira dois óleos de CBD ou dois produtos com o mesmo princípio ativo e a mesma via sublingual para o mesmo paciente.
-        - Em cada categoria (Importados ou Nacionais), sugira no máximo 1 ÓLEO PRINCIPAL de uso contínuo (ex: CBD ou THC/CBD) e, apenas se houver real justificativa clínica, 1 item de via ou forma complementar diferente (ex: Pomada tópica para dor localizada, Gomas mastigáveis noturnas para insônia, Flores in natura ou Extratos Concentrados para resgate de crises).
+        REGRA CLÍNICA CRÍTICA:
+        1. Opção de Importados: Crie um plano de tratamento COMPLETO, utilizando EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo. Inclua o óleo principal e todos os complementos necessários (resgate, tópico, gomas) APENAS do catálogo de importados.
+        2. Opção de Associações Nacionais: Crie um plano de tratamento COMPLETO e equivalente, usando APENAS formulações genéricas de associações brasileiras (ex: Óleo Integral, Flores in natura, Gomas Nacionais, Extrações).
+        3. Quantidade Correspondente: O número de itens na Opção Importada deve, em regra, refletir o número de itens na Opção Nacional. Não sugira apenas 1 importado e 3 nacionais. Mantenha a equivalência do tratamento.
+        - Em cada categoria (Importados ou Nacionais), sugira no máximo 1 ÓLEO PRINCIPAL de uso contínuo e complementos conforme a necessidade clínica.
 
         DIRETRIZ DE ESCOLHA DE CEPAS/TERPENOS PARA CONCENTRADOS INALATÓRIOS (VAPORIZAÇÃO):
         Se o paciente apresentar dores agudas, crises crônicas de insônia ou necessidade de resgate rápido, justifique a prescrição de Extratos Concentrados (Stirred, Granulated, Dried, Crystalized). Você DEVE ESPECIFICAR a Cepa (Strain) ideal com base nos terpenos:
@@ -1046,8 +1050,19 @@ CIDs Secundários: ${cidsSecundarios}`;
         - ICC (Mirceno, Limoneno, Cariofileno) ou AH (Cariofileno, Limoneno, Linalol): Para ANSIEDADE, INFLAMAÇÃO E REVIGORANTE.
         - DS (Mirceno, Cariofileno): Para RELAXAMENTO E REVIGORANTE MUSCULAR.
 
-        CATÁLOGO OFICIAL DISPONÍVEL (Para a Opção Importada):
-        ${productCategories.map(cat => `Categoria: ${cat.title}\n${cat.products.map(p => `- ${p.name} (${p.type}): ${p.description || ''}`).join('\n')}`).join('\n\n')}
+        CATÁLOGO OFICIAL DE IMPORTADOS (MARCA GREENBUDZCBD):
+        ${productCategories.map(cat => {
+          const imported = cat.products.filter(p => p.origin === 'Importado' || p.manufacturer === 'GreenBudzCBD');
+          if(imported.length === 0) return '';
+          return `Categoria: ${cat.title}\n${imported.map(p => `- ${p.name} (${p.type}): ${p.description || ''}`).join('\n')}`;
+        }).filter(Boolean).join('\n\n')}
+
+        CATÁLOGO OFICIAL DE NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):
+        ${productCategories.map(cat => {
+          const national = cat.products.filter(p => p.origin === 'Nacional' || p.manufacturer !== 'GreenBudzCBD');
+          if(national.length === 0) return '';
+          return `Categoria: ${cat.title}\n${national.map(p => `- ${p.name} (${p.type}): ${p.description || ''}`).join('\n')}`;
+        }).filter(Boolean).join('\n\n')}
         
         Formato de Saída Exigido (Markdown estruturado e clínico):
         1. Diagnóstico Sindrômico e Avaliação Clínica
@@ -1059,14 +1074,16 @@ CIDs Secundários: ${cidsSecundarios}`;
         6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita, NÃO USE TABELAS):
            
            **OPÇÕES IMPORTADAS (CATÁLOGO OFICIAL):**
-           (Para cada produto importado sugerido, use EXATAMENTE este bloco)
-           **Medicamento**: (Nome fiel ao catálogo)
+           (Gere um tratamento COMPLETO e IDEAL usando APENAS produtos do catálogo oficial importado. Produtos IMPORTADOS DEVEM SER OBRIGATORIAMENTE da marca GreenBudzCBD. Inclua o óleo principal e produtos complementares, se necessário, garantindo que o paciente tenha um kit completo de tratamento importado GreenBudz.)
+           (Para CADA produto importado sugerido, use EXATAMENTE este bloco)
+           **Medicamento**: (Nome fiel ao catálogo, EX: "Óleo Drops By GreenBudz..." ou "GreenBudz...")
            **Indicação/Doença**: (Condição primária alvo)
            **Modo de Uso**: (Posologia e titulação, ex: 2 gotas, 12/12 horas)
            **Observações**: (Dicas de administração)
 
            **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):**
-           (Para cada produto nacional sugerido - Óleos, Pomadas, Gomas ou Flores in natura, use EXATAMENTE este bloco)
+           (Gere um tratamento COMPLETO e IDEAL equivalente usando APENAS formulações genéricas de Associações Nacionais. Inclua o óleo principal e complementos, garantindo que o paciente tenha um kit completo de tratamento nacional como alternativa direta ao importado.)
+           (Para CADA produto nacional sugerido, use EXATAMENTE este bloco e DEVE INCLUIR o texto "- Associação Nacional" no nome. IMPORTANTE: NUNCA sugira produtos da marca "GreenBudz" ou "Drops By GreenBudz" na lista de Nacionais. Eles SÃO IMPORTADOS.)
            **Medicamento**: (Descrição da formulação, ex: Óleo CBD 50mg/ml + THC 2mg/ml - Associação Nacional)
            **Indicação/Doença**: (Condição primária alvo)
            **Modo de Uso**: (Posologia e titulação)
@@ -1141,7 +1158,12 @@ CIDs Secundários: ${cidsSecundarios}`;
           const cols = line.split('|').map(c => c.trim()).filter(c => c !== '');
           if (cols.length >= 3) {
             const rawName = cols[0].replace(/\*\*/g, '').trim();
-            const isNational = /ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL/i.test(rawName);
+            let isNational = false;
+            if (rawName.toLowerCase().includes('greenbudz') || rawName.toLowerCase().includes('importado')) {
+              isNational = false;
+            } else if (/ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL|INTEGRAL|BROAD SPECTRUM|ISOLATE|CBD \+ CBN/i.test(rawName)) {
+              isNational = true;
+            }
             medications.push({
               name: rawName,
               dosage: cols[2].replace(/\*\*/g, '').trim(),
@@ -1167,9 +1189,18 @@ CIDs Secundários: ${cidsSecundarios}`;
         const instructionsMatch = block.match(/\bObservações\b.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|$)/is);
         
         if (nameMatch && nameMatch[1].trim()) {
-          const rawName = nameMatch[1].replace(/\*\*/g, '').replace(/^- /, '').replace(/\*$/, '').trim();
-          const isNational = /ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL/i.test(rawName) ||
-                             block.includes('Associação') || block.includes('Nacional');
+          let rawName = nameMatch[1].replace(/\*\*/g, '').replace(/^- /, '').replace(/\*$/, '').trim();
+          // Safety check: if rawName is too long (over 100 chars), it's probably grabbing the wrong section
+          if (rawName.length > 150) {
+            rawName = rawName.substring(0, 150) + "..."; // Truncate to avoid UI breaks, though this means parsing failed
+          }
+          
+          let isNational = false;
+          if (rawName.toLowerCase().includes('greenbudz') || rawName.toLowerCase().includes('importado') || rawName.toLowerCase().includes('broad spectrum') || rawName.toLowerCase().includes('cbd + cbn para sono') || rawName.toLowerCase().includes('isolate')) {
+            isNational = false;
+          } else if (/ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL|INTEGRAL/i.test(rawName) || (block.includes('Associação') || block.includes('Nacional'))) {
+            isNational = true;
+          }
 
           medications.push({
             name: rawName,
@@ -1355,8 +1386,8 @@ CIDs Secundários: ${cidsSecundarios}`;
               </div>
         
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 custom-scrollbar">
-          {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes(queueSearchTerm.toLowerCase())).length > 0 ? (
-            [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes(queueSearchTerm.toLowerCase())).sort((a, b) => {
+          {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase())).length > 0 ? (
+            [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase())).sort((a, b) => {
               // 1. Unread messages first
               if (a.hasUnread && !b.hasUnread) return -1;
               if (!a.hasUnread && b.hasUnread) return 1;
@@ -1775,7 +1806,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                                 if (target.dataset.fallbackApplied) return;
                                 target.dataset.fallbackApplied = 'true';
                                 
-                                const typeLower = msg.productData?.name?.toLowerCase() || '';
+                                const typeLower = (msg.productData?.name || '').toLowerCase();
                                 if (typeLower.includes('óleo') || typeLower.includes('oil')) {
                                   target.src = "https://placehold.co/400x400/f8fafc/0f172a?text=Oleo";
                                 } else if (typeLower.includes('goma') || typeLower.includes('gumm')) {
@@ -1840,8 +1871,8 @@ CIDs Secundários: ${cidsSecundarios}`;
                             Iniciar tratamento com:
                           </h4>
                           <ul className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} text-sm space-y-1 mb-4`}>
-                            {(msg.productData.dosage || []).map((dose, idx) => (
-                              <li key={idx}>
+                            {(Array.isArray(msg.productData.dosage) ? msg.productData.dosage : [msg.productData.dosage || '']).map((dose, idx) => (
+                              <li key={`${msg.id}-dose-${idx}`}>
                                 {dose}
                               </li>
                             ))}
@@ -1979,13 +2010,25 @@ CIDs Secundários: ${cidsSecundarios}`;
                   ) : (
 
                     <div 
-                      className={`max-w-[75%] p-4 rounded-2xl shadow-sm ${
+                      className={`max-w-[75%] p-4 rounded-2xl shadow-sm relative group ${
                         msg.sender === 'doctor' 
                           ? 'bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20' 
                           : 'bg-mecura-surface text-mecura-pearl rounded-tl-sm border border-mecura-elevated'
                       }`}
                     >
-                      <p className="text-[15px] leading-relaxed">{msg.text}</p>
+                      <p className="text-[15px] leading-relaxed pr-8 whitespace-pre-wrap">{msg.text}</p>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemovePrescribedMedication(msg.id);
+                        }}
+                        className="absolute top-2 right-2 px-2 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/20 rounded-md text-[10px] font-semibold flex items-center gap-1 transition-all shadow-sm opacity-0 group-hover:opacity-100 cursor-pointer"
+                        title="Apagar mensagem"
+                      >
+                        <Trash2 className="w-3 h-3 pointer-events-none" />
+                      </button>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5 mt-2 px-1">
@@ -2024,7 +2067,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                 Dúvida
               </button>
               <button 
-                onClick={() => handleDoctorAction('explicar_laudos')}
+                onClick={() => handleDoctorAction('explicar_laudos' as any)}
                 className="whitespace-nowrap px-4 py-2 rounded-full bg-mecura-neon/10 border border-mecura-neon/50 text-xs text-mecura-neon hover:bg-mecura-neon/20 transition-colors"
               >
                 Explicar Laudos
@@ -2287,61 +2330,102 @@ CIDs Secundários: ${cidsSecundarios}`;
                           <h4 className="text-sm font-bold text-white">Medicamentos Sugeridos</h4>
                           <span className="text-[10px] text-mecura-silver">Importados & Associações</span>
                         </div>
-                        <div className="space-y-2.5">
-                          {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => {
-                            const isAdded = addedMedications.includes(med.name);
-                            const isNational = med.origin === 'Nacional';
+                        <div className="space-y-5">
+                          {(() => {
+                            const allMeds = parseMedications(analysisResult).filter(med => med.name);
+                            const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
+                            const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
+                            
+                            const renderMed = (med, idx, isNational) => {
+                              const isAdded = addedMedications.includes(med.name);
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => addPrescribedMedication(med)}
+                                  disabled={isAdded}
+                                  className={`w-full p-3 border rounded-xl text-left transition-all group relative overflow-hidden ${
+                                    isAdded 
+                                      ? 'bg-mecura-neon/10 border-mecura-neon cursor-default' 
+                                      : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
+                                  }`}
+                                >
+                                  {isAdded && (
+                                    <div className="absolute top-0 right-0 p-2 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
+                                      <CheckCircle className="w-4 h-4" />
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                      isNational 
+                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                    }`}>
+                                      {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
+                                    </span>
+                                  </div>
+                                  <h5 className={`font-bold text-xs mb-0.5 transition-colors ${
+                                    isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
+                                  }`}>{med.name}</h5>
+                                  <p className="text-[10px] text-mecura-silver pr-8 leading-tight">{med.dosage}</p>
+                                </button>
+                              );
+                            };
+
                             return (
-                              <button
-                                key={idx}
-                                onClick={() => addPrescribedMedication(med)}
-                                disabled={isAdded}
-                                className={`w-full p-3 border rounded-xl text-left transition-all group relative overflow-hidden ${
-                                  isAdded 
-                                    ? 'bg-mecura-neon/10 border-mecura-neon cursor-default' 
-                                    : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
-                                }`}
-                              >
-                                {isAdded && (
-                                  <div className="absolute top-0 right-0 p-2 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
-                                    <CheckCircle className="w-4 h-4" />
+                              <>
+                                {importedMeds.length > 0 && (
+                                  <div className="space-y-2.5">
+                                    <h5 className="text-[11px] font-bold text-blue-400 uppercase tracking-wider border-b border-blue-500/20 pb-1">Tratamento Principal (Importados)</h5>
+                                    {importedMeds.map((med, idx) => renderMed(med, idx, false))}
                                   </div>
                                 )}
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                    isNational 
-                                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                  }`}>
-                                    {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
-                                  </span>
-                                </div>
-                                <h5 className={`font-bold text-xs mb-0.5 transition-colors ${
-                                  isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
-                                }`}>{med.name}</h5>
-                                <p className="text-[10px] text-mecura-silver pr-8 leading-tight">{med.dosage}</p>
-                              </button>
+                                {nationalMeds.length > 0 && (
+                                  <div className="space-y-2.5 mt-4">
+                                    <h5 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-500/20 pb-1">Alternativa (Nacionais)</h5>
+                                    {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
+                                  </div>
+                                )}
+                              </>
                             );
-                          })}
+                          })()}
                         </div>
                       </div>
 
                       {/* Accessible Plan Callout Banner */}
-                      <div className="mt-4 p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl relative overflow-hidden">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <HeartHandshake className="w-4 h-4 text-emerald-400" />
-                          <h5 className="text-xs font-bold text-emerald-300">Paciente com Restrição Orçamentária?</h5>
+                      <div className="mt-4 flex flex-col gap-3">
+                        <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl relative overflow-hidden">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <HeartHandshake className="w-4 h-4 text-emerald-400" />
+                            <h5 className="text-xs font-bold text-emerald-300">Entrada Nacional</h5>
+                          </div>
+                          <p className="text-[11px] text-mecura-silver mb-2.5 leading-snug">
+                            1 frasco de alto rendimento de Associação Nacional.
+                          </p>
+                          <button
+                            onClick={() => setShowAccessiblePlanModal(true)}
+                            className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                            Aplicar Protocolo Nacional
+                          </button>
                         </div>
-                        <p className="text-[11px] text-mecura-silver mb-2.5 leading-snug">
-                          Prescreva o plano de entrada com 1 frasco de alto rendimento de Associação Nacional e evolução progressiva.
-                        </p>
-                        <button
-                          onClick={() => setShowAccessiblePlanModal(true)}
-                          className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                          Aplicar Protocolo Acessível
-                        </button>
+                        
+                        <div className="p-3.5 bg-blue-500/10 border border-blue-500/30 rounded-xl relative overflow-hidden">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <HeartHandshake className="w-4 h-4 text-blue-400" />
+                            <h5 className="text-xs font-bold text-blue-300">Entrada Importada</h5>
+                          </div>
+                          <p className="text-[11px] text-mecura-silver mb-2.5 leading-snug">
+                            1 frasco de alto rendimento do Catálogo Oficial Importado.
+                          </p>
+                          <button
+                            onClick={() => setShowAccessibleImportModal(true)}
+                            className="w-full py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-300 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                            Aplicar Protocolo Importado
+                          </button>
+                        </div>
                       </div>
 
                       <div className="mt-8 pt-4 border-t border-mecura-elevated flex items-start gap-2">
@@ -2619,45 +2703,76 @@ CIDs Secundários: ${cidsSecundarios}`;
                         {parseMedications(analysisResult).filter(med => med.name).length} opções disponíveis
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {parseMedications(analysisResult).filter(med => med.name).map((med, idx) => {
-                        const isAdded = addedMedications.includes(med.name);
-                        const isNational = med.origin === 'Nacional';
+                    <div className="space-y-8">
+                      {(() => {
+                        const allMeds = parseMedications(analysisResult).filter(med => med.name);
+                        const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
+                        const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
+                        
+                        const renderMed = (med, idx, isNational) => {
+                          const isAdded = addedMedications.includes(med.name);
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => addPrescribedMedication(med)}
+                              disabled={isAdded}
+                              className={`p-4 border rounded-xl text-left transition-all group relative overflow-hidden ${
+                                isAdded
+                                  ? 'bg-mecura-neon/10 border-mecura-neon cursor-default'
+                                  : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
+                              }`}
+                            >
+                              {isAdded && (
+                                <div className="absolute top-0 right-0 p-3 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
+                                  <CheckCircle className="w-5 h-5" />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                  isNational 
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                    : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                }`}>
+                                  {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
+                                </span>
+                              </div>
+                              <h4 className={`font-bold mb-1 transition-colors ${
+                                isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
+                              }`}>{med.name}</h4>
+                              <p className="text-xs text-mecura-silver mb-3 pr-10">{med.dosage}</p>
+                              <span className="text-[10px] font-bold text-mecura-neon uppercase">
+                                {isAdded ? 'Adicionado ao Chat' : 'Adicionar ao Chat'}
+                              </span>
+                            </button>
+                          );
+                        };
+
                         return (
-                          <button
-                            key={idx}
-                            onClick={() => addPrescribedMedication(med)}
-                            disabled={isAdded}
-                            className={`p-4 border rounded-xl text-left transition-all group relative overflow-hidden ${
-                              isAdded
-                                ? 'bg-mecura-neon/10 border-mecura-neon cursor-default'
-                                : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
-                            }`}
-                          >
-                            {isAdded && (
-                              <div className="absolute top-0 right-0 p-3 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
-                                <CheckCircle className="w-5 h-5" />
+                          <>
+                            {importedMeds.length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 border-b border-blue-500/20 pb-2">
+                                  Tratamento Principal (Medicamentos Importados)
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {importedMeds.map((med, idx) => renderMed(med, idx, false))}
+                                </div>
                               </div>
                             )}
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                isNational 
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                  : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                              }`}>
-                                {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
-                              </span>
-                            </div>
-                            <h4 className={`font-bold mb-1 transition-colors ${
-                              isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
-                            }`}>{med.name}</h4>
-                            <p className="text-xs text-mecura-silver mb-3 pr-10">{med.dosage}</p>
-                            <span className="text-[10px] font-bold text-mecura-neon uppercase">
-                              {isAdded ? 'Adicionado ao Chat' : 'Adicionar ao Chat'}
-                            </span>
-                          </button>
+                            
+                            {nationalMeds.length > 0 && (
+                              <div>
+                                <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-500/20 pb-2 mt-2">
+                                  Alternativa (Medicamentos Nacionais)
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
+                                </div>
+                              </div>
+                            )}
+                          </>
                         );
-                      })}
+                      })()}
                     </div>
                   </div>
                 )}
@@ -2843,9 +2958,9 @@ CIDs Secundários: ${cidsSecundarios}`;
                   <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
                     {productCategories.flatMap(cat => cat.products)
                       .filter(p => 
-                        p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-                        p.manufacturer.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-                        p.type.toLowerCase().includes(productSearchTerm.toLowerCase())
+                        (p.name || '').toLowerCase().includes((productSearchTerm || '').toLowerCase()) ||
+                        (p.manufacturer || '').toLowerCase().includes((productSearchTerm || '').toLowerCase()) ||
+                        (p.type || '').toLowerCase().includes((productSearchTerm || '').toLowerCase())
                       )
                       .map((product, idx) => (
                         <div 
@@ -3001,7 +3116,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                 {!selectedHistoryItem ? (
                   <>
                     {useStore.getState().consultationHistory
-                      .filter(h => (h.patientName || '').toLowerCase().includes(historySearchTerm.toLowerCase()))
+                      .filter(h => (h.patientName || '').toLowerCase().includes((historySearchTerm || '').toLowerCase()))
                       .sort((a, b) => b.date.getTime() - a.date.getTime())
                       .map((history) => (
                         <div 
@@ -3038,7 +3153,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                         </div>
                       ))}
                     
-                    {useStore.getState().consultationHistory.filter(h => (h.patientName || '').toLowerCase().includes(historySearchTerm.toLowerCase())).length === 0 && (
+                    {useStore.getState().consultationHistory.filter(h => (h.patientName || '').toLowerCase().includes((historySearchTerm || '').toLowerCase())).length === 0 && (
                       <div className="text-center py-12">
                         <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto mb-4">
                           <Search className="w-8 h-8 text-mecura-elevated" />
@@ -3112,8 +3227,8 @@ CIDs Secundários: ${cidsSecundarios}`;
                                   <h5 className="text-white font-bold">{msg.productData.name}</h5>
                                   <p className="text-xs text-mecura-neon mt-1">{msg.productData.brand}</p>
                                   <div className="mt-2 space-y-1">
-                                    {(msg.productData.dosage || []).map((d: string, i: number) => (
-                                      <p key={i} className="text-xs text-mecura-silver">• {d}</p>
+                                    {(Array.isArray(msg.productData.dosage) ? msg.productData.dosage : [msg.productData.dosage || '']).map((d: string, i: number) => (
+                                      <p key={`${msg.id}-protocol-${i}`} className="text-xs text-mecura-silver">• {d}</p>
                                     ))}
                                   </div>
                                 </div>
@@ -3151,6 +3266,292 @@ CIDs Secundários: ${cidsSecundarios}`;
                     </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* IMPORTED Accessible Protocol Modal */}
+        {showAccessibleImportModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+              onClick={() => setShowAccessibleImportModal(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-3xl bg-[#0F1017] border border-blue-500/30 rounded-3xl shadow-[0_0_50px_rgba(59,130,246,0.15)] overflow-hidden flex flex-col max-h-[92vh] z-10"
+            >
+              {/* Modal Header */}
+              <div className="p-6 md:p-8 border-b border-blue-500/20 bg-gradient-to-r from-blue-950/40 via-blue-900/20 to-transparent flex justify-between items-start">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 flex-shrink-0 shadow-lg">
+                    <HeartHandshake className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-xl md:text-2xl font-bold text-white tracking-tight">
+                        Protocolo de Entrada Acessível
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                        Catálogo Importado
+                      </span>
+                    </div>
+                    <p className="text-xs md:text-sm text-mecura-silver leading-relaxed">
+                      Alternativa com excelente custo-benefício para iniciar com <strong>01 frasco Importado de alto rendimento (~60 dias)</strong> e evoluir progressivamente conforme a resposta clínica e as condições do paciente.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAccessibleImportModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-full text-mecura-silver hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                {/* Step 1: Select Formulation */}
+                <div>
+                  <label className="text-xs font-bold text-blue-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center text-[10px] font-bold border border-blue-500/30">1</span>
+                    Selecione a Formulação de Entrada (Frasco Único)
+                  </label>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                    {/* Option CBD */}
+                    <div 
+                      onClick={() => setAccessibleImportType('cbd')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleImportType === 'cbd'
+                          ? 'bg-blue-950/40 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)] ring-1 ring-blue-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-blue-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleImportType === 'cbd' && (
+                        <div className="absolute top-2 right-2 text-blue-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/30 inline-block mb-2">
+                          Ansiedade / Estresse / Foco
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          GreenBudz Isolate CBD Hemp Formula
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Alta concentração de Canabidiol. Ação ansiolítica, reguladora do humor e anti-inflamatória, zero THC.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-blue-400 font-semibold flex items-center justify-between">
+                        <span>30ml • Rende ~60 dias</span>
+                        <span className="text-white/80">3 gotas 2x/dia</span>
+                      </div>
+                    </div>
+
+                    {/* Option Balanced */}
+                    <div 
+                      onClick={() => setAccessibleImportType('balanced')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleImportType === 'balanced'
+                          ? 'bg-blue-950/40 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)] ring-1 ring-blue-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-blue-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleImportType === 'balanced' && (
+                        <div className="absolute top-2 right-2 text-blue-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30 inline-block mb-2">
+                          Insônia / Regulação do Sono
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          Drops By GreenBudz CBD+CBN
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Proporção ideal (CBN e CBD) focada em indução do sono, relaxamento noturno e manutenção.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-blue-400 font-semibold flex items-center justify-between">
+                        <span>30ml • Rende ~60 dias</span>
+                        <span className="text-white/80">3-6 gotas à noite</span>
+                      </div>
+                    </div>
+
+                    {/* Option THC */}
+                    <div 
+                      onClick={() => setAccessibleImportType('thc')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleImportType === 'thc'
+                          ? 'bg-blue-950/40 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)] ring-1 ring-blue-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-blue-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleImportType === 'thc' && (
+                        <div className="absolute top-2 right-2 text-blue-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-orange-300 bg-orange-500/20 px-2 py-0.5 rounded border border-orange-500/30 inline-block mb-2">
+                          Dor Crônica / Rigidez
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          Drops By GreenBudz CBD+THC
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Proporção rica em THC e CBD para analgesia profunda, controle de espasmos musculares.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-blue-400 font-semibold flex items-center justify-between">
+                        <span>30ml • Rende ~60 dias</span>
+                        <span className="text-white/80">3 gotas 12/12h</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 2: Protocol Explanation (Static visual representation of the path) */}
+                <div>
+                  <label className="text-xs font-bold text-blue-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center text-[10px] font-bold border border-blue-500/30">
+                      <TrendingUp className="w-3 h-3" />
+                    </span>
+                    Plano de Evolução do Tratamento
+                  </label>
+                  
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <div className="flex-1 p-4 rounded-xl bg-mecura-surface border border-mecura-elevated">
+                      <h5 className="text-xs font-bold text-blue-400 mb-1 flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                        Fase 1: Início Acessível (Meses 1 e 2)
+                      </h5>
+                      <p className="text-[11px] text-mecura-silver leading-relaxed">
+                        Uso exclusivo do frasco Importado com titulação lenta (inicia com gotas reduzidas e ajusta 1 gota a cada 5 dias). Custo previsível e baixo consumo.
+                      </p>
+                    </div>
+                    
+                    <div className="flex-1 p-4 rounded-xl bg-blue-900/10 border border-blue-900/30">
+                      <h5 className="text-xs font-bold text-blue-300 mb-1 flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                        Fase 2: Reavaliação (Mês 2 em diante)
+                      </h5>
+                      <p className="text-[11px] text-mecura-silver leading-relaxed opacity-80">
+                        Retorno clínico. Se houver controle adequado (superior a 70%), mantém apenas a monoterapia. Caso persistam sintomas, ajustar dose mantendo segurança financeira.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3: Custom Text */}
+                <div>
+                  <label className="text-xs font-bold text-blue-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center text-[10px] font-bold border border-blue-500/30">2</span>
+                    Mensagem Acolhedora para o Paciente (Chat)
+                    <span className="ml-auto text-[9px] text-mecura-silver/50 font-normal normal-case">(editável antes do envio)</span>
+                  </label>
+                  <textarea
+                    value={accessibleImportCustomMessage}
+                    onChange={(e) => setAccessibleImportCustomMessage(e.target.value)}
+                    placeholder="Ex: 'Como conversamos sobre o orçamento, estou enviando este tratamento de entrada. Ele durará cerca de 60 dias...'"
+                    className="w-full h-24 p-3.5 bg-[#0F1017] border border-mecura-elevated rounded-xl text-[13px] text-white placeholder-mecura-silver/50 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all resize-none shadow-inner"
+                  />
+                  {accessibleImportCustomMessage.length === 0 && (
+                    <div className="mt-2 text-[10px] text-orange-400 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      Você pode personalizar esta mensagem ou deixá-la em branco para usar o padrão da clínica.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 md:p-6 border-t border-mecura-elevated/50 bg-[#0F1017] flex flex-col-reverse sm:flex-row justify-between items-center gap-3">
+                <button 
+                  onClick={() => setShowAccessibleImportModal(false)}
+                  className="w-full sm:w-auto px-6 py-3 text-sm font-semibold text-mecura-silver hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <button 
+                    onClick={() => {
+                      const patientName = currentPatient?.patientName || userName || 'Paciente';
+                      
+                      let prodName = "CBD Isolate Alto Rendimento";
+                      let dosage = ["Tomar 02 gotas de 12/12 horas (sublingual).", "Aumentar 01 gota a cada 05 dias até atingir a dose de controle.", "01 Frasco rende cerca de 45 a 60 dias."];
+                      let strategyDesc = "Plano de entrada otimizado para controle de ansiedade/estresse.";
+                      
+                      if (accessibleImportType === 'balanced') {
+                        prodName = "Drops By GreenBudz CBD+CBN Sleep";
+                        dosage = ["Tomar 03 gotas 30 minutos antes de dormir.", "Aumentar gradativamente se houver interrupção do sono.", "Foco em relaxamento e indução do sono."];
+                        strategyDesc = "Plano de entrada otimizado para insônia e regulação noturna.";
+                      } else if (accessibleImportType === 'thc') {
+                        prodName = "Drops By GreenBudz Formula CBD/THC";
+                        dosage = ["Tomar 02 gotas de 12/12 horas (sublingual).", "Aumentar 01 gota a cada 04 dias.", "Foco em analgesia e dores crônicas."];
+                        strategyDesc = "Plano de entrada otimizado para dor crônica e rigidez.";
+                      }
+                      
+                      const productData = {
+                        name: prodName,
+                        brand: 'GreenBudzCBD',
+                        origin: 'Importado',
+                        type: "Óleo de Cannabis",
+                        dosage: dosage,
+                        strategy: strategyDesc,
+                        activeIngredients: "CBD/CBN/THC",
+                        concentration: "Alto Rendimento",
+                        pharmaceuticalForm: "Óleo Sublingual",
+                        unitSize: "Frasco 30ml",
+                        details: ['Frasco 30ml', 'Alto rendimento (~60 dias)', 'Catálogo Oficial Importado'],
+                        description: strategyDesc,
+                        image: "https://placehold.co/400x400/3b82f6/ffffff?text=Importado"
+                      };
+                      
+                      const defaultMsg = `Olá ${patientName}! Pensando na sua acessibilidade, estruturei um **Protocolo de Entrada Acessível** utilizando nosso Catálogo Oficial Importado.\n\nIniciaremos com **apenas 01 medicamento de alto rendimento** (${prodName}), que dura cerca de 2 meses com a dosagem ajustada.\n\nEste protocolo nos permite iniciar o tratamento de forma segura, com excelente qualidade e menor impacto financeiro inicial.`;
+                      const msg = accessibleImportCustomMessage.trim() || defaultMsg;
+                      
+                      // 1. Send empathetic doctor chat message
+                      addMessage({
+                        sender: 'doctor',
+                        text: msg,
+                        type: 'text'
+                      });
+
+                      // 2. Add product prescription
+                      addMessage({
+                        sender: 'doctor',
+                        type: 'product',
+                        productData
+                      });
+
+                      // 3. Add prescription notes
+                      const protocolNotes = `PROTOCOLO DE ENTRADA ACESSÍVEL (FASE 1):\n- Medicamento Inicial: ${prodName} (Importado)\n- Posologia Econômica: ${dosage.join(' ')}\n- Rendimento estimado: 45 a 60 dias.\n- Fase 2 (Evolução): Reavaliação em 30 a 45 dias para verificar resposta terapêutica e evolução progressiva se necessário.\n- Administrar preferencialmente após as refeições.`;
+
+                      addMessage({
+                        sender: 'doctor',
+                        type: 'prescription_notes',
+                        text: protocolNotes
+                      });
+                      
+                      setShowAccessibleImportModal(false);
+                      setAccessibleImportCustomMessage('');
+                    }}
+                    className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-400 hover:from-blue-400 hover:to-indigo-300 text-white font-bold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(59,130,246,0.25)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Prescrever e Enviar ao Paciente
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

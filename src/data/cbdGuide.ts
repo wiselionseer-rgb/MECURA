@@ -12,6 +12,7 @@ export interface CBDProduct {
   details?: string[];
   italicText?: string;
   description?: string;
+  usageInstructions?: string;
   priceUSD?: number;
   priceBRL?: number;
   indications?: string;
@@ -38,18 +39,18 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Cápsulas Gelatinosas CBD Isolado 25mg",
         manufacturer: "PharmaHemp",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Cápsula Softgel",
-        priceUSD: 45.00,
+        priceBRL: 229.50,
         details: ["Frasco com 30 cápsulas", "25mg CBD por cápsula", "0% THC", "Liberação prolongada"],
         description: "Opção prática e discreta para quem busca CBD sem efeitos psicoativos, ideal para manter níveis séricos estáveis ao longo do dia para ansiedade generalizada."
       },
       {
         name: "Spray Sublingual Broad Spectrum Calming Blend",
         manufacturer: "NatureCBD",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Spray Sublingual",
-        priceUSD: 38.00,
+        priceBRL: 193.80,
         details: ["Frasco 15ml", "1000mg CBD Total", "Rico em Linalol e Camomila"],
         description: "Absorção rápida pela mucosa oral, excelente para picos agudos de estresse ou ataques de pânico."
       },
@@ -75,21 +76,31 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Looking Glass CBD THC CBC CBG",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9 + CBC + CBG)",
+        concentration: "3mg CBD + 3mg THC∆9 + 3mg CBC + 3mg CBG por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "3mg THC∆9, 3mg CBC, 3mg CBD, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: "Combina a pureza de um extrato Live Rosin livre de solventes com a sinergia dos canabinoides CBD, THC, CBC e CBG. Sabor natural de framboesa."
+        description: `O Drops By GreenBudz Looking Glass combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, THC, CBC e CBG, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Drops By GreenBudz Goma River Float THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Mirceno, Linalol, Cariofileno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Linalool e Caryophyllene"],
-        description: "Live Rosin sabor melancia para leveza física, relaxamento e equilíbrio."
+        description: `O Drops By GreenBudz River Float combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de melancia, sua formulação foi desenhada para promover leveza física, relaxamento e equilíbrio, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "GreenBudz Stirred Hemp Formula rico em THCa",
@@ -119,11 +130,17 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Broad Spectrum Balanceado (50 mg/mL — 5%)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+        concentration: "CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 50 mg/mL (5%)", "CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Balanceado."
+        description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 50 mg/mL (5%).\nComposição: CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Semana 1: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Semana 2: Aumentar para 0,4 mL (8 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Manutenção: Ajustar 0,1 mL (2 gotas) por dose a cada 7 dias conforme resposta clínica.`
       }
     ]
   },
@@ -137,23 +154,28 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Adesivo Transdérmico CBD/THC 1:1 (Patch 72h)",
         manufacturer: "MedPatch",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Adesivo Transdérmico",
-        priceUSD: 60.00,
+        priceBRL: 306.00,
         details: ["Caixa com 5 adesivos", "20mg CBD + 20mg THC por adesivo", "Liberação lenta por até 72h"],
         description: "Excelente alternativa para dor crônica localizada (ex: lombalgia, hérnia), oferecendo analgesia contínua sem necessidade de dosagem oral constante."
       },
       {
         name: "Óleo Concentrado CBG + CBD 2000mg (Anti-inflamatório)",
         manufacturer: "HempMeds",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Óleo Broad Spectrum",
-        priceUSD: 85.00,
+        priceBRL: 433.50,
         details: ["Frasco 30ml", "1000mg CBG + 1000mg CBD"],
         description: "Alto teor de Canabigerol (CBG), um potente inibidor de inflamação sistêmica, ideal para condições autoimunes e articulares severas."
       },
 {
         name: "GreenBudz Chill Vibe Gummies - THC 1:1 CBD",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9)",
+        concentration: "10mg CBD + 10mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "30 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
@@ -164,30 +186,45 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Bicycle Day THC e CBD",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9)",
+        concentration: "4mg CBD + 5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9, 4mg CBD por goma", "Sabor framboesa", "Efeito longo 4 a 6 horas"],
-        description: "Combina a pureza de um extrato Live Rosin com sinergia do THC e CBD para relaxamento, equilíbrio sistêmico e regulação funcional."
+        description: `O Drops By GreenBudz Bicycle Day combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do CBD e do THC, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Drops By GreenBudz Goma Crickets CBD e THC",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9)",
+        concentration: "10mg CBD + 5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9, 10mg CBD por goma", "Sabor amora", "Efeito longo 4 a 6 horas"],
-        description: "Apresentado em gomas veganas sabor amora, formulação desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional."
+        description: `O Drops By GreenBudz Crickets combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do CBD e do THC, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de amora, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Drops By GreenBudz Goma 100 Sheep THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Mirceno, Limoneno, Cariofileno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Limonene e Caryophyllene"],
-        description: "Live Rosin sabor cereja para relaxamento profundo, alívio de tensões e regulação do repouso."
+        description: `O Drops By GreenBudz 100 Sheep combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de cereja, sua formulação foi desenhada para promover relaxamento profundo, alívio de tensões e regulação do repouso, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "GreenBudz Stirred Hemp Formula rico em THCa",
@@ -243,20 +280,25 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Cápsulas CBD + CBN 30mg Sleep Formula",
         manufacturer: "ZzzCBD",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Cápsula",
-        priceUSD: 55.00,
+        priceBRL: 280.50,
         details: ["30 cápsulas", "25mg CBD + 5mg CBN por cápsula", "Com Melatonina natural"],
         description: "Formulação noturna específica contendo CBN, conhecido pelo seu forte potencial sedativo e indutor do sono."
       },
 {
         name: "Drops By GreenBudz Goma Nightshade CBD CBN e THC",
+        activeIngredients: "Extrato Live Rosin (CBD + CBN + THC∆9)",
+        concentration: "5mg CBD + 5mg CBN + 5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9, 5mg CBD, 5mg CBN por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: "Combina a pureza de um extrato Live Rosin com a sinergia dos canabinoides CBD, CBN e THC para induzir relaxamento profundo e repouso noturno."
+        description: `O Drops By GreenBudz Nightshade combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, CBN e THC, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar, sua formulação foi desenhada para induzir relaxamento profundo e repouso noturno, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "GreenBudz Granulated Hemp Formula rico em THCa",
@@ -269,11 +311,17 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Broad Spectrum com Razão Enriquecida (CBD + CBN para Sono)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum Sono) + Terpenos relaxantes (Mirceno/Linalol)",
+        concentration: "CBD 50 mg/mL, CBN 10 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 60 mg/mL (6%)", "CBD 50 mg/mL, CBN 10 mg/mL, THC 0,0%", "Veículo com terpenos relaxantes (Mirceno/Linalol)", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Sono."
+        description: `Extrato de Cannabis sativa (Broad Spectrum Sono) — Canabinoides Totais: 60 mg/mL (6%).\nComposição: CBD 50 mg/mL, CBN 10 mg/mL, Delta-9-THC: 0,0%.\nVeículo: com terpenos relaxantes (Mirceno/Linalol).\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Semana 1: Administrar 0,25 mL (5 gotas) via sublingual, 30 a 45 minutos antes de deitar. (Total: 12,5 mg CBD + 2,5 mg CBN)\n• Semana 2: Se persistir latência aumentada, progredir para 0,5 mL (10 gotas) antes de deitar. (Total: 25 mg CBD + 5 mg CBN)`
       },
       {
         name: "Gomas Terapêuticas CBD/CBN 25mg - 30 unidades",
@@ -295,9 +343,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Extrato Fluido Rico em THCV (Focus & Energy)",
         manufacturer: "VitalLeaf",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Óleo Full Spectrum",
-        priceUSD: 95.00,
+        priceBRL: 484.50,
         details: ["Frasco 30ml", "500mg THCV + 1000mg CBD", "Perfil Sativa"],
         description: "O THCV possui propriedades estimulantes e supressoras de apetite, sendo uma excelente opção para TDAH, fadiga crônica e foco sem a agitação da cafeína."
       },
@@ -323,21 +371,31 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Rodeo Queen THCV CBG e THC",
+        activeIngredients: "Extrato Live Rosin (THCV + CBG + THC∆9)",
+        concentration: "5mg THCV + 3mg CBG + 3mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THCV, 3mg THC∆9, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: "Combina extrato Live Rosin com THCV, CBG e THC, desenhado para promover foco, vitalidade, regulação metabólica e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Rodeo Queen combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides THCV, CBG e THC, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar, sua formulação foi desenhada para promover foco, vitalidade, regulação metabólica e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Drops By GreenBudz Goma Formula One THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Mirceno, Pineno, Limoneno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Pinene e Limonene"],
-        description: "Live Rosin sabor lima, para promover conforto físico, disposição e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Formula One combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de lima, sua formulação foi desenhada para promover conforto físico, disposição e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "GreenBudz Dried Hemp Formula rico em THCa",
@@ -350,11 +408,17 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+        concentration: "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Alta Concentração."
+        description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -368,9 +432,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Supositório Pélvico CBD/THC (Endometriose e Cólicas)",
         manufacturer: "FemmeCare CBD",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Supositório",
-        priceUSD: 70.00,
+        priceBRL: 357.00,
         details: ["Caixa com 10 unidades", "50mg CBD + 10mg THC por unidade"],
         description: "Absorção local no plexo pélvico. Extremamente eficaz para dor aguda de endometriose e dismenorreia severa, evitando processamento hepático e efeitos psicoativos centrais."
       },
@@ -386,6 +450,11 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "GreenBudz Chill Vibe Gummies - THC 1:1 CBD",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9)",
+        concentration: "10mg CBD + 10mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "30 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
@@ -396,12 +465,17 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Rodeo Queen THCV CBG e THC",
+        activeIngredients: "Extrato Live Rosin (THCV + CBG + THC∆9)",
+        concentration: "5mg THCV + 3mg CBG + 3mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THCV, 3mg THC∆9, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: "Combina extrato Live Rosin com THCV, CBG e THC, desenhado para promover foco, vitalidade, regulação metabólica e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Rodeo Queen combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides THCV, CBG e THC, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar, sua formulação foi desenhada para promover foco, vitalidade, regulação metabólica e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Pomada Canábica Terapêutica 500mg (50g)",
@@ -423,9 +497,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Cápsulas Gastrorresistentes CBD/CBG (Doença de Crohn)",
         manufacturer: "GI-Hemp",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Cápsula Gastrorresistente",
-        priceUSD: 80.00,
+        priceBRL: 408.00,
         details: ["60 cápsulas", "25mg CBD + 10mg CBG por cápsula", "Revestimento entérico"],
         description: "Cápsulas desenvolvidas para resistir ao ácido estomacal e liberar os fitocanabinoides diretamente no intestino, modulando a inflamação local da Colite e Crohn."
       },
@@ -448,15 +522,25 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Beethoven THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Mirceno, Linalol, Limoneno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Linalool e Limonene"],
-        description: "Live Rosin sabor laranja para conforto físico, alívio e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Beethoven combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de laranja, sua formulação foi desenhada para promover conforto físico, alívio e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "GreenBudz Chill Vibe Gummies - THC 1:1 CBD",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9)",
+        concentration: "10mg CBD + 10mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "30 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
@@ -467,11 +551,16 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%",
+        activeIngredients: "Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%",
+        concentration: "CBD 50 mg/mL + THC < 0,2%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Full Spectrum",
         details: ["Frasco 30mL", "CBD 50 mg/mL + THC < 0,2%", "Associação Nacional"],
-        description: "Óleo de Cannabis sativa Full Spectrum indicado para modulação do sistema endocanabinoide."
+        description: `Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%\nQuantidade: 01 (um) frasco de 30 mL.`
       }
     ]
   },
@@ -485,9 +574,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Óleo Oral CBD/THC 10:1 (Parkinson)",
         manufacturer: "NeuroHemp",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Óleo Full Spectrum",
-        priceUSD: 110.00,
+        priceBRL: 561.00,
         details: ["Frasco 30ml", "100mg/ml CBD + 10mg/ml THC"],
         description: "Proporção específica para neuroproteção e controle de tremores, oferecendo alto CBD sistêmico com traços de THC para sinergia de relaxamento muscular."
       },
@@ -513,21 +602,31 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Rodeo Queen THCV CBG e THC",
+        activeIngredients: "Extrato Live Rosin (THCV + CBG + THC∆9)",
+        concentration: "5mg THCV + 3mg CBG + 3mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THCV, 3mg THC∆9, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: "Combina extrato Live Rosin com THCV, CBG e THC, desenhado para promover foco, vitalidade, regulação metabólica e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Rodeo Queen combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides THCV, CBG e THC, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar, sua formulação foi desenhada para promover foco, vitalidade, regulação metabólica e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Drops By GreenBudz Goma Formula One THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Mirceno, Pineno, Limoneno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Pinene e Limonene"],
-        description: "Live Rosin sabor lima, para promover conforto físico, disposição e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Formula One combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de lima, sua formulação foi desenhada para promover conforto físico, disposição e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "GreenBudz Dried Hemp Formula rico em THCa",
@@ -540,11 +639,17 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+        concentration: "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Alta Concentração."
+        description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -558,9 +663,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Extrato Purificado CBD Isolado 200mg/ml (Epidiolex-like)",
         manufacturer: "PharmaCBD",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Óleo Isolado",
-        priceUSD: 250.00,
+        priceBRL: 1275.00,
         details: ["Frasco 50ml", "200mg/ml CBD", "0% THC Garantido", "Grau Farmacêutico"],
         description: "Fórmula pura de CBD em altíssima concentração, sem risco de interferência psicoativa. Dosagem robusta baseada em peso (mg/kg) para quadros convulsivos refratários."
       },
@@ -585,19 +690,30 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Extrato de Cannabis sativa (Full Spectrum) — CBD 100 mg/mL + THC < 0,2%",
+        activeIngredients: "Extrato de Cannabis sativa (Full Spectrum) — CBD 100 mg/mL + THC < 0,2%",
+        concentration: "CBD 100 mg/mL + THC < 0,2%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Full Spectrum",
         details: ["Frasco 30mL", "CBD 100 mg/mL + THC < 0,2%", "Associação Nacional"],
-        description: "Óleo de Cannabis sativa Full Spectrum em alta concentração, indicado para casos que exigem maior aporte de fitocanabinoides."
+        description: `Extrato de Cannabis sativa (Full Spectrum) — CBD 100 mg/mL + THC < 0,2%\nQuantidade: 01 (um) frasco de 30 mL.`
       },
       {
         name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+        concentration: "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Alta Concentração."
+        description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -611,9 +727,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Gomas Infantis CBD Broad Spectrum (Sabor Morango)",
         manufacturer: "KidsHemp",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Goma comestível",
-        priceUSD: 40.00,
+        priceBRL: 204.00,
         details: ["30 gomas", "10mg CBD por goma", "0% THC", "Vegano e sem açúcar"],
         description: "Apresentação amigável e fácil de administrar para crianças com TEA. Ajuda no controle de ansiedade, regulação sensorial e agressividade, sem THC."
       },
@@ -637,28 +753,44 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Broad Spectrum Balanceado (50 mg/mL — 5%)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+        concentration: "CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 50 mg/mL (5%)", "CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Balanceado."
+        description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 50 mg/mL (5%).\nComposição: CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Semana 1: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Semana 2: Aumentar para 0,4 mL (8 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Manutenção: Ajustar 0,1 mL (2 gotas) por dose a cada 7 dias conforme resposta clínica.`
       },
       {
         name: "Drops By GreenBudz Goma Looking Glass CBD THC CBC CBG",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9 + CBC + CBG)",
+        concentration: "3mg CBD + 3mg THC∆9 + 3mg CBC + 3mg CBG por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "3mg THC∆9, 3mg CBC, 3mg CBD, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: "Combina a pureza de um extrato Live Rosin livre de solventes com a sinergia dos canabinoides CBD, THC, CBC e CBG. Sabor natural de framboesa."
+        description: `O Drops By GreenBudz Looking Glass combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, THC, CBC e CBG, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%",
+        activeIngredients: "Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%",
+        concentration: "CBD 50 mg/mL + THC < 0,2%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Full Spectrum",
         details: ["Frasco 30mL", "CBD 50 mg/mL + THC < 0,2%", "Associação Nacional"],
-        description: "Óleo de Cannabis sativa Full Spectrum indicado para modulação do sistema endocanabinoide."
+        description: `Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%\nQuantidade: 01 (um) frasco de 30 mL.`
       }
     ]
   },
@@ -672,9 +804,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Creme Tópico CBD/CBG (Psoríase e Dermatite Atópica)",
         manufacturer: "DermaWeed",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Creme Tópico",
-        priceUSD: 45.00,
+        priceBRL: 229.50,
         details: ["Bisnaga 100g", "1000mg CBD + 500mg CBG"],
         description: "Ação direta nos receptores CB1 e CB2 da pele. O CBG age como potente anti-inflamatório, reduzindo escamação e coceira da psoríase rapidamente."
       },
@@ -706,9 +838,9 @@ export const cbdGuideData: CBDCategory[] = [
             {
         name: "Flor de Cânhamo CBD Indoor (Pré-Rolled) - Controle de Craving",
         manufacturer: "PureHemp",
-        origin: "Importado",
+        origin: "Nacional",
         type: "Flor In Natura",
-        priceUSD: 20.00,
+        priceBRL: 102.00,
         details: ["Embalagem com 5 unidades", "Aproximadamente 15% CBD", "Terapêutica Inalatória"],
         description: "A inalação oferece biodisponibilidade instantânea. Excelente ferramenta de redução de danos para substituir o ato de fumar (tabaco/crack), reduzindo fissuras agudas (craving)."
       },
@@ -724,19 +856,30 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Extrato de Cannabis sativa (Full Spectrum) — CBD 100 mg/mL + THC < 0,2%",
+        activeIngredients: "Extrato de Cannabis sativa (Full Spectrum) — CBD 100 mg/mL + THC < 0,2%",
+        concentration: "CBD 100 mg/mL + THC < 0,2%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Full Spectrum",
         details: ["Frasco 30mL", "CBD 100 mg/mL + THC < 0,2%", "Associação Nacional"],
-        description: "Óleo de Cannabis sativa Full Spectrum em alta concentração, indicado para casos que exigem maior aporte de fitocanabinoides."
+        description: `Extrato de Cannabis sativa (Full Spectrum) — CBD 100 mg/mL + THC < 0,2%\nQuantidade: 01 (um) frasco de 30 mL.`
       },
       {
         name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
+        activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+        concentration: "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%",
+        pharmaceuticalForm: "Solução Oleosa Sublingual",
+        quantity: "01 (um) frasco de 30 mL",
+        administrationRoute: "Sublingual / Oral",
         manufacturer: "Associação Brasileira",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
-        description: "Extrato Broad Spectrum Alta Concentração."
+        description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -758,6 +901,11 @@ export const cbdGuideData: CBDCategory[] = [
       },
 {
         name: "GreenBudz Chill Vibe Gummies - THC 1:1 CBD",
+        activeIngredients: "Extrato Live Rosin (CBD + THC∆9)",
+        concentration: "10mg CBD + 10mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "30 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
@@ -802,21 +950,31 @@ export const cbdGuideData: CBDCategory[] = [
       },
       {
         name: "Drops By GreenBudz Goma Beethoven THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Mirceno, Linalol, Limoneno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Linalool e Limonene"],
-        description: "Live Rosin sabor laranja para conforto físico, alívio e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Beethoven combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de laranja, sua formulação foi desenhada para promover conforto físico, alívio e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       },
       {
         name: "Drops By GreenBudz Goma Evergreen THC",
+        activeIngredients: "Extrato Live Rosin (THC∆9) + Terpenos (Limoneno, Humuleno, Cariofileno)",
+        concentration: "5mg THC∆9 por goma",
+        pharmaceuticalForm: "Gomas Veganas (Pectina com Açúcar)",
+        quantity: "20 gomas por frasco",
+        administrationRoute: "Via Oral",
         manufacturer: "GreenBudzCBD",
         origin: "Importado",
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Limonene, Humulene e Caryophyllene"],
-        description: "Live Rosin sabor limão, para conforto físico, vitalidade e equilíbrio sistêmico."
+        description: `O Drops By GreenBudz Evergreen combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de limão, sua formulação foi desenhada para promover conforto físico, vitalidade e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
       }
     ]
   }
@@ -837,11 +995,12 @@ export interface EnrichedMedicationInfo {
   usageInstructions?: string;
 }
 
-export function enrichMedicationDetails(
+function _enrichMedicationDetails(
   productName: string, 
   brand?: string, 
   origin?: string, 
-  type?: string
+  type?: string,
+  product?: CBDProduct
 ): EnrichedMedicationInfo {
   const pName = productName || '';
   const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
@@ -1143,4 +1302,25 @@ export function getDiseaseClinicalDetails(diseaseName: string): ClinicalDetails 
         "Ampla literatura observacional atestando perfil de segurança favorável quando acompanhado por equipe médica."
       ]
   };
+}
+
+export function enrichMedicationDetails(
+  productName: string, 
+  brand?: string, 
+  origin?: string, 
+  type?: string,
+  product?: CBDProduct
+): EnrichedMedicationInfo {
+  const result = _enrichMedicationDetails(productName, brand, origin, type, product);
+  
+  if (product) {
+    if (product.usageInstructions) result.usageInstructions = product.usageInstructions;
+    if (product.activeIngredients) result.activeIngredients = product.activeIngredients;
+    if (product.concentration) result.concentration = product.concentration;
+    if (product.pharmaceuticalForm) result.pharmaceuticalForm = product.pharmaceuticalForm;
+    if (product.quantity) result.quantity = product.quantity;
+    if (product.administrationRoute) result.administrationRoute = product.administrationRoute;
+  }
+  
+  return result;
 }

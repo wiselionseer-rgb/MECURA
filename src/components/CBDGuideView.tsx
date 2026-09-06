@@ -18,6 +18,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
+import { ProductBulaModal } from './ProductBulaModal';
 
 export function CBDGuideView() {
   const { productCategories: storeCategories } = useAdminStore();
@@ -38,6 +39,7 @@ export function CBDGuideView() {
   const [viewMode, setViewMode] = useState<'categories' | 'diseases' | 'all_products'>('categories');
   const [originFilter, setOriginFilter] = useState<'all' | 'nacional' | 'importado'>('all');
   const [deepSearchTerm, setDeepSearchTerm] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [selectedDisease, setSelectedDisease] = useState<{name: string, category: CBDCategory} | null>(null);
 
   const allDiseases = React.useMemo(() => {
@@ -53,18 +55,23 @@ export function CBDGuideView() {
   }, [productCategories]);
 
   const allProducts = React.useMemo(() => {
-    const products = [];
+    const productsMap = new Map();
     productCategories.forEach(cat => {
       cat.products.forEach(prod => {
-        products.push({ 
-          ...prod, 
-          categoryId: cat.id, 
-          categoryName: cat.title,
-          categoryIndications: cat.indicationsList || []
-        });
+        if (!productsMap.has(prod.name)) {
+          productsMap.set(prod.name, { 
+            ...prod, 
+            categoryId: cat.id, 
+            categoryName: cat.title,
+            categoryIndications: cat.indicationsList || []
+          });
+        } else {
+          const existing = productsMap.get(prod.name);
+          existing.categoryIndications = Array.from(new Set([...existing.categoryIndications, ...(cat.indicationsList || [])]));
+        }
       });
     });
-    return products.sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(productsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [productCategories]);
 
   // Auto-dismiss warning after 8 seconds if not manually interacted with
@@ -406,16 +413,17 @@ export function CBDGuideView() {
                 .filter(p => {
                   if (!deepSearchTerm) return true;
                   const term = deepSearchTerm.toLowerCase();
-                  const enriched = enrichMedicationDetails(p.name, p.manufacturer, p.origin, p.type);
+                  const enriched = enrichMedicationDetails(p.name, p.manufacturer, p.origin, p.type, p);
                   const searchString = `${p.name.toLowerCase()} ${p.categoryName?.toLowerCase() || ''} ${p.description?.toLowerCase() || ''} ${p.type.toLowerCase()} ${p.manufacturer.toLowerCase()} ${p.indications ? p.indications.toLowerCase() : ''} ${p.categoryIndications ? p.categoryIndications.join(' ').toLowerCase() : ''} ${enriched.activeIngredients.toLowerCase()} ${enriched.pharmaceuticalForm.toLowerCase()} ${p.details ? p.details.join(' ').toLowerCase() : ''}`;
                   return searchString.includes(term);
                 })
                 .map((product, idx) => {
-                  const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                  const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
                   return (
                   <div 
                     key={idx} 
-                    className="p-5 rounded-2xl bg-mecura-surface border border-mecura-elevated hover:border-mecura-neon/40 transition-all flex flex-col h-full shadow-lg"
+                    className="p-5 rounded-2xl bg-mecura-surface border border-mecura-elevated hover:border-mecura-neon/40 transition-all flex flex-col h-full shadow-lg cursor-pointer hover:bg-white/5"
+                    onClick={() => setSelectedProduct(product)}
                   >
                     <div className="flex justify-between items-start gap-3 mb-3">
                       <div className="flex-1">
@@ -443,7 +451,7 @@ export function CBDGuideView() {
                         {product.type}
                       </span>
                       {product.description && (
-                        <p className="text-xs text-mecura-silver leading-relaxed break-words line-clamp-2">
+                        <p className="text-xs text-mecura-silver leading-relaxed break-words ">
                           {product.description}
                         </p>
                       )}
@@ -486,7 +494,7 @@ export function CBDGuideView() {
               .filter(p => {
                   if (!deepSearchTerm) return true;
                   const term = deepSearchTerm.toLowerCase();
-                  const enriched = enrichMedicationDetails(p.name, p.manufacturer, p.origin, p.type);
+                  const enriched = enrichMedicationDetails(p.name, p.manufacturer, p.origin, p.type, p);
                   const searchString = `${p.name.toLowerCase()} ${p.categoryName?.toLowerCase() || ''} ${p.description?.toLowerCase() || ''} ${p.type.toLowerCase()} ${p.manufacturer.toLowerCase()} ${p.indications ? p.indications.toLowerCase() : ''} ${p.categoryIndications ? p.categoryIndications.join(' ').toLowerCase() : ''} ${enriched.activeIngredients.toLowerCase()} ${enriched.pharmaceuticalForm.toLowerCase()} ${p.details ? p.details.join(' ').toLowerCase() : ''}`;
                   return searchString.includes(term);
               })
@@ -603,7 +611,8 @@ export function CBDGuideView() {
                       {category.products.map((product, idx) => (
                         <div 
                           key={idx} 
-                          className="p-4 rounded-xl bg-[#0E0E14] border border-mecura-elevated hover:border-mecura-neon/40 transition-all space-y-2.5"
+                          className="p-4 rounded-xl bg-[#0E0E14] border border-mecura-elevated hover:border-mecura-neon/40 transition-all space-y-2.5 cursor-pointer hover:bg-white/5"
+                          onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}
                         >
                           {/* Top: Name & Price */}
                           <div className="flex justify-between items-start gap-2">
@@ -624,7 +633,7 @@ export function CBDGuideView() {
                               
                           {/* Rich Details */}
                           {(() => {
-                            const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                            const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
                             return (
                               <div className="mt-2 space-y-1 p-2.5 bg-black/20 border border-white/5 rounded-lg">
                                 <p className="text-[10px] leading-relaxed text-mecura-silver">
@@ -703,7 +712,7 @@ export function CBDGuideView() {
                         </thead>
                         <tbody className="divide-y divide-mecura-elevated bg-[#0A0A0F]/60">
                           {category.products.map((product, idx) => (
-                            <tr key={idx} className="hover:bg-white/5 transition-colors group">
+                            <tr key={idx} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}>
                               <td className="py-3.5 px-4 font-medium text-white align-top">
                                 <div className="font-bold text-white text-sm group-hover:text-mecura-neon transition-colors leading-snug break-words">
                                   {product.name}
@@ -721,7 +730,7 @@ export function CBDGuideView() {
                                 
                                 {/* Rich Details Desktop */}
                                 {(() => {
-                                  const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                                  const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
                                   return (
                                     <div className="mt-3 space-y-1 p-3 bg-black/20 border border-white/5 rounded-lg">
                                       <p className="text-[11px] leading-relaxed text-mecura-silver">
@@ -1057,7 +1066,7 @@ export function CBDGuideView() {
                   <h3 className="font-bold text-white mb-3">Medicamentos e Produtos Recomendados ({selectedDisease.category.products.length})</h3>
                   <div className="space-y-3">
                     {selectedDisease.category.products.map((product, idx) => {
-                      const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type);
+                      const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
                       return (
                         <div key={idx} className="bg-mecura-surface-light/30 border border-mecura-elevated rounded-xl p-4">
                           <div className="flex justify-between items-start mb-2">

@@ -1,35 +1,47 @@
 const fs = require('fs');
-
 const path = 'src/data/cbdGuide.ts';
 let code = fs.readFileSync(path, 'utf8');
 
-// I will insert a new block for Concentrates before "// 4. Óleos e Extratos"
+// Update signature
+code = code.replace(
+  /export function enrichMedicationDetails\([\s\S]*?\): EnrichedMedicationInfo {/,
+  `export function enrichMedicationDetails(
+  productName: string, 
+  brand?: string, 
+  origin?: string, 
+  type?: string,
+  product?: CBDProduct
+): EnrichedMedicationInfo {`
+);
 
-const newBlock = `
-  // 5. Concentrados e Extrações (Vaporização)
-  if (/Stirred|Granulated|Crystalized|Dried Hemp|Isolate/i.test(pName)) {
-    const isIsolate = /Isolate/i.test(pName);
-    const isTHCa = /THCa/i.test(pName);
-    return {
-      name: pName,
-      activeIngredients: isIsolate 
-        ? (isTHCa ? 'Cristais Isolados de THCa (Tetrahidrocanabinol Ácido) de Alta Pureza' : 'Cristais Isolados de Canabidiol (CBD) de Alta Pureza')
-        : 'Extrato Concentrado de Cannabis Rico em Canabinoides e Terpenos',
-      concentration: isTHCa ? 'Alto Teor de THCa (>350mg/dose)' : 'Alto Teor de CBD',
-      pharmaceuticalForm: 'Extrato Concentrado para Vaporização',
-      quantity: '01 Embalagem (5g a 20g)',
-      administrationRoute: 'Via Inalatória (Vaporizador Dosimetrado, 160°C - 210°C)',
-      brand: manufacturer,
-      origin: prodOrigin,
-      description: 'Absorção pulmonar rápida sem combustão, oferecendo pico plasmático em minutos para resposta terapêutica ágil.'
-    };
+// We need to intercept all returns. Let's rename the original function.
+code = code.replace(
+  `export function enrichMedicationDetails(`,
+  `function _enrichMedicationDetails(`
+);
+
+// Add the wrapper
+code += `
+export function enrichMedicationDetails(
+  productName: string, 
+  brand?: string, 
+  origin?: string, 
+  type?: string,
+  product?: CBDProduct
+): EnrichedMedicationInfo {
+  const result = _enrichMedicationDetails(productName, brand, origin, type, product);
+  
+  if (product) {
+    if (product.usageInstructions) result.usageInstructions = product.usageInstructions;
+    if (product.activeIngredients) result.activeIngredients = product.activeIngredients;
+    if (product.concentration) result.concentration = product.concentration;
+    if (product.pharmaceuticalForm) result.pharmaceuticalForm = product.pharmaceuticalForm;
+    if (product.quantity) result.quantity = product.quantity;
+    if (product.administrationRoute) result.administrationRoute = product.administrationRoute;
   }
+  
+  return result;
+}
 `;
 
-if (code.includes('// 4. Óleos e Extratos')) {
-  code = code.replace('// 4. Óleos e Extratos', newBlock + '\n  // 4. Óleos e Extratos');
-  fs.writeFileSync(path, code);
-  console.log("Successfully patched enrichMedicationDetails with concentrates");
-} else {
-  console.log("Could not find // 4. Óleos e Extratos");
-}
+fs.writeFileSync(path, code);

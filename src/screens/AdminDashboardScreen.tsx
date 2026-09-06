@@ -28,11 +28,13 @@ import {
   Bot,
   User,
   X, Key, AlertTriangle
-, Edit3, Check, LogOut } from 'lucide-react';
+, Edit3, Check, LogOut, RefreshCw, BrainCircuit } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
+import { cbdGuideData } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { db, auth } from '../firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 
 export const AdminDashboardScreen = () => {
@@ -116,7 +118,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     updateProduct,
     deleteProduct
   } = useAdminStore();
-  const { queue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment } = useStore();
+  const { queue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
   const passwordRequests = supportRequests.filter(req => req.userId === 'recovery');
@@ -559,6 +561,62 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 </div>
               </div>
             </div>
+            <h3 className="text-xl font-bold mt-12 mb-4">Configurações Financeiras</h3>
+            <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636] max-w-md">
+              <div className="text-[#8A8A9E] mb-2 font-medium">Cotação do Dólar (R$)</div>
+              <div className="flex gap-4">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={exchangeRate}
+                  id="exchange-rate-input"
+                  className="bg-[#0A0A0F] text-white border border-[#262636] rounded-xl px-4 py-3 flex-1 focus:outline-none focus:border-mecura-neon"
+                />
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('exchange-rate-input') as HTMLInputElement;
+                    if (el) {
+                      const val = parseFloat(el.value);
+                      if (!isNaN(val) && val > 0) {
+                        updateExchangeRate(val);
+                        alert('Cotação salva com sucesso!');
+                      }
+                    }
+                  }}
+                  className="bg-mecura-neon text-black font-bold px-6 py-3 rounded-xl hover:bg-[#b5ff33] transition-colors whitespace-nowrap"
+                >
+                  Salvar
+                </button>
+              </div>
+              
+              <div className="mt-4 flex">
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+                      const data = await res.json();
+                      const rate = parseFloat(data.USDBRL.ask);
+                      if (!isNaN(rate)) {
+                        const el = document.getElementById('exchange-rate-input') as HTMLInputElement;
+                        if (el) el.value = rate.toFixed(2);
+                        updateExchangeRate(rate);
+                        alert('Cotação atualizada em tempo real via API comercial: R$ ' + rate.toFixed(2));
+                      }
+                    } catch (e) {
+                      alert('Erro ao buscar cotação em tempo real. Tente novamente.');
+                    }
+                  }}
+                  className="w-full bg-[#1A2E05] text-mecura-neon border border-mecura-neon/50 font-bold px-6 py-3 rounded-xl hover:bg-mecura-neon/10 transition-colors flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  Sincronizar em Tempo Real (Comercial)
+                </button>
+              </div>
+              <p className="text-xs text-[#8A8A9E] mt-3">
+                A cotação atual é <strong>R$ {exchangeRate.toFixed(2)}</strong>. Esta cotação é usada para converter os preços dos produtos (em USD) para Reais (BRL).
+              </p>
+            </div>
           </div>
         )}
         {activeTab === 'agenda' && (
@@ -824,9 +882,18 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           <div className="max-w-5xl mx-auto space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Catálogo de Produtos</h2>
-              <Button onClick={() => setShowImportMedicineModal(true)}>
-                <BrainCircuit className="w-4 h-4 mr-2" /> Assistente IA
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => {
+                  if(window.confirm('Tem certeza? Isso irá restaurar o catálogo do banco de dados oficial (PDF atualizado).')) {
+                    setProductCategories(cbdGuideData);
+                  }
+                }}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> Atualizar via Sistema (PDF)
+                </Button>
+                <Button onClick={() => setShowImportMedicineModal(true)}>
+                  <BrainCircuit className="w-4 h-4 mr-2" /> Assistente IA
+                </Button>
+              </div>
             </div>
             
             <div className="space-y-8">
@@ -1315,8 +1382,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                </form>
             </div>
             <div className="flex-1 overflow-y-auto space-y-4">
-              {allAppointments.filter(app => app.doctorId_temp_fix === showAgenda || app.patientId_temp_fix === showAgenda).length > 0 ? (
-                allAppointments.filter(app => app.doctorId_temp_fix === showAgenda || app.patientId_temp_fix === showAgenda).map(app => (
+              {allAppointments.filter(app => (app as any).doctorId_temp_fix === showAgenda || (app as any).patientId_temp_fix === showAgenda).length > 0 ? (
+                allAppointments.filter(app => (app as any).doctorId_temp_fix === showAgenda || (app as any).patientId_temp_fix === showAgenda).map(app => (
                   <div key={app.id} className="bg-[#0A0A0F] border border-[#262636] rounded-2xl p-4 flex justify-between">
                     <div>
                       <div className="font-bold">{app.patientName}</div>

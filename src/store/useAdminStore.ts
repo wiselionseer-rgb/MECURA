@@ -48,7 +48,9 @@ interface AdminState {
   promotionsText: string;
   setPromotionsText: (text: string) => void;
   catalogUrl: string;
+  catalogUrlNacional: string;
   setCatalogUrl: (url: string) => void;
+  setCatalogUrlNacional: (url: string) => void;
   productCategories: CBDCategory[];
   setProductCategories: (categories: CBDCategory[]) => void;
   addProduct: (categoryId: string, product: CBDProduct) => void;
@@ -105,10 +107,12 @@ export const useAdminStore = create<AdminState>()(
         notifications: state.notifications.filter((n) => n.id !== id)
       })),
 
-      promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥\n\n• Linha Vibe (Óleos): Desconto progressivo por volume (10% / 20% / 30% OFF ao comprar 2, 4 ou 6 unidades).\n• Chill Vibe Gummy: Desconto ao comprar 10 unidades ($350 vs $390 avulso).\n• Drops by GreenBudz Gummies: Todos os sabores com promoção de 2 pacotes por $49,90 (contra $54 no total avulso).',
+      promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.',
       setPromotionsText: (text) => set({ promotionsText: text }),
-      catalogUrl: 'https://drive.google.com/file/d/1QvJjJlj6gLaljo4-Jp0XhStUbwn_yYBA/preview?usp=drive_link',
+      catalogUrl: 'https://drive.google.com/file/d/1X5dDlzrVQ5bENVFd8He96OB-TT39gA8Z/preview',
+      catalogUrlNacional: 'https://drive.google.com/file/d/1RkfK1c76aaiyLnSeVxSsFif8WAEi3aU_/preview',
       setCatalogUrl: (url) => set({ catalogUrl: url }),
+      setCatalogUrlNacional: (url) => set({ catalogUrlNacional: url }),
       productCategories: cbdGuideData,
       setProductCategories: (categories) => set({ productCategories: categories }),
       addProduct: (categoryId, product) => set((state) => ({

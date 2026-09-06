@@ -2,13 +2,15 @@ const fs = require('fs');
 const path = 'src/screens/AdminDashboardScreen.tsx';
 let code = fs.readFileSync(path, 'utf8');
 
-code = code.replace(
-  "const { queue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment } = useStore();",
-  "const { queue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();"
-);
+const targetStr = `              <div className="bg-gradient-to-br from-[#161622] to-[#262636] p-6 rounded-2xl border border-white/20">
+                <div className="text-[#8A8A9E] mb-2">Faturamento Total</div>
+                <div className="text-3xl font-bold text-white">
+                  {revenueTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
+              </div>
+            </div>`;
 
-const configSection = `            </div>
-
+const configSection = `
             <h3 className="text-xl font-bold mt-12 mb-4">Configurações Financeiras</h3>
             <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636] max-w-md">
               <div className="text-[#8A8A9E] mb-2 font-medium">Cotação do Dólar (R$)</div>
@@ -40,12 +42,7 @@ const configSection = `            </div>
               <p className="text-xs text-[#8A8A9E] mt-3">
                 A cotação atual é <strong>R$ {exchangeRate.toFixed(2)}</strong>. Esta cotação é usada para converter os preços dos produtos (em USD) para Reais (BRL).
               </p>
-            </div>
-`;
+            </div>`;
 
-code = code.replace(
-  "              </div>\n            </div>\n          </motion.div>\n        )}",
-  "              </div>\n" + configSection + "\n          </motion.div>\n        )}"
-);
-
+code = code.replace(targetStr, targetStr + configSection);
 fs.writeFileSync(path, code);

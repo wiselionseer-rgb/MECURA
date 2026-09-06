@@ -297,19 +297,19 @@ export const generatePrescriptionPDF = async (
   const opt = {
     margin: 0,
     filename: `Receita_Medica_${sanitizedUserName}.pdf`,
-    image: { type: "jpeg" as any as const, quality: 1 },
+    image: { type: "jpeg", quality: 1 },
     html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollY: 0, scrollX: 0 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
   };
 
   if (patientData?.returnBlob) {
-    const pdfBlob = await html2pdf().set(opt).from(container.firstElementChild || container).output('blob');
+    const pdfBlob = await html2pdf().set(opt as any).from((container.firstElementChild || container) as any).output('blob');
     root.unmount();
     document.body.removeChild(container);
     return pdfBlob;
   }
 
-  await html2pdf().set(opt).from(container.firstElementChild || container).save();
+  await html2pdf().set(opt as any).from((container.firstElementChild || container) as any).save();
 
   root.unmount();
   document.body.removeChild(container);
@@ -452,13 +452,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   };
 
   if (patientData?.returnBlob) {
-    const pdfBlob = await html2pdf().set(opt).from(container.firstElementChild || container).output('blob');
+    const pdfBlob = await html2pdf().set(opt as any).from((container.firstElementChild || container) as any).output('blob');
     root.unmount();
     document.body.removeChild(container);
     return pdfBlob;
   }
 
-  await html2pdf().set(opt).from(container.firstElementChild || container).save();
+  await html2pdf().set(opt as any).from((container.firstElementChild || container) as any).save();
 
   root.unmount();
   document.body.removeChild(container);
@@ -608,13 +608,13 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   };
 
   if (patientData?.returnBlob) {
-    const pdfBlob = await html2pdf().set(opt).from(container.firstElementChild || container).output('blob');
+    const pdfBlob = await html2pdf().set(opt as any).from((container.firstElementChild || container) as any).output('blob');
     root.unmount();
     document.body.removeChild(container);
     return pdfBlob;
   }
 
-  await html2pdf().set(opt).from(container.firstElementChild || container).save();
+  await html2pdf().set(opt as any).from((container.firstElementChild || container) as any).save();
 
   root.unmount();
   document.body.removeChild(container);

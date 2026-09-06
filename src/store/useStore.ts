@@ -7,7 +7,7 @@ export interface Message {
   text?: string;
   sender: 'user' | 'doctor';
   timestamp: Date;
-  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'acompanhamento_card' | 'acompanhamento_options';
+  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success';
   attachment?: {
     name: string;
     url: string;
@@ -756,7 +756,9 @@ export const useStore = create<AppState>((set, get) => ({
   messages: [],
   addMessage: async (msg) => {
     const state = get();
-    const newMessage = { ...msg, id: Date.now().toString(), timestamp: new Date() };
+    // Add a random suffix to Date.now() to prevent duplicate keys if messages are added in the same millisecond
+    const uniqueId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
+    const newMessage = { ...msg, id: uniqueId, timestamp: new Date() };
     
     // Optimistic update
     set((state) => ({

@@ -30,7 +30,13 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 export function PharmacyScreen() {
   const navigate = useNavigate();
   const { messages } = useStore();
-  const { promotionsText, catalogUrl } = useAdminStore();
+    const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText } = useAdminStore();
+  
+  useEffect(() => {
+    if (promotionsText.includes('Desconto progressivo por volume')) {
+      setPromotionsText('🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.');
+    }
+  }, [promotionsText, setPromotionsText]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   
   // Extract prescribed items from messages
@@ -286,18 +292,33 @@ export function PharmacyScreen() {
                 </div>
               )}
 
-              <motion.a 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                href={catalogUrl || 'https://greenbudz.com/catalog'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)] group"
-              >
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                <Gift className="w-5 h-5 relative z-10" />
-                <span className="relative z-10">Ver Catálogo Completo</span>
-              </motion.a>
+              <div className="flex flex-col gap-3">
+                <motion.a 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  href={'https://drive.google.com/file/d/1X5dDlzrVQ5bENVFd8He96OB-TT39gA8Z/preview'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)] group"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                  <Gift className="w-5 h-5 relative z-10" />
+                  <span className="relative z-10">VER CATÁLOGO PRODUTOS VIA INALADA</span>
+                </motion.a>
+                
+                <motion.a 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  href={'https://drive.google.com/file/d/1RkfK1c76aaiyLnSeVxSsFif8WAEi3aU_/preview'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-pearl text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-white transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)] group"
+                >
+                  <div className="absolute inset-0 bg-black/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                  <Gift className="w-5 h-5 relative z-10" />
+                  <span className="relative z-10">VER CATÁLOGO PRODUTOS VIA ORAL</span>
+                </motion.a>
+              </div>
             </div>
           </motion.div>
         )}

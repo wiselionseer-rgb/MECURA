@@ -1,31 +1,8 @@
 const fs = require('fs');
 
-let storePath = 'src/store/useStore.ts';
-let storeCode = fs.readFileSync(storePath, 'utf8');
+const adminPath = 'src/store/useAdminStore.ts';
+let adminCode = fs.readFileSync(adminPath, 'utf8');
 
-const target = `      const history = snap.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          date: new Date(data.date)
-        };
-      });
-      set({ consultationHistory: history });`;
+adminCode = adminCode.replace(/promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥[^]*?2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.'/, "promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥\\n\\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.'");
 
-const replacement = `      const history = snap.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          date: new Date(data.date),
-          patientName: data.patientName || 'Paciente',
-          messages: data.messages || []
-        };
-      }) as any[];
-      set({ consultationHistory: history });`;
-
-storeCode = storeCode.replace(target, replacement);
-
-fs.writeFileSync(storePath, storeCode);
-console.log('Fixed useStore');
+fs.writeFileSync(adminPath, adminCode);
