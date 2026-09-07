@@ -132,7 +132,13 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     // Fetch users (patients)
     const qUsers = query(collection(db, 'users'));
     const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-      setPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      usersData.sort((a: any, b: any) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setPatients(usersData);
     });
 
     // Subscribe to global queue store instead of raw query

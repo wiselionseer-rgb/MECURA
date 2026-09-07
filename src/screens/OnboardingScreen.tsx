@@ -236,7 +236,17 @@ const STEPS = [
             }
           } else {
             const trimmedEmail = userEmail.trim();
-            await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+            const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+            try {
+              await setDoc(doc(db, 'users', userCredential.user.uid), {
+                email: trimmedEmail,
+                hasCompletedOnboarding: false,
+                createdAt: new Date().toISOString(),
+                tier: 'basic'
+              }, { merge: true });
+            } catch (e) {
+              console.error("Error creating early user data", e);
+            }
           }
           setCurrentStep(1);
           setOnboardingStep(1);
