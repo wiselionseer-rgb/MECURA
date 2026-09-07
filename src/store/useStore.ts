@@ -150,6 +150,7 @@ interface AppState {
   updateExchangeRate: (rate: number) => Promise<void>;
   
   reset: () => void;
+  clearTriage: () => void;
 }
 
 import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
@@ -947,6 +948,16 @@ export const useStore = create<AppState>((set, get) => ({
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
+  
+  clearTriage: () => set({
+    answers: { objectives: [] },
+    onboardingStep: 1,
+    hasCompletedOnboarding: false,
+    consultationStatus: 'pending',
+    isConsultationFinished: false,
+    activeConsultationId: null,
+    messages: []
+  }),
   
   reset: () => { if (typeof window !== 'undefined') { localStorage.removeItem('mecura_patientId'); localStorage.removeItem('mecura_pagamento'); } return set({
     userName: '',

@@ -50,7 +50,24 @@ const OBJECTIVES_MAIN = [
   { id: 'onco', title: 'Oncologia e Cuidados Paliativos', desc: 'Suporte no câncer, cuidados paliativos, dor oncológica e náuseas.' }
 ];
 
-const OBJECTIVES_OTHER = ['Outros'];
+const OBJECTIVES_OTHER = [
+  'TDAH',
+  'Autismo (TEA)',
+  'Parkinson',
+  'Alzheimer',
+  'Epilepsia',
+  'Fibromialgia',
+  'Depressão',
+  'Enxaqueca',
+  'Endometriose',
+  'Artrose / Artrite',
+  'Doença de Crohn',
+  'Esclerose Múltipla',
+  'Glaucoma',
+  'Psoríase',
+  'Burnout',
+  'Outros'
+];
 
 const SOCIAL_QUESTIONS = [
   { id: 'casado', label: 'Você é casado?' },
@@ -132,6 +149,7 @@ const STEPS = [
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
+  const [showExistingAccountPrompt, setShowExistingAccountPrompt] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
   
     const progress = ((currentStep + 1) / STEPS.length) * 100;
@@ -142,6 +160,17 @@ const STEPS = [
         scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }, [currentStep]);
+    
+    useEffect(() => {
+      // Se já estiver logado (ou store tiver dados), pula a etapa de login
+      const unsubscribe = auth.onAuthStateChanged(user => {
+        if (user && currentStep === 0) {
+          setCurrentStep(1);
+          setOnboardingStep(1);
+        }
+      });
+      return () => unsubscribe();
+    }, [currentStep, setOnboardingStep]);
   
       const handleForgotPassword = async () => {
     if (!forgotPasswordEmail) return;
@@ -200,7 +229,8 @@ const STEPS = [
               
               if (data.hasCompletedOnboarding) {
                 setHasCompletedOnboarding(true);
-                navigate('/dashboard');
+                setShowExistingAccountPrompt(true);
+                setIsLoading(false);
                 return;
               }
             }
@@ -208,8 +238,8 @@ const STEPS = [
             const trimmedEmail = userEmail.trim();
             await createUserWithEmailAndPassword(auth, trimmedEmail, password);
           }
-          setCurrentStep(prev => prev + 1);
-          setOnboardingStep(currentStep + 1);
+          setCurrentStep(1);
+          setOnboardingStep(1);
         } catch (error: any) {
           console.error(error);
           if (error.code === 'auth/email-already-in-use') {

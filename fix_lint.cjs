@@ -1,25 +1,25 @@
 const fs = require('fs');
+const path = 'src/screens/AdminDashboardScreen.tsx';
+let code = fs.readFileSync(path, 'utf8');
 
-// 1. Fix cbdGuide.ts duplicate usageInstructions (from previous edits or generation)
-let guidePath = 'src/data/cbdGuide.ts';
-let guideCode = fs.readFileSync(guidePath, 'utf8');
-guideCode = guideCode.replace(/export const usageInstructions = \[[\s\S]*?\];/g, '');
-guideCode = guideCode.replace(/export const usageInstructions = /g, '// export const usageInstructions = ');
-// we just wipe duplicates or comment it out if it was declared multiple times. Since it's complaining about duplicates we'll just try to ensure it only appears once.
-let usageCount = 0;
-guideCode = guideCode.replace(/export const usageInstructions =/g, (match) => {
-  usageCount++;
-  if (usageCount > 1) return '// duplicate export const usageInstructions =';
-  return match;
-});
-fs.writeFileSync(guidePath, guideCode);
+const targetImport = `  Clock,
+  BrainCircuit,
+  Paperclip,
+  Bot,
+  User,
+  X, Key, AlertTriangle, Edit3, Check, LogOut, RefreshCw, BrainCircuit } from 'lucide-react';`;
 
-// 2. Fix AdminDashboardScreen.tsx missing imports
-let adminPath = 'src/screens/AdminDashboardScreen.tsx';
-let adminCode = fs.readFileSync(adminPath, 'utf8');
-if (!adminCode.includes('sendPasswordResetEmail')) {
-    adminCode = adminCode.replace(/import \{ ([^}]+) \} from 'firebase\/auth';/, "import { $1, sendPasswordResetEmail } from 'firebase/auth';");
+const newImport = `  Clock,
+  BrainCircuit,
+  Paperclip,
+  Bot,
+  User,
+  X, Key, AlertTriangle, Edit3, Check, LogOut, RefreshCw } from 'lucide-react';`;
+
+if(code.includes(targetImport)) {
+  code = code.replace(targetImport, newImport);
+  fs.writeFileSync(path, code);
+  console.log("Success patching lint");
+} else {
+  console.log("Target import not found");
 }
-fs.writeFileSync(adminPath, adminCode);
-
-console.log('Fixed simple lint issues');

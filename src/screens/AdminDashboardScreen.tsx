@@ -28,7 +28,7 @@ import {
   Bot,
   User,
   X, Key, AlertTriangle
-, Edit3, Check, LogOut, RefreshCw, BrainCircuit } from 'lucide-react';
+, Edit3, Check, LogOut, RefreshCw } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
@@ -118,7 +118,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     updateProduct,
     deleteProduct
   } = useAdminStore();
-  const { queue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
+  const { queue, subscribeToQueue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
   const passwordRequests = supportRequests.filter(req => req.userId === 'recovery');
@@ -135,7 +135,9 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       setPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Fetch queue (basic consultations 50 reais)
+    // Subscribe to global queue store instead of raw query
+    const unsubscribeQueueStore = subscribeToQueue();
+    // Fetch queue count
     const qQueue = query(collection(db, 'queue'));
     const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
       setQueueCount(snapshot.size);
@@ -152,10 +154,11 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
 
   return () => {
       unsubscribeUsers();
+      if(unsubscribeQueueStore) unsubscribeQueueStore();
       unsubscribeQueue();
       unsubscribePayments();
     };
-  }, []);
+  }, [subscribeToQueue]);
 
   const [showSupportToast, setShowSupportToast] = useState(false);
   const [supportToastMessage, setSupportToastMessage] = useState("");
