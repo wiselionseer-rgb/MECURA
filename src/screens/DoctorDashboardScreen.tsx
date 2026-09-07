@@ -1074,7 +1074,7 @@ CIDs Secundários: ${cidsSecundarios}`;
         6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita, NÃO USE TABELAS):
            
            **OPÇÕES IMPORTADAS (CATÁLOGO OFICIAL):**
-           (Gere um tratamento COMPLETO e IDEAL usando APENAS produtos do catálogo oficial importado. Produtos IMPORTADOS DEVEM SER OBRIGATORIAMENTE da marca GreenBudzCBD. Inclua o óleo principal e produtos complementares, se necessário, garantindo que o paciente tenha um kit completo de tratamento importado GreenBudz.)
+           (Gere um tratamento COMPLETO e IDEAL usando APENAS produtos do catálogo oficial importado. Produtos IMPORTADOS DEVEM SER OBRIGATORIAMENTE da marca GreenBudzCBD. Inclua o óleo principal e produtos complementares. USE EXATAMENTE O NOME DO CATÁLOGO: Ex: "GreenBudz Calm Vibe Oil 6000mg" ou "Drops By GreenBudz Goma Nightshade", NAO abrevie.)
            (Para CADA produto importado sugerido, use EXATAMENTE este bloco)
            **Medicamento**: (Nome fiel ao catálogo, EX: "Óleo Drops By GreenBudz..." ou "GreenBudz...")
            **Indicação/Doença**: (Condição primária alvo)
@@ -1083,7 +1083,7 @@ CIDs Secundários: ${cidsSecundarios}`;
 
            **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):**
            (Gere um tratamento COMPLETO e IDEAL equivalente usando APENAS formulações genéricas de Associações Nacionais. Inclua o óleo principal e complementos, garantindo que o paciente tenha um kit completo de tratamento nacional como alternativa direta ao importado.)
-           (Para CADA produto nacional sugerido, use EXATAMENTE este bloco e DEVE INCLUIR o texto "- Associação Nacional" no nome. IMPORTANTE: NUNCA sugira produtos da marca "GreenBudz" ou "Drops By GreenBudz" na lista de Nacionais. Eles SÃO IMPORTADOS.)
+           (Para CADA produto nacional sugerido, use EXATAMENTE este bloco e DEVE INCLUIR o texto "- Associação Nacional" no nome. NUNCA sugira "GreenBudz" aqui.)
            **Medicamento**: (Descrição da formulação, ex: Óleo CBD 50mg/ml + THC 2mg/ml - Associação Nacional)
            **Indicação/Doença**: (Condição primária alvo)
            **Modo de Uso**: (Posologia e titulação)
