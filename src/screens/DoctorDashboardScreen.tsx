@@ -1031,7 +1031,18 @@ CIDs Secundários: ${cidsSecundarios}`;
         - Cronicidade/Duração: ${patientAnswers?.duration || 'Não informada'}
         - História da Moléstia (Descrição): ${patientAnswers?.description || 'Não informada'}
         - Dados Biométricos: Altura ${patientAnswers?.height || 'Não informada'}m, Peso ${patientAnswers?.weight || 'Não informada'}kg, Sexo ${patientAnswers?.sex || 'Não informada'}
-        - Histórico Médico: Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}), Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' : 'Não'}), Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}), Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' : 'Não'})
+        - Histórico Médico e Social COMPLETO: 
+          Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}), Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' : 'Não'}), 
+          Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}), Cirurgia (${patientAnswers?.cirurgia ? 'Sim' : 'Não'}), 
+          Alergias (${patientAnswers?.alergia ? 'Sim' : 'Não'}), Problemas Digestivos (${patientAnswers?.digestivo ? 'Sim' : 'Não'}), 
+          Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' : 'Não'}).
+        - Psicomotor e Riscos: Dirige (${patientAnswers?.dirige ? 'Sim' : 'Não'}), Opera Maquinário (${patientAnswers?.maquinario ? 'Sim' : 'Não'}), 
+          Blitz/Frequente (${patientAnswers?.blitz ? 'Sim' : 'Não'}), Laudo Psicomotor (${patientAnswers?.laudo_psicomotor ? 'Sim' : 'Não'}).
+        - Cardiovascular e Saúde Mental: Arritmia (${patientAnswers?.arritmia ? 'Sim' : 'Não'}), 
+          Histórico Psicose/Esquizofrenia (${patientAnswers?.psicose_hist || patientAnswers?.esquizofrenia_diag || patientAnswers?.esquizofrenia_parente ? 'Sim' : 'Não'}), 
+          Pânico/Ansiedade (${patientAnswers?.panico || patientAnswers?.ansiedade_diag ? 'Sim' : 'Não'}), Estresse (${patientAnswers?.estresse ? 'Sim' : 'Não'}).
+        - Hábitos de Vida: Fuma (${patientAnswers?.fuma ? 'Sim' : 'Não'}), Bebida Alcoólica (${patientAnswers?.bebida ? 'Sim' : 'Não'}), 
+          Atividade Física (${patientAnswers?.exercicio ? 'Sim' : 'Não'}).
         
         DIRETRIZ DE PRESCRIÇÃO (IMPORTADOS E NACIONAIS):
         Você DEVE sugerir DUAS frentes de tratamento INDEPENDENTES E COMPLETAS para o médico escolher.
@@ -1075,19 +1086,19 @@ CIDs Secundários: ${cidsSecundarios}`;
            
            **OPÇÕES IMPORTADAS (CATÁLOGO OFICIAL):**
            (Gere um tratamento COMPLETO e IDEAL usando APENAS produtos do catálogo oficial importado. Produtos IMPORTADOS DEVEM SER OBRIGATORIAMENTE da marca GreenBudzCBD. Inclua o óleo principal e produtos complementares. USE EXATAMENTE O NOME DO CATÁLOGO: Ex: "GreenBudz Calm Vibe Oil 6000mg" ou "Drops By GreenBudz Goma Nightshade", NAO abrevie.)
-           (Para CADA produto importado sugerido, use EXATAMENTE este bloco)
-           **Medicamento**: (Nome fiel ao catálogo, EX: "Óleo Drops By GreenBudz..." ou "GreenBudz...")
-           **Indicação/Doença**: (Condição primária alvo)
-           **Modo de Uso**: (Posologia e titulação, ex: 2 gotas, 12/12 horas)
-           **Observações**: (Dicas de administração)
+           (Para CADA produto sugerido, VOCÊ DEVE OBRIGATORIAMENTE começar o bloco com a palavra "Medicamento:")
+           Medicamento: (Nome fiel ao catálogo)
+           Indicação: (Condição primária alvo)
+           Modo de Uso: (Posologia e titulação)
+           Observações: (Dicas de administração)
 
            **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):**
-           (Gere um tratamento COMPLETO e IDEAL equivalente usando APENAS formulações genéricas de Associações Nacionais. Inclua o óleo principal e complementos, garantindo que o paciente tenha um kit completo de tratamento nacional como alternativa direta ao importado.)
-           (Para CADA produto nacional sugerido, use EXATAMENTE este bloco e DEVE INCLUIR o texto "- Associação Nacional" no nome. NUNCA sugira "GreenBudz" aqui.)
-           **Medicamento**: (Descrição da formulação, ex: Óleo CBD 50mg/ml + THC 2mg/ml - Associação Nacional)
-           **Indicação/Doença**: (Condição primária alvo)
-           **Modo de Uso**: (Posologia e titulação)
-           **Observações**: (Dicas cruciais de administração e via de uso)
+           (Gere um tratamento COMPLETO e IDEAL equivalente usando APENAS formulações genéricas de Associações Nacionais.)
+           (Para CADA produto nacional sugerido, OBRIGATORIAMENTE comece com a palavra "Medicamento:" e INCLUA o texto "- Associação Nacional" no nome. NUNCA sugira "GreenBudz" aqui.)
+           Medicamento: (Descrição da formulação - Associação Nacional)
+           Indicação: (Condição primária alvo)
+           Modo de Uso: (Posologia e titulação)
+           Observações: (Dicas cruciais de administração e via de uso)
 
         IMPORTANTE: Destaque em **negrito** todos os fármacos, diagnósticos, enzimas (ex: CYP3A4) e dosagens para escaneabilidade médica de alto rendimento. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
       `;
@@ -1184,9 +1195,9 @@ CIDs Secundários: ${cidsSecundarios}`;
         const block = blocks[i];
         
         // Extract fields using Regex, handling possible inline text
-        const nameMatch = block.match(/.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|\bObservações\b|$)/is);
-        const dosageMatch = block.match(/\bModo de Uso\b.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bObservações\b|$)/is);
-        const instructionsMatch = block.match(/\bObservações\b.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|$)/is);
+        const nameMatch = block.match(/.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|\bPosologia\b|\bPosologia\/Uso\b|\bObservações\b|\bObservação Clínica\b|$)/is);
+        const dosageMatch = block.match(/(?:\bModo de Uso\b|\bPosologia\b|\bPosologia\/Uso\b).*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bObservações\b|\bObservação Clínica\b|$)/is);
+        const instructionsMatch = block.match(/(?:\bObservações\b|\bObservação Clínica\b).*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|\bPosologia\b|\bPosologia\/Uso\b|$)/is);
         
         if (nameMatch && nameMatch[1].trim()) {
           let rawName = nameMatch[1].replace(/\*\*/g, '').replace(/^- /, '').replace(/\*$/, '').trim();
