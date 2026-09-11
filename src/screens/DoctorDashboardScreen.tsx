@@ -1032,10 +1032,13 @@ CIDs Secundários: ${cidsSecundarios}`;
         - História da Moléstia (Descrição): ${patientAnswers?.description || 'Não informada'}
         - Dados Biométricos: Altura ${patientAnswers?.height || 'Não informada'}m, Peso ${patientAnswers?.weight || 'Não informada'}kg, Sexo ${patientAnswers?.sex || 'Não informada'}
         - Histórico Médico e Social COMPLETO: 
-          Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' : 'Não'}), Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' : 'Não'}), 
-          Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' : 'Não'}), Cirurgia (${patientAnswers?.cirurgia ? 'Sim' : 'Não'}), 
-          Alergias (${patientAnswers?.alergia ? 'Sim' : 'Não'}), Problemas Digestivos (${patientAnswers?.digestivo ? 'Sim' : 'Não'}), 
-          Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' : 'Não'}).
+          Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' + (patientAnswers?.tratamento_atual_details ? ': ' + patientAnswers.tratamento_atual_details : '') : 'Não'}), 
+          Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' + (patientAnswers?.remedios_details ? ': ' + patientAnswers.remedios_details : '') : 'Não'}), 
+          Comorbidade Crônica (${patientAnswers?.doenca_cronica ? 'Sim' + (patientAnswers?.doenca_cronica_details ? ': ' + patientAnswers.doenca_cronica_details : '') : 'Não'}), 
+          Cirurgia (${patientAnswers?.cirurgia ? 'Sim' + (patientAnswers?.cirurgia_details ? ': ' + patientAnswers.cirurgia_details : '') : 'Não'}), 
+          Alergias (${patientAnswers?.alergia ? 'Sim' + (patientAnswers?.alergia_details ? ': ' + patientAnswers.alergia_details : '') : 'Não'}), 
+          Problemas Digestivos (${patientAnswers?.digestivo ? 'Sim' + (patientAnswers?.digestivo_details ? ': ' + patientAnswers.digestivo_details : '') : 'Não'}), 
+          Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' + (patientAnswers?.cannabis_details ? ': ' + patientAnswers.cannabis_details : '') : 'Não'}).
         - Psicomotor e Riscos: Dirige (${patientAnswers?.dirige ? 'Sim' : 'Não'}), Opera Maquinário (${patientAnswers?.maquinario ? 'Sim' : 'Não'}), 
           Blitz/Frequente (${patientAnswers?.blitz ? 'Sim' : 'Não'}), Laudo Psicomotor (${patientAnswers?.laudo_psicomotor ? 'Sim' : 'Não'}).
         - Cardiovascular e Saúde Mental: Arritmia (${patientAnswers?.arritmia ? 'Sim' : 'Não'}), 
@@ -2622,21 +2625,49 @@ CIDs Secundários: ${cidsSecundarios}`;
               Saúde & Social
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
+              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
                 <span className="text-sm text-mecura-silver block mb-2">Tratamento Atual</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'text-mecura-neon' : 'text-white'}`}>
+                  {(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'Sim' : 'Não'}
+                </span>
+                {(currentPatient?.answers?.tratamento_atual_details || answers?.tratamento_atual_details) && (
+                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                    {currentPatient?.answers?.tratamento_atual_details || answers?.tratamento_atual_details}
+                  </p>
+                )}
               </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
+              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
                 <span className="text-sm text-mecura-silver block mb-2">Uso de Remédios</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.remedios || answers?.remedios) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.remedios || answers?.remedios) ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.remedios || answers?.remedios) ? 'text-mecura-neon' : 'text-white'}`}>
+                  {(currentPatient?.answers?.remedios || answers?.remedios) ? 'Sim' : 'Não'}
+                </span>
+                {(currentPatient?.answers?.remedios_details || answers?.remedios_details) && (
+                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                    {currentPatient?.answers?.remedios_details || answers?.remedios_details}
+                  </p>
+                )}
               </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
+              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
                 <span className="text-sm text-mecura-silver block mb-2">Doença Crônica</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'text-mecura-neon' : 'text-white'}`}>
+                  {(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'Sim' : 'Não'}
+                </span>
+                {(currentPatient?.answers?.doenca_cronica_details || answers?.doenca_cronica_details) && (
+                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                    {currentPatient?.answers?.doenca_cronica_details || answers?.doenca_cronica_details}
+                  </p>
+                )}
               </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5">
+              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
                 <span className="text-sm text-mecura-silver block mb-2">Já usou Cannabis</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'text-mecura-neon' : 'text-white'}`}>{(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'Sim' : 'Não'}</span>
+                <span className={`text-base font-bold ${(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'text-mecura-neon' : 'text-white'}`}>
+                  {(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'Sim' : 'Não'}
+                </span>
+                {(currentPatient?.answers?.cannabis_details || answers?.cannabis_details) && (
+                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                    {currentPatient?.answers?.cannabis_details || answers?.cannabis_details}
+                  </p>
+                )}
               </div>
             </div>
           </section>
