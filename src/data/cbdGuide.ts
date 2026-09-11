@@ -41,7 +41,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "PharmaHemp",
         origin: "Nacional",
         type: "Cápsula Softgel",
-        priceBRL: 229.50,
         details: ["Frasco com 30 cápsulas", "25mg CBD por cápsula", "0% THC", "Liberação prolongada"],
         description: "Opção prática e discreta para quem busca CBD sem efeitos psicoativos, ideal para manter níveis séricos estáveis ao longo do dia para ansiedade generalizada."
       },
@@ -50,7 +49,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "NatureCBD",
         origin: "Nacional",
         type: "Spray Sublingual",
-        priceBRL: 193.80,
         details: ["Frasco 15ml", "1000mg CBD Total", "Rico em Linalol e Camomila"],
         description: "Absorção rápida pela mucosa oral, excelente para picos agudos de estresse ou ataques de pânico."
       },
@@ -156,7 +154,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "MedPatch",
         origin: "Nacional",
         type: "Adesivo Transdérmico",
-        priceBRL: 306.00,
         details: ["Caixa com 5 adesivos", "20mg CBD + 20mg THC por adesivo", "Liberação lenta por até 72h"],
         description: "Excelente alternativa para dor crônica localizada (ex: lombalgia, hérnia), oferecendo analgesia contínua sem necessidade de dosagem oral constante."
       },
@@ -165,7 +162,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "HempMeds",
         origin: "Nacional",
         type: "Óleo Broad Spectrum",
-        priceBRL: 433.50,
         details: ["Frasco 30ml", "1000mg CBG + 1000mg CBD"],
         description: "Alto teor de Canabigerol (CBG), um potente inibidor de inflamação sistêmica, ideal para condições autoimunes e articulares severas."
       },
@@ -282,7 +278,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "ZzzCBD",
         origin: "Nacional",
         type: "Cápsula",
-        priceBRL: 280.50,
         details: ["30 cápsulas", "25mg CBD + 5mg CBN por cápsula", "Com Melatonina natural"],
         description: "Formulação noturna específica contendo CBN, conhecido pelo seu forte potencial sedativo e indutor do sono."
       },
@@ -345,7 +340,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "VitalLeaf",
         origin: "Nacional",
         type: "Óleo Full Spectrum",
-        priceBRL: 484.50,
         details: ["Frasco 30ml", "500mg THCV + 1000mg CBD", "Perfil Sativa"],
         description: "O THCV possui propriedades estimulantes e supressoras de apetite, sendo uma excelente opção para TDAH, fadiga crônica e foco sem a agitação da cafeína."
       },
@@ -434,7 +428,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "FemmeCare CBD",
         origin: "Nacional",
         type: "Supositório",
-        priceBRL: 357.00,
         details: ["Caixa com 10 unidades", "50mg CBD + 10mg THC por unidade"],
         description: "Absorção local no plexo pélvico. Extremamente eficaz para dor aguda de endometriose e dismenorreia severa, evitando processamento hepático e efeitos psicoativos centrais."
       },
@@ -499,7 +492,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "GI-Hemp",
         origin: "Nacional",
         type: "Cápsula Gastrorresistente",
-        priceBRL: 408.00,
         details: ["60 cápsulas", "25mg CBD + 10mg CBG por cápsula", "Revestimento entérico"],
         description: "Cápsulas desenvolvidas para resistir ao ácido estomacal e liberar os fitocanabinoides diretamente no intestino, modulando a inflamação local da Colite e Crohn."
       },
@@ -508,7 +500,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "Associação Nacional",
         origin: "Nacional",
         type: "Spray Oral",
-        priceBRL: 250.00,
         details: ["Frasco 20ml", "50mg/ml THC + 5mg/ml CBD"],
         description: "Ação anti-emética (contra náuseas) quase imediata. Essencial para controle rápido de ânsia em quadros de anorexia induzida por tratamentos severos."
       },
@@ -576,7 +567,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "NeuroHemp",
         origin: "Nacional",
         type: "Óleo Full Spectrum",
-        priceBRL: 561.00,
         details: ["Frasco 30ml", "100mg/ml CBD + 10mg/ml THC"],
         description: "Proporção específica para neuroproteção e controle de tremores, oferecendo alto CBD sistêmico com traços de THC para sinergia de relaxamento muscular."
       },
@@ -665,7 +655,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "PharmaCBD",
         origin: "Nacional",
         type: "Óleo Isolado",
-        priceBRL: 1275.00,
         details: ["Frasco 50ml", "200mg/ml CBD", "0% THC Garantido", "Grau Farmacêutico"],
         description: "Fórmula pura de CBD em altíssima concentração, sem risco de interferência psicoativa. Dosagem robusta baseada em peso (mg/kg) para quadros convulsivos refratários."
       },
@@ -729,7 +718,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "KidsHemp",
         origin: "Nacional",
         type: "Goma comestível",
-        priceBRL: 204.00,
         details: ["30 gomas", "10mg CBD por goma", "0% THC", "Vegano e sem açúcar"],
         description: "Apresentação amigável e fácil de administrar para crianças com TEA. Ajuda no controle de ansiedade, regulação sensorial e agressividade, sem THC."
       },
@@ -806,7 +794,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "DermaWeed",
         origin: "Nacional",
         type: "Creme Tópico",
-        priceBRL: 229.50,
         details: ["Bisnaga 100g", "1000mg CBD + 500mg CBG"],
         description: "Ação direta nos receptores CB1 e CB2 da pele. O CBG age como potente anti-inflamatório, reduzindo escamação e coceira da psoríase rapidamente."
       },
@@ -840,7 +827,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "PureHemp",
         origin: "Nacional",
         type: "Flor In Natura",
-        priceBRL: 102.00,
         details: ["Embalagem com 5 unidades", "Aproximadamente 15% CBD", "Terapêutica Inalatória"],
         description: "A inalação oferece biodisponibilidade instantânea. Excelente ferramenta de redução de danos para substituir o ato de fumar (tabaco/crack), reduzindo fissuras agudas (craving)."
       },
@@ -895,7 +881,6 @@ export const cbdGuideData: CBDCategory[] = [
         manufacturer: "Associação Nacional",
         origin: "Nacional",
         type: "Extrato Concentrado",
-        priceBRL: 450.00,
         details: ["Seringa 10ml", "Extrato pastoso 70% THC", "Dosagem de precisão"],
         description: "Extrato integral não diluído extremamente potente. Usado em cuidados paliativos para manejo de dor lancinante, resgate de apetite e caquexia severa em pacientes oncológicos tolerantes ao THC."
       },

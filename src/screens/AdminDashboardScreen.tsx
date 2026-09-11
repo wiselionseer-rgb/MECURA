@@ -589,7 +589,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                       const val = parseFloat(el.value);
                       if (!isNaN(val) && val > 0) {
                         updateExchangeRate(val);
-                        alert('Cotação salva com sucesso!');
+                        setSupportToastMessage('Cotação salva com sucesso!');
                       }
                     }
                   }}
@@ -603,17 +603,18 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 <button
                   onClick={async () => {
                     try {
-                      const res = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+                      // Usando API alternativa confiável sem limite tão restrito
+                      const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
                       const data = await res.json();
-                      const rate = parseFloat(data.USDBRL.ask);
+                      const rate = data.rates.BRL;
                       if (!isNaN(rate)) {
                         const el = document.getElementById('exchange-rate-input') as HTMLInputElement;
                         if (el) el.value = rate.toFixed(2);
                         updateExchangeRate(rate);
-                        alert('Cotação atualizada em tempo real via API comercial: R$ ' + rate.toFixed(2));
+                        setSupportToastMessage('Cotação atualizada: R$ ' + rate.toFixed(2));
                       }
                     } catch (e) {
-                      alert('Erro ao buscar cotação em tempo real. Tente novamente.');
+                      setSupportToastMessage('Erro ao buscar cotação. Tente novamente.');
                     }
                   }}
                   className="w-full bg-[#1A2E05] text-mecura-neon border border-mecura-neon/50 font-bold px-6 py-3 rounded-xl hover:bg-mecura-neon/10 transition-colors flex items-center justify-center gap-2"
