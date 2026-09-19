@@ -24,6 +24,7 @@ export function CheckoutScreen() {
   const [isLoading, setIsLoading] = useState(false);
   
   const [pixData, setPixData] = useState<{ id: string, qr_code: string, qr_code_base64: string } | null>(null);
+  const [cardUrl, setCardUrl] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const pollingInterval = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -94,7 +95,7 @@ export function CheckoutScreen() {
           body: JSON.stringify({
             title: selectedOffer === 'basic' ? 'Consulta Mecura' : 'Premium Mecura',
             price: finalPrice,
-            email: 'paciente@mecura.com',
+            email: auth.currentUser?.email || 'paciente@mecura.com',
             firstName: userName || 'Paciente',
           })
         });
@@ -108,23 +109,61 @@ export function CheckoutScreen() {
               qr_code_base64: data.qr_code_base64
             });
             setIsLoading(false);
-            
-            // O paciente clicará no botão "Já Paguei" para continuar.
             return;
           }
         }
       } catch (err) {
         console.error("Erro ao gerar PIX: ", err);
       }
+      alert("Falha ao gerar o Pix. Tente novamente.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (paymentMethod === 'card') {
+      try {
+        const response = await fetch('/api/create-preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: selectedOffer === 'basic' ? 'Consulta Essencial - Mecura' : 'Acesso VIP Premium - Mecura',
+            price: finalPrice,
+            payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
+            payerName: userName || 'Paciente',
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.init_point) {
+            setCardUrl(data.init_point);
+            setIsLoading(false);
+            
+            // Abre o checkout do Mercado Pago de forma segura
+            try {
+              if (window.self !== window.top) {
+                window.open(data.init_point, '_blank');
+              } else {
+                window.location.href = data.init_point;
+              }
+            } catch {
+              window.open(data.init_point, '_blank');
+            }
+            return;
+          }
+        }
+        alert("Não foi possível iniciar o pagamento com cartão. Tente novamente.");
+        setIsLoading(false);
+      } catch (err) {
+        console.error("Erro ao iniciar pagamento com cartão: ", err);
+        alert("Erro ao conectar com o Mercado Pago. Tente novamente.");
+        setIsLoading(false);
+      }
+      return;
     }
     
-    // Fallback: If it's not PIX, we can let them through for testing
-    if (paymentMethod !== 'pix') {
-        handleSuccess();
-    } else {
-        alert("Falha ao gerar o Pix. Tente novamente.");
-        setIsLoading(false);
-    }
+    // Fallback: outros métodos
+    handleSuccess();
   };
 
   const handleSuccess = async () => {
@@ -255,6 +294,45 @@ export function CheckoutScreen() {
                 Escolher outro pagamento
               </button>
             </motion.div>
+          ) : cardUrl ? (
+            <motion.div 
+              key="card"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="flex flex-col items-center pt-6"
+            >
+              <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(0,0,0,0.5)] bg-mecura-neon/10 border border-mecura-neon/20">
+                 <CreditCard className="w-10 h-10 text-mecura-neon" />
+              </div>
+
+              <h2 className="text-2xl font-bold text-center text-white mb-2 tracking-tight">Checkout Mercado Pago</h2>
+              <p className="text-[#8A8A9E] text-center text-[15px] mb-8 max-w-[320px] font-light">
+                A página de pagamento seguro do Mercado Pago foi aberta para você inserir os dados do seu cartão (crédito ou débito).
+              </p>
+
+              <div className="w-full bg-[#12121A] rounded-[32px] p-6 border border-white/5 mb-8 shadow-xl text-center">
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <ShieldCheck className="w-5 h-5 text-mecura-neon" />
+                  <span className="text-white font-bold text-sm">Ambiente 100% Criptografado</span>
+                </div>
+                <p className="text-[#8A8A9E] text-xs leading-relaxed">
+                  Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até 12x com proteção do Mercado Pago.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 py-4 bg-mecura-neon/5 px-6 rounded-full border border-mecura-neon/10">
+                <div className="w-2.5 h-2.5 bg-mecura-neon rounded-full animate-pulse shadow-[0_0_10px_#A6FF00]" />
+                <span className="text-mecura-neon text-sm font-bold tracking-widest uppercase">Aguardando pagamento...</span>
+              </div>
+
+              <button 
+                onClick={() => setCardUrl(null)}
+                className="mt-8 text-[#8A8A9E] text-sm font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4"
+              >
+                Escolher outro pagamento
+              </button>
+            </motion.div>
           ) : step === 'discount' ? (
             <motion.div 
               key="discount"
@@ -378,6 +456,7 @@ export function CheckoutScreen() {
               <div className="space-y-3 mb-8">
                 {/* Pix */}
                 <button
+                  type="button"
                   onClick={() => setPaymentMethod('pix')}
                   className={`w-full text-left p-1 rounded-[24px] transition-all duration-300 group ${paymentMethod === 'pix' ? 'bg-gradient-to-r from-white/10 to-transparent border border-white/10' : 'bg-transparent border border-transparent hover:border-white/5'}`}
                 >
@@ -393,6 +472,31 @@ export function CheckoutScreen() {
                     </div>
                     <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${paymentMethod === 'pix' ? 'border-mecura-neon bg-mecura-neon/10' : 'border-[#8A8A9E]/30'}`}>
                       {paymentMethod === 'pix' && <div className="w-2.5 h-2.5 bg-mecura-neon rounded-full" />}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Cartão de Crédito */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('card')}
+                  className={`w-full text-left p-1 rounded-[24px] transition-all duration-300 group ${paymentMethod === 'card' ? 'bg-gradient-to-r from-white/10 to-transparent border border-white/10' : 'bg-transparent border border-transparent hover:border-white/5'}`}
+                >
+                  <div className={`bg-[#0A0A0F] rounded-[20px] p-5 flex items-center justify-between transition-all duration-300 ${paymentMethod === 'card' ? 'shadow-2xl' : 'group-hover:bg-[#12121A]'}`}>
+                    <div className="flex items-center gap-5">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-inner ${paymentMethod === 'card' ? (selectedOffer === 'basic' ? 'bg-mecura-neon/10' : 'bg-[#A6FF00]/10') : 'bg-[#12121A] group-hover:bg-white/5'}`}>
+                        <CreditCard className={`w-7 h-7 ${paymentMethod === 'card' ? (selectedOffer === 'basic' ? 'text-mecura-neon' : 'text-[#A6FF00]') : 'text-[#8A8A9E]'}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-bold text-[17px] mb-1 ${paymentMethod === 'card' ? 'text-white' : 'text-[#8A8A9E]'}`}>Cartão de Crédito</p>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-[#8A8A9E] border border-white/10">Até 12x</span>
+                        </div>
+                        <p className={`text-[13px] ${paymentMethod === 'card' ? 'text-mecura-neon' : 'text-[#8A8A9E]/60'}`}>Crédito ou Débito via Mercado Pago</p>
+                      </div>
+                    </div>
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${paymentMethod === 'card' ? 'border-mecura-neon bg-mecura-neon/10' : 'border-[#8A8A9E]/30'}`}>
+                      {paymentMethod === 'card' && <div className="w-2.5 h-2.5 bg-mecura-neon rounded-full" />}
                     </div>
                   </div>
                 </button>
@@ -445,6 +549,38 @@ export function CheckoutScreen() {
               Já Paguei (Entrar na Fila)
             </Button>
           </div>
+        ) : cardUrl ? (
+          <div className="flex flex-col gap-3 mt-4 w-full">
+            <Button 
+              className="w-full h-12 bg-[#1A1A26] border border-mecura-neon/50 text-mecura-neon hover:bg-mecura-neon/10 font-bold"
+              onClick={() => {
+                try {
+                  window.open(cardUrl, '_blank');
+                } catch {
+                  window.location.href = cardUrl;
+                }
+              }}
+            >
+              Abrir Checkout Mercado Pago
+            </Button>
+            <Button 
+              className="w-full h-14 text-lg font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)]"
+              onClick={() => {
+                handleSuccess();
+              }}
+            >
+              Já Paguei no Cartão (Entrar na Fila)
+            </Button>
+            <button
+              onClick={() => {
+                setCardUrl(null);
+                setIsLoading(false);
+              }}
+              className="text-[#8A8A9E] text-xs underline text-center mt-1"
+            >
+              Escolher outra forma de pagamento
+            </button>
+          </div>
         ) : (
           <Button 
             className={`w-full h-14 text-lg font-bold mt-2 ${
@@ -458,7 +594,11 @@ export function CheckoutScreen() {
             isLoading={isLoading}
             disabled={step === 'checkout' && !paymentMethod}
           >
-            {step === 'discount' ? 'Continuar para Pagamento' : 'Gerar Pix e Iniciar'}
+            {step === 'discount' 
+              ? 'Continuar para Pagamento' 
+              : paymentMethod === 'card' 
+                ? 'Pagar com Cartão' 
+                : 'Gerar Pix e Iniciar'}
           </Button>
         )}
 

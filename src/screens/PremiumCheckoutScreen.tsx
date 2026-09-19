@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
 import { useAdminStore, Coupon } from '../store/useAdminStore';
 import { auth } from '../firebase';
-import { ChevronLeft, CreditCard, Percent, Lock, Ticket } from 'lucide-react';
+import { ChevronLeft, CreditCard, Percent, Lock, Ticket, ShieldCheck } from 'lucide-react';
 
 // Custom Pix Icon to match the print
 const PixIcon = ({ className }: { className?: string }) => (
@@ -22,6 +22,7 @@ export function PremiumCheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
   const [pixData, setPixData] = useState<{ id: string, qr_code: string, qr_code_base64: string } | null>(null);
+  const [cardUrl, setCardUrl] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -85,7 +86,80 @@ export function PremiumCheckoutScreen() {
       console.warn("Coupon bonus warning:", error);
     }
 
-    // Libera o acesso imediatamente para o agendamento
+    if (paymentMethod === 'pix') {
+      try {
+        const response = await fetch('/api/create-pix-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'Consulta Premium Mecura',
+            price: finalPrice,
+            email: auth.currentUser?.email || 'paciente@mecura.com',
+            firstName: userName || 'Paciente',
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.qr_code && data.qr_code_base64) {
+            setPixData({
+              id: data.id,
+              qr_code: data.qr_code,
+              qr_code_base64: data.qr_code_base64
+            });
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao gerar PIX: ", err);
+      }
+      alert("Falha ao gerar o Pix. Tente novamente.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (paymentMethod === 'card') {
+      try {
+        const response = await fetch('/api/create-preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'Acompanhamento Premium - Mecura',
+            price: finalPrice,
+            payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
+            payerName: userName || 'Paciente',
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.init_point) {
+            setCardUrl(data.init_point);
+            setIsLoading(false);
+
+            try {
+              if (window.self !== window.top) {
+                window.open(data.init_point, '_blank');
+              } else {
+                window.location.href = data.init_point;
+              }
+            } catch {
+              window.open(data.init_point, '_blank');
+            }
+            return;
+          }
+        }
+        alert("Não foi possível iniciar o pagamento com cartão. Tente novamente.");
+        setIsLoading(false);
+      } catch (err) {
+        console.error("Erro ao conectar cartão Mercado Pago: ", err);
+        alert("Erro ao conectar com o Mercado Pago. Tente novamente.");
+        setIsLoading(false);
+      }
+      return;
+    }
+
     handleSuccess();
   };
 
@@ -196,6 +270,39 @@ export function PremiumCheckoutScreen() {
               Escolher outro pagamento
             </button>
           </div>
+        ) : cardUrl ? (
+          <div className="flex flex-col items-center pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(212,175,55,0.3)] bg-[#A6FF00]/10 border border-[#A6FF00]/20">
+               <CreditCard className="w-10 h-10 text-[#A6FF00]" />
+            </div>
+
+            <h2 className="text-2xl font-bold text-center text-white mb-2 tracking-tight">Checkout Mercado Pago</h2>
+            <p className="text-mecura-silver text-center text-sm mb-6 max-w-[320px] font-light">
+              A página de pagamento seguro do Mercado Pago foi aberta para você concluir a Consulta Premium no cartão em até 12x.
+            </p>
+
+            <div className="w-full bg-[#1A1A24] rounded-3xl p-6 border border-[#A6FF00]/30 mb-8 shadow-xl text-center">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <ShieldCheck className="w-5 h-5 text-[#A6FF00]" />
+                <span className="text-white font-bold text-sm">Ambiente 100% Criptografado</span>
+              </div>
+              <p className="text-mecura-silver text-xs leading-relaxed">
+                Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até 12x com proteção integral do Mercado Pago.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 py-4 bg-[#A6FF00]/5 px-6 rounded-full border border-[#A6FF00]/10">
+              <div className="w-2.5 h-2.5 bg-[#A6FF00] rounded-full animate-pulse shadow-[0_0_8px_#A6FF00]" />
+              <span className="text-[#A6FF00] text-sm font-bold tracking-tight uppercase">Aguardando pagamento...</span>
+            </div>
+
+            <button 
+              onClick={() => setCardUrl(null)}
+              className="mt-8 text-mecura-silver text-sm font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4"
+            >
+              Escolher outro pagamento
+            </button>
+          </div>
         ) : step === 'discount' ? (
           <div className="flex flex-col items-center text-center pt-8">
             <div className="w-24 h-24 rounded-full flex items-center justify-center mb-8 shadow-[0_0_30px_rgba(212,175,55,0.4)] relative bg-gradient-to-br from-[#A6FF00] to-[#8BD400]">
@@ -264,13 +371,34 @@ export function PremiumCheckoutScreen() {
 
               <div className="space-y-3">
                 <button
+                  type="button"
                   onClick={() => setPaymentMethod('pix')}
                   className={`w-full flex items-center gap-4 p-4 rounded-xl bg-[#0A0A0F] border-2 transition-all ${
                     paymentMethod === 'pix' ? 'border-[#A6FF00] shadow-[0_0_15px_rgba(212,175,55,0.3)]' : 'border-transparent'
                   }`}
                 >
                   <PixIcon className={`w-8 h-8 ${paymentMethod === 'pix' ? 'text-[#A6FF00]' : 'text-mecura-silver'}`} />
-                  <span className="font-medium text-lg text-mecura-pearl">Pix</span>
+                  <div className="text-left flex-1">
+                    <span className="font-medium text-lg text-mecura-pearl block">Pix</span>
+                    <span className="text-xs text-[#A6FF00]">Aprovação imediata</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('card')}
+                  className={`w-full flex items-center gap-4 p-4 rounded-xl bg-[#0A0A0F] border-2 transition-all ${
+                    paymentMethod === 'card' ? 'border-[#A6FF00] shadow-[0_0_15px_rgba(212,175,55,0.3)]' : 'border-transparent'
+                  }`}
+                >
+                  <CreditCard className={`w-8 h-8 ${paymentMethod === 'card' ? 'text-[#A6FF00]' : 'text-mecura-silver'}`} />
+                  <div className="text-left flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-lg text-mecura-pearl">Cartão de Crédito</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver border border-white/10">Até 12x</span>
+                    </div>
+                    <span className="text-xs text-[#A6FF00]">Crédito ou Débito Mercado Pago</span>
+                  </div>
                 </button>
               </div>
             </div>
@@ -323,6 +451,38 @@ export function PremiumCheckoutScreen() {
               Já Paguei (Liberar Acesso)
             </Button>
           </div>
+        ) : cardUrl ? (
+          <div className="flex flex-col gap-3 w-full">
+            <Button 
+              className="w-full h-12 bg-[#1A1A26] border border-[#A6FF00]/50 text-[#A6FF00] hover:bg-[#A6FF00]/10 font-bold"
+              onClick={() => {
+                try {
+                  window.open(cardUrl, '_blank');
+                } catch {
+                  window.location.href = cardUrl;
+                }
+              }}
+            >
+              Abrir Checkout Mercado Pago
+            </Button>
+            <Button 
+              className="w-full h-14 text-lg font-bold bg-gradient-to-r from-[#A6FF00] to-[#8BD400] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)]"
+              onClick={() => {
+                handleSuccess();
+              }}
+            >
+              Já Paguei no Cartão (Liberar Acesso)
+            </Button>
+            <button
+              onClick={() => {
+                setCardUrl(null);
+                setIsLoading(false);
+              }}
+              className="text-mecura-silver text-xs underline text-center mt-1"
+            >
+              Escolher outra forma de pagamento
+            </button>
+          </div>
         ) : (
           <Button 
             className="w-full h-16 text-lg font-bold tracking-wide" 
@@ -333,7 +493,11 @@ export function PremiumCheckoutScreen() {
             isLoading={isLoading}
             disabled={step === 'checkout' && !paymentMethod}
           >
-            {step === 'discount' ? 'Próximo' : 'Gerar Pix e Iniciar'}
+            {step === 'discount' 
+              ? 'Próximo' 
+              : paymentMethod === 'card' 
+                ? `Pagar com Cartão (R$ ${finalPrice.toFixed(2).replace('.', ',')})`
+                : 'Gerar Pix e Iniciar'}
           </Button>
         )}
 

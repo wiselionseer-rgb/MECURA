@@ -59,19 +59,21 @@ export function DashboardScreen() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get('payment');
+    const status = params.get('status');
+    const collectionStatus = params.get('collection_status');
     
-    if (paymentStatus === 'success') {
-      const isBasic = localStorage.getItem('last_offer') === 'basic';
+    if (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved') {
+      const isBasic = localStorage.getItem('last_offer') !== 'premium';
       
       const processSuccess = async () => {
-        if (!pagamento_consulta) {
-          setPagamentoConsulta(true);
-          // Se era a consulta básica, entra na fila
-          if (isBasic) {
-             await joinQueue();
-          } else {
-             setPagamentoPremium(true);
+        if (isBasic) {
+          if (!pagamento_consulta) {
+            setPagamentoConsulta(true);
           }
+          await joinQueue();
+        } else {
+          setPagamentoPremium(true);
+          setPagamentoConsulta(true);
         }
         // Limpa os parâmetros da URL
         window.history.replaceState({}, '', window.location.pathname);
