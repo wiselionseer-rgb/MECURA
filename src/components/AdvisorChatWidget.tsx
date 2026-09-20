@@ -169,57 +169,92 @@ export function AdvisorChatWidget() {
         <AnimatePresence>
           {showTooltip && (
             <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              initial={{ opacity: 0, y: 15, scale: 0.88 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.9 }}
-              className="absolute bottom-16 right-0 mb-2 w-64 bg-[#161622] p-3 rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.8)] border border-mecura-neon/30"
+              whileHover={{ y: -3, scale: 1.02 }}
+              transition={{ type: "spring", stiffness: 450, damping: 25 }}
+              onClick={() => {
+                setIsOpen(true);
+                setShowTooltip(false);
+              }}
+              className="absolute bottom-16 right-0 mb-3 w-64 bg-[#161622]/95 backdrop-blur-md p-3.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_25px_rgba(166,255,0,0.2)] border border-mecura-neon/40 cursor-pointer group hover:border-mecura-neon transition-all"
             >
               <button 
-                onClick={() => setShowTooltip(false)}
-                className="absolute top-2 right-2 text-[#8A8A9E] hover:text-white transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTooltip(false);
+                }}
+                className="absolute top-2.5 right-2.5 text-[#8A8A9E] hover:text-white transition-colors p-1"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
-              <div className="flex gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#161622] border-2 border-mecura-neon/50 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                  <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150&h=150" alt="Mariana" className="w-full h-full object-cover" />
+              <div className="flex gap-3 items-center">
+                <div className="relative flex-shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-[#161622] border-2 border-mecura-neon overflow-hidden flex items-center justify-center shadow-[0_0_12px_rgba(166,255,0,0.3)]">
+                    <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150&h=150" alt="Mariana" className="w-full h-full object-cover" />
+                  </div>
+                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-mecura-neon border-2 border-[#161622] shadow-[0_0_8px_#A6FF00]" />
                 </div>
                 <div>
-                  <p className="text-sm text-white font-bold leading-tight pr-4">Ficou com dúvida?</p>
-                  <p className="text-xs text-[#8A8A9E] mt-1">Fale com a Mariana agora.</p>
+                  <p className="text-[13px] text-white font-bold leading-tight pr-4 group-hover:text-mecura-neon transition-colors">Ficou com dúvida?</p>
+                  <p className="text-[11px] text-[#8A8A9E] mt-0.5 flex items-center gap-1">
+                    Fale com a Mariana agora <span className="text-mecura-neon font-bold">→</span>
+                  </p>
                 </div>
               </div>
-              <div className="absolute bottom-[-6px] right-5 w-3 h-3 bg-[#161622] border-b border-r border-mecura-neon/30 transform rotate-45"></div>
+              <div className="absolute bottom-[-6px] right-5 w-3 h-3 bg-[#161622] border-b border-r border-mecura-neon/40 transform rotate-45"></div>
             </motion.div>
           )}
         </AnimatePresence>
         
-        <motion.button
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => {
-            setIsOpen(true);
-            setShowTooltip(false);
-          }}
-          className="w-14 h-14 bg-mecura-neon text-[#0A0A0F] rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(166,255,0,0.3)] relative cursor-pointer"
+        <motion.div
+          animate={{ y: [0, -5, 0] }}
+          transition={{ repeat: Infinity, duration: 3.2, ease: "easeInOut" }}
+          className="relative"
         >
-          {/* Neon Pulse Halo */}
+          {/* Dual Concentric Sonar Waves */}
           <motion.div
-            animate={{ scale: [1, 1.3, 1], opacity: [0.2, 0, 0.2] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute -inset-1 rounded-full border-2 border-mecura-neon pointer-events-none"
+            animate={{ scale: [1, 1.4, 1.75], opacity: [0.55, 0.2, 0] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
+            className="absolute -inset-2 rounded-full border-2 border-mecura-neon pointer-events-none"
           />
           <motion.div
-            animate={{ scale: [1, 1.5, 1], opacity: [0.1, 0, 0.1] }}
-            transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
-            className="absolute -inset-2 rounded-full border-2 border-mecura-neon/50 pointer-events-none"
+            animate={{ scale: [1, 1.25, 1.5], opacity: [0.65, 0.25, 0] }}
+            transition={{ duration: 2.2, repeat: Infinity, delay: 0.7, ease: "easeOut" }}
+            className="absolute -inset-1 rounded-full border border-mecura-neon pointer-events-none"
           />
-          
-          <MessageCircle className="w-6 h-6 z-10" />
-          <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 border-2 border-[#0A0A0F] rounded-full z-20"></span>
-        </motion.button>
+
+          <motion.button
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            whileHover={{ scale: 1.12 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: "spring", stiffness: 450, damping: 20 }}
+            onClick={() => {
+              setIsOpen(true);
+              setShowTooltip(false);
+            }}
+            className="w-14 h-14 bg-gradient-to-tr from-[#8AE600] via-[#A6FF00] to-[#C9FF5C] text-[#0A0A0F] rounded-full flex items-center justify-center shadow-[0_0_25px_rgba(166,255,0,0.5),0_10px_20px_rgba(0,0,0,0.5)] relative cursor-pointer group outline-none overflow-hidden"
+          >
+            {/* Shimmer sweep on hover */}
+            <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none" />
+            
+            <motion.div
+              whileHover={{ rotate: [0, -12, 12, -6, 6, 0] }}
+              transition={{ duration: 0.4 }}
+              className="relative z-10 flex items-center justify-center"
+            >
+              <MessageCircle className="w-6 h-6 text-[#0A0A0F]" strokeWidth={2.4} />
+            </motion.div>
+
+            {/* Pulsing Live Notification Badge */}
+            <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 z-20">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-red-500 border-2 border-[#0A0A0F]"></span>
+            </span>
+          </motion.button>
+        </motion.div>
       </div>
 
       {/* Chat Window */}

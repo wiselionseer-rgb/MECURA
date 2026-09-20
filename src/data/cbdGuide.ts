@@ -1,3 +1,8 @@
+import { FLOWERMED_PRODUCTS, FLOWERMED_COMPANY_INFO, FlowermedProduct } from './flowermedCatalog';
+import { FLOWER_EXTRACTIONS_PRODUCTS, FLOWER_EXTRACTIONS_INFO, FlowerExtractionProduct } from './flowerExtractionsCatalog';
+export { FLOWERMED_PRODUCTS, FLOWERMED_COMPANY_INFO, FLOWER_EXTRACTIONS_PRODUCTS, FLOWER_EXTRACTIONS_INFO };
+export type { FlowermedProduct, FlowerExtractionProduct };
+
 export interface CBDProduct {
   name: string;
   manufacturer: string;
@@ -29,6 +34,44 @@ export interface CBDCategory {
 }
 
 export const cbdGuideData: CBDCategory[] = [
+  {
+    id: "flowermed_oficial",
+    title: "LINHA FLOWERMED (EUA • FDA & ANVISA)",
+    description: "Laboratório americano com mais de 3 anos no Brasil. Normas FDA e ANVISA RDC 660/2022. COA lote a lote ISO/IEC 17025:2017. Linhas Hemp Oil, Canabinoides Direcionados, Sphera Premium, Syrup Nano e Gummies.",
+    indicationsList: [
+      "Dor Crônica",
+      "Ansiedade e Pânico",
+      "Insônia e Distúrbios do Sono",
+      "Epilepsia e Convulsões",
+      "Doença de Crohn",
+      "Síndrome Metabólica e Obesidade",
+      "Esclerose Múltipla e Espasticidade",
+      "Fibromialgia",
+      "Autismo (TEA)",
+      "TDAH",
+      "Cuidados Paliativos",
+      "Enxaqueca",
+      "Inflamação Crônica"
+    ],
+    dosageGuidance: "Prescrição individualizada. Óleos sublinguais com retenção de 60s sob a língua. Titulação 'start low, go slow' a cada 4-5 dias.",
+    products: FLOWERMED_PRODUCTS
+  },
+  {
+    id: "flores_extracoes",
+    title: "FOLHETO: FLORES IN NATURA & EXTRAÇÕES (14G / SERINGAS / BUDDER)",
+    description: "Flores in natura importadas em embalagens de 14g (CBD, Delta-8 THC e THCA) e extrações concentradas (Seringas dosadoras 1ml/2ml e Gold Budder 5g).",
+    indicationsList: [
+      "Dor Crônica & Aguda",
+      "Insônia e Desaceleração Mental",
+      "Ansiedade e Estresse",
+      "Fadiga e Falta de Foco",
+      "Espasticidade Muscular",
+      "Recuperação Física",
+      "Humor e Criatividade"
+    ],
+    dosageGuidance: "Uso inalatório através de vaporizador medicinal de ervas secas ou concentrados (temperatura controlada entre 160°C e 210°C sem combustão) ou sublingual em microdoses graduadas.",
+    products: FLOWER_EXTRACTIONS_PRODUCTS
+  },
   {
     id: "ansiedade",
     title: "1. ANSIEDADE, ESTRESSE E TRANSTORNOS MENTAIS",
@@ -988,11 +1031,101 @@ function _enrichMedicationDetails(
   product?: CBDProduct
 ): EnrichedMedicationInfo {
   const pName = productName || '';
+  const nameLower = pName.toLowerCase();
+
+  // Check if product is from Flowermed catalog
+  const flowerMatch = FLOWERMED_PRODUCTS.find(p => 
+    p.name.toLowerCase() === nameLower ||
+    nameLower.includes(p.name.toLowerCase()) ||
+    (p.name.toLowerCase().includes('sphera') && nameLower.includes('sphera') && (
+      (p.name.includes('10%') && nameLower.includes('10%')) ||
+      (p.name.includes('20%') && nameLower.includes('20%')) ||
+      (p.name.includes('terpenos') && nameLower.includes('terpenos')) ||
+      (p.name.includes('delta-8') && nameLower.includes('delta-8')) ||
+      (p.name.includes('1.000') && nameLower.includes('1.000'))
+    )) ||
+    (p.name.toLowerCase().includes('nano syrup') && nameLower.includes('syrup')) ||
+    (p.name.toLowerCase().includes('cbn sleep') && (nameLower.includes('cbn sleep') || nameLower.includes('goma cbn'))) ||
+    (p.name.toLowerCase().includes('gummies d9') && (nameLower.includes('gummies d9') || nameLower.includes('goma d9')))
+  );
+
+  if (flowerMatch || brand === 'Flowermed' || (product && product.manufacturer === 'Flowermed')) {
+    const target = flowerMatch || product;
+    return {
+      name: target?.name || pName,
+      activeIngredients: target?.activeIngredients || 'Fitocanabinoides Padronizados (Normas FDA / ANVISA)',
+      concentration: target?.concentration || 'Conforme rótulo',
+      pharmaceuticalForm: target?.pharmaceuticalForm || 'Solução Oleosa Sublingual',
+      quantity: target?.quantity || '01 Frasco 30ml',
+      administrationRoute: target?.administrationRoute || 'Via Sublingual',
+      brand: 'Flowermed',
+      origin: 'Importado (EUA)',
+      type: target?.type || 'Canabinoide Medicinal Flowermed',
+      description: target?.description || 'Medicamento importado com Certificado de Análise (COA) lote a lote.',
+      usageInstructions: target?.usageInstructions || '• Administrar por via sublingual. Manter sob a língua por 60 segundos antes de deglutir.'
+    };
+  }
+
+  // Check if product is from Flower & Extractions catalog (Folheto Especial)
+  const flowerExtMatch = FLOWER_EXTRACTIONS_PRODUCTS.find(p => 
+    p.name.toLowerCase() === nameLower ||
+    nameLower.includes(p.name.toLowerCase()) ||
+    (nameLower.includes('sour lifter') && p.name.includes('Sour Lifter')) ||
+    (nameLower.includes('lemon octane') && p.name.includes('Lemon Octane')) ||
+    (nameLower.includes('forbidden fruit') && p.name.includes('Forbidden Fruit')) ||
+    (nameLower.includes('gellato') && p.name.includes('Gellato')) ||
+    (nameLower.includes('glitter bomb') && p.name.includes('Glitter Bomb')) ||
+    (nameLower.includes('astro candy') && p.name.includes('Astro Candy')) ||
+    (nameLower.includes('strawpicana') && p.name.includes('Strawpicana')) ||
+    (nameLower.includes('superglue') && p.name.includes('Superglue')) ||
+    (nameLower.includes('zoap') && p.name.includes('Zoap')) ||
+    (nameLower.includes('trop banana') && p.name.includes('Trop Banana')) ||
+    (nameLower.includes('girl cookies') && p.name.includes('Girl Cookies')) ||
+    (nameLower.includes('syringe gelato') && p.name.includes('Gelato')) ||
+    (nameLower.includes('syringe cbd') && p.name.includes('CBD 1ml')) ||
+    (nameLower.includes('gold budder') && (p.name.includes('Gold Budder') && (
+      (nameLower.includes('thca') && p.name.includes('THCA')) ||
+      (!nameLower.includes('thca') && p.name.includes('CBD'))
+    )))
+  );
+
+  if (flowerExtMatch || (product && (product as any).subLine)) {
+    const target = (flowerExtMatch || product) as any;
+    return {
+      name: target?.name || pName,
+      activeIngredients: target?.activeIngredients || 'Fitocanabinoides em Flor / Extração Concentrada',
+      concentration: target?.concentration || 'Conforme folheto',
+      pharmaceuticalForm: target?.pharmaceuticalForm || (target?.type?.includes('Flor') ? 'Flores in natura secas (14g)' : 'Extrato concentrado resinoso'),
+      quantity: target?.quantity || '01 Embalagem (14g / Seringa / Pote)',
+      administrationRoute: target?.administrationRoute || 'Via Inalatória (Vaporização medicinal)',
+      brand: 'Importado (Folheto Especial)',
+      origin: 'Importado',
+      type: target?.type || 'Flor / Extração Concentrada',
+      description: target?.description || 'Produto importado em embalagem lacrada de 14g ou extrato concentrado.',
+      usageInstructions: target?.usageInstructions || '• Administrar por vaporização medicinal com controle rigoroso de temperatura sem combustão.'
+    };
+  }
+
   const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
   const typeLower = (type || '').toLowerCase();
-  const nameLower = pName.toLowerCase();
+
+  // Handling for syrups
+  if (typeLower.includes('syrup') || nameLower.includes('syrup') || typeLower.includes('xarope') || nameLower.includes('xarope')) {
+    return {
+      name: pName,
+      activeIngredients: 'Nano Delta-9-THC Hidrossolúvel 500mg',
+      concentration: '2,8 mg/mL | Total 500 mg de Δ9-THC Nano',
+      pharmaceuticalForm: 'Xarope Hidrossolúvel Nano-emulsão (Syrup)',
+      quantity: '01 Frasco 177ml',
+      administrationRoute: 'Via Oral (Diluído ou Puro)',
+      brand: brand || 'Flowermed',
+      origin: prodOrigin,
+      description: 'Tecnologia de nano-emulsão hidrossolúvel com absorção transmucosa imediata.',
+      usageInstructions: '• Ingerir 1 a 2 mL diluído em água ou puro sob demanda. Efeito rápido em 10 a 20 minutos.'
+    };
+  }
   
   // Custom parsing for the newly added products to give them correct presentation
   if (typeLower.includes('cápsula') || nameLower.includes('cápsula')) {

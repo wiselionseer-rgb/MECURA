@@ -41,7 +41,8 @@ import {
   Trash2,
   Printer,
   FileDown,
-  RotateCcw
+  RotateCcw,
+  Sliders
 , Star, Check, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
@@ -62,6 +63,8 @@ import {
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
 import { cbdGuideData, CBDProduct, enrichMedicationDetails } from '../data/cbdGuide';
+import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
+import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
 import { NotificationToast } from '../components/NotificationToast';
 import { EnableNotificationsBanner } from '../components/EnableNotificationsBanner';
 import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
@@ -108,6 +111,7 @@ export function DoctorDashboardScreen() {
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [brandPreference, setBrandPreference] = useState<'flowermed' | 'greenbudz' | 'both'>('both');
   const [expandAnalysis, setExpandAnalysis] = useState(false);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [addedMedications, setAddedMedications] = useState<string[]>([]);
@@ -1012,18 +1016,36 @@ CIDs Secundários: ${cidsSecundarios}`;
     setAccessibleCustomMessage('');
   };
 
-  const handleGenerateAnalysis = async (force: boolean = false) => {
+  const handleGenerateAnalysis = async (
+    force: boolean = false,
+    selectedBrand: 'flowermed' | 'greenbudz' | 'both' = brandPreference
+  ) => {
     setExpandAnalysis(true);
-    if (analysisResult && !force) return; // Already generated and not forced
+    if (selectedBrand !== brandPreference) {
+      setBrandPreference(selectedBrand);
+    }
+    if (analysisResult && !force && selectedBrand === brandPreference) return; // Already generated and not forced
     
     const patientAnswers = currentPatient?.answers || answers;
     
     setIsAnalyzing(true);
     if (force) setAnalysisResult(null);
     try {
+      const brandDirective = selectedBrand === 'flowermed'
+        ? `PREFERÊNCIA DE MARCA SELECIONADA PELO MÉDICO/PACIENTE: **LINHA FLOWERMED** (EUA e Flores In Natura / Extrações parceiras).
+Priorize ESTRITAMENTE as opções de importados da FLOWERMED (óleos, gomas, Broad/Full Spectrum, CBG, CBN, THCV) e Flores In Natura / Extrações (14g & concentrados: Sour Lifter, Lemon Octane, Forbidden Fruit, Gellato, Glitter Bomb, Astro Candy, Strawpicana, Superglue, Zoap, Trop Banana, Girl Cookies, Syringes e Budders). NÃO prescreva produtos da GreenBudzCBD.`
+        : selectedBrand === 'greenbudz'
+        ? `PREFERÊNCIA DE MARCA SELECIONADA PELO MÉDICO/PACIENTE: **LINHA GREENBUDZCBD** (EUA).
+Priorize ESTRITAMENTE as opções de importados da marca GREENBUDZCBD (GreenBudz Calm Vibe Oil 6000mg, GreenBudz Full Balance Oil 3000mg, Drops By GreenBudz CBD+CBN, Drops By GreenBudz CBD+THC, Drops By GreenBudz Goma Nightshade, GreenBudz Isolate CBD Hemp Formula). NÃO prescreva produtos da Flowermed.`
+        : `PREFERÊNCIA DE MARCA SELECIONADA PELO MÉDICO/PACIENTE: **AMBAS AS MARCAS (Flowermed e GreenBudzCBD)**.
+Apresente as opções de tratamento comparando e integrando tanto o catálogo Flowermed quanto o da GreenBudzCBD, para que o médico e o paciente possam escolher entre as alternativas importadas de acordo com a patologia e perfil de preferência.`;
+
       const prompt = `
         Atue como um Especialista Sênior em Medicina Canabinoide e Prescrição Médica de Alto Nível.
         Sua missão é fornecer uma análise clínica com PRECISÃO MÁXIMA, baseada em protocolos rigorosos e literatura médica atualizada, indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
+        
+        FILTRO OBRIGATÓRIO DE MARCA ESCOLHIDA:
+        ${brandDirective}
         
         Dados Clínicos do Paciente:
         - Queixa Principal / Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
@@ -1047,92 +1069,104 @@ CIDs Secundários: ${cidsSecundarios}`;
         - Hábitos de Vida: Fuma (${patientAnswers?.fuma ? 'Sim' : 'Não'}), Bebida Alcoólica (${patientAnswers?.bebida ? 'Sim' : 'Não'}), 
           Atividade Física (${patientAnswers?.exercicio ? 'Sim' : 'Não'}).
         
-        DIRETRIZ DE PRESCRIÇÃO (IMPORTADOS E NACIONAIS):
-        Você DEVE sugerir DUAS frentes de tratamento INDEPENDENTES E COMPLETAS para o médico escolher.
-        Se a condição do paciente exigir 3 produtos (ex: um óleo, uma goma e uma flor para resgate), você DEVE prescrever os 3 produtos equivalentes na via IMPORTADA e os mesmos 3 produtos equivalentes na via NACIONAL. O objetivo é que o paciente escolha fazer o tratamento INTEIRO apenas com importados, ou INTEIRO apenas com nacionais.
+        DIRETRIZ DE PRESCRIÇÃO E EQUIVALÊNCIA (IMPORTADOS E NACIONAIS):
+        Você DEVE sugerir DUAS frentes de tratamento INDEPENDENTES E COMPLETAS para o médico prescrever e o paciente escolher:
+        1. Opção de Importados (Catálogo Oficial da marca selecionada: ${selectedBrand.toUpperCase()}): monte um tratamento completo e equilibrado cobrindo diferentes vias farmacoterapêuticas de acordo com as queixas do paciente:
+           - ÓLEO SUBLINGUAL (para homeostase basal e uso contínuo diário, ex: Hemp Oil 3000mg, Sphera, Calm Vibe 6000mg, Full Balance 3000mg);
+           - GOMAS / GUMMIES ou NANO SYRUP (forma farmacêutica oral prática com liberação prolongada de 4 a 6 horas, ex: CBN Sleep Gummies, Gummies D9, Drops By GreenBudz Goma Nightshade, Chill Vibe Gummies, Evergreen ou D9 Nano Syrup 500mg);
+           - FLORES RICAS EM THC/THCA e/ou EXTRAÇÕES COM THC (para resgate rápido inalatório em crises álgicas, ansiedade aguda, espasmos ou indução rápida de sono sem combustão, ex: Flor In Natura Superglue (THCA) 14g, Flor In Natura Glitter Bomb (THCA) 14g, Flor In Natura Forbidden Fruit (D8 THC) 14g, Hemp Oil Syringe Gelato 2ml (71,6% THCA), Hemp Oil Gold Budder 5g (Versão THCA)). Salvo contraindicação expressa (psicose/esquizofrenia), é MANDATÓRIO incluir flores ricas em THC/THCA e extrações com THC para garantir a cobertura completa de resgate agudo.
+        2. Opção de Associações Nacionais: monte um tratamento equivalente completo com formulações padronizadas de Associações Brasileiras.
 
-        REGRA CLÍNICA CRÍTICA:
-        1. Opção de Importados: Crie um plano de tratamento COMPLETO, utilizando EXCLUSIVAMENTE os medicamentos do catálogo oficial abaixo. Inclua o óleo principal e todos os complementos necessários (resgate, tópico, gomas) APENAS do catálogo de importados.
-        2. Opção de Associações Nacionais: Crie um plano de tratamento COMPLETO e equivalente, usando APENAS formulações genéricas de associações brasileiras (ex: Óleo Integral, Flores in natura, Gomas Nacionais, Extrações).
-        3. Quantidade Correspondente: O número de itens na Opção Importada deve, em regra, refletir o número de itens na Opção Nacional. Não sugira apenas 1 importado e 3 nacionais. Mantenha a equivalência do tratamento.
-        - Em cada categoria (Importados ou Nacionais), sugira no máximo 1 ÓLEO PRINCIPAL de uso contínuo e complementos conforme a necessidade clínica.
+        REGRA OBRIGATÓRIA E INEGOCIÁVEL PARA MEDICAMENTOS NACIONAIS:
+        INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS (FLOWERMED, GREENBUDZCBD OU AMBOS), A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE E OBRIGATORIAMENTE A TRÍADE COMPLETA:
+        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Óleo Integral CBD 100mg/ml, THC/CBD 100mg/ml ou CBG 50mg/ml - Associação Nacional);
+        - 2. EXTRAÇÃO (Pomada Canábica Terapêutica 500mg, Extrato Concentrado RSO ou Resina Concentrada - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
+        - 3. FLORES (Flores in natura de cannabis sp 15g ricas em CBD ou THC - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
+        Desta forma, fica estritamente a critério e autonomia do paciente escolher se prefere seguir com o tratamento completo de medicamentos nacionais ou com os importados.
 
-        DIRETRIZ DE ESCOLHA DE CEPAS/TERPENOS PARA CONCENTRADOS INALATÓRIOS (VAPORIZAÇÃO):
-        Se o paciente apresentar dores agudas, crises crônicas de insônia ou necessidade de resgate rápido, justifique a prescrição de Extratos Concentrados (Stirred, Granulated, Dried, Crystalized). Você DEVE ESPECIFICAR a Cepa (Strain) ideal com base nos terpenos:
-        - LC (Mirceno, Cariofileno, Limoneno) ou BM (Cariofileno, Mirceno): Para RELAXAMENTO PROFUNDO, SEDATIVO E INSÔNIA.
-        - TW (Terpinoleno, Mirceno, Pineno) ou PR (Limoneno, Cariofileno): Para ESTIMULANTE, FOCO, TDAH e DEPRESSÃO/FADIGA.
-        - ICC (Mirceno, Limoneno, Cariofileno) ou AH (Cariofileno, Limoneno, Linalol): Para ANSIEDADE, INFLAMAÇÃO E REVIGORANTE.
-        - DS (Mirceno, Cariofileno): Para RELAXAMENTO E REVIGORANTE MUSCULAR.
+        CRITÉRIOS CLÍNICOS CRÍTICOS DE SEGURANÇA E PERSONALIZAÇÃO CASO A CASO:
+        - SE o paciente tem histórico de psicose ou esquizofrenia: É ESTRITAMENTE CONTRAINDICADO o uso de formulações com THC ou THCA em doses psicoativas. Você DEVE prescrever exclusivamente formulações de Canabidiol Broad Spectrum (ex: Sphera 10% ou 20% Broad Spectrum), CBG Isolado (Flowermed CBG Isolado 3.000 mg) ou flores de CBD isoladas (Sour Lifter CBD) ou GreenBudz Isolate CBD.
+        - SE o paciente dirige ou opera maquinário: produtos com THC/THCA devem ser restritos ao uso noturno (mínimo de 8h antes da direção); no período diurno, utilize formulações não-intoxicantes (CBD, CBG ou Broad Spectrum).
+        - SE o paciente apresenta dor intensa/aguda (intensidade >= 7): considere a indicação de uma via de resgate inalatório rápido por vaporização medicinal (Flor Lemon Octane CBD, Superglue THCA, Syringe Gelato 71,6% THCA ou Budder) ou D9 Nano Syrup, além do óleo contínuo.
+        - SE o paciente tem queixa primária de insônia: considere o fitocanabinoide CBN (Flowermed CBN 300mg + CBD 900mg, CBN Sleep Gummies, Drops By GreenBudz CBD+CBN, Drops By GreenBudz Goma Nightshade ou Flor Forbidden Fruit D8 THC).
+        - SE o paciente tem TDAH, fadiga ou déficit de foco: priorize Flowermed THCV 300mg + CBD 900mg, Flowermed CBG Isolado 3.000mg, GreenBudz Full Balance Oil, Flor Sour Lifter ou Trop Banana.
+        - SE o paciente toma fármacos contínuos: avalie potenciais interações no citocromo P450 (CYP3A4, CYP2C19, CYP2C9) e oriente espaçamento de 2 horas.
 
-        CATÁLOGO OFICIAL DE IMPORTADOS (MARCA GREENBUDZCBD):
-        ${productCategories.map(cat => {
-          const imported = cat.products.filter(p => p.origin === 'Importado' || p.manufacturer === 'GreenBudzCBD');
-          if(imported.length === 0) return '';
-          return `Categoria: ${cat.title}\n${imported.map(p => `- ${p.name} (${p.type}): ${p.description || ''}`).join('\n')}`;
-        }).filter(Boolean).join('\n\n')}
+        CATÁLOGO OFICIAL DE IMPORTADOS DISPONÍVEIS:
+        ${selectedBrand === 'flowermed' || selectedBrand === 'both' ? `[LINHA FLOWERMED (EUA - Padrão FDA / RDC 660)]:
+        ${FLOWERMED_PRODUCTS.map(p => `- ${p.name} (${p.line}): R$ ${p.priceBRL} • ${p.activeIngredients} (${p.concentration || ''}). ${p.indications || ''}. Posologia: ${p.usageInstructions || ''}`).join('\n')}` : ''}
 
-        CATÁLOGO OFICIAL DE NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):
-        ${productCategories.map(cat => {
-          const national = cat.products.filter(p => p.origin === 'Nacional' || p.manufacturer !== 'GreenBudzCBD');
-          if(national.length === 0) return '';
-          return `Categoria: ${cat.title}\n${national.map(p => `- ${p.name} (${p.type}): ${p.description || ''}`).join('\n')}`;
-        }).filter(Boolean).join('\n\n')}
+        [LINHA FLORES IN NATURA E EXTRAÇÕES IMPORTADAS (14g & Concentrados)]:
+        ${FLOWER_EXTRACTIONS_PRODUCTS.map(p => `- ${p.name} (${p.subLine}): R$ ${p.priceBRL} • Perfil: ${p.strainProfile} • Terpenos: ${p.terpenes.join(', ')} • Momento: ${p.usageMoment}. ${p.indications || ''}. Via: ${p.administrationRoute || 'Inalatória / Vaporização'}.`).join('\n')}
+
+        ${selectedBrand === 'greenbudz' || selectedBrand === 'both' ? `[LINHA GREENBUDZCBD (EUA)]:
+        ${productCategories.flatMap(c => c.products.filter(p => p.manufacturer === 'GreenBudzCBD')).map(p => `- ${p.name} (${p.type}): R$ ${p.priceBRL}. ${p.indications || p.description || ''}`).join('\n')}` : ''}
+
+        CATÁLOGO OFICIAL DE ASSOCIAÇÕES NACIONAIS (BRASIL):
+        ${productCategories.flatMap(c => c.products.filter(p => p.origin === 'Nacional')).map(p => `- ${p.name} (${p.type}): R$ ${p.priceBRL}. ${p.indications || p.description || ''}`).join('\n')}
         
         Formato de Saída Exigido (Markdown estruturado e clínico):
         1. Diagnóstico Sindrômico e Avaliação Clínica
         2. Racional Terapêutico Fisiopatológico (Interação com o Sistema Endocanabinoide)
-        3. Protocolo de Titulação e Posologia Sugerida
+        3. Protocolo de Titulação e Posologia Sugerida (com foco na marca ${selectedBrand === 'flowermed' ? 'Flowermed' : selectedBrand === 'greenbudz' ? 'GreenBudzCBD' : 'Flowermed / GreenBudzCBD'})
         4. Medicina Baseada em Evidências (Citações estruturadas de estudos reais)
-        5. Manejo de Riscos (Interações no citocromo P450 e contraindicações)
+        5. Manejo de Riscos, Contraindicações e Interações Farmacológicas
         
-        6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita, NÃO USE TABELAS):
+        6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita com a palavra "Medicamento:" no início de cada produto para que o médico possa adicionar à receita):
            
-           **OPÇÕES IMPORTADAS (CATÁLOGO OFICIAL):**
-           (Gere um tratamento COMPLETO e IDEAL usando APENAS produtos do catálogo oficial importado. Produtos IMPORTADOS DEVEM SER OBRIGATORIAMENTE da marca GreenBudzCBD. Inclua o óleo principal e produtos complementares. USE EXATAMENTE O NOME DO CATÁLOGO: Ex: "GreenBudz Calm Vibe Oil 6000mg" ou "Drops By GreenBudz Goma Nightshade", NAO abrevie.)
-           (Para CADA produto sugerido, VOCÊ DEVE OBRIGATORIAMENTE começar o bloco com a palavra "Medicamento:")
+           **OPÇÕES IMPORTADAS (${selectedBrand === 'flowermed' ? 'LINHA FLOWERMED' : selectedBrand === 'greenbudz' ? 'LINHA GREENBUDZCBD' : 'LINHAS FLOWERMED E GREENBUDZCBD'}):**
+           (Gere o tratamento completo utilizando os nomes fiéis do catálogo de importados acima, integrando obrigatoriamente:
+            1. Óleo contínuo sublingual (ex: Hemp Oil 3000mg ou Sphera 1:1 / Full Spectrum);
+            2. Gomas/Gummies ou Syrup (ex: Gummies D9 10mg, CBN Sleep Gummies ou D9 Nano Syrup);
+            3. Flor rica em THC/THCA (ex: Flor In Natura Superglue (THCA) 14g, Glitter Bomb (THCA) 14g ou Forbidden Fruit (D8 THC) 14g);
+            4. Extração concentrada com THC (ex: Hemp Oil Syringe Gelato 2ml (71,6% THCA) ou Hemp Oil Gold Budder 5g (Versão THCA)) para resgate agudo/noturno)
            Medicamento: (Nome fiel ao catálogo)
            Indicação: (Condição primária alvo)
-           Modo de Uso: (Posologia e titulação)
+           Modo de Uso: (Posologia, via e titulação)
            Observações: (Dicas de administração)
 
-           **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS):**
-           (Gere um tratamento COMPLETO e IDEAL equivalente usando APENAS formulações genéricas de Associações Nacionais.)
-           (Para CADA produto nacional sugerido, OBRIGATORIAMENTE comece com a palavra "Medicamento:" e INCLUA o texto "- Associação Nacional" no nome. NUNCA sugira "GreenBudz" aqui.)
-           Medicamento: (Descrição da formulação - Associação Nacional)
-           Indicação: (Condição primária alvo)
-           Modo de Uso: (Posologia e titulação)
-           Observações: (Dicas cruciais de administração e via de uso)
+           **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS - TRÍADE COMPLETA: ÓLEO, EXTRAÇÃO E FLOR):**
+           (OBRIGATÓRIO: Gerar SEMPRE e INDEPENDENTE da marca de importados os 3 medicamentos nacionais abaixo: 1 ÓLEO, 1 EXTRAÇÃO e 1 FLOR IN NATURA)
+           Medicamento: (Óleo Sublingual Integral CBD, THC/CBD 100mg/ml ou Predominante THC 100mg/ml - Associação Nacional)
+           Indicação: (Condição primária alvo e homeostase basal contínua)
+           Modo de Uso: (Posologia, via sublingual e titulação gradual)
+           Observações: (Reter 60 a 90 segundos sublingual)
+
+           Medicamento: (Pomada Canábica Terapêutica 500mg ou Extrato Concentrado RSO - Associação Nacional)
+           Indicação: (Extração terapêutica para analgesia localizada, espasmos ou alívio de tensões somatizadas)
+           Modo de Uso: (Posologia e aplicação tópica/mucosa)
+           Observações: (Ação periférica direta em receptores CB2 cutâneos)
+
+           Medicamento: (Flor in natura PREDOMINANTE THC (Para Vaporização) 15g ou Flores in natura de cannabis sp 15g - Associação Nacional)
+           Indicação: (Resgate inalatório rápido para crises álgicas, ansiedade aguda ou indução noturna)
+           Modo de Uso: (Vaporizar 0,1g a 0,15g em vaporizador térmico medicinal a 175°C-185°C. Proibida a combustão)
+           Observações: (Início de ação imediato em 1 a 3 minutos)
 
         IMPORTANTE: Destaque em **negrito** todos os fármacos, diagnósticos, enzimas (ex: CYP3A4) e dosagens para escaneabilidade médica de alto rendimento. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
       `;
 
-      const apiKey = process.env.GEMINI_API_KEY;
       let responseText = null;
 
-      if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
-        try {
-          const { GoogleGenAI } = await import('@google/genai');
-          const ai = new GoogleGenAI({ 
-            apiKey,
-            httpOptions: {}
-          });
-          
-          const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-          });
+      try {
+        const response = await fetch('/api/analyze-clinical', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, patientAnswers, brandPreference: selectedBrand })
+        });
 
-          if (response.text) {
-            responseText = response.text;
+        if (response.ok) {
+          const data = await response.json();
+          if (data.text && !data.fallback) {
+            responseText = data.text;
           }
-        } catch (error) {
-          console.warn("API Gemini Error, applying fallback protocol:", error);
-          const { generateClinicalAnalysisFallback } = await import('../utils/aiAnalysisFallback');
-          responseText = generateClinicalAnalysisFallback(prompt);
         }
-      } else {
+      } catch (apiErr) {
+        console.warn("API de análise clínica do servidor indisponível, acionando motor clínico de segurança:", apiErr);
+      }
+
+      if (!responseText) {
         const { generateClinicalAnalysisFallback } = await import('../utils/aiAnalysisFallback');
-        responseText = generateClinicalAnalysisFallback(prompt);
+        responseText = generateClinicalAnalysisFallback(prompt, patientAnswers, selectedBrand);
       }
 
       if (responseText) {
@@ -1142,7 +1176,7 @@ CIDs Secundários: ${cidsSecundarios}`;
       }
     } catch (error: any) {
       console.error("Erro ao gerar análise:", error);
-      setAnalysisResult(`Ocorreu um erro ao conectar com o servidor: ${error.message || 'Erro desconhecido'}. Verifique as configurações e tente novamente.`);
+      setAnalysisResult(`Ocorreu um erro ao gerar a análise clínica: ${error.message || 'Erro desconhecido'}. Tente novamente.`);
     } finally {
       setIsAnalyzing(false);
     }
@@ -1173,9 +1207,9 @@ CIDs Secundários: ${cidsSecundarios}`;
           if (cols.length >= 3) {
             const rawName = cols[0].replace(/\*\*/g, '').trim();
             let isNational = false;
-            if (rawName.toLowerCase().includes('greenbudz') || rawName.toLowerCase().includes('importado')) {
+            if (/greenbudz|flowermed|sphera|sour lifter|lemon octane|forbidden fruit|gellato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|importado/i.test(rawName)) {
               isNational = false;
-            } else if (/ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL|INTEGRAL|BROAD SPECTRUM|ISOLATE|CBD \+ CBN/i.test(rawName)) {
+            } else if (/ÓLEO INTEGRAL|POMADA|EXTRAÇÃO|EXTRATO|RESINA|GOMA|FLOR IN NATURA|FLORES IN NATURA|CANNABIS SP|ASSOCIAÇÃO|NACIONAL|INTEGRAL/i.test(rawName)) {
               isNational = true;
             }
             medications.push({
@@ -1210,9 +1244,9 @@ CIDs Secundários: ${cidsSecundarios}`;
           }
           
           let isNational = false;
-          if (rawName.toLowerCase().includes('greenbudz') || rawName.toLowerCase().includes('importado') || rawName.toLowerCase().includes('broad spectrum') || rawName.toLowerCase().includes('cbd + cbn para sono') || rawName.toLowerCase().includes('isolate')) {
+          if (/greenbudz|flowermed|sphera|sour lifter|lemon octane|forbidden fruit|gellato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|importado/i.test(rawName)) {
             isNational = false;
-          } else if (/ÓLEO INTEGRAL|FLOR|FLORES|POMADA|GOMA|ASSOCIAÇÃO|NACIONAL|INTEGRAL/i.test(rawName) || (block.includes('Associação') || block.includes('Nacional'))) {
+          } else if (/ÓLEO INTEGRAL|POMADA|EXTRAÇÃO|EXTRATO|RESINA|GOMA|FLOR IN NATURA|FLORES IN NATURA|CANNABIS SP|ASSOCIAÇÃO|NACIONAL|INTEGRAL/i.test(rawName) || (block.includes('Associação') || block.includes('Nacional') || block.includes('Brasileira') || block.includes('TRÍADE'))) {
             isNational = true;
           }
 
@@ -1238,21 +1272,54 @@ CIDs Secundários: ${cidsSecundarios}`;
       return prev;
     });
 
-    // Find product in productCategories
-    let foundProduct = null;
+    // Find product across productCategories, FLOWERMED_PRODUCTS, and FLOWER_EXTRACTIONS_PRODUCTS
+    let foundProduct: any = null;
+    const cleanMedName = med.name.toLowerCase().trim();
+
     for (const category of productCategories) {
-      const product = category.products.find(p => p.name.toLowerCase() === med.name.toLowerCase());
+      const product = category.products.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
       if (product) {
         foundProduct = product;
         break;
       }
     }
 
+    if (!foundProduct) {
+      const fm = FLOWERMED_PRODUCTS.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
+      if (fm) {
+        foundProduct = { ...fm, manufacturer: 'Flowermed (EUA)', origin: 'Importado' };
+      }
+    }
+
+    if (!foundProduct) {
+      const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
+      if (fe) {
+        foundProduct = { ...fe, manufacturer: 'Importado (Folheto Especial)', origin: 'Importado' };
+      }
+    }
+
+    const defaultManufacturer = med.origin === 'Nacional' 
+      ? 'Associação Brasileira' 
+      : (/flowermed|sphera|gummies d9|nano syrup/i.test(med.name) ? 'Flowermed (EUA)' : (/sour lifter|lemon octane|forbidden|gellato|glitter|astro|strawpicana|superglue|zoap|trop|girl cookies|syringe|budder/i.test(med.name) ? 'Importado (Folheto Especial)' : 'GreenBudzCBD'));
+
     const enriched = enrichMedicationDetails(
       foundProduct ? foundProduct.name : med.name,
-      foundProduct ? foundProduct.manufacturer : (med.origin === 'Nacional' ? 'Associação Brasileira' : 'GreenBudzCBD'),
+      foundProduct ? foundProduct.manufacturer : defaultManufacturer,
       foundProduct ? foundProduct.origin : med.origin,
-      foundProduct ? foundProduct.type : undefined
+      foundProduct ? foundProduct.type : undefined,
+      foundProduct
     );
 
     addMessage({
@@ -2249,13 +2316,84 @@ CIDs Secundários: ${cidsSecundarios}`;
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 custom-scrollbar min-h-0">
-          {/* AI Analysis Button */}
-          <div className="space-y-4">
+          {/* AI Analysis & Brand Filter */}
+          <div className="space-y-3">
+            {/* 3 Brand Selection Buttons */}
+            <div className="bg-mecura-surface/60 border border-mecura-elevated rounded-2xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-mecura-silver uppercase tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-mecura-neon" />
+                  Marca para Prescrição IA:
+                </span>
+                <span className="text-[10px] font-semibold text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded-full border border-mecura-neon/20">
+                  {brandPreference === 'flowermed' ? 'Flowermed' : brandPreference === 'greenbudz' ? 'GreenBudzCBD' : 'Ambas as Marcas'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBrandPreference('flowermed');
+                    handleGenerateAnalysis(true, 'flowermed');
+                  }}
+                  className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
+                    brandPreference === 'flowermed'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
+                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white hover:border-mecura-silver/40'
+                  }`}
+                >
+                  <span className="leading-tight">Flowermed</span>
+                  <span className={`text-[9px] font-normal leading-none ${brandPreference === 'flowermed' ? 'text-black/75' : 'text-mecura-silver/60'}`}>
+                    EUA • Flores 14g
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBrandPreference('greenbudz');
+                    handleGenerateAnalysis(true, 'greenbudz');
+                  }}
+                  className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
+                    brandPreference === 'greenbudz'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
+                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white hover:border-mecura-silver/40'
+                  }`}
+                >
+                  <span className="leading-tight">GreenBudzCBD</span>
+                  <span className={`text-[9px] font-normal leading-none ${brandPreference === 'greenbudz' ? 'text-black/75' : 'text-mecura-silver/60'}`}>
+                    EUA Concentrado
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBrandPreference('both');
+                    handleGenerateAnalysis(true, 'both');
+                  }}
+                  className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
+                    brandPreference === 'both'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
+                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white hover:border-mecura-silver/40'
+                  }`}
+                >
+                  <span className="leading-tight">Ambos</span>
+                  <span className={`text-[9px] font-normal leading-none ${brandPreference === 'both' ? 'text-black/75' : 'text-mecura-silver/60'}`}>
+                    Todas as Marcas
+                  </span>
+                </button>
+              </div>
+            </div>
+
             <div 
-              onClick={() => handleGenerateAnalysis()}
+              onClick={() => handleGenerateAnalysis(false, brandPreference)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && handleGenerateAnalysis()}
+              onKeyDown={(e) => e.key === 'Enter' && handleGenerateAnalysis(false, brandPreference)}
               className={`w-full cursor-pointer relative overflow-hidden group bg-gradient-to-r from-mecura-surface to-mecura-surface-light border rounded-2xl p-4 flex items-center gap-4 transition-all shadow-[0_4px_20px_rgba(166,255,0,0.05)] hover:shadow-[0_4px_25px_rgba(166,255,0,0.15)] ${expandAnalysis ? 'border-mecura-neon' : 'border-mecura-neon/30 hover:border-mecura-neon'}`}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/5 to-mecura-neon/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
@@ -2272,7 +2410,7 @@ CIDs Secundários: ${cidsSecundarios}`;
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleGenerateAnalysis(true);
+                        handleGenerateAnalysis(true, brandPreference);
                       }}
                       disabled={isAnalyzing}
                       className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
@@ -2395,7 +2533,10 @@ CIDs Secundários: ${cidsSecundarios}`;
                                 )}
                                 {nationalMeds.length > 0 && (
                                   <div className="space-y-2.5 mt-4">
-                                    <h5 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-500/20 pb-1">Alternativa (Nacionais)</h5>
+                                    <h5 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-500/20 pb-1 flex items-center justify-between">
+                                      <span>🇧🇷 Tratamento Nacional (Óleo, Extração e Flor)</span>
+                                      <span className="text-[9px] text-emerald-300 font-semibold px-1.5 py-0.5 bg-emerald-500/20 rounded border border-emerald-500/30">Opção do Paciente</span>
+                                    </h5>
                                     {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
                                   </div>
                                 )}
@@ -2688,21 +2829,72 @@ CIDs Secundários: ${cidsSecundarios}`;
             className="relative w-full max-w-5xl max-h-[90vh] bg-[#0A0A0F] border border-mecura-elevated rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           >
               {/* Modal Header */}
-              <div className="p-8 border-b border-mecura-elevated bg-mecura-surface/50 flex justify-between items-center sticky top-0 z-10">
+              <div className="p-6 md:p-8 border-b border-mecura-elevated bg-mecura-surface/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-10">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20">
+                  <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20 flex-shrink-0">
                     <BrainCircuit className="w-6 h-6 text-mecura-neon" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">Análise Clínica Assistida por IA</h2>
-                    <p className="text-sm text-mecura-silver">Suporte à decisão médica baseado em evidências científicas</p>
+                    <h2 className="text-xl md:text-2xl font-bold text-white">Análise Clínica Assistida por IA</h2>
+                    <p className="text-xs md:text-sm text-mecura-silver">Suporte à decisão médica baseado em evidências científicas</p>
                   </div>
                 </div>
+
+                {/* 3 Brand Buttons in Modal Header */}
+                <div className="flex items-center gap-1.5 bg-[#0F1017] p-1.5 rounded-2xl border border-mecura-elevated">
+                  <span className="text-[10px] font-bold text-mecura-silver uppercase tracking-wider px-2 flex items-center gap-1">
+                    <Sliders className="w-3 h-3 text-mecura-neon" />
+                    Marca:
+                  </span>
+                  <button
+                    onClick={() => {
+                      setBrandPreference('flowermed');
+                      handleGenerateAnalysis(true, 'flowermed');
+                    }}
+                    disabled={isAnalyzing}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      brandPreference === 'flowermed'
+                        ? 'bg-mecura-neon text-black shadow-[0_0_12px_rgba(166,255,0,0.3)]'
+                        : 'text-mecura-silver hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    Flowermed
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBrandPreference('greenbudz');
+                      handleGenerateAnalysis(true, 'greenbudz');
+                    }}
+                    disabled={isAnalyzing}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      brandPreference === 'greenbudz'
+                        ? 'bg-mecura-neon text-black shadow-[0_0_12px_rgba(166,255,0,0.3)]'
+                        : 'text-mecura-silver hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    GreenBudzCBD
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBrandPreference('both');
+                      handleGenerateAnalysis(true, 'both');
+                    }}
+                    disabled={isAnalyzing}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      brandPreference === 'both'
+                        ? 'bg-mecura-neon text-black shadow-[0_0_12px_rgba(166,255,0,0.3)]'
+                        : 'text-mecura-silver hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    Ambos
+                  </button>
+                </div>
+
                 <button 
                   onClick={() => setShowAnalysisModal(false)}
-                  className="w-12 h-12 rounded-full bg-mecura-surface hover:bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-all hover:scale-110 active:scale-95"
+                  className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-mecura-surface hover:bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-all hover:scale-110 active:scale-95 flex-shrink-0"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5 md:w-6 md:h-6" />
                 </button>
               </div>
 
@@ -2804,8 +2996,9 @@ CIDs Secundários: ${cidsSecundarios}`;
                             
                             {nationalMeds.length > 0 && (
                               <div>
-                                <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-500/20 pb-2 mt-2">
-                                  Alternativa (Medicamentos Nacionais)
+                                <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-500/20 pb-2 mt-2 flex items-center justify-between">
+                                  <span>🇧🇷 Tratamento Nacional (Tríade: Óleo, Extração e Flor)</span>
+                                  <span className="text-[10px] text-emerald-300 font-semibold px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 rounded-full">Opção do Paciente</span>
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   {nationalMeds.map((med, idx) => renderMed(med, idx, true))}

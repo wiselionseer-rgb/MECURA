@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { enrichMedicationDetails } from '../data/cbdGuide';
+import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
+import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 
 interface PrescriptionEditorModalProps {
   isOpen: boolean;
@@ -156,6 +158,50 @@ export function PrescriptionEditorModal({
         description: 'Canabidiol Full Spectrum importado de alta pureza.'
       };
     }
+    setItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddFlowermedItem = (productName: string) => {
+    const prod = FLOWERMED_PRODUCTS.find(p => p.name === productName);
+    if (!prod) return;
+    const enriched = enrichMedicationDetails(prod.name, 'Flowermed', 'Importado (EUA)', prod.type, prod);
+    const newItem: PrescriptionItemData = {
+      name: prod.name,
+      brand: 'Flowermed (EUA)',
+      origin: 'Importado (EUA)',
+      activeIngredients: enriched.activeIngredients,
+      concentration: enriched.concentration,
+      pharmaceuticalForm: enriched.pharmaceuticalForm,
+      quantity: enriched.quantity,
+      administrationRoute: enriched.administrationRoute,
+      dosage: [
+        prod.usageInstructions || 'Tomar 03 gotas por via sublingual de 12/12 horas. Reter por 60s antes de engolir.',
+        'Aumentar 01 gota a cada 04 a 05 dias conforme resposta terapêutica individual.'
+      ],
+      description: prod.description || 'Medicamento fabricado sob normas FDA nos EUA, importação ANVISA RDC 660. COA lote a lote.'
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddFlowerExtItem = (productName: string) => {
+    const prod = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name === productName);
+    if (!prod) return;
+    const enriched = enrichMedicationDetails(prod.name, 'Importado (Folheto Especial)', 'Importado', prod.type, prod);
+    const newItem: PrescriptionItemData = {
+      name: prod.name,
+      brand: 'Importado (Folheto Especial)',
+      origin: 'Importado',
+      activeIngredients: enriched.activeIngredients,
+      concentration: enriched.concentration,
+      pharmaceuticalForm: enriched.pharmaceuticalForm,
+      quantity: enriched.quantity,
+      administrationRoute: enriched.administrationRoute,
+      dosage: [
+        prod.usageInstructions || 'Utilizar vaporizador medicinal calibrado para controle térmico sem combustão.',
+        `Perfil: ${prod.strainProfile} • Momento: ${prod.usageMoment}. Microdosagem com avaliação de resposta a cada 15-30 minutos.`
+      ],
+      description: prod.description || 'Produto vegetal importado em embalagem selada de 14g ou extração concentrada com laudo sob demanda.'
+    };
     setItems(prev => [...prev, newItem]);
   };
 
@@ -434,6 +480,91 @@ export function PrescriptionEditorModal({
                       >
                         <Plus className="w-3.5 h-3.5" /> + Importado
                       </button>
+
+                      {/* Flowermed Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-flowermed"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddFlowermedItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-sky-500/20 border border-sky-400/40 text-sky-200 rounded-lg text-xs font-bold hover:bg-sky-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.15)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-sky-300 font-bold">
+                            + Prescrever Linha Flowermed (EUA)...
+                          </option>
+                          <optgroup label="Linha Hemp Oil (Óleos 30mL)" className="bg-[#0A0A0F] text-white">
+                            <option value="Full Spectrum Hemp Oil 3.000 mg">Flowermed Full Spectrum 3.000 mg (R$ 440)</option>
+                            <option value="Full Spectrum Hemp Oil 6.000 mg">Flowermed Full Spectrum 6.000 mg (R$ 650)</option>
+                          </optgroup>
+                          <optgroup label="Canabinoides Direcionados (30mL)" className="bg-[#0A0A0F] text-white">
+                            <option value="CBG Isolado 3.000 mg">Flowermed CBG Isolado 3.000 mg (R$ 510)</option>
+                            <option value="THCV 300 mg + CBD 900 mg">Flowermed THCV 300 mg + CBD 900 mg (R$ 490)</option>
+                            <option value="Full Spectrum 1:1 THC + CBD">Flowermed Full Spectrum 1:1 THC:CBD (R$ 490)</option>
+                            <option value="CBN 300 mg + CBD 900 mg">Flowermed CBN 300 mg + CBD 900 mg (R$ 490)</option>
+                          </optgroup>
+                          <optgroup label="Linha Sphera Premium" className="bg-[#0A0A0F] text-white">
+                            <option value="Sphera 10% CBD Broad Spectrum 3.000 mg">Sphera 10% CBD Broad Spectrum (R$ 290)</option>
+                            <option value="Sphera 20% CBD Broad Spectrum 6.000 mg">Sphera 20% CBD Broad Spectrum (R$ 480)</option>
+                            <option value="Sphera ISO CBD + Terpenos 1.000 mg">Sphera ISO CBD + Terpenos 1.000 mg (R$ 260)</option>
+                            <option value="Sphera Delta-8 THC 800 mg">Sphera Delta-8 THC 800 mg (R$ 380)</option>
+                            <option value="Sphera Full Spectrum 1.000 mg">Sphera Full Spectrum 1.000 mg (R$ 260)</option>
+                          </optgroup>
+                          <optgroup label="Linha Syrup Nano-emulsão" className="bg-[#0A0A0F] text-white">
+                            <option value="D9 Nano Syrup 500 mg Sem Sabor 177 mL">D9 Nano Syrup 500 mg 177mL (R$ 450)</option>
+                          </optgroup>
+                          <optgroup label="Linha Gummies (30 unidades)" className="bg-[#0A0A0F] text-white">
+                            <option value="CBN Sleep Gummies 30 un">CBN Sleep Gummies (R$ 310)</option>
+                            <option value="Gummies D9 10 mg 30 un">Gummies D9 10 mg (R$ 340)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* Flores & Extrações Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-flower-ext"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddFlowerExtItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
+                            + Prescrever Flores & Extrações (14g)...
+                          </option>
+                          <optgroup label="Flores In Natura CBD (14g • R$ 50/g)" className="bg-[#0A0A0F] text-white">
+                            <option value="Flor In Natura Sour Lifter (CBD) 14g">Sour Lifter (CBD) 14g - Diurno (R$ 700)</option>
+                            <option value="Flor In Natura Lemon Octane (CBD) 14g">Lemon Octane (CBD) 14g - Noturno (R$ 700)</option>
+                          </optgroup>
+                          <optgroup label="Flores In Natura Delta-8 THC (14g • R$ 60/g)" className="bg-[#0A0A0F] text-white">
+                            <option value="Flor In Natura Forbidden Fruit (D8 THC) 14g">Forbidden Fruit (D8 THC) 14g - Noturno (R$ 840)</option>
+                            <option value="Flor In Natura Gellato (D8 THC) 14g">Gellato (D8 THC) 14g - Flexível (R$ 840)</option>
+                          </optgroup>
+                          <optgroup label="Flores In Natura THCA (14g • R$ 85,70/g)" className="bg-[#0A0A0F] text-white">
+                            <option value="Flor In Natura Glitter Bomb (THCA) 14g">Glitter Bomb (THCA) 14g - Noturno (R$ 1.200)</option>
+                            <option value="Flor In Natura Astro Candy (THCA) 14g">Astro Candy (THCA) 14g - Diurno (R$ 1.200)</option>
+                            <option value="Flor In Natura Strawpicana (THCA) 14g">Strawpicana (THCA) 14g - Energizante (R$ 1.200)</option>
+                            <option value="Flor In Natura Superglue (THCA) 14g">Superglue (THCA) 14g - Relaxante (R$ 1.200)</option>
+                            <option value="Flor In Natura Zoap (THCA) 14g">Zoap (THCA) 14g - Híbrido (R$ 1.200)</option>
+                            <option value="Flor In Natura Trop Banana (THCA) 14g">Trop Banana (THCA) 14g - Produtividade (R$ 1.200)</option>
+                            <option value="Flor In Natura Girl Cookies (THCA) 14g">Girl Cookies (THCA) 14g - Noturno (R$ 1.200)</option>
+                          </optgroup>
+                          <optgroup label="Extrações: Seringas & Gold Budder" className="bg-[#0A0A0F] text-white">
+                            <option value="Hemp Oil Syringe Gelato 2ml (71,6% THCA)">Syringe Gelato 2ml (71,6% THCA) - R$ 600</option>
+                            <option value="Hemp Oil Syringe CBD 1ml (OG Kush)">Syringe CBD 1ml (OG Kush) - R$ 320</option>
+                            <option value="Hemp Oil Gold Budder 5g (Versão CBD)">Gold Budder OG Kush 5g (CBD) - R$ 680</option>
+                            <option value="Hemp Oil Gold Budder 5g (Versão THCA)">Gold Budder OG Kush 5g (THCA) - R$ 880</option>
+                          </optgroup>
+                        </select>
+                      </div>
                     </div>
                   </div>
 

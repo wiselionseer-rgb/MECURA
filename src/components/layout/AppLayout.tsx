@@ -149,18 +149,15 @@ export function AppLayout() {
         )}
 
         <main className="flex-1 overflow-hidden relative">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full h-full absolute inset-0 overflow-y-auto overflow-x-hidden"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="w-full h-full absolute inset-0 overflow-y-auto overflow-x-hidden"
+          >
+            <Outlet />
+          </motion.div>
         </main>
       </div>
     </div>

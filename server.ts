@@ -217,37 +217,49 @@ async function startServer() {
     let primaryCondition = "Ansiedade Generalizada, Estresse Crônico e Modulação do Humor";
     let importedProducts = [
       {
-        name: "GreenBudzCBD CalmVibe CBD 6000mg + Mint",
+        name: "GreenBudz Calm Vibe Oil 6000mg",
         indication: "Ansiedade Generalizada, Estresse e Modulação do Humor",
         usage: "**10 gotas (25mg de CBD)** por via sublingual, de **12 em 12 horas** (pela manhã e ao entardecer)",
         notes: "Reter sob a língua por 60 a 90 segundos antes de engolir para rápida absorção e maior biodisponibilidade."
       },
       {
-        name: "IgniteCBD by Isospec Health 1200mg:1200mg CBD:CBG - 30ml - Mint",
-        indication: "Clareza Mental, Foco Diurno e Controle da Ansiedade",
-        usage: "**5 a 8 gotas** pela manhã após alimentação",
-        notes: "O CBG atua em sinergia promovendo neuroproteção e equilíbrio emocional sem sonolência."
+        name: "Drops By GreenBudz Goma Beethoven THC",
+        indication: "Conforto Físico, Alívio da Tensão Emocional e Equilíbrio Sistêmico",
+        usage: "Mastigar **01 goma** ao entardecer para transição e relaxamento.",
+        notes: "Goma comestível com liberação prolongada de 4 a 6 horas para relaxamento sustentado."
+      },
+      {
+        name: "Flor In Natura Zoap (THCA) 14g",
+        indication: "Resgate Inalatório para Descompressão e Equilíbrio Mental Imediato",
+        usage: "Vaporizar **0,1g** a 180°C em vaporizador térmico medicinal nos momentos de tensão aguda.",
+        notes: "Inflorescência com THCA para ação de alívio rápido em 1 a 3 minutos sem combustão."
+      },
+      {
+        name: "Hemp Oil Syringe Gelato 2ml (71,6% THCA)",
+        indication: "Extração Concentrada para Resgate Álgico Agudo e Picos de Estresse Severo",
+        usage: "Microdosagem em vaporizador de concentrados (180°C-210°C) em crises severas.",
+        notes: "Ultra-concentrado com 71,6% de THCA para quebra imediata de crises agudas."
       }
     ];
 
     let nationalProducts = [
       {
-        name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml",
+        name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml - Associação Nacional",
         indication: "Controle de Ansiedade, Estresse Crônico e Modulação do Humor",
         usage: "Tomar **05 a 10 gotas** de manhã e **05 gotas** à tarde.",
         notes: "01 Frasco de 30ml - Associação Brasileira. Uso sublingual contínuo com titulação progressiva."
       },
       {
-        name: "ÓLEO INTEGRAL PREDOMINANTE CBG 50mg/ml",
-        indication: "Foco Diurno, Neuroproteção e Equilíbrio Emocional",
-        usage: "Tomar **05 gotas** à tarde após refeição.",
-        notes: "01 Frasco de 30ml - Associação Brasileira. Potencializa o efeito modulador sem sedação diurna."
+        name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
+        indication: "Alívio Tópico de Tensões Musculares e Estresse Somatizado",
+        usage: "Aplicar na região cervical, ombros ou peito **2 a 3 vezes ao dia**, massageando suavemente.",
+        notes: "01 Pote 50g - Associação Brasileira. Ação periférica direta em receptores cutâneos CB2."
       },
       {
-        name: "Gomas Terapêuticas CBD/CBN 25mg - 30 unidades",
-        indication: "Alívio Rápido de Picos de Tensão e Estresse",
-        usage: "Mastigar **1 goma** ao final da tarde ou quando necessário.",
-        notes: "01 Pote com 30 unidades - Associação Brasileira. Absorção gradual e prolongada."
+        name: "Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional",
+        indication: "Resgate Imediato para Crises de Tensão Aguda e Descompressão Mental",
+        usage: "Vaporizar **0,1g a 0,15g** via vaporizador térmico medicinal a 175°C-185°C.",
+        notes: "Flores secas padronizadas de Associação Brasileira. Resposta terapêutica inalatória em 1 a 3 minutos sem combustão."
       }
     ];
 
@@ -255,68 +267,98 @@ async function startServer() {
       primaryCondition = "Dor Crônica, Processos Inflamatórios e Tensão Muscular";
       importedProducts = [
         {
-          name: "GreenBudzCBD Deep Vibe CBD 3000mg + Indica Terps",
-          indication: "Alívio de Dores Crônicas, Inflamação e Tensão Muscular (Óleo Sublingual)",
-          usage: "**10 a 12 gotas** por via sublingual, de **12 em 12 horas**",
-          notes: "Perfil terpênico com Mirceno e Beta-Cariofileno para analgesia sistêmica contínua."
+          name: "Flowermed Full Spectrum 1:1 THC + CBD",
+          indication: "Analgesia Sistêmica Contínua e Ação Neuropática (Óleo Sublingual)",
+          usage: "**05 a 08 gotas** por via sublingual, de **12 em 12 horas**",
+          notes: "Proporção balanceada 1:1 com sinergia analgésica para alívio basal da dor crônica."
         },
         {
-          name: "Drops By GreenBudzCBD Gummies 5mg THC 5mg CBN 5mg CBD per ct Nightshade - 20ct",
-          indication: "Crises Álgicas Noturnas e Relaxamento Muscular Profundo (Gomas Mastigáveis)",
-          usage: "**1 goma mastigável** ao final da tarde ou 1h antes de deitar",
-          notes: "Forma farmacêutica sólida comestível com liberação prolongada para controle da dor noturna."
+          name: "Gummies D9 10 mg 30 un",
+          indication: "Crises Álgicas Noturnas e Relaxamento Muscular Profundo (Gomas Comestíveis)",
+          usage: "Mastigar **1 goma** ao final da tarde ou 1h antes de deitar.",
+          notes: "Forma farmacêutica oral prática com liberação prolongada de 4 a 6 horas para controle da dor."
+        },
+        {
+          name: "Flor In Natura Superglue (THCA) 14g",
+          indication: "Resgate Inalatório Imediato para Picos de Dor e Espasmos (Flores 14g)",
+          usage: "Vaporizar **0,1g a 0,2g** a 185°C no momento da crise de dor.",
+          notes: "Inflorescência rica em THCA para ação analgésica imediata em 2 a 5 minutos sem combustão."
+        },
+        {
+          name: "Hemp Oil Syringe Gelato 2ml (71,6% THCA)",
+          indication: "Extração Concentrada de Altíssima Potência para Picos Agudos de Dor Refratária (Seringa)",
+          usage: "Microdosagem em vaporizador medicinal de concentrados nos momentos de dor severa.",
+          notes: "Extração pura com 71,6% de THCA para evitar idas ao pronto-socorro."
         }
       ];
 
       nationalProducts = [
         {
-          name: "ÓLEO INTEGRAL THC/CBD 100mg/ml",
+          name: "ÓLEO INTEGRAL THC/CBD 100mg/ml - Associação Nacional",
           indication: "Analgesia Contínua, Modulação de Dores Neuropáticas e Inflamatórias",
-          usage: "Tomar **10 gotas** de **12 em 12 horas** (sublingual).",
+          usage: "Tomar **05 a 08 gotas** de **12 em 12 horas** (sublingual).",
           notes: "01 Frasco de 30ml - Associação Brasileira. Efeito entourage balanceado (1:1) de uso contínuo."
         },
         {
-          name: "Pomada Canábica Terapêutica 500mg (50g)",
+          name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
           indication: "Alívio Tópico Localizado para Articulações e Músculos Doloridos",
           usage: "Aplicar fina camada sobre a região afetada **2 a 3 vezes ao dia**, massageando suavemente.",
           notes: "01 Pote 50g - Associação Brasileira. Ação anti-inflamatória tópica localizada sem sedação."
         },
         {
-          name: "Flores in natura de cannabis sp rica em THC 15g",
+          name: "Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional",
           indication: "Controle de Crises Agudas e Picos de Dor Intratável (Resgate Inalatório)",
-          usage: "Inalar **1g** via vaporizador medicinal nas crises.",
-          notes: "01 Frasco de 15g - Associação Brasileira. Início de ação ultrarrápido (1 a 3 minutos) para resgate."
+          usage: "Vaporizar **0,1g a 0,2g** via vaporizador térmico medicinal a 180°C nas crises álgicas.",
+          notes: "01 Frasco de 15g - Associação Brasileira. Início de ação ultrarrápido (1 a 3 minutos) para resgate agudo."
         }
       ];
     } else if (isInsomnia) {
       primaryCondition = "Distúrbios do Sono, Insônia Crônica e Fragmentação Noturna";
       importedProducts = [
         {
-          name: "IgniteCBD by Isospec Health 1200mg:1200mg CBD:CBN - 30ml - Mint",
+          name: "Flowermed CBN 300 mg + CBD 900 mg",
           indication: "Indução e Manutenção do Sono Reparador (Óleo Sublingual com CBN)",
-          usage: "**10 a 12 gotas** por via sublingual, **30 a 45 minutos antes de deitar**",
+          usage: "**06 a 08 gotas** por via sublingual, **30 a 45 minutos antes de deitar**",
           notes: "O Canabinol (CBN) é o fitocanabinoide de escolha para arquitetura do sono profundo."
         },
         {
-          name: "Drops By GreenBudzCBD Gummies 1mg THC 2.5mg CBN 10mg CBD per ct Lullaby - 20ct",
+          name: "CBN Sleep Gummies 30 un",
           indication: "Sono Prolongado e Prevenção de Despertares Noturnos (Gomas Mastigáveis)",
-          usage: "**1 goma mastigável** 45 minutos antes do repouso",
+          usage: "Mastigar **01 goma** 45 minutos antes do repouso.",
           notes: "Gomas mastigáveis de ação prolongada com fitocanabinoides sinérgicos (CBN/CBD)."
+        },
+        {
+          name: "Flor In Natura Glitter Bomb (THCA) 14g",
+          indication: "Resgate Inalatório Noturno para Desligamento Mental e Insônia Refratária",
+          usage: "Vaporizar **0,1g** a 180°C imediatamente antes de deitar.",
+          notes: "Genética 70% Índica rica em THCA, Mirceno e Linalol para indução imediata do sono profundo."
+        },
+        {
+          name: "Hemp Oil Gold Budder 5g (Versão THCA)",
+          indication: "Extração Concentrada para Relaxamento Físico Noturno e Indução do Sono",
+          usage: "Microdosagem vaporizada 30 minutos antes do repouso nos dias de insônia persistente.",
+          notes: "Extração cremosa concentrada rica em terpenos sedativos e THCA."
         }
       ];
 
       nationalProducts = [
         {
-          name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml",
+          name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml - Associação Nacional",
           indication: "Indução Fisiológica e Estabilização dos Ciclos do Sono",
-          usage: "Tomar **05 gotas** à noite 30 minutos antes de dormir.",
+          usage: "Tomar **04 a 06 gotas** à noite 30 minutos antes de dormir.",
           notes: "01 Frasco de 30ml - Associação Brasileira. Facilita o adormecer e modula o tônus de relaxamento."
         },
         {
-          name: "Flores in natura de cannabis sp rica em CBD 15g",
-          indication: "Relaxamento Imediato e Manejo de Crises de Ansiedade Pré-Sono (Inalatória)",
-          usage: "Inalar **1g** via vaporizador medicinal 15 minutos antes de deitar.",
-          notes: "01 Frasco de 15g - Associação Brasileira. Alívio imediato da hiperexcitabilidade pré-sono."
+          name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
+          indication: "Alívio Tópico e Relaxamento Muscular Noturno",
+          usage: "Aplicar fina camada sobre ombros, nuca e peito antes do repouso.",
+          notes: "01 Pote 50g - Associação Brasileira. Modulação periférica CB2 relaxante."
+        },
+        {
+          name: "Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional",
+          indication: "Resgate Inalatório Noturno para Insônia Refratária e Desaceleração Mental",
+          usage: "Vaporizar **0,1g** em vaporizador medicinal a 180°C imediatamente antes de deitar.",
+          notes: "Flores secas padronizadas de Associação Brasileira. Indução imediata do sono sem combustão."
         }
       ];
     }
@@ -609,20 +651,20 @@ Regras:
         });
         
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: 'gemini-3.8-flash',
           contents: prompt,
         });
 
         if (response.text) {
           return res.json({ text: response.text });
         }
-      } catch (error) {
-        console.warn("Aviso na chamada da API Gemini, aplicando protocolo clínico de segurança:", error.message || error);
-        return res.json({ text: prompt }); // fallback
+      } catch (error: any) {
+        console.warn("Aviso na chamada da API Gemini, aplicando motor clínico local:", error?.message || error);
+        return res.json({ text: null, fallback: true, error: error?.message });
       }
     }
     // If no API key or direct fallback
-    return res.json({ text: prompt });
+    return res.json({ text: null, fallback: true });
   });
 
 app.post('/api/send-admin-push', async (req, res) => {

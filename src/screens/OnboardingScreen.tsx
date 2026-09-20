@@ -328,7 +328,8 @@ const STEPS = [
       return !userEmail || !password || isLoading;
     }
     if (step.id === 'name') {
-      return userName.trim().length < 2 || userBirthDate.trim().length < 8 || userPhone.trim().length < 10;
+      const cleanCpf = userCpf.replace(/\D/g, '');
+      return userName.trim().length < 2 || userBirthDate.trim().length < 8 || userPhone.trim().length < 10 || cleanCpf.length < 11;
     }
     if (step.id === 'objective') return (answers.objectives || []).length === 0;
     if (step.id === 'physical') return !answers.height || !answers.weight || !answers.sex;
@@ -482,7 +483,7 @@ const STEPS = [
               />
 
               <Input 
-                label="CPF (opcional para identificação)"
+                label="CPF"
                 icon={<CreditCard className="w-5 h-5" />}
                 placeholder="000.000.000-00" 
                 value={userCpf} 

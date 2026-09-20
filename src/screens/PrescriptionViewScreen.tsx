@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Download, FileText, CheckCircle2, QrCode } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
@@ -6,6 +6,7 @@ import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 
 export function PrescriptionViewScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userName, userCpf, userBirthDate, answers, messages } = useStore();
 
   const prescriptionItems = messages
@@ -19,7 +20,14 @@ export function PrescriptionViewScreen() {
     <div className="flex flex-col min-h-full bg-[#0A0A0F] text-mecura-pearl relative overflow-y-auto pb-24 font-sans">
       <header className="flex items-center p-6 pt-8 border-b border-[#1A1A26] bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-20">
         <button 
-          onClick={() => navigate(-1)}
+          onClick={() => {
+            if (location.state?.fromHighlights || sessionStorage.getItem('mecura_return_to_highlights') === 'true') {
+              sessionStorage.removeItem('mecura_return_to_highlights');
+              navigate('/dashboard', { state: { fromHighlights: true }, replace: true });
+            } else {
+              navigate(-1);
+            }
+          }}
           className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white hover:bg-[#1A1A26] transition-colors"
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />

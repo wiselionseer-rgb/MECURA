@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { useAdminStore } from '../store/useAdminStore';
@@ -29,6 +29,7 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 
 export function PharmacyScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { messages } = useStore();
     const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText } = useAdminStore();
   
@@ -685,7 +686,16 @@ export function PharmacyScreen() {
         
         <header className="flex items-center gap-4 p-6 pt-8 sticky top-0 bg-[#0A0A0F]/90 backdrop-blur-xl z-50 border-b border-[#1A1A26]">
           <button 
-            onClick={() => step === 1 ? navigate(-1) : setStep(step - 1 as any)}
+            onClick={() => {
+              if (step > 1) {
+                setStep(step - 1 as any);
+              } else if (location.state?.fromHighlights || sessionStorage.getItem('mecura_return_to_highlights') === 'true') {
+                sessionStorage.removeItem('mecura_return_to_highlights');
+                navigate('/dashboard', { state: { fromHighlights: true }, replace: true });
+              } else {
+                navigate(-1);
+              }
+            }}
             className="w-10 h-10 rounded-full bg-[#161622] flex items-center justify-center border border-[#262636] hover:border-mecura-neon/50 transition-colors group"
           >
             <ChevronLeft className="w-5 h-5 text-white group-hover:text-mecura-neon transition-colors" />

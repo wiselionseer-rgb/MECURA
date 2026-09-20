@@ -13,7 +13,8 @@ import {
   Building2, 
   DollarSign,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Globe
 , Users, Activity, Stethoscope, TrendingUp, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
@@ -558,6 +559,256 @@ export function CBDGuideView() {
                 {/* Category Content */}
                 {isExpanded && (
                   <div className="p-4 md:p-6 border-t border-mecura-elevated space-y-4">
+                    {/* Flowermed Official Company Hub & Access Guide */}
+                    {category.id === 'flowermed_oficial' && (
+                      <div className="p-5 md:p-6 bg-gradient-to-br from-sky-950/40 via-black/50 to-[#0A0A0F] border border-sky-500/30 rounded-2xl mb-6 shadow-xl space-y-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-sky-500/20 pb-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold text-xs border border-sky-400/30 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" /> Laboratório Americano
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver text-[11px] border border-white/10">
+                                +3 anos de atuação no Brasil
+                              </span>
+                            </div>
+                            <h4 className="text-lg md:text-xl font-bold text-white tracking-tight">
+                              Catálogo Flowermed • Cannabis Medicinal sob Padrão FDA & ANVISA
+                            </h4>
+                            <p className="text-xs text-mecura-silver mt-1 max-w-3xl leading-relaxed">
+                              Opera sob rigorosas normas da FDA nos EUA e importa em estrita conformidade com a RDC ANVISA 660/2022. 
+                              Todos os lotes possuem Certificado de Análise (COA) emitido por laboratórios certificados sob a norma ISO/IEC 17025:2017.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            <a 
+                              href="https://www.flowermed.com.br" 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              Site Oficial
+                            </a>
+                            <div className="text-[11px] text-sky-200/80 bg-sky-500/10 px-3 py-1.5 rounded-xl border border-sky-500/20">
+                              Instagram: @theflowermed_
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Como Acessar os Produtos em 4 Passos */}
+                        <div>
+                          <h5 className="text-xs font-bold text-sky-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <Activity className="w-4 h-4" />
+                            Como Acessar os Produtos Flowermed (Fluxo em 4 Passos)
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="p-3.5 bg-sky-950/20 border border-sky-500/20 rounded-xl">
+                              <span className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-xs font-bold mb-2 border border-sky-500/30">1</span>
+                              <h6 className="text-xs font-bold text-white mb-1">Receita Médica</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">
+                                Emitida por médico habilitado pelo CFM. Indicação de prescritores parceiros disponível.
+                              </p>
+                            </div>
+                            <div className="p-3.5 bg-sky-950/20 border border-sky-500/20 rounded-xl">
+                              <span className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-xs font-bold mb-2 border border-sky-500/30">2</span>
+                              <h6 className="text-xs font-bold text-white mb-1">Autorização ANVISA</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">
+                                A equipe Flowermed orienta todo o processo de solicitação e deferimento da licença de importação.
+                              </p>
+                            </div>
+                            <div className="p-3.5 bg-sky-950/20 border border-sky-500/20 rounded-xl">
+                              <span className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-xs font-bold mb-2 border border-sky-500/30">3</span>
+                              <h6 className="text-xs font-bold text-white mb-1">Pedido & Importação</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">
+                                Enviado direto dos Estados Unidos, com desembaraço alfandegário 100% legal e rastreável.
+                              </p>
+                            </div>
+                            <div className="p-3.5 bg-sky-950/20 border border-sky-500/20 rounded-xl">
+                              <span className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-xs font-bold mb-2 border border-sky-500/30">4</span>
+                              <h6 className="text-xs font-bold text-white mb-1">Entrega & Acompanhamento</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">
+                                Suporte contínuo ao paciente durante toda a logística até a entrega domiciliar.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* As 5 Linhas de Produtos Flowermed */}
+                        <div className="pt-2">
+                          <h5 className="text-xs font-bold text-sky-300 uppercase tracking-wider mb-2.5">
+                            Sub-linhas Disponíveis no Catálogo:
+                          </h5>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <span className="px-3 py-1.5 bg-white/5 border border-sky-500/20 text-white rounded-lg font-medium">
+                              🌿 <strong>Linha Hemp Oil:</strong> 3.000 mg (R$ 440) e 6.000 mg (R$ 650)
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-sky-500/20 text-white rounded-lg font-medium">
+                              🎯 <strong>Canabinoides Direcionados:</strong> CBG Isolado (R$ 510), THCV+CBD (R$ 490), 1:1 THC:CBD (R$ 490), CBN+CBD (R$ 490)
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-sky-500/20 text-white rounded-lg font-medium">
+                              💎 <strong>Linha Sphera:</strong> 10% Broad (R$ 290), 20% Broad (R$ 480), ISO+Terpenos (R$ 260), Delta-8 (R$ 380), Full Spectrum (R$ 260)
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-sky-500/20 text-white rounded-lg font-medium">
+                              💧 <strong>Linha Syrup:</strong> D9 Nano 500 mg 177mL hidrossolúvel (R$ 450)
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-sky-500/20 text-white rounded-lg font-medium">
+                              🍬 <strong>Linha Gummies:</strong> CBN Sleep 30 un (R$ 310), Gummies D9 10 mg (R$ 340)
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Contato Telefones Flowermed */}
+                        <div className="pt-3 border-t border-sky-500/20 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-200">
+                          <div className="flex items-center gap-4">
+                            <span>📞 <strong>RJ:</strong> (21) 97292-3198</span>
+                            <span>📞 <strong>SP:</strong> (11) 99134-2826</span>
+                          </div>
+                          <span className="text-[11px] text-mecura-silver">
+                            Suporte técnico à prescrição e consultoria de importação para médicos e pacientes
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Folheto Flores & Extrações Official Interactive Hub */}
+                    {category.id === 'flores_extracoes' && (
+                      <div className="p-5 md:p-6 bg-gradient-to-br from-emerald-950/40 via-black/60 to-[#0A0A0F] border border-emerald-500/30 rounded-2xl mb-6 shadow-xl space-y-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/20 pb-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs border border-emerald-400/30 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" /> Folheto: Flores In Natura & Extrações
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver text-[11px] border border-white/10">
+                                Importadas • 14g / Seringas / Budder
+                              </span>
+                            </div>
+                            <h4 className="text-lg md:text-xl font-bold text-white tracking-tight">
+                              Flores CBD, Delta-8 THC, THCA e Extrações de Alta Potência
+                            </h4>
+                            <p className="text-xs text-mecura-silver mt-1 max-w-3xl leading-relaxed">
+                              Todas as flores in natura deste folheto são importadas em embalagens seladas de 14 gramas. As imagens do folheto são de caráter ilustrativo.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            <span className="px-3 py-1.5 bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold">
+                              14 Medicamentos Catalogados
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Guia Rápido por Momento de Uso */}
+                        <div>
+                          <h5 className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <Activity className="w-4 h-4" />
+                            Guia Rápido por Momento de Uso Clínico
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="p-3.5 bg-amber-950/20 border border-amber-500/30 rounded-xl">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                                <h6 className="text-xs font-bold text-amber-300">Uso Diurno (Energia, Foco & Clareza)</h6>
+                              </div>
+                              <ul className="text-[11px] text-mecura-silver space-y-1">
+                                <li>• <strong>Sour Lifter (CBD):</strong> 75% Sativa | Fadiga & foco (R$ 700)</li>
+                                <li>• <strong>Astro Candy (THCA):</strong> 70% Sativa | Humor & sociabilidade (R$ 1.200)</li>
+                                <li>• <strong>Strawpicana (THCA):</strong> Perfil energizante | Criatividade (R$ 1.200)</li>
+                                <li>• <strong>Trop Banana (THCA):</strong> 70% Sativa | Produtividade & leveza (R$ 1.200)</li>
+                              </ul>
+                            </div>
+
+                            <div className="p-3.5 bg-indigo-950/20 border border-indigo-500/30 rounded-xl">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+                                <h6 className="text-xs font-bold text-indigo-300">Uso Noturno (Sono & Desaceleração)</h6>
+                              </div>
+                              <ul className="text-[11px] text-mecura-silver space-y-1">
+                                <li>• <strong>Lemon Octane (CBD):</strong> 80% Índica | Dor & insônia (R$ 700)</li>
+                                <li>• <strong>Forbidden Fruit (D8):</strong> 70% Índica | Sedativo & dor (R$ 840)</li>
+                                <li>• <strong>Glitter Bomb (THCA):</strong> 70% Índica | "Desligar a mente" (R$ 1.200)</li>
+                                <li>• <strong>Girl Cookies (THCA):</strong> 70% Índica | Relaxamento profundo (R$ 1.200)</li>
+                              </ul>
+                            </div>
+
+                            <div className="p-3.5 bg-teal-950/20 border border-teal-500/30 rounded-xl">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-teal-400"></span>
+                                <h6 className="text-xs font-bold text-teal-300">Uso Flexível ou Equilibrado</h6>
+                              </div>
+                              <ul className="text-[11px] text-mecura-silver space-y-1">
+                                <li>• <strong>Gellato (D8 THC):</strong> 55% Índica / 45% Sativa | Estresse (R$ 840)</li>
+                                <li>• <strong>Superglue (THCA):</strong> 60% Índica / 40% Sativa | Conforto (R$ 1.200)</li>
+                                <li>• <strong>Zoap (THCA):</strong> 50/50 Híbrida perfeita | Leveza (R$ 1.200)</li>
+                                <li>• <strong>Extrações Syringes & Budder:</strong> Cepa OG Kush & Gelato</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tabela Resumo de Valores & Preço por Grama */}
+                        <div>
+                          <h5 className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+                            <span>Tabela-Resumo de Valores & Preço Médio por Grama</span>
+                            <span className="text-[11px] text-mecura-silver lowercase font-normal">todas as flores embaladas em 14g</span>
+                          </h5>
+                          <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/40 text-xs">
+                            <table className="w-full text-left">
+                              <thead>
+                                <tr className="border-b border-white/10 bg-white/5 text-mecura-silver text-[11px]">
+                                  <th className="py-2 px-3 font-semibold">Produto</th>
+                                  <th className="py-2 px-3 font-semibold">Tipo</th>
+                                  <th className="py-2 px-3 font-semibold">Qtd.</th>
+                                  <th className="py-2 px-3 font-semibold">Preço</th>
+                                  <th className="py-2 px-3 font-semibold text-right">≈ por grama</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5 text-mecura-pearl">
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Sour Lifter</td><td className="py-2 px-3 text-emerald-400">Flor CBD</td><td className="py-2 px-3">14 g</td><td className="py-2 px-3 font-bold">R$ 700</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 50,00</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Lemon Octane</td><td className="py-2 px-3 text-emerald-400">Flor CBD</td><td className="py-2 px-3">14 g</td><td className="py-2 px-3 font-bold">R$ 700</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 50,00</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Forbidden Fruit</td><td className="py-2 px-3 text-purple-400">Flor D8 THC</td><td className="py-2 px-3">14 g</td><td className="py-2 px-3 font-bold">R$ 840</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 60,00</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Gellato</td><td className="py-2 px-3 text-purple-400">Flor D8 THC</td><td className="py-2 px-3">14 g</td><td className="py-2 px-3 font-bold">R$ 840</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 60,00</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Glitter Bomb / Astro Candy / Strawpicana</td><td className="py-2 px-3 text-amber-400">Flor THCA</td><td className="py-2 px-3">14 g</td><td className="py-2 px-3 font-bold">R$ 1.200</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 85,70</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Superglue / Zoap / Trop Banana / Girl Cookies</td><td className="py-2 px-3 text-amber-400">Flor THCA</td><td className="py-2 px-3">14 g</td><td className="py-2 px-3 font-bold">R$ 1.200</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 85,70</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Syringe Gelato (71,6% THCA)</td><td className="py-2 px-3 text-sky-400">Extração THCA</td><td className="py-2 px-3">2 ml</td><td className="py-2 px-3 font-bold">R$ 600</td><td className="py-2 px-3 text-right text-mecura-silver">n/a</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Syringe CBD (OG Kush)</td><td className="py-2 px-3 text-emerald-400">Extração CBD</td><td className="py-2 px-3">1 ml</td><td className="py-2 px-3 font-bold">R$ 320</td><td className="py-2 px-3 text-right text-mecura-silver">n/a</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Gold Budder OG Kush (CBD)</td><td className="py-2 px-3 text-emerald-400">Extração Budder</td><td className="py-2 px-3">5 g</td><td className="py-2 px-3 font-bold">R$ 680</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 136,00</td></tr>
+                                <tr className="hover:bg-white/5"><td className="py-2 px-3 font-bold text-white">Gold Budder OG Kush (THCA)</td><td className="py-2 px-3 text-amber-400">Extração Budder</td><td className="py-2 px-3">5 g</td><td className="py-2 px-3 font-bold">R$ 880</td><td className="py-2 px-3 text-right text-mecura-neon font-semibold">R$ 176,00</td></tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Observações e Alertas Regulatórios do Folheto */}
+                        <div className="p-3.5 bg-yellow-950/20 border border-yellow-500/30 rounded-xl space-y-2 text-xs">
+                          <h6 className="font-bold text-yellow-400 flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                            Observações Clínicas & Regulatórias do Folheto:
+                          </h6>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[11px] text-mecura-silver leading-relaxed">
+                            <div>
+                              <strong className="text-white block mb-0.5">• Composição e COA:</strong>
+                              O folheto não especifica a porcentagem exata de canabinoides das flores (com exceção da Seringa Gelato com 71,6% de THCA). Solicitar Certificado de Análise (COA) lote a lote ao importador antes da prescrição.
+                            </div>
+                            <div>
+                              <strong className="text-white block mb-0.5">• Situação Regulatória ANVISA:</strong>
+                              Medicamentos com Delta-8 THC e THCA in natura demandam confirmação de deferimento formal no portal ANVISA RDC 660 antes da liberação alfandegária.
+                            </div>
+                            <div>
+                              <strong className="text-white block mb-0.5">• Cepa Strawpicana:</strong>
+                              Descrita como 70% índica com perfil energizante, exibindo uma combinação terpênica atípica de estímulo mental.
+                            </div>
+                            <div>
+                              <strong className="text-white block mb-0.5">• Posologia & Inalação:</strong>
+                              As flores medicinais devem ser administradas exclusivamente por vaporização térmica sem combustão, preservando a integridade dos alvéolos pulmonares.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Dosage Guidance Card */}
                     {category.products.some(p => p.type.includes('Concentrado')) && (
                       <div className="p-4 md:p-5 bg-black/40 border border-mecura-neon/30 rounded-xl mb-4">
@@ -779,7 +1030,7 @@ export function CBDGuideView() {
                               </td>
                               <td className="py-3.5 px-4 text-right align-top">
                                 <span className="text-sm font-bold text-mecura-neon whitespace-nowrap">
-                                  {product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : '-'}
+                                  {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : '-')}
                                 </span>
                               </td>
                             </tr>
