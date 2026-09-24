@@ -712,7 +712,7 @@ export function DashboardScreen() {
                 </div>
 
                 <h4 className="text-[14px] font-bold text-white mb-1 tracking-tight group-hover:text-[#A6FF00] transition-colors">Mecura Premium VIP</h4>
-                <p className="text-[11px] text-[#8A8A9E] leading-tight">Vídeo + 90d + Laudos HC e Psicomotor</p>
+                <p className="text-[11px] text-[#8A8A9E] leading-tight">Vídeo + 90d + Laudos HC, Psicomotor e Agronômico</p>
               </motion.button>
             ) : scheduledConsultation ? (
               <motion.div 

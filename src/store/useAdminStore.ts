@@ -1,6 +1,7 @@
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { mergeProductCatalogs, syncCatalogToFirestore } from '../utils/productCatalog';
 
 export interface Doctor {
   id: string;
@@ -114,28 +115,52 @@ export const useAdminStore = create<AdminState>()(
       setCatalogUrl: (url) => set({ catalogUrl: url }),
       setCatalogUrlNacional: (url) => set({ catalogUrlNacional: url }),
       productCategories: cbdGuideData,
-      setProductCategories: (categories) => set({ productCategories: categories }),
-      addProduct: (categoryId, product) => set((state) => ({
-        productCategories: state.productCategories.map(c => 
-          c.id === categoryId ? { ...c, products: [...c.products, product] } : c
-        )
-      })),
-      updateProduct: (categoryId, productName, productData) => set((state) => ({
-        productCategories: state.productCategories.map(c => 
-          c.id === categoryId ? { 
-            ...c, 
-            products: c.products.map(p => p.name === productName ? { ...p, ...productData } : p) 
-          } : c
-        )
-      })),
-      deleteProduct: (categoryId, productName) => set((state) => ({
-        productCategories: state.productCategories.map(c => 
-          c.id === categoryId ? { 
-            ...c, 
-            products: c.products.filter(p => p.name !== productName) 
-          } : c
-        )
-      })),
+      setProductCategories: (categories) => {
+        const merged = mergeProductCatalogs(cbdGuideData, categories);
+        set({ productCategories: merged });
+        syncCatalogToFirestore(merged);
+      },
+      addProduct: (categoryId, product) => {
+        set((state) => {
+          let updated = state.productCategories.map(c => 
+            c.id === categoryId ? { ...c, products: [...c.products, product] } : c
+          );
+          // If category was not found in state, add product to first category or create one
+          if (!updated.some(c => c.id === categoryId)) {
+            if (updated.length > 0) {
+              updated[0] = { ...updated[0], products: [...updated[0].products, product] };
+            }
+          }
+          const merged = mergeProductCatalogs(cbdGuideData, updated);
+          syncCatalogToFirestore(merged);
+          return { productCategories: merged };
+        });
+      },
+      updateProduct: (categoryId, productName, productData) => {
+        set((state) => {
+          const updated = state.productCategories.map(c => 
+            c.id === categoryId ? { 
+              ...c, 
+              products: c.products.map(p => p.name === productName ? { ...p, ...productData } : p) 
+            } : c
+          );
+          const merged = mergeProductCatalogs(cbdGuideData, updated);
+          syncCatalogToFirestore(merged);
+          return { productCategories: merged };
+        });
+      },
+      deleteProduct: (categoryId, productName) => {
+        set((state) => {
+          const updated = state.productCategories.map(c => 
+            c.id === categoryId ? { 
+              ...c, 
+              products: c.products.filter(p => p.name !== productName) 
+            } : c
+          );
+          syncCatalogToFirestore(updated);
+          return { productCategories: updated };
+        });
+      },
     }),
     {
       name: 'admin-storage',

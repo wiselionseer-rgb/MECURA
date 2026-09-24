@@ -135,7 +135,7 @@ export function AdvisorChatWidget() {
         botResponse.text = "Sinto muito que você esteja tendo problemas com o pagamento. Se o seu Pix não foi compensado ou se ocorreu algum erro na finalização, nossa equipe financeira pode verificar imediatamente para você. Deseja falar com nosso suporte?";
         botResponse.options = ["Falar com suporte humano", "Voltar ao início"];
       } else if (lowerText.includes("valor") || lowerText.includes("custo") || text === "Valores e Custos") {
-        botResponse.text = "A consulta (com direito a retorno) custa R$ 250,00 (ou R$ 49,90 no plano essencial). Já os valores dos produtos variam dependendo da prescrição, começando a partir de R$ 300,00 por frasco importado.";
+        botResponse.text = "A consulta (com direito a retorno) custa R$ 249,00 (ou R$ 49,90 no plano essencial). Já os valores dos produtos variam dependendo da prescrição, começando a partir de R$ 300,00 por frasco importado.";
       } else if (lowerText.includes("legal") || lowerText.includes("brasil") || text === "É legalizado no Brasil?") {
         botResponse.text = "Sim! É 100% legalizado. O tratamento segue a regulação RDC 660 da Anvisa, que autoriza a importação para uso pessoal e medicinal desde que o paciente tenha prescrição médica.";
       } else if (lowerText.includes("quem somos") || text === "Quem somos nós?") {

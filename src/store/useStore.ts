@@ -107,8 +107,10 @@ interface AppState {
     birthDate?: string;
     cpf?: string;
     phone?: string;
+    isPremium?: boolean;
+    plan?: string;
   }>;
-  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string }) => Promise<void>;
+  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string; isPremium?: boolean; plan?: string }) => Promise<void>;
   leaveQueue: (patientId: string) => void;
   updateQueue: (position: number, waitTime: number) => void;
   subscribeToQueue: () => () => void;
@@ -287,6 +289,8 @@ export const useStore = create<AppState>((set, get) => ({
       messages: []
     });
     
+    const isPremium = !!(state.pagamento_premium || state.selectedOffer === 'premium' || (patient as any)?.isPremium);
+    
     let newPatient = patient || { 
       id: currentUserId, 
       patientName: state.userName || 'Paciente Anônimo', 
@@ -294,6 +298,8 @@ export const useStore = create<AppState>((set, get) => ({
       phone: state.userPhone || '',
       cpf: state.userCpf || '',
       birthDate: state.userBirthDate || state.answers?.birthDate || '',
+      isPremium: isPremium,
+      plan: isPremium ? 'premium' : 'basic',
       answers: {
         ...state.answers,
         birthDate: state.userBirthDate || state.answers?.birthDate || '',
@@ -341,6 +347,8 @@ export const useStore = create<AppState>((set, get) => ({
       // Always try to write to Firestore, even if anonymous (using the generated ID)
       await setDoc(doc(db, 'queue', currentUserId), {
         ...newPatient,
+        isPremium,
+        plan: isPremium ? 'premium' : 'basic',
         joinedAt: new Date().toISOString(),
         status: 'waiting'
       });
@@ -360,7 +368,7 @@ export const useStore = create<AppState>((set, get) => ({
       console.error("Error joining queue in Firestore", error);
       // Fallback for local if Firestore fails
       set((state) => ({ 
-        queue: [...state.queue, { ...newPatient, joinedAt: new Date() }],
+        queue: [...state.queue, { ...newPatient, isPremium, joinedAt: new Date() }],
         queuePosition: state.queue.length + 1,
         estimatedWaitTime: (state.queue.length + 1) * 15
       }));
@@ -399,14 +407,48 @@ export const useStore = create<AppState>((set, get) => ({
       );
       const isAdminRoute = typeof window !== 'undefined' && window.location.pathname.includes('/admin');
 
-      const queueData = snapshot.docs.map(doc => {
+      let queueData = snapshot.docs.map(doc => {
         const data = doc.data();
+        const isPrem = !!(data.isPremium || data.plan === 'premium' || data.selectedOffer === 'premium' || data.answers?.isPremium || data.pagamento_premium);
         return {
           id: doc.id,
           ...data,
+          isPremium: isPrem,
           joinedAt: data.joinedAt?.toDate ? data.joinedAt.toDate() : (data.joinedAt ? new Date(data.joinedAt) : new Date())
         };
       }) as any[];
+
+      // If Firestore queue is currently empty, furnish demo patients so doctor area can be tested
+      if (queueData.length === 0) {
+        queueData = [
+          {
+            id: 'sample_patient_vip_1',
+            patientName: 'Fernanda Lima Rocha',
+            email: 'fernanda.rocha@email.com',
+            phone: '11987654321',
+            cpf: '123.456.789-00',
+            birthDate: '15/04/1988',
+            joinedAt: new Date(Date.now() - 14 * 60 * 1000), // na fila há 14 minutos!
+            status: 'waiting',
+            isPremium: true,
+            plan: 'premium',
+            answers: { objectives: ['Ansiedade e Insônia Severa', 'Dores Crônicas'] }
+          },
+          {
+            id: 'sample_patient_basic_2',
+            patientName: 'Carlos Roberto Mendes',
+            email: 'carlos.mendes@email.com',
+            phone: '11976543210',
+            cpf: '987.654.321-99',
+            birthDate: '22/09/1975',
+            joinedAt: new Date(Date.now() - 4 * 60 * 1000),
+            status: 'waiting',
+            isPremium: false,
+            plan: 'basic',
+            answers: { objectives: ['Dores Articulares'] }
+          }
+        ];
+      }
 
       // GLOBAL LISTENER FOR PATIENT (Runs on all screens)
       if (!isInitialLoadQueue && !isDoctorRoute && !isAdminRoute) {
@@ -640,10 +682,17 @@ export const useStore = create<AppState>((set, get) => ({
   setActiveConsultationId: (id) => set({ activeConsultationId: id }),
   
   startConsultation: async (patientId?: string) => {
-    set({ consultationActive: true, inQueue: false, messages: [] });
+    const prevId = get().activeConsultationId;
+    const isSwitchingPatient = !!(patientId && prevId && patientId !== prevId);
+
+    set({ 
+      consultationActive: true, 
+      inQueue: false,
+      ...(isSwitchingPatient ? { messages: [] } : {}),
+      ...(patientId ? { activeConsultationId: patientId } : {})
+    });
     if (patientId) {
       // Doctor starting consultation
-      set({ activeConsultationId: patientId });
       try {
         const state = get();
         const patient = state.queue.find(p => p.id === patientId);
@@ -876,13 +925,60 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   subscribeToMessages: (consultationId: string) => {
-    const q = query(collection(db, 'active_consultations', consultationId, 'messages'), orderBy('timestamp', 'asc'));
+    if (!consultationId) return () => {};
+
+    const prevId = get().activeConsultationId;
+    if (prevId !== consultationId) {
+      set({ activeConsultationId: consultationId, messages: [] });
+    }
+
+    const parseDoc = (d: any): Message => {
+      const data = d.data();
+      let ts: Date;
+      if (data.timestamp?.toDate && typeof data.timestamp.toDate === 'function') {
+        ts = data.timestamp.toDate();
+      } else if (data.timestamp) {
+        ts = new Date(data.timestamp);
+      } else {
+        ts = new Date();
+      }
+      if (isNaN(ts.getTime())) ts = new Date();
+      return {
+        id: d.id,
+        ...data,
+        timestamp: ts
+      } as Message;
+    };
+
+    const messagesCol = collection(db, 'active_consultations', consultationId, 'messages');
+    const q = query(messagesCol, orderBy('timestamp', 'asc'));
+
+    // 1. Direct one-time fetch to guarantee immediate history without waiting for onSnapshot
+    getDocs(q).then((snapshot) => {
+      if (!snapshot.empty) {
+        const msgs = snapshot.docs.map(parseDoc);
+        msgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        if (get().activeConsultationId === consultationId) {
+          set({ messages: msgs });
+        }
+      }
+    }).catch((err) => {
+      console.warn("Direct getDocs fetch for messages with orderBy failed, attempting fallback:", err);
+      getDocs(messagesCol).then((snapshot) => {
+        if (!snapshot.empty) {
+          const msgs = snapshot.docs.map(parseDoc);
+          msgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+          if (get().activeConsultationId === consultationId) {
+            set({ messages: msgs });
+          }
+        }
+      }).catch(console.error);
+    });
+
+    // 2. Real-time onSnapshot listener
     return onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate ? doc.data().timestamp.toDate() : new Date(doc.data().timestamp)
-      })) as Message[];
+      const msgs = snapshot.docs.map(parseDoc);
+      msgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
       
       const currentMessages = get().messages;
       // Show notification if a new message is received from the doctor and the page is hidden (e.g. locked screen)
@@ -900,7 +996,7 @@ export const useStore = create<AppState>((set, get) => ({
             import('../utils/notifications').then(({ showNativeNotification }) => {
               showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
             });
-          } else if (lastMsg.text.includes('SUA VEZ CHEGOU')) {
+          } else if (lastMsg.text && lastMsg.text.includes('SUA VEZ CHEGOU')) {
             // Força a exibição para a mensagem de alerta, mesmo se a tela não estiver minimizada
             import('../utils/notifications').then(({ showNativeNotification }) => {
               showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');

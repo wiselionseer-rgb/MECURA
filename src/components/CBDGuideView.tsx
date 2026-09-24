@@ -18,12 +18,26 @@ import {
 , Users, Activity, Stethoscope, TrendingUp, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
 import { useStore } from '../store/useStore';
 import { ProductBulaModal } from './ProductBulaModal';
 
 export function CBDGuideView() {
   const { productCategories: storeCategories } = useAdminStore();
-  const productCategories = cbdGuideData;
+  const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeToFirestoreCatalog((cats) => {
+      if (cats && cats.length > 0) {
+        setCloudCategories(cats);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const productCategories = React.useMemo(() => {
+    return mergeProductCatalogs(cbdGuideData, storeCategories, cloudCategories);
+  }, [storeCategories, cloudCategories]);
   const [searchTerm, setSearchTerm] = useState('');
   const [diseaseFilter, setDiseaseFilter] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');

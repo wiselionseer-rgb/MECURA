@@ -25,6 +25,7 @@ import {
   Zap, 
   Clock, 
   Brain,
+  Sprout,
   Pill,
   MessageCircle,
   HelpCircle,
@@ -57,7 +58,7 @@ export function PremiumCheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
 
-  const basePrice = 250.00;
+  const basePrice = 249.90;
     let finalPrice = basePrice;
   if (appliedCoupon) {
     if (appliedCoupon.discountType === 'fixed') {
@@ -195,7 +196,7 @@ export function PremiumCheckoutScreen() {
     addMessage({
       sender: 'doctor',
       type: "payment_success" as any,
-      text: 'Pagamento da Consulta Premium (R$ 250,00) aprovado com sucesso!'
+      text: 'Pagamento da Consulta Premium (R$ 249,90) aprovado com sucesso!'
     });
     navigate('/chat');
   };
@@ -551,6 +552,22 @@ export function PremiumCheckoutScreen() {
                 </div>
               </div>
 
+              {/* Item 6: Laudo Agronômico Pericial */}
+              <div className="bg-[#12121A] border border-[#A6FF00]/25 rounded-2xl p-3.5 flex items-start gap-3.5 hover:border-[#A6FF00]/50 transition-all">
+                <div className="w-10 h-10 rounded-xl bg-[#1A1A26] border border-[#A6FF00]/30 flex items-center justify-center shrink-0 text-[#A6FF00] shadow-[0_0_10px_rgba(166,255,0,0.15)]">
+                  <Sprout className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <h4 className="text-sm font-bold text-white">Laudo Agronômico Pericial (Salvo-Conduto / HC)</h4>
+                    <span className="text-[9px] font-bold text-[#A6FF00] bg-[#A6FF00]/10 px-1.5 py-0.5 rounded">Cultivo & HC</span>
+                  </div>
+                  <p className="text-xs text-[#8A8A9E] leading-relaxed">
+                    Dimensionamento agronômico exato de plantas, ciclos e dosimetria de biomassa com assinatura de Engenheiro Agrônomo habilitado no CREA.
+                  </p>
+                </div>
+              </div>
+
               {/* Item 6: Receita Digital ICP-Brasil */}
               <div className="bg-[#12121A] border border-[#A6FF00]/25 rounded-2xl p-3.5 flex items-start gap-3.5 hover:border-[#A6FF00]/50 transition-all">
                 <div className="w-10 h-10 rounded-xl bg-[#1A1A26] border border-[#A6FF00]/30 flex items-center justify-center shrink-0 text-[#A6FF00] shadow-[0_0_10px_rgba(166,255,0,0.15)]">
@@ -635,15 +652,15 @@ export function PremiumCheckoutScreen() {
                   </div>
                   <div className="flex justify-between text-[#8A8A9E]">
                     <span>• Retorno Médico em 90 dias incluso</span>
-                    <span className="text-white font-mono">R$ 250,00</span>
+                    <span className="text-white font-mono">R$ 249,00</span>
                   </div>
                   <div className="flex justify-between text-[#8A8A9E]">
                     <span>• Laudos Periciais p/ Habeas Corpus (Inicial + Evolutivo)</span>
                     <span className="text-white font-mono">R$ 450,00</span>
                   </div>
                   <div className="flex justify-between text-[#8A8A9E]">
-                    <span>• Laudo Psicomotor + Receita Digital ICP-Brasil</span>
-                    <span className="text-white font-mono">R$ 150,00</span>
+                    <span>• Laudo Psicomotor + Laudo Agronômico + Receita Digital</span>
+                    <span className="text-white font-mono">R$ 250,00</span>
                   </div>
                   <div className="flex justify-between text-[#8A8A9E]">
                     <span>• Suporte Concierge & Descontos Farmácia</span>
@@ -651,7 +668,7 @@ export function PremiumCheckoutScreen() {
                   </div>
                   <div className="flex justify-between text-white font-bold pt-1.5 border-t border-white/5">
                     <span>Valor Total dos Serviços Separados:</span>
-                    <span className="line-through text-[#8A8A9E] font-mono">R$ 1.300,00</span>
+                    <span className="line-through text-[#8A8A9E] font-mono">R$ 1.400,00</span>
                   </div>
                 </div>
               </div>
@@ -669,7 +686,7 @@ export function PremiumCheckoutScreen() {
               <div className="flex items-baseline gap-3 mb-1">
                 <span className="text-mecura-silver text-base line-through decoration-mecura-silver/60">De R$ 598,00</span>
                 <div className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-white tracking-tighter drop-shadow-[0_0_15px_rgba(166,255,0,0.35)]">
-                  R$ 250,00
+                  R$ 249,90
                 </div>
               </div>
 
@@ -721,6 +738,10 @@ export function PremiumCheckoutScreen() {
                 <div className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#A6FF00] shrink-0" />
                   <span>Laudo Psicomotor</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#A6FF00] shrink-0" />
+                  <span>Laudo Agronômico</span>
                 </div>
               </div>
 
@@ -900,7 +921,7 @@ export function PremiumCheckoutScreen() {
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </div>
             <span className="text-[11px] text-black/85 font-bold">
-              Vídeo Chamada + 90 Dias com Retorno + Laudos HC • R$ 250
+              Vídeo Chamada + 90 Dias com Retorno + Laudos HC • R$ 249,90
             </span>
           </button>
         ) : (
@@ -933,9 +954,9 @@ export function PremiumCheckoutScreen() {
 
         <button 
           onClick={() => navigate('/dashboard')}
-          className="text-mecura-silver text-xs font-medium hover:text-white transition-colors py-1 text-center"
+          className="text-[#8A8A9E] text-[14px] font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-2 text-center"
         >
-          Voltar ao painel principal
+          Pular por enquanto e ir para o painel
         </button>
       </div>
     </div>

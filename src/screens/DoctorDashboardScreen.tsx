@@ -1,5 +1,5 @@
 import { useAdminStore } from '../store/useAdminStore';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -16,6 +16,7 @@ import {
   PlusCircle,
   Activity,
   ClipboardList,
+  Sprout,
   CheckCheck,
   User,
   BrainCircuit,
@@ -29,6 +30,10 @@ import {
   Download,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
+  Info,
+  Filter,
+  Tag,
   Maximize2,
   Calendar,
   RefreshCw,
@@ -42,9 +47,21 @@ import {
   Printer,
   FileDown,
   RotateCcw,
-  Sliders
-, Star, Check, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
+  Sliders,
+  Star,
+  Check,
+  ShieldCheck,
+  ArrowRight,
+  AlertCircle,
+  Crown
+} from 'lucide-react';
 import { format } from 'date-fns';
+
+const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.007c.106.005.249-.04.39.299.144.347.491 1.2.534 1.287.043.087.072.188.014.303-.058.116-.087.188-.173.289l-.26.303c-.087.087-.177.182-.076.355.101.173.45 1.085 1.276 1.821.65.579 1.199.759 1.372.845.173.086.274.072.375-.044.101-.116.433-.505.549-.679.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.043.073.043.419-.101.824z" />
+  </svg>
+);
 import { setDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification, subscribeToBackgroundNotifications } from '../utils/notifications';
@@ -62,7 +79,8 @@ import {
 } from 'recharts';
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
-import { cbdGuideData, CBDProduct, enrichMedicationDetails } from '../data/cbdGuide';
+import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory } from '../data/cbdGuide';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases } from '../utils/productCatalog';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
 import { NotificationToast } from '../components/NotificationToast';
@@ -70,8 +88,9 @@ import { EnableNotificationsBanner } from '../components/EnableNotificationsBann
 import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
 import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEditorModal';
+import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
 
-import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
 
 const calculateAge = (birthDateStr?: string) => {
   if (!birthDateStr) return null;
@@ -98,7 +117,20 @@ const calculateAge = (birthDateStr?: string) => {
 
 export function DoctorDashboardScreen() {
   const { productCategories: storeProductCategories } = useAdminStore();
-  const productCategories = cbdGuideData; // Force using latest code data to include newly added meds
+  const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeToFirestoreCatalog((cats) => {
+      if (cats && cats.length > 0) {
+        setCloudCategories(cats);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const productCategories = useMemo(() => {
+    return mergeProductCatalogs(cbdGuideData, storeProductCategories, cloudCategories);
+  }, [storeProductCategories, cloudCategories]);
   const adminId = auth.currentUser?.uid;
   const { 
     userName, userCpf, userBirthDate, userPhone, answers, messages, 
@@ -130,17 +162,236 @@ export function DoctorDashboardScreen() {
   const [accessibleCustomMessage, setAccessibleCustomMessage] = useState('');
   const [prescriptionInput, setPrescriptionInput] = useState('');
   const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [productBrandFilter, setProductBrandFilter] = useState('all');
+  const [productDiseaseFilter, setProductDiseaseFilter] = useState('all');
+  const [productDiseaseSearchInput, setProductDiseaseSearchInput] = useState('');
+  const [productOriginFilter, setProductOriginFilter] = useState<'all' | 'nacional' | 'importado'>('all');
+
+  // Horizontal Drag & Scroll refs for shortcuts
+  const shortcutsContainerRef = useRef<HTMLDivElement>(null);
+  const isDraggingShortcuts = useRef(false);
+  const dragStartX = useRef(0);
+  const dragScrollLeft = useRef(0);
+  const dragMoved = useRef(false);
+  const [isDraggingState, setIsDraggingState] = useState(false);
+
+  const handleShortcutsMouseDown = (e: React.MouseEvent) => {
+    if (!shortcutsContainerRef.current) return;
+    isDraggingShortcuts.current = true;
+    dragMoved.current = false;
+    dragStartX.current = e.pageX - shortcutsContainerRef.current.offsetLeft;
+    dragScrollLeft.current = shortcutsContainerRef.current.scrollLeft;
+    setIsDraggingState(true);
+  };
+
+  const handleShortcutsMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingShortcuts.current || !shortcutsContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - shortcutsContainerRef.current.offsetLeft;
+    const walk = (x - dragStartX.current) * 1.5;
+    if (Math.abs(walk) > 4) {
+      dragMoved.current = true;
+    }
+    shortcutsContainerRef.current.scrollLeft = dragScrollLeft.current - walk;
+  };
+
+  const handleShortcutsMouseUpOrLeave = () => {
+    isDraggingShortcuts.current = false;
+    setIsDraggingState(false);
+  };
+
+  const handleShortcutsWheel = (e: React.WheelEvent) => {
+    if (shortcutsContainerRef.current && e.deltaY !== 0) {
+      shortcutsContainerRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
+  const scrollShortcuts = (direction: 'left' | 'right') => {
+    if (shortcutsContainerRef.current) {
+      const offset = direction === 'left' ? -240 : 240;
+      shortcutsContainerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  const availableBrands = useMemo(() => extractAllBrands(productCategories), [productCategories]);
+  const availableDiseases = useMemo(() => extractAllDiseases(productCategories), [productCategories]);
+
+  const allGuideProducts = useMemo(() => {
+    const map = new Map<string, CBDProduct & { categoryTitle?: string; categoryIndications?: string[] }>();
+    productCategories.forEach(cat => {
+      cat.products.forEach(p => {
+        const key = (p.name || '').trim().toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            ...p,
+            categoryTitle: cat.title,
+            categoryIndications: cat.indicationsList || []
+          });
+        } else {
+          const existing = map.get(key)!;
+          if (cat.indicationsList) {
+            const setInd = new Set([...(existing.categoryIndications || []), ...cat.indicationsList]);
+            existing.categoryIndications = Array.from(setInd);
+          }
+        }
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+  }, [productCategories]);
+
+  // High-precision accent-insensitive normalization
+  const normalizeSearch = (str: string = '') => {
+    return (str || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[-_.,;:/\\()[\]{}!?"'#@%&*+=]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const normalizeCompactStr = (str: string = '') => {
+    return normalizeSearch(str).replace(/\s+/g, '');
+  };
+
+  const { filteredGuideProducts, totalMatchingQueryWithoutDisease, isRelaxedForQuery } = useMemo(() => {
+    const termClean = normalizeSearch(productSearchTerm);
+    const termCompact = normalizeCompactStr(productSearchTerm);
+    const queryTokens = termClean.split(' ').filter(Boolean);
+
+    const diseaseRaw = (productDiseaseFilter !== 'all' ? productDiseaseFilter : productDiseaseSearchInput).trim();
+    const diseaseClean = normalizeSearch(diseaseRaw);
+    const diseaseCompact = normalizeCompactStr(diseaseRaw);
+
+    const brandFilterClean = normalizeSearch(productBrandFilter !== 'all' ? productBrandFilter : '');
+    const brandFilterCompact = normalizeCompactStr(productBrandFilter !== 'all' ? productBrandFilter : '');
+
+    const fullMatches: (CBDProduct & { categoryTitle?: string; categoryIndications?: string[] })[] = [];
+    const textAndBrandMatches: (CBDProduct & { categoryTitle?: string; categoryIndications?: string[] })[] = [];
+
+    allGuideProducts.forEach(p => {
+      const pName = normalizeSearch(p.name);
+      const pManuf = normalizeSearch(p.manufacturer);
+      const pType = normalizeSearch(p.type);
+      const pActive = normalizeSearch(p.activeIngredients);
+      const pConc = normalizeSearch(p.concentration);
+      const pDesc = normalizeSearch(p.description);
+      const pRoute = normalizeSearch(p.administrationRoute);
+      const pForm = normalizeSearch(p.pharmaceuticalForm);
+      const pDetails = (p.details || []).map(d => normalizeSearch(d)).join(' ');
+      const pInd = normalizeSearch(p.indications);
+      const pCatInd = (p.categoryIndications || []).map(ci => normalizeSearch(ci)).join(' ');
+      const pCatTitle = normalizeSearch(p.categoryTitle);
+      const pOrigin = normalizeSearch(p.origin);
+
+      const combinedText = `${pName} ${pManuf} ${pType} ${pActive} ${pConc} ${pDesc} ${pRoute} ${pForm} ${pDetails} ${pInd} ${pCatInd} ${pCatTitle}`;
+      const compactManuf = normalizeCompactStr(p.manufacturer);
+      const compactName = normalizeCompactStr(p.name);
+      const compactCombined = normalizeCompactStr(`${pName} ${pManuf} ${pType} ${pActive} ${pConc}`);
+
+      // 1. Text search match (matches brand names, formula, name, tokens, compact strings)
+      let textOk = true;
+      if (queryTokens.length > 0) {
+        if (
+          compactManuf.includes(termCompact) || 
+          termCompact.includes(compactManuf) ||
+          compactName.includes(termCompact) ||
+          termCompact.includes(compactName) ||
+          compactCombined.includes(termCompact)
+        ) {
+          textOk = true;
+        } else {
+          textOk = queryTokens.every(tok => 
+            combinedText.includes(tok) || 
+            compactCombined.includes(tok) ||
+            pManuf.includes(tok) ||
+            pName.includes(tok)
+          );
+        }
+      }
+
+      // 2. Brand select match
+      let brandOk = true;
+      if (productBrandFilter !== 'all') {
+        brandOk = pManuf === brandFilterClean || 
+                  compactManuf === brandFilterCompact || 
+                  pManuf.includes(brandFilterClean) || 
+                  brandFilterClean.includes(pManuf) ||
+                  compactManuf.includes(brandFilterCompact);
+      }
+
+      // 3. Origin match
+      let originOk = true;
+      if (productOriginFilter !== 'all') {
+        if (productOriginFilter === 'nacional') {
+          originOk = pOrigin.includes('nacional') || pOrigin.includes('br');
+        } else if (productOriginFilter === 'importado') {
+          originOk = pOrigin.includes('importado') || pOrigin.includes('eua') || pOrigin.includes('usa');
+        }
+      }
+
+      if (textOk && brandOk && originOk) {
+        textAndBrandMatches.push(p);
+
+        // 4. Disease match
+        let diseaseOk = true;
+        if (diseaseClean) {
+          const diseaseCombined = `${pInd} ${pCatInd} ${pDesc} ${pCatTitle} ${pName}`;
+          const diseaseCombinedCompact = normalizeCompactStr(diseaseCombined);
+
+          if (diseaseCombinedCompact.includes(diseaseCompact) || diseaseCombined.includes(diseaseClean)) {
+            diseaseOk = true;
+          } else {
+            const dTokens = diseaseClean.split(' ').filter(t => t.length > 2);
+            diseaseOk = dTokens.some(tok => diseaseCombined.includes(tok) || diseaseCombinedCompact.includes(tok));
+          }
+        }
+
+        if (diseaseOk) {
+          fullMatches.push(p);
+        }
+      }
+    });
+
+    // Smart fallback: if searching specifically by brand or term and disease filter leaves 0 results, relax the disease filter
+    if ((queryTokens.length > 0 || productBrandFilter !== 'all') && diseaseClean && fullMatches.length === 0 && textAndBrandMatches.length > 0) {
+      return {
+        filteredGuideProducts: textAndBrandMatches,
+        totalMatchingQueryWithoutDisease: textAndBrandMatches.length,
+        isRelaxedForQuery: true
+      };
+    }
+
+    return {
+      filteredGuideProducts: fullMatches,
+      totalMatchingQueryWithoutDisease: textAndBrandMatches.length,
+      isRelaxedForQuery: false
+    };
+  }, [allGuideProducts, productSearchTerm, productBrandFilter, productOriginFilter, productDiseaseFilter, productDiseaseSearchInput]);
   const [selectedProduct, setSelectedProduct] = useState<CBDProduct | null>(null);
   const [dosageInput, setDosageInput] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string} | null>(null);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
+  const [queuePlanFilter, setQueuePlanFilter] = useState<'all' | 'premium' | 'basic'>('all');
   const [queueSearchTerm, setQueueSearchTerm] = useState('');
   const [mobileTab, setMobileTab] = useState<'chat' | 'ficha' | 'actions'>('chat');
 
   // Psychomotor Report Editor States
   const [showPsychomotorReportEditorModal, setShowPsychomotorReportEditorModal] = useState(false);
   const [psychomotorReportText, setPsychomotorReportText] = useState('');
+
+  // Agronomic Report (Laudo Agronômico) Editor States
+  const [showAgronomicReportEditorModal, setShowAgronomicReportEditorModal] = useState(false);
+  const [agronomicPatientName, setAgronomicPatientName] = useState('');
+  const [agronomicCpf, setAgronomicCpf] = useState('');
+  const [agronomicEmissionDate, setAgronomicEmissionDate] = useState('');
+  const [agronomicName, setAgronomicName] = useState('Wilian Dalenogare Pereira');
+  const [agronomicCrea, setAgronomicCrea] = useState('CREA-PR 172.458/D');
+  const [agronomicDiagnosis, setAgronomicDiagnosis] = useState('');
+  const [agronomicDailyDoseMg, setAgronomicDailyDoseMg] = useState(100);
+  const [agronomicTargetPlants, setAgronomicTargetPlants] = useState(12);
+  const [agronomicText, setAgronomicText] = useState('');
 
   // Medical Report (Laudo Médico) Editor & Preview States
   const [showMedicalReportEditorModal, setShowMedicalReportEditorModal] = useState(false);
@@ -289,6 +540,7 @@ export function DoctorDashboardScreen() {
     setCurrentPatient(enrichedPatient);
     setAnalysisResult(null); // Reset previous analysis to allow fresh generation
     startConsultation(patient.id);
+    subscribeToMessages(patient.id);
     
     // Auto-greeting if the patient was just waiting
     if (patient.status === 'waiting') {
@@ -337,6 +589,84 @@ export function DoctorDashboardScreen() {
     }
   };
 
+  const handleWhatsAppCall = async (patient: any) => {
+    if (!patient) return;
+    const patientName = patient.patientName || userName || 'Paciente';
+    const firstName = patientName.split(' ')[0];
+    const rawPhone = patient.phone || patient.answers?.phone || patient.answers?.whatsapp || userPhone || '';
+    const cleanDigits = rawPhone.replace(/\D/g, '');
+    
+    // Brazilian formatting: if 10 or 11 digits, prepend 55
+    let finalPhone = cleanDigits;
+    if (finalPhone.length === 10 || finalPhone.length === 11) {
+      finalPhone = `55${finalPhone}`;
+    }
+
+    const defaultMsg = `Olá ${firstName}! Aqui é o Dr. Guilherme da equipe médica MeCura. É a sua vez para a sua consulta de avaliação médica canábica! Por favor, acesse o app ou me confirme por aqui para iniciarmos seu atendimento.`;
+    
+    // Send in-app notification to patient
+    try {
+      if (patient.id) {
+        await setDoc(doc(db, 'notifications', patient.id), {
+          text: `🔔 O Dr. Guilherme acabou de te chamar pelo WhatsApp (${rawPhone || 'seu número'})! Acesse a consulta.`,
+          timestamp: new Date().toISOString(),
+          type: 'whatsapp_call'
+        });
+        
+        // Also send message to active consultation if exists
+        const { collection, doc: docRef, setDoc: setDocMsg } = await import('firebase/firestore');
+        const msgRef = docRef(collection(db, 'active_consultations', patient.id, 'messages'));
+        await setDocMsg(msgRef, {
+          id: msgRef.id,
+          text: `💬 Chamado WhatsApp enviado para ${rawPhone || 'paciente'}. Dr. Guilherme aguarda você na sala de consulta!`,
+          sender: 'doctor',
+          type: 'text',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.warn("Could not save WhatsApp call notification to Firestore:", err);
+    }
+
+    if (finalPhone) {
+      const whatsappUrl = `https://wa.me/${finalPhone}?text=${encodeURIComponent(defaultMsg)}`;
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      // Prompt doctor if phone is missing
+      const promptPhone = window.prompt(`O paciente ${patientName} não possui WhatsApp cadastrado. Digite o número com DDD (ex: 11999998888):`);
+      if (promptPhone) {
+        let pClean = promptPhone.replace(/\D/g, '');
+        if (pClean.length === 10 || pClean.length === 11) pClean = `55${pClean}`;
+        window.open(`https://wa.me/${pClean}?text=${encodeURIComponent(defaultMsg)}`, '_blank', 'noopener,noreferrer');
+      }
+    }
+  };
+
+  const handleTogglePatientPlan = async (patient: any) => {
+    if (!patient || !patient.id) return;
+    const isPrem = !!(patient.isPremium || patient.plan === 'premium' || (patient as any).selectedOffer === 'premium' || patient.answers?.isPremium || (patient as any).pagamento_premium);
+    const newPrem = !isPrem;
+    const newPlan = newPrem ? 'premium' : 'basic';
+
+    try {
+      await updateDoc(doc(db, 'queue', patient.id), {
+        isPremium: newPrem,
+        plan: newPlan,
+        selectedOffer: newPlan
+      });
+      if (currentPatient && currentPatient.id === patient.id) {
+        setCurrentPatient({
+          ...currentPatient,
+          isPremium: newPrem,
+          plan: newPlan,
+          selectedOffer: newPlan
+        });
+      }
+    } catch (err) {
+      console.error("Error toggling patient plan:", err);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -382,18 +712,34 @@ export function DoctorDashboardScreen() {
     setInputText('');
   };
 
-  const handleRemovePrescribedMedication = async (messageId: string, medicationName?: string) => {
+  const handleRemoveDoctorMessage = async (messageId: string, label?: string) => {
     try {
       const pId = currentPatient?.id;
-      console.log("Removing medication message:", messageId, "medicationName:", medicationName, "patientId:", pId);
-      await deleteMessage(messageId, pId);
-      if (medicationName) {
-        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== medicationName.toLowerCase()));
+      console.log("Removing doctor message:", messageId, "label:", label, "patientId:", pId);
+      
+      const targetMsg = messages.find(m => m.id === messageId);
+      const isAcompanhamento = label === 'Tratamento Premium' || targetMsg?.type === 'acompanhamento_card';
+      
+      if (isAcompanhamento) {
+        const optionMsg = messages.find(m => m.type === 'acompanhamento_options');
+        if (optionMsg) {
+          await deleteMessage(optionMsg.id, pId);
+        }
       }
+
+      if (label && !['Tratamento Premium', 'Orientações da Prescrição', 'Receita Digital', 'Pagamento Confirmado'].includes(label)) {
+        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== label.toLowerCase()));
+      } else if (targetMsg?.productData?.name) {
+        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== targetMsg.productData.name.toLowerCase()));
+      }
+
+      await deleteMessage(messageId, pId);
     } catch (err) {
-      console.error("Error removing medication message:", err);
+      console.error("Error removing doctor message:", err);
     }
   };
+
+  const handleRemovePrescribedMedication = handleRemoveDoctorMessage;
 
   const handleClearAllPrescriptions = async () => {
     try {
@@ -452,7 +798,7 @@ export function DoctorDashboardScreen() {
     } else if (action === ("explicar_laudos" as any)) {
       addMessage({
         sender: 'doctor',
-        text: 'Para ter acesso completo ao seu Laudo Médico Inicial e ao Laudo Psicomotor (essencial para atestar sua aptidão para dirigir e operar máquinas), nós estruturamos a modalidade de Consulta Premium. Nela, além da receita médica, você recebe toda a documentação legal que resguarda o seu tratamento, além do retorno em 90 dias para acompanhamento da sua evolução. Se desejar, posso enviar os detalhes para darmos o próximo passo.'
+        text: 'Para ter acesso completo ao seu Laudo Médico Inicial, ao Laudo Psicomotor (essencial para atestar sua aptidão para dirigir e operar máquinas) e ao Laudo Agronômico (dimensionamento técnico de autocultivo para instrução de Habeas Corpus), nós estruturamos a modalidade de Consulta Premium. Nela, além da receita médica, você recebe toda a documentação legal que resguarda o seu tratamento, além do retorno em 90 dias para acompanhamento da sua evolução. Se desejar, posso enviar os detalhes para darmos o próximo passo.'
       });
     } else if (action === 'acompanhamento') {
       addMessage({
@@ -909,6 +1255,49 @@ CIDs Secundários: ${cidsSecundarios}`;
       customDoctorSpecialty: reportDoctorSpecialty,
       customPsychomotorText: psychomotorReportText
     });
+  };
+
+  const handleOpenAgronomicReportEditor = () => {
+    const pName = currentPatient?.patientName || userName || 'Paciente';
+    const patientAnswers = currentPatient?.answers || answers;
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+    
+    setAgronomicPatientName(pName);
+    setAgronomicCpf(pCpf);
+    setAgronomicEmissionDate(new Date().toLocaleDateString('pt-BR'));
+    setAgronomicName('Wilian Dalenogare Pereira');
+    setAgronomicCrea('CREA-PR 172.458/D');
+    
+    const condition = patientAnswers?.mainSymptoms || patientAnswers?.queixaPrincipal || patientAnswers?.pathology || 'Tratamento de Dor Crônica e Modulação do Sono (CID 10 G47 / R52)';
+    setAgronomicDiagnosis(condition);
+    setAgronomicDailyDoseMg(100);
+    setAgronomicTargetPlants(12);
+
+    const defaultAgronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa e o planejamento operacional para o cultivo doméstico de espécimes de Cannabis sativa L., estritamente voltado à produção de extratos terapêuticos integrais de uso contínuo, seguro e exclusivo do(a) paciente ${pName}, em conformidade com as Boas Práticas Agrícolas e de Coleta (GACP) e a prescrição médica que instrui a ação de Habeas Corpus Preventivo para salvo-conduto.`;
+    setAgronomicText(defaultAgronomicText);
+    setShowAgronomicReportEditorModal(true);
+  };
+
+  const handleDownloadAgronomicReportFromEditor = () => {
+    generateAgronomicReportPDF(agronomicPatientName, {
+      customPatientName: agronomicPatientName,
+      cpf: agronomicCpf,
+      emissionDate: agronomicEmissionDate,
+      agronomistName: agronomicName,
+      agronomistCrea: agronomicCrea,
+      diagnosis: agronomicDiagnosis,
+      dailyDoseMg: agronomicDailyDoseMg,
+      targetPlants: agronomicTargetPlants,
+      htmlContent: undefined
+    });
+  };
+
+  const handleSendAgronomicReportToChat = () => {
+    addMessage({
+      sender: 'doctor',
+      text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${agronomicPatientName}\n- **Eng. Agrônomo Responsável:** ${agronomicName} (${agronomicCrea})\n- **Dimensionamento Recomendado:** ${agronomicTargetPlants} plantas no total (${Math.ceil(agronomicTargetPlants / 3)} plantas em floração por ciclo rotativo)\n- **Demanda Terapêutica:** ${agronomicDailyDoseMg} mg/dia\n\nEste laudo técnico oficial faz parte do seu **Pacote Premium** e foi anexado ao seu prontuário legal para instrução do processo de Habeas Corpus.`
+    });
+    setShowAgronomicReportEditorModal(false);
   };
 
   const handleDownloadMedicalReportFromEditor = () => {
@@ -1438,7 +1827,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     className="w-full bg-mecura-surface/50 border border-mecura-elevated rounded-xl pl-10 pr-4 py-2.5 text-base md:text-sm focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface text-white transition-all"
                   />
                 </div>
-                <div className="flex flex-wrap gap-2 mt-4 pb-2">
+                <div className="flex flex-wrap gap-2 mt-4 pb-1">
                   <button 
                     onClick={() => setQueueFilter('all')}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'all' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
@@ -1464,11 +1853,54 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     Concluído
                   </button>
                 </div>
+
+                {/* Filtro Específico por Plano (VIP x Essencial) */}
+                {(() => {
+                  const vipCount = queue.filter(p => !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium)).length;
+                  const basicCount = queue.length - vipCount;
+
+                  return (
+                    <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-mecura-elevated/40">
+                      <span className="text-[10px] uppercase font-bold text-mecura-silver/70 mr-0.5">Plano:</span>
+                      <button 
+                        onClick={() => setQueuePlanFilter('all')}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all ${queuePlanFilter === 'all' ? 'bg-white/15 text-white border border-white/30' : 'text-mecura-silver hover:text-white'}`}
+                      >
+                        Todos ({queue.length})
+                      </button>
+                      <button 
+                        onClick={() => setQueuePlanFilter('premium')}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${queuePlanFilter === 'premium' ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'text-amber-400/70 hover:text-amber-300'}`}
+                      >
+                        <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        VIPs ({vipCount})
+                      </button>
+                      <button 
+                        onClick={() => setQueuePlanFilter('basic')}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 ${queuePlanFilter === 'basic' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40' : 'text-emerald-400/70 hover:text-emerald-300'}`}
+                      >
+                        🌱 Essencial ({basicCount})
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
         
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 custom-scrollbar">
-          {queue.filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase())).length > 0 ? (
-            [...queue].filter(p => (queueFilter === 'all' ? true : p.status === queueFilter) && (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase())).sort((a, b) => {
+          {queue.filter(p => {
+            const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
+            const matchesSearch = (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase());
+            const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
+            const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
+            return matchesStatus && matchesSearch && matchesPlan;
+          }).length > 0 ? (
+            [...queue].filter(p => {
+              const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
+              const matchesSearch = (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase());
+              const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
+              const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
+              return matchesStatus && matchesSearch && matchesPlan;
+            }).sort((a, b) => {
               // 1. Unread messages first
               if (a.hasUnread && !b.hasUnread) return -1;
               if (!a.hasUnread && b.hasUnread) return 1;
@@ -1492,16 +1924,21 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 // For active/waiting, oldest joined first
                 return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
               }
-            }).map((patient, idx) => (
+            }).map((patient, idx) => {
+              const isPremiumPatient = !!(patient.isPremium || patient.plan === 'premium' || (patient as any).selectedOffer === 'premium' || patient.answers?.isPremium || (patient as any).pagamento_premium);
+
+              return (
               <div 
                 key={patient.id} 
                 onClick={() => handleStartConsultation(patient)}
-                className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 ${
+                className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden ${
                   patient.hasUnread
                     ? 'bg-mecura-neon/10 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.15)]'
-                    : patient.status === 'finished'
-                      ? 'bg-transparent border-transparent opacity-60 hover:opacity-100 hover:bg-mecura-surface/40 hover:border-mecura-elevated'
-                      : 'bg-transparent border-transparent hover:bg-mecura-surface/40 hover:border-mecura-elevated'
+                    : isPremiumPatient
+                      ? 'bg-amber-500/[0.04] border-amber-500/40 hover:bg-amber-500/[0.08] hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+                      : patient.status === 'finished'
+                        ? 'bg-transparent border-transparent opacity-60 hover:opacity-100 hover:bg-mecura-surface/40 hover:border-mecura-elevated'
+                        : 'bg-transparent border-transparent hover:bg-mecura-surface/40 hover:border-mecura-elevated'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
@@ -1519,6 +1956,34 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       }
                       return null;
                     })()}
+
+                    {/* Símbolo Paciente Premium vs Essencial (Clique para alternar) */}
+                    {isPremiumPatient ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTogglePatientPlan(patient);
+                        }}
+                        title="Plano VIP Premium (R$ 249,90) - Clique para alterar para Essencial"
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.35)] tracking-wider hover:scale-105 active:scale-95 transition-transform"
+                      >
+                        <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        VIP PREMIUM
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTogglePatientPlan(patient);
+                        }}
+                        title="Plano Essencial (R$ 49,90) - Clique para alterar para VIP Premium"
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
+                      >
+                        🌱 ESSENCIAL
+                      </button>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {patient.lastMessageAt && (
@@ -1552,23 +2017,35 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   </p>
                 )}
                 {patient.status !== 'finished' && (
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2 flex-wrap pt-2 mt-1 border-t border-mecura-elevated/40">
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleNotifyNext(patient); }}
-                      className="text-[10px] bg-mecura-surface-light px-2 py-1 rounded text-mecura-silver hover:text-white transition-colors"
+                      className="text-[10px] bg-mecura-surface-light px-2.5 py-1.5 rounded-lg text-mecura-silver hover:text-white transition-colors"
+                      title="Avisar no App que chegou a vez"
                     >
                       Sua vez
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleNotifyWait(patient); }}
-                      className="text-[10px] bg-mecura-surface-light px-2 py-1 rounded text-mecura-silver hover:text-white transition-colors"
+                      className="text-[10px] bg-mecura-surface-light px-2.5 py-1.5 rounded-lg text-mecura-silver hover:text-white transition-colors"
+                      title="Avisar que atende em 5 minutos"
                     >
                       5 min
+                    </button>
+                    {/* Botão do WhatsApp para chamar o paciente */}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleWhatsAppCall(patient); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20ba59] text-white text-[11px] font-bold transition-all shadow-[0_0_12px_rgba(37,211,102,0.3)] hover:scale-[1.02] active:scale-[0.98] ml-auto"
+                      title="Chamar paciente diretamente no WhatsApp na hora da vez dele"
+                    >
+                      <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                      <span>Chamar Whats</span>
                     </button>
                   </div>
                 )}
               </div>
-            ))
+            );
+          })
           ) : (
             <div className="p-8 text-center border border-dashed border-mecura-elevated rounded-2xl">
               <p className="text-mecura-silver text-sm">Nenhum paciente na fila</p>
@@ -1593,7 +2070,14 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 <ChevronLeft className="w-4 h-4" />
                 Fila
               </button>
-              <span className="text-white font-bold text-sm truncate max-w-[180px]">{currentPatient.patientName}</span>
+              <div className="flex items-center gap-1.5 truncate max-w-[200px]">
+                <span className="text-white font-bold text-sm truncate">{currentPatient.patientName}</span>
+                {(currentPatient.isPremium || currentPatient.plan === 'premium' || currentPatient.selectedOffer === 'premium' || currentPatient.answers?.isPremium) && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-400/40 flex-shrink-0">
+                    <Crown className="w-2.5 h-2.5 text-amber-400 fill-amber-400" /> VIP
+                  </span>
+                )}
+              </div>
               <span className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
             </div>
 
@@ -1624,6 +2108,19 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         {currentPatient && mobileTab === 'actions' ? (
           <div className="md:hidden flex-1 bg-[#0A0A0F] p-4 md:p-6 space-y-4 overflow-y-auto min-h-0 custom-scrollbar">
             <h3 className="text-white font-bold text-lg mb-2">Ações Rápidas de Atendimento</h3>
+
+            <button
+              onClick={() => handleWhatsAppCall(currentPatient)}
+              className="w-full p-4 bg-[#25D366]/15 border border-[#25D366]/40 rounded-2xl flex items-center gap-4 text-left hover:bg-[#25D366]/25 transition-all shadow-[0_0_15px_rgba(37,211,102,0.15)]"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#25D366] text-white flex items-center justify-center flex-shrink-0 shadow-[0_0_10px_rgba(37,211,102,0.4)]">
+                <WhatsAppIcon className="w-6 h-6 fill-current" />
+              </div>
+              <div>
+                <h4 className="text-[#25D366] font-bold text-base">Chamar no WhatsApp</h4>
+                <p className="text-xs text-mecura-silver">Chamar {currentPatient.patientName} diretamente no WhatsApp agora</p>
+              </div>
+            </button>
             <button
               onClick={() => { setShowPrescriptionModal(true); }}
               className="w-full p-4 bg-mecura-surface border border-mecura-neon/30 rounded-2xl flex items-center gap-4 text-left hover:border-mecura-neon transition-all"
@@ -1726,13 +2223,52 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   <User className="w-5 h-5 md:w-6 md:h-6 text-mecura-silver" />
                 </div>
                 <div>
-                  <h2 className="text-base md:text-lg font-bold text-white tracking-tight truncate max-w-[150px] md:max-w-xs">{currentPatient?.patientName || userName || 'Paciente Atual'}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base md:text-lg font-bold text-white tracking-tight truncate max-w-[150px] md:max-w-xs">{currentPatient?.patientName || userName || 'Paciente Atual'}</h2>
+                    {(currentPatient?.isPremium || currentPatient?.plan === 'premium' || (currentPatient as any)?.selectedOffer === 'premium' || currentPatient?.answers?.isPremium || (currentPatient as any)?.pagamento_premium) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePatientPlan(currentPatient)}
+                        title="Plano VIP Premium (R$ 249,90) - Clique para alterar para Essencial"
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)] tracking-wider hover:scale-105 transition-transform"
+                      >
+                        <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        VIP PREMIUM
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePatientPlan(currentPatient)}
+                        title="Plano Essencial (R$ 49,90) - Clique para alterar para VIP Premium"
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
+                      >
+                        🌱 ESSENCIAL
+                      </button>
+                    )}
+                  </div>
                   <p className="text-[10px] md:text-xs text-mecura-silver font-medium flex items-center gap-1.5 mt-0.5">
                     <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.5)]" /> Online agora
                   </p>
                 </div>
               </div>
               <div className="flex gap-2 overflow-x-auto md:overflow-visible md:flex-wrap pb-1 md:pb-0 items-center md:justify-end">
+                {/* Botão Chamar no WhatsApp */}
+                <button
+                  onClick={() => {
+                    const targetPatient = currentPatient || queue.find(p => p.status === 'waiting');
+                    if (targetPatient) {
+                      handleWhatsAppCall(targetPatient);
+                    } else {
+                      alert('Nenhum paciente selecionado ou aguardando.');
+                    }
+                  }}
+                  title="Chamar Paciente no WhatsApp na hora da vez dele"
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-[#25D366] hover:bg-[#20ba59] text-white rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(37,211,102,0.3)] hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <WhatsAppIcon className="w-4 h-4 fill-current" />
+                  <span className="hidden md:inline">Chamar no WhatsApp</span>
+                  <span className="md:hidden">Whats</span>
+                </button>
                 <button
                   onClick={async () => {
                     const targetPatient = currentPatient || queue.find(p => p.status === 'waiting');
@@ -1848,6 +2384,13 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   <FileCheck className="w-3 h-3 md:w-4 md:h-4 text-purple-400" /> <span className="hidden md:inline">Laudo Psicomotor</span><span className="md:hidden">Psico.</span>
                 </button>
                 <button 
+                  onClick={handleOpenAgronomicReportEditor}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+                  title="Gerar Laudo Agronômico (Cálculo de Plantas / HC)"
+                >
+                  <Sprout className="w-3 h-3 md:w-4 md:h-4 text-emerald-400" /> <span className="hidden md:inline">Laudo Agronômico</span><span className="md:hidden">Agron.</span>
+                </button>
+                <button 
                   onClick={handleFinishConsultation}
                   className="px-3 md:px-5 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
                 >
@@ -1864,8 +2407,23 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               </span>
             </div>
             
-            <div>
-              {messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()).map((msg) => (
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-mecura-surface border border-mecura-elevated flex items-center justify-center mb-3 text-mecura-neon shadow-sm">
+                  <MessageSquare className="w-6 h-6" />
+                </div>
+                <h4 className="text-white font-semibold text-sm mb-1">Pronto para o Atendimento</h4>
+                <p className="text-mecura-silver text-xs max-w-sm">
+                  Envie uma mensagem ou utilize as ações rápidas abaixo para orientar {currentPatient?.patientName || 'o paciente'}.
+                </p>
+              </div>
+            ) : (
+              <div>
+                {[...messages].sort((a, b) => {
+                  const tA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
+                  const tB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
+                  return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
+                }).map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex flex-col w-full ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}
@@ -2028,6 +2586,19 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     </div>
                   ) : msg.type === 'acompanhamento_card' ? (
                     <div className="w-[85%] max-w-xl bg-gradient-to-b from-[#111116] to-[#0A0A0F] border border-[#2a2a35] rounded-3xl p-6 sm:p-8 mb-2 relative overflow-hidden shadow-2xl group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Tratamento Premium');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover Tratamento Premium"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
                       <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 rounded-full blur-[80px] -z-10 group-hover:bg-mecura-neon/20 transition-all duration-700" />
                       
                       <div className="flex items-center gap-3 mb-6">
@@ -2046,6 +2617,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           "Consulta médica individualizada",
                           "Laudo médico inicial detalhado",
                           "Laudo psicomotor (Drogômetro)",
+                          "Laudo agronômico (Cálculo de cultivo / HC)",
                           "Retorno garantido em 90 dias",
                           "Suporte via chat e acompanhamento",
                           "Assessoria para importação e HC"
@@ -2062,7 +2634,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       <div className="bg-[#181822] border border-[#2a2a35] rounded-2xl p-5 flex items-center justify-between mb-8">
                         <div>
                           <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Teleconsulta Completa</p>
-                          <p className="text-white font-bold text-2xl">R$ 250<span className="text-gray-500 text-sm">,00</span></p>
+                          <p className="text-white font-bold text-2xl">R$ 249<span className="text-gray-500 text-sm">,00</span></p>
                         </div>
                         <div className="w-12 h-12 rounded-full bg-mecura-neon/10 flex items-center justify-center">
                           <ShieldCheck className="w-6 h-6 text-mecura-neon" />
@@ -2079,37 +2651,55 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     </div>
                   ) : msg.type === 'acompanhamento_options' && msg.sender === 'doctor' ? null
                   : msg.type === 'payment_success' ? (
-                    <div className="w-[85%] max-w-xl bg-[#A6FF00]/10 border border-[#A6FF00]/30 rounded-3xl p-4 sm:p-6 mb-2 flex items-center gap-4 shadow-lg">
-                      <div className="w-12 h-12 rounded-full bg-[#A6FF00]/20 flex items-center justify-center flex-shrink-0">
-                        <CheckCircle className="w-6 h-6 text-[#A6FF00]" />
+                    <div className="w-[85%] max-w-xl bg-[#A6FF00]/10 border border-[#A6FF00]/30 rounded-3xl p-4 sm:p-6 mb-2 flex items-center justify-between gap-4 shadow-lg relative">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-[#A6FF00]/20 flex items-center justify-center flex-shrink-0">
+                          <CheckCircle className="w-6 h-6 text-[#A6FF00]" />
+                        </div>
+                        <div>
+                          <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Confirmado!</h3>
+                          <p className="text-white text-sm">O paciente realizou o pagamento da Consulta Premium (R$ 249,00). Você pode prosseguir com o atendimento e envio dos laudos.</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Confirmado!</h3>
-                        <p className="text-white text-sm">O paciente realizou o pagamento da Consulta Premium (R$ 250,00). Você pode prosseguir com o atendimento e envio dos laudos.</p>
-                      </div>
-                    </div>
-                  ) : (
-
-                    <div 
-                      className={`max-w-[75%] p-4 rounded-2xl shadow-sm relative group ${
-                        msg.sender === 'doctor' 
-                          ? 'bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20' 
-                          : 'bg-mecura-surface text-mecura-pearl rounded-tl-sm border border-mecura-elevated'
-                      }`}
-                    >
-                      <p className="text-[15px] leading-relaxed pr-8 whitespace-pre-wrap">{msg.text}</p>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          handleRemovePrescribedMedication(msg.id);
+                          handleRemoveDoctorMessage(msg.id, 'Pagamento Confirmado');
                         }}
-                        className="absolute top-2 right-2 px-2 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/20 rounded-md text-[10px] font-semibold flex items-center gap-1 transition-all shadow-sm opacity-0 group-hover:opacity-100 cursor-pointer"
-                        title="Apagar mensagem"
+                        className="px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 flex-shrink-0 self-start"
+                        title="Remover aviso de pagamento"
                       >
-                        <Trash2 className="w-3 h-3 pointer-events-none" />
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
                       </button>
+                    </div>
+                  ) : msg.sender === 'doctor' ? (
+                    <div className="max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-sm relative group bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20 flex flex-col mb-2">
+                      <div className="flex items-center justify-between gap-3 mb-2 pb-2 border-b border-white/10">
+                        <span className="text-[11px] text-mecura-neon font-bold tracking-wide uppercase flex items-center gap-1">
+                          Mensagem do Médico
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveDoctorMessage(msg.id);
+                          }}
+                          className="px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 flex-shrink-0"
+                          title="Remover esta mensagem"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                          <span className="pointer-events-none">Remover</span>
+                        </button>
+                      </div>
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                    </div>
+                  ) : (
+                    <div className="max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-sm relative group bg-mecura-surface text-mecura-pearl rounded-tl-sm border border-mecura-elevated mb-2">
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5 mt-2 px-1">
@@ -2121,6 +2711,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 </div>
               ))}
             </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -2613,13 +3204,57 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             const pPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
             const pEmail = currentPatient?.email || (currentPatient?.answers?.email) || '';
             const pAge = calculateAge(pBirthDate);
+            const isVip = !!(currentPatient?.isPremium || currentPatient?.plan === 'premium' || currentPatient?.selectedOffer === 'premium' || patientAnswers?.isPremium || currentPatient?.pagamento_premium);
 
             return (
               <section>
-                <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
-                  <User className="w-4 h-4 text-mecura-neon" /> Dados Cadastrais
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] flex items-center gap-2">
+                    <User className="w-4 h-4 text-mecura-neon" /> Dados Cadastrais
+                  </h3>
+                  {isVip ? (
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePatientPlan(currentPatient)}
+                      title="Plano VIP Premium (R$ 249,90) - Clique para alterar para Essencial"
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)] tracking-wider hover:scale-105 transition-transform"
+                    >
+                      <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      PREMIUM VIP
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePatientPlan(currentPatient)}
+                      title="Plano Essencial (R$ 49,90) - Clique para alterar para VIP Premium"
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
+                    >
+                      🌱 ESSENCIAL
+                    </button>
+                  )}
+                </div>
                 <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between items-center border-b border-mecura-elevated/40 pb-2.5">
+                    <span className="text-xs text-mecura-silver">Plano da Consulta</span>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePatientPlan(currentPatient)}
+                      title="Clique para alternar o plano"
+                      className="text-xs font-bold transition-all flex items-center gap-1.5 hover:scale-[1.02]"
+                    >
+                      {isVip ? (
+                        <span className="text-amber-300 flex items-center gap-1 font-mono">
+                          <Crown className="w-3 h-3 text-amber-400 fill-amber-400" /> VIP Premium (R$ 249,90)
+                        </span>
+                      ) : (
+                        <span className="text-[#4ADE80] flex items-center gap-1 font-mono">
+                          🌱 Consulta Essencial (R$ 49,90)
+                        </span>
+                      )}
+                      <span className="text-[10px] text-mecura-silver/80 font-normal underline">(Alterar)</span>
+                    </button>
+                  </div>
+
                   <div className="flex justify-between items-center border-b border-mecura-elevated/40 pb-2.5">
                     <span className="text-xs text-mecura-silver">Nome Completo</span>
                     <span className="text-sm font-bold text-white text-right">{pName}</span>
@@ -2644,12 +3279,28 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   </div>
 
                   {(pPhone || pEmail) && (
-                    <div className="flex justify-between items-center pt-0.5">
-                      <span className="text-xs text-mecura-silver">Contato</span>
-                      <span className="text-xs text-mecura-pearl text-right">
-                        {pPhone && <span className="block font-medium text-white">{pPhone}</span>}
-                        {pEmail && !pEmail.includes('sem-email') && <span className="block text-[#8A8A9E]">{pEmail}</span>}
-                      </span>
+                    <div className="pt-2 border-t border-mecura-elevated/40 space-y-2.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-mecura-silver">WhatsApp / Telefone</span>
+                        <span className="text-xs text-mecura-pearl text-right font-medium text-white">
+                          {pPhone || 'Não informado'}
+                        </span>
+                      </div>
+                      {pEmail && !pEmail.includes('sem-email') && (
+                        <div className="flex justify-between items-center text-xs text-[#8A8A9E]">
+                          <span>Email</span>
+                          <span>{pEmail}</span>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleWhatsAppCall(currentPatient)}
+                        className="w-full py-2.5 px-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-[0_0_12px_rgba(37,211,102,0.25)] hover:scale-[1.01] active:scale-[0.99] mt-1"
+                        title="Chamar paciente no WhatsApp agora"
+                      >
+                        <WhatsAppIcon className="w-4 h-4 fill-current" />
+                        <span>Chamar no WhatsApp Agora</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2757,6 +3408,25 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 <span className="text-xs text-purple-200 block mb-2 font-bold">Laudo Psicomotor</span>
                 <span className={`text-base font-bold ${(currentPatient?.answers?.laudo_psicomotor || answers?.laudo_psicomotor) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.laudo_psicomotor || answers?.laudo_psicomotor) ? 'Deseja Solicitar' : 'Não Solicitado'}</span>
               </div>
+            </div>
+
+            {/* Agronomic / Cultivation Quick Access */}
+            <div className="mt-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Sprout className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs text-emerald-300 font-bold block uppercase tracking-wider">Laudo Agronômico Pericial</span>
+                  <span className="text-sm font-semibold text-white">Dimensionamento de Plantas para Salvo-Conduto / Habeas Corpus</span>
+                </div>
+              </div>
+              <button
+                onClick={handleOpenAgronomicReportEditor}
+                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition-colors shadow-[0_0_12px_rgba(16,185,129,0.25)] shrink-0"
+              >
+                Gerar Laudo Agronômico
+              </button>
             </div>
           </section>
 
@@ -3149,22 +3819,33 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
       {/* Product Search Modal */}
       {showProductSearchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => {
               setShowProductSearchModal(false);
               setSelectedProduct(null);
             }}
           />
           <div
-            className="relative w-full max-w-2xl bg-mecura-surface border border-mecura-elevated rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+            className="relative w-full max-w-4xl bg-mecura-surface border border-mecura-elevated rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
           >
-              <div className="p-6 border-b border-mecura-elevated flex justify-between items-center bg-mecura-surface-light/30">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Search className="w-5 h-5 text-mecura-neon" />
-                  {selectedProduct ? 'Prescrever Produto' : 'Buscar Produto no Guia'}
-                </h3>
+              <div className="p-4 sm:p-6 border-b border-mecura-elevated flex justify-between items-center bg-mecura-surface-light/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.15)]">
+                    <Search className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-xl font-bold text-white flex items-center gap-2">
+                      {selectedProduct ? 'Configurar Posologia & Prescrever' : 'Buscar Produto no Guia de Cannabis'}
+                    </h3>
+                    <p className="text-xs text-mecura-silver">
+                      {selectedProduct 
+                        ? 'Defina a dosagem, horários e orientações antes de enviar para o chat' 
+                        : `${filteredGuideProducts.length} medicamentos disponíveis para prescrição médica`}
+                    </p>
+                  </div>
+                </div>
                 <button 
                   onClick={() => {
                     setShowProductSearchModal(false);
@@ -3178,42 +3859,434 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
               {!selectedProduct ? (
                 <>
-                  <div className="p-4 border-b border-mecura-elevated">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mecura-silver" />
-                      <input
-                        type="text"
-                        placeholder="Buscar por nome, fabricante ou tipo..."
-                        value={productSearchTerm}
-                        onChange={(e) => setProductSearchTerm(e.target.value)}
-                        className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl py-3 pl-10 pr-4 text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors"
-                      />
+                  {/* Filters Section */}
+                  <div className="p-4 border-b border-mecura-elevated bg-[#0A0A0F]/80 space-y-3">
+                    {/* Search Inputs Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Free Text Search */}
+                      <div className="relative">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-mecura-silver" />
+                        <input
+                          type="text"
+                          placeholder="Buscar por nome, canabinoide, fórmula..."
+                          value={productSearchTerm}
+                          onChange={(e) => setProductSearchTerm(e.target.value)}
+                          className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl py-2.5 pl-10 pr-9 text-xs sm:text-sm text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors"
+                        />
+                        {productSearchTerm && (
+                          <button 
+                            onClick={() => setProductSearchTerm('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-mecura-silver hover:text-white"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Disease / Pathology Free Search */}
+                      <div className="relative">
+                        <Activity className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-mecura-neon" />
+                        <input
+                          type="text"
+                          placeholder="Filtrar por patologia ou doença (ex: Ansiedade, Dor...)"
+                          value={productDiseaseSearchInput}
+                          onChange={(e) => {
+                            setProductDiseaseSearchInput(e.target.value);
+                            if (e.target.value) setProductDiseaseFilter('all');
+                          }}
+                          className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl py-2.5 pl-10 pr-9 text-xs sm:text-sm text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors"
+                        />
+                        {productDiseaseSearchInput && (
+                          <button 
+                            onClick={() => setProductDiseaseSearchInput('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-mecura-silver hover:text-white"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dropdowns & Origin Filter Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      {/* Brand / Fabricante Select */}
+                      <div>
+                        <label className="block text-[10px] font-semibold text-mecura-silver mb-1 uppercase tracking-wider">
+                          Marca / Fabricante
+                        </label>
+                        <select
+                          value={productBrandFilter}
+                          onChange={(e) => setProductBrandFilter(e.target.value)}
+                          className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-mecura-neon/50 transition-colors"
+                        >
+                          <option value="all">Todas as Marcas ({availableBrands.length})</option>
+                          {availableBrands.map(brand => (
+                            <option key={brand} value={brand}>{brand}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Pathology / Doença Select */}
+                      <div>
+                        <label className="block text-[10px] font-semibold text-mecura-silver mb-1 uppercase tracking-wider">
+                          Patologia / Indicação Clínica
+                        </label>
+                        <select
+                          value={productDiseaseFilter}
+                          onChange={(e) => {
+                            setProductDiseaseFilter(e.target.value);
+                            if (e.target.value !== 'all') {
+                              setProductDiseaseSearchInput('');
+                            }
+                          }}
+                          className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-mecura-neon/50 transition-colors"
+                        >
+                          <option value="all">Todas as Patologias ({availableDiseases.length})</option>
+                          {availableDiseases.map(disease => (
+                            <option key={disease} value={disease}>{disease}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Origin Buttons */}
+                      <div>
+                        <label className="block text-[10px] font-semibold text-mecura-silver mb-1 uppercase tracking-wider">
+                          Origem do Medicamento
+                        </label>
+                        <div className="grid grid-cols-3 gap-1 bg-[#12121A] p-1 rounded-xl border border-mecura-elevated">
+                          <button
+                            onClick={() => setProductOriginFilter('all')}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                              productOriginFilter === 'all'
+                                ? 'bg-mecura-neon text-black shadow-sm'
+                                : 'text-mecura-silver hover:text-white'
+                            }`}
+                          >
+                            Todas
+                          </button>
+                          <button
+                            onClick={() => setProductOriginFilter('importado')}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                              productOriginFilter === 'importado'
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                                : 'text-mecura-silver hover:text-white'
+                            }`}
+                          >
+                            Importado
+                          </button>
+                          <button
+                            onClick={() => setProductOriginFilter('nacional')}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                              productOriginFilter === 'nacional'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                : 'text-mecura-silver hover:text-white'
+                            }`}
+                          >
+                            Nacional
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Pathology Pills Row with Drag & Smooth Scroll */}
+                    <div className="flex items-center gap-1.5 pt-1 pb-1">
+                      <span className="text-[10px] text-mecura-silver font-bold uppercase tracking-wider whitespace-nowrap mr-0.5 flex items-center gap-1">
+                        <Tag className="w-3 h-3 text-mecura-neon" />
+                        Atalhos:
+                      </span>
+
+                      {/* Left Scroll Button */}
+                      <button
+                        type="button"
+                        onClick={() => scrollShortcuts('left')}
+                        className="w-6 h-6 rounded-lg bg-[#12121A] border border-mecura-elevated flex items-center justify-center text-mecura-silver hover:text-white hover:border-mecura-neon/50 shrink-0 transition-all shadow-sm"
+                        title="Rolar atalhos para a esquerda"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Scrollable Container */}
+                      <div 
+                        ref={shortcutsContainerRef}
+                        onMouseDown={handleShortcutsMouseDown}
+                        onMouseMove={handleShortcutsMouseMove}
+                        onMouseUp={handleShortcutsMouseUpOrLeave}
+                        onMouseLeave={handleShortcutsMouseUpOrLeave}
+                        onWheel={handleShortcutsWheel}
+                        className={`flex-1 flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-mecura-neon/40 scrollbar-track-transparent select-none ${
+                          isDraggingState ? 'cursor-grabbing' : 'cursor-grab'
+                        }`}
+                      >
+                        {[
+                          "Ansiedade",
+                          "Dor Crônica",
+                          "Insônia",
+                          "Epilepsia",
+                          "Fibromialgia",
+                          "Autismo (TEA)",
+                          "TDAH",
+                          "Parkinson",
+                          "Alzheimer",
+                          "Enxaqueca",
+                          "Inflamação",
+                          "Doença de Crohn",
+                          "Esclerose Múltipla",
+                          "Síndrome Metabólica",
+                          "Cuidados Paliativos",
+                          "Dependência Química",
+                          "Artrite & Artrose",
+                          "Endometriose",
+                          "Depressão"
+                        ].map(pill => {
+                          const isSelected = 
+                            normalizeSearch(productDiseaseFilter).includes(normalizeSearch(pill)) || 
+                            normalizeSearch(productDiseaseSearchInput).includes(normalizeSearch(pill));
+                          return (
+                            <button
+                              key={pill}
+                              type="button"
+                              onClick={() => {
+                                if (dragMoved.current) return;
+                                if (isSelected) {
+                                  setProductDiseaseFilter('all');
+                                  setProductDiseaseSearchInput('');
+                                } else {
+                                  setProductDiseaseFilter(pill);
+                                  setProductDiseaseSearchInput('');
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all border shrink-0 ${
+                                isSelected
+                                  ? 'bg-mecura-neon text-black font-bold border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.25)] scale-[1.02]'
+                                  : 'bg-[#12121A] text-mecura-silver hover:text-white hover:border-mecura-neon/40 border-mecura-elevated'
+                              }`}
+                            >
+                              {pill}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Right Scroll Button */}
+                      <button
+                        type="button"
+                        onClick={() => scrollShortcuts('right')}
+                        className="w-6 h-6 rounded-lg bg-[#12121A] border border-mecura-elevated flex items-center justify-center text-mecura-silver hover:text-white hover:border-mecura-neon/50 shrink-0 transition-all shadow-sm"
+                        title="Rolar atalhos para a direita"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+
+                      {(productSearchTerm || productBrandFilter !== 'all' || productDiseaseFilter !== 'all' || productDiseaseSearchInput || productOriginFilter !== 'all') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductSearchTerm('');
+                            setProductBrandFilter('all');
+                            setProductDiseaseFilter('all');
+                            setProductDiseaseSearchInput('');
+                            setProductOriginFilter('all');
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300 font-semibold underline whitespace-nowrap px-1.5 shrink-0"
+                        >
+                          Limpar
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                    {productCategories.flatMap(cat => cat.products)
-                      .filter(p => 
-                        (p.name || '').toLowerCase().includes((productSearchTerm || '').toLowerCase()) ||
-                        (p.manufacturer || '').toLowerCase().includes((productSearchTerm || '').toLowerCase()) ||
-                        (p.type || '').toLowerCase().includes((productSearchTerm || '').toLowerCase())
-                      )
-                      .map((product, idx) => (
-                        <div 
-                          key={idx}
-                          onClick={() => setSelectedProduct(product)}
-                          className="p-4 rounded-xl border border-mecura-elevated bg-[#0A0A0F] hover:border-mecura-neon/50 cursor-pointer transition-all flex justify-between items-center group"
-                        >
-                          <div>
-                            <h4 className="text-white font-bold group-hover:text-mecura-neon transition-colors">{product.name}</h4>
-                            <p className="text-xs text-mecura-silver mt-1">{product.manufacturer} • {product.type}</p>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs px-2 py-1 bg-mecura-surface-light rounded-md text-mecura-silver border border-white/5">
-                              {product.origin}
-                            </span>
-                          </div>
+
+                  {/* Active Filters Badges & Banners */}
+                  <div className="px-4 pt-3 pb-1 border-b border-mecura-elevated/40 bg-[#0A0A0F]/60">
+                    {/* Relaxed Filter Notification */}
+                    {isRelaxedForQuery && (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-center justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 text-xs">
+                          <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                          <span className="text-white">
+                            Exibindo todos os <strong>{filteredGuideProducts.length}</strong> medicamentos encontrados para <strong>"{productSearchTerm || productBrandFilter}"</strong>. O filtro de patologia foi flexibilizado para não ocultar medicamentos da marca.
+                          </span>
                         </div>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductDiseaseFilter('all');
+                            setProductDiseaseSearchInput('');
+                          }}
+                          className="px-2.5 py-1 bg-amber-400 text-black font-bold rounded-lg text-xs hover:bg-amber-300 transition-colors whitespace-nowrap shrink-0"
+                        >
+                          Remover Patologia
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Restricted Count Notification */}
+                    {!isRelaxedForQuery && totalMatchingQueryWithoutDisease > filteredGuideProducts.length && (productSearchTerm || productBrandFilter !== 'all') && (
+                      <div className="bg-mecura-neon/10 border border-mecura-neon/30 rounded-xl p-2.5 flex items-center justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 text-xs">
+                          <Info className="w-4 h-4 text-mecura-neon shrink-0" />
+                          <span className="text-white">
+                            Exibindo <strong>{filteredGuideProducts.length}</strong> de <strong>{totalMatchingQueryWithoutDisease}</strong> medicamentos de <strong>"{productSearchTerm || productBrandFilter}"</strong> devido ao filtro de patologia ativo (<em>{productDiseaseFilter !== 'all' ? productDiseaseFilter : productDiseaseSearchInput}</em>).
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductDiseaseFilter('all');
+                            setProductDiseaseSearchInput('');
+                          }}
+                          className="px-2.5 py-1 bg-mecura-neon text-black font-bold rounded-lg text-xs hover:bg-[#b5ff33] transition-colors whitespace-nowrap shrink-0"
+                        >
+                          Ver todos os {totalMatchingQueryWithoutDisease} produtos
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Active Filter Chips */}
+                    {(productSearchTerm || productBrandFilter !== 'all' || productDiseaseFilter !== 'all' || productDiseaseSearchInput || productOriginFilter !== 'all') && (
+                      <div className="flex items-center gap-1.5 flex-wrap pb-2 text-xs">
+                        <span className="text-[10px] text-mecura-silver uppercase font-bold tracking-wider mr-1">Filtros ativos:</span>
+                        
+                        {productSearchTerm && (
+                          <span className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon px-2 py-0.5 rounded-md font-medium text-xs">
+                            Busca: "{productSearchTerm}"
+                            <button type="button" onClick={() => setProductSearchTerm('')} className="hover:text-white"><X className="w-3 h-3" /></button>
+                          </span>
+                        )}
+
+                        {productBrandFilter !== 'all' && (
+                          <span className="inline-flex items-center gap-1 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 px-2 py-0.5 rounded-md font-medium text-xs">
+                            Marca: {productBrandFilter}
+                            <button type="button" onClick={() => setProductBrandFilter('all')} className="hover:text-white"><X className="w-3 h-3" /></button>
+                          </span>
+                        )}
+
+                        {(productDiseaseFilter !== 'all' || productDiseaseSearchInput) && (
+                          <span className="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/30 text-purple-300 px-2 py-0.5 rounded-md font-medium text-xs">
+                            Patologia: {productDiseaseFilter !== 'all' ? productDiseaseFilter : productDiseaseSearchInput}
+                            <button type="button" onClick={() => { setProductDiseaseFilter('all'); setProductDiseaseSearchInput(''); }} className="hover:text-white"><X className="w-3 h-3" /></button>
+                          </span>
+                        )}
+
+                        {productOriginFilter !== 'all' && (
+                          <span className="inline-flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded-md font-medium text-xs">
+                            Origem: {productOriginFilter === 'importado' ? 'Importados' : 'Nacionais'}
+                            <button type="button" onClick={() => setProductOriginFilter('all')} className="hover:text-white"><X className="w-3 h-3" /></button>
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductSearchTerm('');
+                            setProductBrandFilter('all');
+                            setProductDiseaseFilter('all');
+                            setProductDiseaseSearchInput('');
+                            setProductOriginFilter('all');
+                          }}
+                          className="text-[11px] text-red-400 hover:text-red-300 underline font-medium ml-1"
+                        >
+                          Limpar todos
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Product List */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                    {filteredGuideProducts.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <div className="w-14 h-14 rounded-2xl bg-[#12121A] border border-mecura-elevated flex items-center justify-center mb-3 text-mecura-silver">
+                          <Search className="w-7 h-7" />
+                        </div>
+                        <h4 className="text-white font-bold text-base mb-1">Nenhum medicamento encontrado</h4>
+                        <p className="text-mecura-silver text-xs max-w-sm mb-4">
+                          Tente buscar por outro termo, fabricante ou limpar os filtros de patologia.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setProductSearchTerm('');
+                            setProductBrandFilter('all');
+                            setProductDiseaseFilter('all');
+                            setProductDiseaseSearchInput('');
+                            setProductOriginFilter('all');
+                          }}
+                          className="px-4 py-2 bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/30 rounded-xl text-xs font-bold transition-all"
+                        >
+                          Resetar Filtros
+                        </button>
+                      </div>
+                    ) : (
+                      filteredGuideProducts.map((product, idx) => {
+                        const isImported = (product.origin || '').toLowerCase().includes('importado') || (product.origin || '').toLowerCase().includes('eua');
+                        const indicationsArray = product.indications 
+                          ? product.indications.split(/[,;•\n]/).map(s => s.trim()).filter(Boolean).slice(0, 3)
+                          : (product.categoryIndications || []).slice(0, 3);
+
+                        return (
+                          <div 
+                            key={idx}
+                            onClick={() => setSelectedProduct(product)}
+                            className="p-4 rounded-xl border border-mecura-elevated bg-[#0A0A0F] hover:border-mecura-neon/60 hover:bg-[#12121A] cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group shadow-sm hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+                          >
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-white font-bold text-sm sm:text-base group-hover:text-mecura-neon transition-colors">
+                                  {product.name}
+                                </h4>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
+                                  isImported
+                                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                }`}>
+                                  {product.origin || (isImported ? 'Importado' : 'Nacional')}
+                                </span>
+                                {product.priceBRL && (
+                                  <span className="text-[11px] font-mono font-bold text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded-md border border-mecura-neon/20">
+                                    R$ {product.priceBRL}
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-mecura-silver flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-mecura-pearl">{product.manufacturer}</span>
+                                <span>•</span>
+                                <span>{product.type}</span>
+                                {product.concentration && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-mecura-silver/80">{product.concentration}</span>
+                                  </>
+                                )}
+                              </p>
+
+                              {/* Indications Badges */}
+                              {indicationsArray.length > 0 && (
+                                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                  {indicationsArray.map((ind, i) => (
+                                    <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-mecura-surface text-mecura-silver border border-white/5">
+                                      {ind}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProduct(product);
+                                }}
+                                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-mecura-neon/10 group-hover:bg-mecura-neon group-hover:text-black text-mecura-neon text-xs font-bold border border-mecura-neon/30 transition-all flex items-center justify-center gap-1.5"
+                              >
+                                <span>Prescrever</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </>
               ) : (
@@ -4096,6 +5169,32 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         psychomotorText={psychomotorReportText}
         setPsychomotorText={setPsychomotorReportText}
         onDownloadPDF={handleDownloadPsychomotorReportFromEditor}
+      />
+
+      {/* Agronomic Report View & Edit Modal */}
+      <AgronomicReportEditorModal
+        isOpen={showAgronomicReportEditorModal}
+        onClose={() => setShowAgronomicReportEditorModal(false)}
+        patientName={agronomicPatientName}
+        setPatientName={setAgronomicPatientName}
+        cpf={agronomicCpf}
+        setCpf={setAgronomicCpf}
+        emissionDate={agronomicEmissionDate}
+        setEmissionDate={setAgronomicEmissionDate}
+        agronomistName={agronomicName}
+        setAgronomistName={setAgronomicName}
+        agronomistCrea={agronomicCrea}
+        setAgronomistCrea={setAgronomicCrea}
+        diagnosis={agronomicDiagnosis}
+        setDiagnosis={setAgronomicDiagnosis}
+        dailyDoseMg={agronomicDailyDoseMg}
+        setDailyDoseMg={setAgronomicDailyDoseMg}
+        targetPlants={agronomicTargetPlants}
+        setTargetPlants={setAgronomicTargetPlants}
+        agronomicText={agronomicText}
+        setAgronomicText={setAgronomicText}
+        onDownloadPDF={handleDownloadAgronomicReportFromEditor}
+        onSendToChat={handleSendAgronomicReportToChat}
       />
     </div>
   );

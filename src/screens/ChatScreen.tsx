@@ -309,7 +309,11 @@ export function ChatScreen() {
       {/* Chat Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
         <AnimatePresence>
-          {messages.map((msg) => (
+          {[...messages].sort((a, b) => {
+            const tA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
+            const tB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
+            return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
+          }).map((msg) => (
             <motion.div
               key={msg.id}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -510,6 +514,7 @@ export function ChatScreen() {
                     "Consulta médica individualizada",
                     "Laudo médico inicial detalhado",
                     "Laudo psicomotor (Drogômetro)",
+                    "Laudo agronômico (Cálculo de cultivo / HC)",
                     "Retorno garantido em 90 dias",
                     "Suporte via chat e acompanhamento",
                     "Assessoria para importação e HC"
@@ -526,7 +531,7 @@ export function ChatScreen() {
                 <div className="bg-[#181822] border border-[#2a2a35] rounded-2xl p-5 flex items-center justify-between mb-8">
                   <div>
                     <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Teleconsulta Completa</p>
-                    <p className="text-white font-bold text-2xl">R$ 250<span className="text-gray-500 text-sm">,00</span></p>
+                    <p className="text-white font-bold text-2xl">R$ 249<span className="text-gray-500 text-sm">,00</span></p>
                   </div>
                   <div className="w-12 h-12 rounded-full bg-mecura-neon/10 flex items-center justify-center">
                     <ShieldCheck className="w-6 h-6 text-mecura-neon" />
@@ -552,7 +557,7 @@ export function ChatScreen() {
                 </div>
                 <div>
                   <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Aprovado!</h3>
-                  <p className="text-white text-sm">O pagamento da Consulta Premium (R$ 250,00) foi confirmado. O médico já foi notificado.</p>
+                  <p className="text-white text-sm">O pagamento da Consulta Premium (R$ 249,00) foi confirmado. O médico já foi notificado.</p>
                 </div>
               </div>
             ) : (
