@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -75,6 +75,16 @@ export function MedicalReportEditorModal({
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleDownload = () => {
@@ -88,7 +98,14 @@ export function MedicalReportEditorModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md">
+      <div 
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md"
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -146,9 +163,12 @@ export function MedicalReportEditorModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 hover:bg-white/10 rounded-full text-mecura-silver hover:text-white transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
+                title="Fechar e sair sem enviar o laudo"
+                aria-label="Fechar laudo"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Fechar (Sair)</span>
               </button>
             </div>
           </div>
@@ -420,9 +440,11 @@ export function MedicalReportEditorModal({
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-6 py-2.5 bg-transparent border border-mecura-elevated rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-white hover:bg-white/5 transition-all"
+              className="w-full sm:w-auto px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-red-400 transition-all flex items-center justify-center gap-2"
+              title="Sair desta tela sem enviar o laudo para o paciente"
             >
-              Cancelar
+              <X className="w-4 h-4 text-red-400" />
+              <span>Sair sem Enviar</span>
             </button>
 
             <div className="flex items-center gap-3 w-full sm:w-auto">

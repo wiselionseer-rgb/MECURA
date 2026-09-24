@@ -33,6 +33,8 @@ import {
   Scale,
   XCircle
 } from 'lucide-react';
+import { LegalInfoModal } from '../components/LegalInfoModal';
+import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 
 // Custom Pix Icon to match the print
 const PixIcon = ({ className }: { className?: string }) => (
@@ -57,6 +59,7 @@ export function PremiumCheckoutScreen() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
+  const [showLegalModal, setShowLegalModal] = useState(false);
 
   const basePrice = 249.90;
     let finalPrice = basePrice;
@@ -958,7 +961,20 @@ export function PremiumCheckoutScreen() {
         >
           Pular por enquanto e ir para o painel
         </button>
+
+        <button
+          type="button"
+          onClick={() => setShowLegalModal(true)}
+          className="text-[10px] text-[#8A8A9E]/60 hover:text-[#8A8A9E] transition-colors mt-0.5 font-mono text-center cursor-pointer"
+        >
+          {INSTITUTIONAL_INFO.companyName} • CNPJ {INSTITUTIONAL_INFO.cnpj} • Termos & LGPD
+        </button>
       </div>
+
+      <LegalInfoModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+      />
     </div>
   );
 }

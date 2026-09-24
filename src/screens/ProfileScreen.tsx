@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, User, Mail, Phone, Save, Flame, ShieldCheck, Calendar, CreditCard } from 'lucide-react';
+import { ChevronLeft, User, Mail, Phone, Save, Flame, ShieldCheck, Calendar, CreditCard, Scale, Lock, FileText, ChevronRight, Building2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { auth, db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { LegalInfoModal } from '../components/LegalInfoModal';
+import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 
 const formatBirthDate = (val: string) => {
   const digits = val.replace(/\D/g, '').slice(0, 8);
@@ -46,6 +48,13 @@ export function ProfileScreen() {
   const [cpf, setCpf] = useState(userCpf);
   const [birthDate, setBirthDate] = useState(userBirthDate || answers?.birthDate || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<'parecer' | 'privacidade' | 'termos' | 'empresa'>('privacidade');
+
+  const openLegalModal = (tab: 'parecer' | 'privacidade' | 'termos' | 'empresa') => {
+    setLegalModalTab(tab);
+    setShowLegalModal(true);
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -212,6 +221,86 @@ export function ProfileScreen() {
               />
             </div>
           </div>
+
+          {/* Segurança, Jurídico & LGPD Section */}
+          <div className="pt-4 border-t border-[#1F1F2E] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#8A8A9E]">
+                Segurança, Jurídico & LGPD
+              </span>
+              <span className="text-[10px] text-mecura-neon font-medium">
+                {INSTITUTIONAL_INFO.companyName}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {/* Item: Política de Privacidade */}
+              <button
+                type="button"
+                onClick={() => openLegalModal('privacidade')}
+                className="w-full p-3.5 rounded-2xl bg-[#161622] border border-[#262636] hover:border-blue-500/30 transition-all flex items-center justify-between group cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                    <Lock className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <h5 className="text-[13px] font-bold text-white group-hover:text-blue-400 transition-colors">
+                      Privacidade & LGPD
+                    </h5>
+                    <p className="text-[11px] text-[#8A8A9E]">
+                      Como protegemos seus dados clínicos e sensíveis
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#8A8A9E] group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
+              </button>
+
+              {/* Item: Parecer Jurídico de Resguardo */}
+              <button
+                type="button"
+                onClick={() => openLegalModal('parecer')}
+                className="w-full p-3.5 rounded-2xl bg-[#161622] border border-[#262636] hover:border-mecura-neon/30 transition-all flex items-center justify-between group cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-mecura-neon/10 border border-mecura-neon/20 flex items-center justify-center shrink-0">
+                    <Scale className="w-4 h-4 text-mecura-neon" />
+                  </div>
+                  <div>
+                    <h5 className="text-[13px] font-bold text-white group-hover:text-mecura-neon transition-colors">
+                      Parecer Jurídico de Resguardo
+                    </h5>
+                    <p className="text-[11px] text-[#8A8A9E]">
+                      Dr. Max Warner Santos Souza (OAB/MG 154.052)
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#8A8A9E] group-hover:text-mecura-neon group-hover:translate-x-0.5 transition-all" />
+              </button>
+
+              {/* Item: Termos de Uso & CNPJ */}
+              <button
+                type="button"
+                onClick={() => openLegalModal('empresa')}
+                className="w-full p-3.5 rounded-2xl bg-[#161622] border border-[#262636] hover:border-emerald-500/30 transition-all flex items-center justify-between group cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                    <Building2 className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h5 className="text-[13px] font-bold text-white group-hover:text-emerald-400 transition-colors">
+                      Dados Corporativos & CNPJ
+                    </h5>
+                    <p className="text-[11px] text-[#8A8A9E] font-mono">
+                      CNPJ: {INSTITUTIONAL_INFO.cnpj} • DPO
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#8A8A9E] group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -226,6 +315,12 @@ export function ProfileScreen() {
           Salvar Alterações
         </Button>
       </div>
+
+      <LegalInfoModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+        initialTab={legalModalTab}
+      />
     </div>
   );
 }

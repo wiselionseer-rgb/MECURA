@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ShieldCheck, Download, Eye, Edit3, User, Calendar, ClipboardList } from 'lucide-react';
 
@@ -48,6 +48,16 @@ export function PsychomotorReportEditorModal({
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleDownload = () => {
@@ -61,7 +71,14 @@ export function PsychomotorReportEditorModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md">
+      <div 
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md"
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -91,6 +108,7 @@ export function PsychomotorReportEditorModal({
             <div className="flex items-center gap-3">
               <div className="bg-mecura-surface border border-mecura-elevated rounded-xl p-1 flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setActiveTab('edit')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
                     activeTab === 'edit'
@@ -101,6 +119,7 @@ export function PsychomotorReportEditorModal({
                   <Edit3 className="w-3.5 h-3.5" /> Editar Seções
                 </button>
                 <button
+                  type="button"
                   onClick={() => setActiveTab('preview')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
                     activeTab === 'preview'
@@ -111,11 +130,17 @@ export function PsychomotorReportEditorModal({
                   <Eye className="w-3.5 h-3.5" /> Prévia Laudo A4
                 </button>
               </div>
+
+              {/* Botão de Fechar / Sair sem Enviar com X bem visível */}
               <button
+                type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-full bg-mecura-surface border border-mecura-elevated flex items-center justify-center text-mecura-silver hover:text-white hover:bg-white/5 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
+                title="Fechar e sair sem enviar o laudo"
+                aria-label="Fechar laudo"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Fechar (Sair)</span>
               </button>
             </div>
           </div>
@@ -280,10 +305,13 @@ export function PsychomotorReportEditorModal({
 
           <div className="p-4 sm:p-5 border-t border-mecura-elevated bg-[#0A0A0F]/90 flex flex-wrap-reverse justify-between gap-4 items-center rounded-b-2xl md:rounded-b-3xl">
             <button
+              type="button"
               onClick={onClose}
-              className="px-6 py-2.5 bg-transparent border border-mecura-elevated text-gray-300 rounded-xl text-sm font-semibold hover:bg-mecura-surface transition-colors"
+              className="px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-sm font-semibold text-mecura-silver hover:text-red-400 transition-all flex items-center gap-2"
+              title="Sair desta tela sem enviar o laudo para o paciente"
             >
-              Cancelar
+              <X className="w-4 h-4 text-red-400" />
+              <span>Sair sem Enviar</span>
             </button>
             <button
               onClick={handleDownload}

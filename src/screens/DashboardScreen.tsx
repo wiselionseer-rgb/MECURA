@@ -35,8 +35,13 @@ import {
   Star,
   Users,
   ArrowUpRight,
-  X
+  X,
+  Scale,
+  Building2,
+  Lock
  } from 'lucide-react';
+import { LegalInfoModal } from '../components/LegalInfoModal';
+import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -100,6 +105,13 @@ export function DashboardScreen() {
   const [promoModal, setPromoModal] = useState<'hc' | 'consultoria' | 'sementes' | null>(null);
   const [showAllHighlightsModal, setShowAllHighlightsModal] = useState(false);
   const [openedFromHighlights, setOpenedFromHighlights] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<'parecer' | 'privacidade' | 'termos' | 'empresa'>('parecer');
+
+  const openLegalModalWithTab = (tab: 'parecer' | 'privacidade' | 'termos' | 'empresa') => {
+    setLegalModalTab(tab);
+    setShowLegalModal(true);
+  };
 
   useEffect(() => {
     const shouldReturn = 
@@ -797,6 +809,77 @@ export function DashboardScreen() {
           </motion.div>
         </section>
 
+        {/* Institutional & Legal / LGPD Transparency Section */}
+        <section className="pt-2">
+          <motion.div
+            variants={itemVariants}
+            className="p-5 rounded-[28px] bg-gradient-to-b from-[#14141E] to-[#0D0D14] border border-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.4)] relative overflow-hidden"
+          >
+            {/* Subtle glow */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-mecura-neon/5 blur-[40px] rounded-full pointer-events-none" />
+
+            <div className="flex items-start justify-between gap-3 mb-3.5 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(166,255,0,0.15)]">
+                  <Scale className="w-5 h-5 text-mecura-neon" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-[14px] font-bold text-white tracking-tight leading-tight">
+                      {INSTITUTIONAL_INFO.companyName}
+                    </h4>
+                    <span className="text-[8px] font-bold uppercase tracking-wider text-mecura-neon bg-mecura-neon/10 px-1.5 py-0.5 rounded-full border border-mecura-neon/20">
+                      Conformidade
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#8A8A9E] mt-0.5 font-mono">
+                    CNPJ: <strong className="text-white font-medium">{INSTITUTIONAL_INFO.cnpj}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => navigate('/legal')}
+                className="text-[11px] text-mecura-neon hover:underline font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+              >
+                <span>Ver tudo</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-[#9A9AB0] leading-relaxed mb-3.5 relative z-10">
+              Amparo técnico-jurídico sob o <strong>Parecer de Resguardo do Dr. Max Warner Santos Souza (OAB/MG 154.052)</strong>, jurisprudência do STJ para autocultivo medicinal e conformidade estrita com a LGPD (Lei nº 13.709/2018).
+            </p>
+
+            {/* Quick Action Pills */}
+            <div className="grid grid-cols-3 gap-2 relative z-10 pt-1 border-t border-white/5">
+              <button
+                onClick={() => openLegalModalWithTab('parecer')}
+                className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/10 hover:border-mecura-neon/30 border border-white/5 text-[11px] font-medium text-white/90 hover:text-white transition-all text-center cursor-pointer truncate flex items-center justify-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-mecura-neon shrink-0" />
+                <span className="truncate">Parecer Jurídico</span>
+              </button>
+
+              <button
+                onClick={() => openLegalModalWithTab('privacidade')}
+                className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/10 hover:border-mecura-neon/30 border border-white/5 text-[11px] font-medium text-white/90 hover:text-white transition-all text-center cursor-pointer truncate flex items-center justify-center gap-1.5"
+              >
+                <Lock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="truncate">Privacidade LGPD</span>
+              </button>
+
+              <button
+                onClick={() => openLegalModalWithTab('termos')}
+                className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/10 hover:border-mecura-neon/30 border border-white/5 text-[11px] font-medium text-white/90 hover:text-white transition-all text-center cursor-pointer truncate flex items-center justify-center gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">Termos de Uso</span>
+              </button>
+            </div>
+          </motion.div>
+        </section>
+
       </motion.div>
 
       {/* Background Ambient Blur */}
@@ -1069,6 +1152,31 @@ export function DashboardScreen() {
                   </p>
                 </div>
               </div>
+
+              {/* Item 8: Parecer Jurídico & LGPD */}
+              <div 
+                onClick={() => {
+                  setShowAllHighlightsModal(false);
+                  openLegalModalWithTab('parecer');
+                }}
+                className="p-3.5 rounded-[18px] bg-[#161622] hover:bg-[#1A1A28] border border-white/5 hover:border-mecura-neon/40 transition-all cursor-pointer group flex items-start gap-3 shadow-sm"
+              >
+                <div className="w-9 h-9 rounded-xl bg-[#1A1A24] border border-white/10 group-hover:border-mecura-neon/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Scale className="w-4.5 h-4.5 text-mecura-neon" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded-full border border-mecura-neon/20">
+                      Transparência & LGPD
+                    </span>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-[#8A8A9E] group-hover:text-mecura-neon group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <h4 className="text-[13px] font-bold text-white group-hover:text-mecura-neon transition-colors truncate">Resguardo Jurídico & Privacidade</h4>
+                  <p className="text-[11px] text-[#8A8A9E] mt-0.5 leading-snug line-clamp-2">
+                    Parecer Dr. Max Warner (OAB/MG 154.052), CNPJ {INSTITUTIONAL_INFO.cnpj} e LGPD.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
@@ -1085,9 +1193,15 @@ export function DashboardScreen() {
       )}
 
       {/* Mariana Chat - Only visible when modals are closed */}
-      {!showAllHighlightsModal && !promoModal && !showReferralModal && <AdvisorChatWidget />}
+      {!showAllHighlightsModal && !promoModal && !showReferralModal && !showLegalModal && <AdvisorChatWidget />}
       
       <ReferralModal isOpen={showReferralModal} onClose={() => setShowReferralModal(false)} />
+      
+      <LegalInfoModal 
+        isOpen={showLegalModal} 
+        onClose={() => setShowLegalModal(false)} 
+        initialTab={legalModalTab} 
+      />
     </div>
   );
 }

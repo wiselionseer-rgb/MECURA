@@ -29,6 +29,7 @@ import { TrackingScreen } from './screens/TrackingScreen';
 import { AlertsScreen } from './screens/AlertsScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { PharmacyScreen } from './screens/PharmacyScreen';
+import { LegalScreen } from './screens/LegalScreen';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { auth } from './firebase';
@@ -86,6 +87,10 @@ export default function App() {
             <Route path="/tracking" element={<TrackingScreen />} />
             <Route path="/alerts" element={<AlertsScreen />} />
             <Route path="/profile" element={<ProfileScreen />} />
+            <Route path="/legal" element={<LegalScreen />} />
+            <Route path="/privacy" element={<LegalScreen />} />
+            <Route path="/privacidade" element={<LegalScreen />} />
+            <Route path="/termos" element={<LegalScreen />} />
           </Route>
 
           {/* Full Screen Routes */}

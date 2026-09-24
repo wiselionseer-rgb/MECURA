@@ -32,6 +32,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { LegalInfoModal } from '../components/LegalInfoModal';
+import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 
 // Custom Pix Icon to match the print
 const PixIcon = ({ className }: { className?: string }) => (
@@ -57,6 +59,7 @@ export function CheckoutScreen() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
+  const [showLegalModal, setShowLegalModal] = useState(false);
 
   const basePrice = selectedOffer === 'basic' ? 49.90 : 249.90;
   let finalPrice = basePrice;
@@ -923,9 +926,24 @@ export function CheckoutScreen() {
               </div>
 
               {/* Security Banner */}
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center gap-2.5 text-xs text-[#8A8A9E] mb-4">
-                <ShieldCheck className="w-4 h-4 text-mecura-neon shrink-0" />
-                <span>Ambiente Seguro Criptografado Mercado Pago • Dados 100% Protegidos</span>
+              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col items-center justify-center gap-2 text-xs text-[#8A8A9E] mb-4 text-center">
+                <div className="flex items-center justify-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-mecura-neon shrink-0" />
+                  <span>Ambiente Seguro Criptografado • Dados 100% Protegidos pela LGPD</span>
+                </div>
+                <div className="text-[11px] text-[#8A8A9E]/80 flex items-center justify-center gap-1.5 flex-wrap">
+                  <span>{INSTITUTIONAL_INFO.companyName}</span>
+                  <span>•</span>
+                  <span>CNPJ: <strong className="text-white font-mono">{INSTITUTIONAL_INFO.cnpj}</strong></span>
+                  <span>•</span>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowLegalModal(true)}
+                    className="text-mecura-neon hover:underline font-semibold cursor-pointer"
+                  >
+                    Políticas & Parecer
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
@@ -1128,9 +1146,22 @@ export function CheckoutScreen() {
             >
               Pular por enquanto e ir para o painel
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowLegalModal(true)}
+              className="text-[10px] text-[#8A8A9E]/60 hover:text-[#8A8A9E] transition-colors mt-1 font-mono"
+            >
+              {INSTITUTIONAL_INFO.companyName} • CNPJ {INSTITUTIONAL_INFO.cnpj} • Termos & LGPD
+            </button>
           </div>
         )}
       </motion.div>
+
+      <LegalInfoModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+      />
     </div>
   );
 }

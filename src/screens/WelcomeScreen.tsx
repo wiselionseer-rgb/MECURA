@@ -6,6 +6,7 @@ import { useStore } from '../store/useStore';
 import { useAdminStore } from '../store/useAdminStore';
 import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
+import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 
 export function WelcomeScreen() {
   
@@ -83,7 +84,13 @@ export function WelcomeScreen() {
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />
         </button>
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/legal')}
+            className="text-white/60 font-medium text-xs hover:text-mecura-neon transition-colors tracking-wide uppercase"
+          >
+            Jurídico
+          </button>
           <button 
             onClick={() => {
               setShowProfessionalModal(true);
@@ -95,7 +102,10 @@ export function WelcomeScreen() {
           >
             Acesso Restrito
           </button>
-          <button className="text-white/90 font-medium text-sm hover:text-mecura-neon transition-colors decoration-white/30 underline-offset-4">
+          <button 
+            onClick={() => window.open(`https://wa.me/${INSTITUTIONAL_INFO.supportWhatsapp}`, '_blank')}
+            className="text-white/90 font-medium text-sm hover:text-mecura-neon transition-colors decoration-white/30 underline-offset-4"
+          >
             Suporte
           </button>
         </div>
@@ -310,6 +320,17 @@ export function WelcomeScreen() {
             Acessar Área do Paciente
           </Button>
         )}
+
+        <p className="text-[10px] text-center text-[#8A8A9E]/70 pt-1 font-sans">
+          {INSTITUTIONAL_INFO.companyName} • CNPJ {INSTITUTIONAL_INFO.cnpj} •{' '}
+          <button 
+            type="button" 
+            onClick={() => navigate('/legal')} 
+            className="text-[#8A8A9E] hover:text-white underline cursor-pointer"
+          >
+            Termos & Privacidade (LGPD)
+          </button>
+        </p>
       </motion.div>
 
       {/* Professional Login Modal */}

@@ -389,8 +389,8 @@ export function DoctorDashboardScreen() {
   const [agronomicName, setAgronomicName] = useState('Wilian Dalenogare Pereira');
   const [agronomicCrea, setAgronomicCrea] = useState('CREA-PR 172.458/D');
   const [agronomicDiagnosis, setAgronomicDiagnosis] = useState('');
-  const [agronomicDailyDoseMg, setAgronomicDailyDoseMg] = useState(100);
-  const [agronomicTargetPlants, setAgronomicTargetPlants] = useState(12);
+  const [agronomicDailyDoseMg, setAgronomicDailyDoseMg] = useState(5900);
+  const [agronomicTargetPlants, setAgronomicTargetPlants] = useState(158);
   const [agronomicText, setAgronomicText] = useState('');
 
   // Medical Report (Laudo Médico) Editor & Preview States
@@ -1258,9 +1258,9 @@ CIDs Secundários: ${cidsSecundarios}`;
   };
 
   const handleOpenAgronomicReportEditor = () => {
-    const pName = currentPatient?.patientName || userName || 'Paciente';
+    const pName = currentPatient?.patientName || userName || 'LUCAS DANIEL NERES';
     const patientAnswers = currentPatient?.answers || answers;
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || '057.436.591-50';
     
     setAgronomicPatientName(pName);
     setAgronomicCpf(pCpf);
@@ -1268,12 +1268,12 @@ CIDs Secundários: ${cidsSecundarios}`;
     setAgronomicName('Wilian Dalenogare Pereira');
     setAgronomicCrea('CREA-PR 172.458/D');
     
-    const condition = patientAnswers?.mainSymptoms || patientAnswers?.queixaPrincipal || patientAnswers?.pathology || 'Tratamento de Dor Crônica e Modulação do Sono (CID 10 G47 / R52)';
+    const condition = patientAnswers?.mainSymptoms || patientAnswers?.queixaPrincipal || patientAnswers?.pathology || 'Transtorno de Distúrbios no Sono (CID 10 G47) e Lombalgia (CID 10 R54.5 / M54.5)';
     setAgronomicDiagnosis(condition);
-    setAgronomicDailyDoseMg(100);
-    setAgronomicTargetPlants(12);
+    setAgronomicDailyDoseMg(5900);
+    setAgronomicTargetPlants(158);
 
-    const defaultAgronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa e o planejamento operacional para o cultivo doméstico de espécimes de Cannabis sativa L., estritamente voltado à produção de extratos terapêuticos integrais de uso contínuo, seguro e exclusivo do(a) paciente ${pName}, em conformidade com as Boas Práticas Agrícolas e de Coleta (GACP) e a prescrição médica que instrui a ação de Habeas Corpus Preventivo para salvo-conduto.`;
+    const defaultAgronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa e o planejamento operacional para o cultivo pessoal de espécimes de Cannabis sativa L., estritamente voltado à produção de extratos terapêuticos integrais de uso contínuo, seguro e exclusivo do(a) paciente ${pName}, em conformidade com as Boas Práticas Agrícolas e de Coleta (GACP), a RDC ANVISA nº 335/2020 e a prescrição médica que instrui a ação de Habeas Corpus Preventivo para salvo-conduto.`;
     setAgronomicText(defaultAgronomicText);
     setShowAgronomicReportEditorModal(true);
   };
@@ -1293,9 +1293,15 @@ CIDs Secundários: ${cidsSecundarios}`;
   };
 
   const handleSendAgronomicReportToChat = () => {
+    const annualGrams = ((agronomicDailyDoseMg * 365) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+    const dryFlowerMargin = (((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const wetFlower = (((((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038) / 0.30)).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const seeds = Math.round(agronomicTargetPlants * 1.3038);
+    const perCycle = Math.round(agronomicTargetPlants / 4);
+
     addMessage({
       sender: 'doctor',
-      text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${agronomicPatientName}\n- **Eng. Agrônomo Responsável:** ${agronomicName} (${agronomicCrea})\n- **Dimensionamento Recomendado:** ${agronomicTargetPlants} plantas no total (${Math.ceil(agronomicTargetPlants / 3)} plantas em floração por ciclo rotativo)\n- **Demanda Terapêutica:** ${agronomicDailyDoseMg} mg/dia\n\nEste laudo técnico oficial faz parte do seu **Pacote Premium** e foi anexado ao seu prontuário legal para instrução do processo de Habeas Corpus.`
+      text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${agronomicPatientName}\n- **CPF:** ${agronomicCpf}\n- **Consultor e Eng. Agrônomo:** ${agronomicName} (${agronomicCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* com finalidade medicinal (GACP / RDC ANVISA)\n- **Patologias / CIDs:** ${agronomicDiagnosis}\n- **Demanda Farmacológica:** ${agronomicDailyDoseMg} mg/dia de extrato integral (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80%)\n- **Dimensionamento Autorizado:** ${agronomicTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades importadas\n\nEste parecer pericial oficial de 3 páginas foi emitido com fundamentação nas Boas Práticas GACP e RDC da ANVISA, sendo anexado ao seu prontuário legal para instrução de ação de Habeas Corpus Preventivo.`
     });
     setShowAgronomicReportEditorModal(false);
   };

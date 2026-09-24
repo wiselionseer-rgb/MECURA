@@ -103,7 +103,13 @@ export function AppLayout() {
 
   useEffect(() => {
     // Check if user has state or is logged in
-    const isPublicRoute = location.pathname === '/' || location.pathname === '/onboarding';
+    const isPublicRoute = 
+      location.pathname === '/' || 
+      location.pathname === '/onboarding' ||
+      location.pathname === '/legal' ||
+      location.pathname === '/privacy' ||
+      location.pathname === '/privacidade' ||
+      location.pathname === '/termos';
     
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (!isPublicRoute && !user && !userName) {

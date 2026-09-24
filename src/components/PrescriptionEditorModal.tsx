@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -69,6 +69,16 @@ export function PrescriptionEditorModal({
 }: PrescriptionEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -266,7 +276,14 @@ export function PrescriptionEditorModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md">
+      <div 
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md"
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -334,9 +351,12 @@ export function PrescriptionEditorModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 text-mecura-silver hover:text-white hover:bg-mecura-surface rounded-xl transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
+                title="Fechar receita"
+                aria-label="Fechar receita"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Fechar</span>
               </button>
             </div>
           </div>

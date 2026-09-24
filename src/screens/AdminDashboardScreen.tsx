@@ -28,7 +28,7 @@ import {
   Bot,
   User,
   X, Key, AlertTriangle
-, Edit3, Check, LogOut, RefreshCw } from 'lucide-react';
+, Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
@@ -36,10 +36,11 @@ import { Button } from '../components/ui/Button';
 import { db, auth } from '../firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
+import { INSTITUTIONAL_INFO, LEGAL_OPINION_DATA, PRIVACY_POLICY_LGPD_DATA, TERMS_OF_USE_DATA } from '../data/legalAndPrivacy';
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda' | 'password_requests'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda' | 'password_requests' | 'legal'>('overview');
   
   
 
@@ -312,7 +313,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               image: { type: 'jpeg' as 'jpeg', quality: 0.98 },
               html2canvas: { scale: 2 },
               jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-              pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+              pagebreak: { mode: ['css', 'legacy'] }
           };
           html2pdf().set(opt).from(element).save();
       } catch (e) {
@@ -489,7 +490,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           { id: 'agronomic', label: 'Laudo Agronômico', icon: FileText },
           { id: 'coupons', label: 'Cupons', icon: Ticket },
           { id: 'notifications', label: 'Notificações', icon: Bell },
-          { id: 'password_requests', label: 'Trocas de Senha', icon: Key }
+          { id: 'password_requests', label: 'Trocas de Senha', icon: Key },
+          { id: 'legal', label: 'Jurídico & LGPD', icon: Scale }
         ].map((tab) => {
           const Icon = tab.icon;
           const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
@@ -1163,6 +1165,153 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'legal' && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <Scale className="w-7 h-7 text-mecura-neon" />
+                  <span>Jurídico, LGPD & Resguardo Institucional</span>
+                </h2>
+                <p className="text-sm text-[#8A8A9E] mt-1">
+                  Diretrizes regulatórias, parecer técnico do Dr. Max Warner e conformidade com a LGPD.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={() => window.open('/legal', '_blank')}
+                  className="bg-mecura-neon text-black hover:bg-[#8fe000] font-bold text-xs"
+                >
+                  <Building2 className="w-4 h-4 mr-1.5" />
+                  Ver Página Pública (/legal)
+                </Button>
+              </div>
+            </div>
+
+            {/* Corporate Box */}
+            <div className="bg-[#161622] border border-mecura-neon/30 rounded-2xl p-6 relative overflow-hidden shadow-xl">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-mecura-neon/10 blur-[50px] rounded-full pointer-events-none" />
+              
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center shrink-0">
+                    <Building2 className="w-7 h-7 text-mecura-neon" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider bg-mecura-neon/10 px-2 py-0.5 rounded-full border border-mecura-neon/20">
+                      Entidade Oficial
+                    </span>
+                    <h3 className="text-xl font-bold text-white mt-1">
+                      {INSTITUTIONAL_INFO.companyName}
+                    </h3>
+                    <p className="text-xs text-[#8A8A9E]">
+                      {INSTITUTIONAL_INFO.tradingName}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-[#12121A] px-4 py-2.5 rounded-xl border border-white/10">
+                  <div>
+                    <span className="text-[10px] text-[#8A8A9E] block">Cadastro Nacional (CNPJ)</span>
+                    <span className="text-sm font-mono font-bold text-white">{INSTITUTIONAL_INFO.cnpj}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(INSTITUTIONAL_INFO.cnpj);
+                      setSupportToastMessage('CNPJ copiado com sucesso!');
+                      setShowSupportToast(true);
+                      setTimeout(() => setShowSupportToast(false), 2500);
+                    }}
+                    className="ml-2 p-2 hover:bg-white/10 rounded-lg text-mecura-neon transition-colors"
+                    title="Copiar CNPJ"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs relative z-10">
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+                  <span className="text-[#8A8A9E] block text-[10px] uppercase font-bold">Consultor Jurídico</span>
+                  <strong className="text-white text-sm block mt-0.5">{INSTITUTIONAL_INFO.lawyerName}</strong>
+                  <span className="text-mecura-neon font-semibold">{INSTITUTIONAL_INFO.lawyerOab}</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+                  <span className="text-[#8A8A9E] block text-[10px] uppercase font-bold">Encarregado LGPD (DPO)</span>
+                  <strong className="text-white text-sm block mt-0.5">{INSTITUTIONAL_INFO.dpoName}</strong>
+                  <span className="text-[#8A8A9E]">{INSTITUTIONAL_INFO.dpoEmail}</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+                  <span className="text-[#8A8A9E] block text-[10px] uppercase font-bold">Atendimento Oficial</span>
+                  <strong className="text-white text-sm block mt-0.5">{INSTITUTIONAL_INFO.supportPhone}</strong>
+                  <span className="text-emerald-400">WhatsApp Oficial</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Legal Pillars */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-mecura-neon" />
+                <span>Pilares do Parecer Técnico-Jurídico de Resguardo</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {LEGAL_OPINION_DATA.pillars.map((pillar) => (
+                  <div key={pillar.id} className="p-5 rounded-2xl bg-[#161622] border border-white/5 hover:border-mecura-neon/20 transition-all space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-sm font-bold text-white">{pillar.title}</h4>
+                      {pillar.badge && (
+                        <span className="text-[9px] font-bold uppercase text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded border border-mecura-neon/20 shrink-0">
+                          {pillar.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[#8A8A9E] leading-relaxed">
+                      {pillar.summary}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* LGPD Compliance Section */}
+            <div className="p-6 rounded-2xl bg-[#161622] border border-blue-500/20 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shrink-0">
+                  <Lock className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {PRIVACY_POLICY_LGPD_DATA.title}
+                  </h3>
+                  <p className="text-xs text-blue-400">
+                    {PRIVACY_POLICY_LGPD_DATA.law} • Base Legal Art. 11, II, "f" (Tutela da Saúde)
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[#8A8A9E]">
+                <div className="p-3 bg-[#12121A] rounded-xl border border-white/5">
+                  <strong className="text-white block mb-1">Criptografia & Sigilo</strong>
+                  Criptografia em trânsito e repouso, acesso restrito e segredo médico inviolável.
+                </div>
+                <div className="p-3 bg-[#12121A] rounded-xl border border-white/5">
+                  <strong className="text-white block mb-1">Direitos dos Titulares</strong>
+                  Acesso facilitado, correção, exclusão e portabilidade de dados clínicos.
+                </div>
+                <div className="p-3 bg-[#12121A] rounded-xl border border-white/5">
+                  <strong className="text-white block mb-1">Atendimento ao Paciente</strong>
+                  Canal direto de DPO para qualquer solicitação pelo e-mail e WhatsApp.
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
