@@ -167,10 +167,6 @@ async function startServer() {
             pending: `${origin}/dashboard?payment=pending`,
           },
           auto_return: 'approved',
-          payment_methods: {
-            installments: maxInstallments,
-            default_installments: 1
-          },
           statement_descriptor: "MECURA SAUDE",
         }
       });
