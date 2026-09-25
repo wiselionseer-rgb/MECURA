@@ -87,6 +87,10 @@ async function startServer() {
         });
       }
 
+      const numPrice = Number(price);
+      // R$ 49,90 em até 3x, R$ 249,90 em até 5x
+      const maxInstallments = req.body.installments ? Number(req.body.installments) : (numPrice > 100 ? 5 : 3);
+
       const preference = new Preference(client);
       const result = await preference.create({
         body: {
@@ -94,7 +98,7 @@ async function startServer() {
             id: 'consultation-' + Date.now(), 
             title: title || 'Consulta Mecura', 
             quantity: Number(quantity) || 1, 
-            unit_price: Number(price), 
+            unit_price: numPrice, 
             currency_id: 'BRL' 
           }],
           payer: payerEmail ? {
@@ -108,7 +112,7 @@ async function startServer() {
           },
           auto_return: 'approved',
           payment_methods: {
-            installments: 12
+            installments: maxInstallments
           },
           statement_descriptor: "MECURA SAUDE",
         }

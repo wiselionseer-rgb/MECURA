@@ -157,6 +157,7 @@ export function CheckoutScreen() {
           body: JSON.stringify({
             title: selectedOffer === 'basic' ? 'Consulta Essencial - Mecura' : 'Acesso VIP Premium - Mecura',
             price: finalPrice,
+            installments: selectedOffer === 'basic' ? 3 : 5,
             payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
           })
@@ -358,7 +359,7 @@ export function CheckoutScreen() {
                   <span className="text-white font-bold text-sm">Ambiente 100% Criptografado</span>
                 </div>
                 <p className="text-[#8A8A9E] text-xs leading-relaxed">
-                  Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até 12x com proteção do Mercado Pago.
+                  Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até {selectedOffer === 'basic' ? '3x' : '5x'} com proteção do Mercado Pago.
                 </p>
               </div>
 
@@ -650,7 +651,7 @@ export function CheckoutScreen() {
                           R$ 249<span className="text-base text-mecura-neon">,90</span>
                         </div>
                         <span className="text-[10px] text-[#9A9AB5] block mt-0.5">
-                          ou 12x de R$ 24,90 no cartão / Pix
+                          ou 5x de R$ 49,98 no cartão / Pix
                         </span>
                       </div>
                     </div>
@@ -919,7 +920,9 @@ export function CheckoutScreen() {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className={`font-bold text-[16px] ${paymentMethod === 'card' ? 'text-white' : 'text-[#8A8A9E]'}`}>Cartão de Crédito</p>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-[#8A8A9E] border border-white/10">Até 12x</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-[#8A8A9E] border border-white/10">
+                            {selectedOffer === 'basic' ? 'Até 3x' : 'Até 5x'}
+                          </span>
                         </div>
                         <p className={`text-[13px] ${paymentMethod === 'card' ? 'text-mecura-neon' : 'text-[#8A8A9E]/60'}`}>Crédito ou Débito via Mercado Pago</p>
                       </div>

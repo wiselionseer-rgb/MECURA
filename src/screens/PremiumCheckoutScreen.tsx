@@ -158,6 +158,7 @@ export function PremiumCheckoutScreen() {
           body: JSON.stringify({
             title: 'Acompanhamento Premium - Mecura',
             price: finalPrice,
+            installments: 5,
             payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
           })
@@ -324,7 +325,7 @@ export function PremiumCheckoutScreen() {
 
             <h2 className="text-2xl font-bold text-center text-white mb-2 tracking-tight">Checkout Mercado Pago</h2>
             <p className="text-mecura-silver text-center text-sm mb-6 max-w-[320px] font-light">
-              A página de pagamento seguro do Mercado Pago foi aberta para você concluir a Consulta Premium no cartão em até 12x.
+              A página de pagamento seguro do Mercado Pago foi aberta para você concluir a Consulta Premium no cartão em até 5x.
             </p>
 
             <div className="w-full bg-[#1A1A24] rounded-3xl p-6 border border-[#A6FF00]/30 mb-8 shadow-xl text-center">
@@ -333,7 +334,7 @@ export function PremiumCheckoutScreen() {
                 <span className="text-white font-bold text-sm">Ambiente 100% Criptografado</span>
               </div>
               <p className="text-mecura-silver text-xs leading-relaxed">
-                Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até 12x com proteção integral do Mercado Pago.
+                Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até 5x com proteção integral do Mercado Pago.
               </p>
             </div>
 
@@ -701,7 +702,7 @@ export function PremiumCheckoutScreen() {
 
               <p className="text-[#A6FF00] text-xs font-semibold flex items-center gap-1.5 mt-2">
                 <Zap className="w-3.5 h-3.5 fill-[#A6FF00] shrink-0" />
-                <span>Economia de R$ 348 • Em até 12x no cartão ou Pix imediato</span>
+                <span>Economia de R$ 348 • Em até 5x no cartão ou Pix imediato</span>
               </p>
             </div>
 
@@ -757,7 +758,7 @@ export function PremiumCheckoutScreen() {
               <div className="border-t border-white/10 pt-3 flex items-center justify-between">
                 <div>
                   <span className="text-xs text-mecura-silver block">Total a pagar:</span>
-                  <span className="text-[10px] text-[#A6FF00]">Em até 12x ou Pix imediato</span>
+                  <span className="text-[10px] text-[#A6FF00]">Em até 5x ou Pix imediato</span>
                 </div>
                 <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#A6FF00] to-white">
                   R$ {finalPrice.toFixed(2).replace('.', ',')}
@@ -830,7 +831,7 @@ export function PremiumCheckoutScreen() {
                   <div className="text-left flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-base text-white">Cartão de Crédito</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white border border-white/15">Até 12x</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white border border-white/15">Até 5x</span>
                     </div>
                     <span className="text-xs text-[#A6FF00]">Checkout Seguro Mercado Pago</span>
                   </div>
@@ -945,7 +946,7 @@ export function PremiumCheckoutScreen() {
               <>
                 <CreditCard className="w-5 h-5 fill-black" />
                 <span className="text-[14px] sm:text-[15px] font-black uppercase tracking-wider">
-                  Pagar no Cartão em até 12x (R$ {finalPrice.toFixed(2).replace('.', ',')})
+                  Pagar no Cartão em até 5x (R$ {finalPrice.toFixed(2).replace('.', ',')})
                 </span>
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </>
