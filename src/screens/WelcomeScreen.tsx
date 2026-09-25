@@ -210,21 +210,26 @@ export function WelcomeScreen() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-[#161622]/80 backdrop-blur-md border border-white/5 rounded-[28px] p-5 flex items-center gap-5 mb-8 shadow-2xl relative overflow-hidden shrink-0"
+              className="bg-[#161622]/90 backdrop-blur-md border border-white/10 rounded-[28px] p-4 sm:p-5 flex items-center gap-4 sm:gap-5 mb-8 shadow-2xl relative overflow-hidden shrink-0"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/10 to-transparent opacity-20" />
+              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/15 via-transparent to-transparent opacity-30" />
               <div className="relative z-10 shrink-0">
-                <img 
-                  src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=800&auto=format&fit=crop" 
-                  alt="Médico Especialista" 
-                  className="w-16 h-16 rounded-[20px] object-cover aspect-square border border-white/10"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mecura-neon rounded-full border-2 border-[#161622] shadow-[0_0_10px_rgba(166,255,0,0.5)]" />
+                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-[20px] overflow-hidden border-2 border-white/15 shadow-md bg-[#0F0F17] flex items-center justify-center">
+                  <img 
+                    src="/doctor-avatar.png" 
+                    alt="Médico Especialista" 
+                    className="w-full h-full object-cover object-center"
+                    loading="eager"
+                  />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mecura-neon rounded-full border-2 border-[#161622] shadow-[0_0_10px_rgba(166,255,0,0.6)] animate-pulse" />
               </div>
               <div className="relative z-10">
-                <h3 className="text-white font-bold text-xl tracking-tight">Corpo Clínico</h3>
-                <p className="text-mecura-neon text-sm font-medium mt-1 tracking-wide">Especialistas de prontidão</p>
+                <h3 className="text-white font-bold text-lg sm:text-xl tracking-tight">Corpo Clínico</h3>
+                <p className="text-mecura-neon text-xs sm:text-sm font-medium mt-0.5 tracking-wide flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon inline-block" />
+                  Especialistas de prontidão
+                </p>
               </div>
             </motion.div>
 

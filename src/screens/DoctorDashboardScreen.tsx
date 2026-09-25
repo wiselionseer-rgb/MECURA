@@ -1805,7 +1805,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             </div>
           </button>
           <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-mecura-surface-light overflow-hidden border border-mecura-elevated hidden md:block">
-            <img src="https://images.unsplash.com/photo-1594824436998-dd40e4f69d1b?q=80&w=100&auto=format&fit=crop" alt="Doctor" referrerPolicy="no-referrer" className="w-full h-full object-cover shrink-0 aspect-square" />
+            <img src="/doctor-avatar.png" alt="Doctor" className="w-full h-full object-cover shrink-0 aspect-square" />
           </div>
         </div>
       </div>

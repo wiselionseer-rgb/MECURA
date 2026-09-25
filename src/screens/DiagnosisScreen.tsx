@@ -141,7 +141,7 @@ export function DiagnosisScreen() {
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]">
-                    <img src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=200&auto=format&fit=crop" alt="Médico" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    <img src="/doctor-avatar.png" alt="Médico" className="w-full h-full object-cover" />
                   </div>
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mecura-neon rounded-full border-2 border-[#161622] animate-pulse" />
                 </div>

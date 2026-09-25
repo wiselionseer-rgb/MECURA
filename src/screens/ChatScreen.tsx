@@ -289,7 +289,7 @@ export function ChatScreen() {
         </button>
         <div className="relative">
           <div className="w-12 h-12 rounded-full bg-mecura-surface-light overflow-hidden border-2 border-mecura-elevated">
-            <img src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=200&auto=format&fit=crop" alt="Dr. Guilherme" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+            <img src="/doctor-avatar.png" alt="Dr. Guilherme" className="w-full h-full object-cover" />
           </div>
           <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-mecura-neon rounded-full border-2 border-mecura-surface" />
         </div>

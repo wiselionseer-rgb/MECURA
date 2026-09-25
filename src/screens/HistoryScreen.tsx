@@ -59,10 +59,9 @@ export function HistoryScreen() {
           <div className="relative mb-6">
             <div className="w-24 h-24 rounded-full bg-[#1F1F2E] overflow-hidden border-4 border-[#262636] shadow-xl relative z-10">
               <img 
-                src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?q=80&w=800&auto=format&fit=crop" 
+                src="/doctor-avatar.png" 
                 alt="Dr. Guilherme" 
                 className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
               />
             </div>
             <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-mecura-neon rounded-full border-4 border-[#161622] flex items-center justify-center z-20">
