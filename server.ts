@@ -108,9 +108,9 @@ async function startServer() {
           },
           auto_return: 'approved',
           payment_methods: {
-            excluded_payment_types: [{ id: "ticket" }],
             installments: 12
           },
+          statement_descriptor: "MECURA SAUDE",
         }
       });
       res.json({ id: result.id, init_point: result.init_point, sandbox_init_point: result.sandbox_init_point });
