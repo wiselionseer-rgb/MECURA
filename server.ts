@@ -148,6 +148,8 @@ async function startServer() {
       );
       const safePayerEmail = isSellerEmail ? 'paciente.consulta@mecura.com' : (payerEmail || undefined);
 
+      const isHttps = origin.startsWith('https://');
+
       const result = await preference.create({
         body: {
           items: [{ 
@@ -161,12 +163,14 @@ async function startServer() {
             email: safePayerEmail,
             name: payerName || 'Paciente'
           } : undefined,
-          back_urls: {
-            success: `${origin}/dashboard?payment=success`,
-            failure: `${origin}/checkout?payment=failed`,
-            pending: `${origin}/dashboard?payment=pending`,
-          },
-          auto_return: 'approved',
+          ...(isHttps ? {
+            back_urls: {
+              success: `${origin}/dashboard?payment=success`,
+              failure: `${origin}/checkout?payment=failed`,
+              pending: `${origin}/dashboard?payment=pending`,
+            },
+            auto_return: 'approved',
+          } : {}),
           statement_descriptor: "MECURA SAUDE",
         }
       });
