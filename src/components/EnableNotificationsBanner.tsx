@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Bell, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
 export function EnableNotificationsBanner({ userId, role }: { userId?: string, role?: string }) {
@@ -43,13 +45,10 @@ export function EnableNotificationsBanner({ userId, role }: { userId?: string, r
     try {
       const granted = await requestNotificationPermission();
       
-      const { auth } = await import('../firebase');
       const finalUserId = userId || auth.currentUser?.uid;
       if (granted && finalUserId) {
         await subscribeToBackgroundNotifications(finalUserId);
         if (role === 'admin') {
-          const { doc, setDoc } = await import('firebase/firestore');
-          const { db } = await import('../firebase');
           await setDoc(doc(db, 'users', finalUserId), { role: 'admin' }, { merge: true });
         }
       }

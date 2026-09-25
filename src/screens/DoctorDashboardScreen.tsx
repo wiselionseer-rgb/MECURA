@@ -62,9 +62,9 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
     <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.007c.106.005.249-.04.39.299.144.347.491 1.2.534 1.287.043.087.072.188.014.303-.058.116-.087.188-.173.289l-.26.303c-.087.087-.177.182-.076.355.101.173.45 1.085 1.276 1.821.65.579 1.199.759 1.372.845.173.086.274.072.375-.044.101-.116.433-.505.549-.679.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.043.073.043.419-.101.824z" />
   </svg>
 );
-import { setDoc, doc, updateDoc } from 'firebase/firestore';
+import { setDoc, doc, updateDoc, getDoc, collection } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification, subscribeToBackgroundNotifications } from '../utils/notifications';
+import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification, subscribeToBackgroundNotifications, triggerBackgroundPush } from '../utils/notifications';
 import { playNotificationSound, initAudioUnlock } from '../utils/sound';
 import { 
   LineChart, 
@@ -519,8 +519,6 @@ export function DoctorDashboardScreen() {
     // Fetch answers from users collection if they are missing
     if (!enrichedPatient.answers || Object.keys(enrichedPatient.answers).length === 0) {
       try {
-        const { doc, getDoc } = await import('firebase/firestore');
-        const { db } = await import('../firebase');
         const userDoc = await getDoc(doc(db, 'users', patient.id));
         if (userDoc.exists()) {
            const userData = userDoc.data();
@@ -614,9 +612,8 @@ export function DoctorDashboardScreen() {
         });
         
         // Also send message to active consultation if exists
-        const { collection, doc: docRef, setDoc: setDocMsg } = await import('firebase/firestore');
-        const msgRef = docRef(collection(db, 'active_consultations', patient.id, 'messages'));
-        await setDocMsg(msgRef, {
+        const msgRef = doc(collection(db, 'active_consultations', patient.id, 'messages'));
+        await setDoc(msgRef, {
           id: msgRef.id,
           text: `💬 Chamado WhatsApp enviado para ${rawPhone || 'paciente'}. Dr. Guilherme aguarda você na sala de consulta!`,
           sender: 'doctor',
@@ -2281,7 +2278,6 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     if (targetPatient) {
                       try {
                         // 1. Send Background Push Notification (if they have app closed)
-                        const { triggerBackgroundPush } = await import('../utils/notifications');
                         triggerBackgroundPush(
                           targetPatient.id,
                           'Sua vez chegou!',
@@ -2291,9 +2287,6 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         
                         // 2. Send an automated chat message that will definitively trigger their UI
                         // This guarantees delivery if they are already in the app/chat
-                        const { collection, doc, setDoc } = await import('firebase/firestore');
-                        const { db } = await import('../firebase');
-                        
                         const msgRef = doc(collection(db, 'active_consultations', targetPatient.id, 'messages'));
                         await setDoc(msgRef, {
                           id: msgRef.id,

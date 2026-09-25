@@ -1,10 +1,10 @@
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
+import { collection, addDoc } from 'firebase/firestore';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
 import { useAdminStore, Coupon } from '../store/useAdminStore';
-import { auth } from '../firebase';
 import { 
   ChevronLeft, 
   CreditCard, 
@@ -223,8 +223,6 @@ export function PremiumCheckoutScreen() {
             if (data.status === 'approved' || data.status === 'completed') {
               if (pollingInterval.current) clearInterval(pollingInterval.current);
               try {
-                const { collection, addDoc } = await import('firebase/firestore');
-                const { db } = await import('../firebase');
                 await addDoc(collection(db, 'payments'), {
                   mpId: pixData.id,
                   type: 'Consulta Premium',

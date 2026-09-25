@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { playNotificationSound } from './sound';
 
 let swRegistration: ServiceWorkerRegistration | null = null;
@@ -140,8 +140,6 @@ export const subscribeToBackgroundNotifications = async (userId: string) => {
     });
     
     // Save to Firestore user doc
-    const { doc, setDoc } = await import('firebase/firestore');
-    const { db } = await import('../firebase');
     await setDoc(doc(db, 'users', userId), {
       pushSubscription: JSON.parse(JSON.stringify(subscription))
     }, { merge: true });

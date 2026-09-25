@@ -1,10 +1,10 @@
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
+import { collection, addDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
 import { useAdminStore, Coupon } from '../store/useAdminStore';
-import { auth } from '../firebase';
 import { 
   ChevronLeft, 
   CreditCard, 
@@ -229,8 +229,6 @@ export function CheckoutScreen() {
             if (data.status === 'approved' || data.status === 'completed') {
               if (pollingInterval.current) clearInterval(pollingInterval.current);
               try {
-                const { collection, addDoc } = await import('firebase/firestore');
-                const { db } = await import('../firebase');
                 await addDoc(collection(db, 'payments'), {
                   mpId: pixData.id,
                   type: selectedOffer === 'basic' ? 'Consulta Básica (R$ 49,90)' : 'Consulta VIP Premium (R$ 249,90)',
