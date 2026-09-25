@@ -385,8 +385,22 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     }
   };
 
-  const handleAddCoupon = () => {
-    addCoupon({ id: Date.now().toString(), active: true, usedCount: 0, usedBy: [], ...couponForm });
+  const handleAddCoupon = async () => {
+    if (!couponForm.code.trim()) {
+      alert("Por favor, digite o código do cupom!");
+      return;
+    }
+    const cleanCode = couponForm.code.trim().toUpperCase();
+    await addCoupon({ 
+      id: 'coupon_' + Date.now(), 
+      code: cleanCode,
+      active: true, 
+      usedCount: 0, 
+      usedBy: [], 
+      discount: Math.min(100, Math.max(1, Number(couponForm.discount) || 10)),
+      discountType: 'percentage',
+      quantity: Number(couponForm.quantity) || 0
+    });
     setShowAddCoupon(false);
     setCouponForm({ code: '', discount: 10, quantity: 0 });
   };
@@ -1537,13 +1551,48 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       {showAddCoupon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
           <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold mb-4">Novo Cupom</h3>
-            <input type="text" placeholder="Código" value={couponForm.code} onChange={e => setCouponForm({...couponForm, code: e.target.value})} className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4" />
-            <input type="number" placeholder="Desconto %" value={couponForm.discount} onChange={e => setCouponForm({...couponForm, discount: Number(e.target.value)})} className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4" />
-            <input type="number" placeholder="Quantidade Máx. (0 = Ilimitado)" value={couponForm.quantity} onChange={e => setCouponForm({...couponForm, quantity: Number(e.target.value)})} className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4" title="Deixe 0 para ilimitado" />
+            <h3 className="text-xl font-bold mb-4 text-white">Criar Novo Cupom</h3>
+            
+            <label className="text-xs text-[#8A8A9E] mb-1 block">Código do Cupom (ex: MECURA20)</label>
+            <input 
+              type="text" 
+              placeholder="Ex: MECURA20" 
+              value={couponForm.code} 
+              onChange={e => setCouponForm({...couponForm, code: e.target.value.toUpperCase()})} 
+              className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-3 text-white uppercase font-bold tracking-wider" 
+            />
+
+            <label className="text-xs text-[#8A8A9E] mb-1 block">Porcentagem de Desconto (%)</label>
+            <input 
+              type="number" 
+              placeholder="Ex: 50" 
+              min="1" 
+              max="100" 
+              value={couponForm.discount} 
+              onChange={e => setCouponForm({...couponForm, discount: Number(e.target.value)})} 
+              className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-3 text-white font-semibold" 
+            />
+
+            <label className="text-xs text-[#8A8A9E] mb-1 block">Limite Total de Usos (0 = Ilimitado para novos clientes)</label>
+            <input 
+              type="number" 
+              placeholder="0 para ilimitado" 
+              min="0" 
+              value={couponForm.quantity} 
+              onChange={e => setCouponForm({...couponForm, quantity: Number(e.target.value)})} 
+              className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4 text-white" 
+            />
+
+            <div className="bg-[#0A0A0F]/60 border border-[#262636] rounded-xl p-3 mb-5 text-xs text-[#8A8A9E] flex items-start gap-2">
+              <span className="text-mecura-neon font-bold text-sm">🔒</span>
+              <p>
+                <strong className="text-white">Uso Único por Cliente:</strong> Cada paciente só conseguirá utilizar este cupom <strong>1 vez</strong>. Outros pacientes poderão utilizá-lo normalmente até atingir o limite configurado (ou sem limite se for 0).
+              </p>
+            </div>
+
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowAddCoupon(false)}>Cancelar</Button>
-              <Button className="flex-1" onClick={handleAddCoupon}>Salvar</Button>
+              <Button className="flex-1 bg-mecura-neon text-black font-bold hover:bg-mecura-neon/90" onClick={handleAddCoupon}>Salvar Cupom</Button>
             </div>
           </div>
         </div>

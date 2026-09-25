@@ -75,27 +75,35 @@ export function CheckoutScreen() {
 
   const handleApplyCoupon = () => {
     setCouponError('');
-    const currentUserId = auth.currentUser?.uid || 'guest_' + Math.random().toString(36).substring(7);
-    const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
+    if (!couponCode.trim()) return;
+
+    const currentUserId = auth.currentUser?.uid;
+    const currentUserEmail = auth.currentUser?.email;
+    const localPatientId = localStorage.getItem('patient_id');
+    const localUserId = localStorage.getItem('mecura_user_id');
+    const identifiers = [currentUserId, currentUserEmail, localPatientId, localUserId].filter(Boolean) as string[];
+
+    const searchCode = couponCode.trim().toUpperCase();
+    const coupon = coupons.find(c => c.code.toUpperCase() === searchCode && c.active);
     
     if (coupon) {
-      if (coupon.ownerId && coupon.ownerId === auth.currentUser?.uid) {
+      if (coupon.ownerId && currentUserId && coupon.ownerId === currentUserId) {
         setCouponError('Você não pode usar seu próprio cupom de indicação.');
         return;
       }
       
-      // Check quantity
+      // Check quantity limit across all users
       if (coupon.quantity && coupon.quantity > 0) {
         const currentCount = coupon.usedCount || 0;
         if (currentCount >= coupon.quantity) {
-          setCouponError('Este cupom atingiu o limite máximo de usos.');
+          setCouponError('Este cupom atingiu o limite máximo de utilizações.');
           return;
         }
       }
       
-      // Check if user already used it
-      if (coupon.usedBy && auth.currentUser?.uid && coupon.usedBy.includes(auth.currentUser.uid)) {
-        setCouponError('Você já utilizou este cupom anteriormente.');
+      // Check if this specific user already used it
+      if (coupon.usedBy && identifiers.some(id => coupon.usedBy!.includes(id))) {
+        setCouponError('Você já utilizou este cupom anteriormente. Cada cupom é válido apenas uma vez por cliente.');
         return;
       }
       
@@ -167,11 +175,6 @@ export function CheckoutScreen() {
 
         if (response.ok) {
           const data = await response.json();
-          if (data.isTestMode) {
-            setIsLoading(false);
-            await handleSuccess();
-            return;
-          }
           if (data.init_point) {
             setCardUrl(data.init_point);
             setIsLoading(false);
@@ -186,23 +189,34 @@ export function CheckoutScreen() {
           }
         }
         setIsLoading(false);
-        await handleSuccess();
+        alert("Não foi possível gerar a página de pagamento do Mercado Pago. Por favor, tente novamente ou pague via Pix.");
       } catch (err) {
         console.error("Erro ao iniciar pagamento com cartão: ", err);
         setIsLoading(false);
-        await handleSuccess();
+        alert("Erro de conexão ao abrir o Mercado Pago. Verifique sua internet e tente novamente.");
       }
       return;
     }
     
-    // Fallback: outros métodos
-    handleSuccess();
+    setIsLoading(false);
   };
 
   const handleSuccess = async () => {
     setIsLoading(false);
     setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
     setPagamentoConsulta(true);
+
+    // Consume coupon for this user
+    if (appliedCoupon) {
+      try {
+        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'guest_' + Date.now();
+        const uemail = auth.currentUser?.email || undefined;
+        await useCoupon(appliedCoupon.id, uid, uemail);
+      } catch (e) {
+        console.error("Erro ao registrar uso do cupom:", e);
+      }
+    }
+
     setTimeout(async () => {
       try {
         if (selectedOffer === 'basic') {
@@ -250,10 +264,39 @@ export function CheckoutScreen() {
   }, [pixData]);
 
   React.useEffect(() => {
-    if (!selectedOffer) {
-      navigate('/dashboard');
+    const params = new URLSearchParams(window.location.search);
+    const paymentParam = params.get('payment');
+    
+    if (paymentParam === 'failed' || paymentParam === 'cancelled') {
+      setSelectedOffer('basic');
+      setStep('checkout');
+      setPaymentMethod('card');
+      setPagamentoConsulta(false);
+      alert('O pagamento com cartão não foi concluído no Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
     }
-  }, [selectedOffer, navigate]);
+
+    if (paymentParam === 'success') {
+      const status = params.get('status') || params.get('collection_status');
+      if (status === 'approved') {
+        window.history.replaceState({}, '', window.location.pathname);
+        handleSuccess();
+        return;
+      }
+    }
+
+    if (!selectedOffer) {
+      const savedOffer = localStorage.getItem('last_offer');
+      if (savedOffer === 'basic' || savedOffer === 'premium') {
+        setSelectedOffer(savedOffer as 'basic' | 'premium');
+      } else {
+        setSelectedOffer('basic');
+      }
+    } else {
+      localStorage.setItem('last_offer', selectedOffer);
+    }
+  }, [selectedOffer, navigate, setSelectedOffer, setPagamentoConsulta]);
 
   if (!selectedOffer) {
     return null;

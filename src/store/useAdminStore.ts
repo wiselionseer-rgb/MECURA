@@ -2,6 +2,17 @@ import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { mergeProductCatalogs, syncCatalogToFirestore } from '../utils/productCatalog';
+import { db } from '../firebase';
+import { 
+  collection, 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  arrayUnion, 
+  increment 
+} from 'firebase/firestore';
 
 export interface Doctor {
   id: string;
@@ -37,10 +48,10 @@ interface AdminState {
   deleteDoctor: (id: string) => void;
 
   coupons: Coupon[];
-  addCoupon: (coupon: Coupon) => void;
-  updateCoupon: (id: string, data: Partial<Coupon>) => void;
-  deleteCoupon: (id: string) => void;
-  useCoupon: (id: string, userId: string) => void;
+  addCoupon: (coupon: Coupon) => Promise<void>;
+  updateCoupon: (id: string, data: Partial<Coupon>) => Promise<void>;
+  deleteCoupon: (id: string) => Promise<void>;
+  useCoupon: (id: string, userId: string, userEmail?: string) => Promise<void>;
 
   notifications: Notification[];
   addNotification: (notification: Notification) => void;
@@ -80,24 +91,60 @@ export const useAdminStore = create<AdminState>()(
       })),
 
       coupons: [],
-      addCoupon: (coupon) => set((state) => ({ coupons: [...state.coupons, coupon] })),
-      updateCoupon: (id, data) => set((state) => ({
-        coupons: state.coupons.map((c) => (c.id === id ? { ...c, ...data } : c))
-      })),
-      deleteCoupon: (id) => set((state) => ({
-        coupons: state.coupons.filter((c) => c.id !== id)
-      })),
-      useCoupon: (id, userId) => set((state) => ({
-        coupons: state.coupons.map((c) => {
-          if (c.id === id) {
-            const currentUsedBy = c.usedBy || [];
-            if (!currentUsedBy.includes(userId)) {
-              return { ...c, usedCount: (c.usedCount || 0) + 1, usedBy: [...currentUsedBy, userId] };
+      addCoupon: async (coupon) => {
+        set((state) => ({ coupons: [...state.coupons.filter(c => c.id !== coupon.id), coupon] }));
+        try {
+          await setDoc(doc(db, 'coupons', coupon.id), coupon, { merge: true });
+        } catch (e) {
+          console.warn("Erro ao salvar cupom no Firestore:", e);
+        }
+      },
+      updateCoupon: async (id, data) => {
+        set((state) => ({
+          coupons: state.coupons.map((c) => (c.id === id ? { ...c, ...data } : c))
+        }));
+        try {
+          await updateDoc(doc(db, 'coupons', id), data);
+        } catch (e) {
+          console.warn("Erro ao atualizar cupom no Firestore:", e);
+        }
+      },
+      deleteCoupon: async (id) => {
+        set((state) => ({
+          coupons: state.coupons.filter((c) => c.id !== id)
+        }));
+        try {
+          await deleteDoc(doc(db, 'coupons', id));
+        } catch (e) {
+          console.warn("Erro ao excluir cupom no Firestore:", e);
+        }
+      },
+      useCoupon: async (id, userId, userEmail) => {
+        const identifiers = [userId, userEmail].filter(Boolean) as string[];
+        set((state) => ({
+          coupons: state.coupons.map((c) => {
+            if (c.id === id) {
+              const currentUsedBy = c.usedBy || [];
+              const newUsedBy = Array.from(new Set([...currentUsedBy, ...identifiers]));
+              return { 
+                ...c, 
+                usedCount: (c.usedCount || 0) + 1, 
+                usedBy: newUsedBy 
+              };
             }
-          }
-          return c;
-        })
-      })),
+            return c;
+          })
+        }));
+
+        try {
+          await setDoc(doc(db, 'coupons', id), {
+            usedCount: increment(1),
+            usedBy: arrayUnion(...identifiers)
+          }, { merge: true });
+        } catch (e) {
+          console.warn("Erro ao registrar uso do cupom no Firestore:", e);
+        }
+      },
 
       notifications: [],
       addNotification: (notification) => set((state) => {
@@ -167,3 +214,43 @@ export const useAdminStore = create<AdminState>()(
     }
   )
 );
+
+// Realtime Firestore synchronization for Coupons across all users and devices
+if (typeof window !== 'undefined') {
+  try {
+    let initialized = false;
+    onSnapshot(collection(db, 'coupons'), (snapshot) => {
+      const cloudCoupons: Coupon[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        cloudCoupons.push({
+          id: docSnap.id,
+          code: data.code || docSnap.id,
+          discount: Number(data.discount) || 0,
+          discountType: data.discountType || 'percentage',
+          active: data.active !== undefined ? data.active : true,
+          quantity: data.quantity !== undefined ? Number(data.quantity) : 0,
+          usedCount: Number(data.usedCount) || 0,
+          usedBy: Array.isArray(data.usedBy) ? data.usedBy : [],
+          ownerId: data.ownerId || undefined,
+        });
+      });
+
+      const currentLocal = useAdminStore.getState().coupons;
+
+      if (cloudCoupons.length > 0) {
+        useAdminStore.setState({ coupons: cloudCoupons });
+      } else if (!initialized && currentLocal.length > 0) {
+        // First run seed: upload existing local coupons to Firestore
+        currentLocal.forEach(c => {
+          setDoc(doc(db, 'coupons', c.id), c, { merge: true }).catch(console.error);
+        });
+      }
+      initialized = true;
+    }, (error) => {
+      console.warn("Coupons firestore listener warning:", error);
+    });
+  } catch (err) {
+    console.warn("Failed to attach coupons listener:", err);
+  }
+}

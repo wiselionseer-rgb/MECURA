@@ -76,27 +76,35 @@ export function PremiumCheckoutScreen() {
 
   const handleApplyCoupon = () => {
     setCouponError('');
-    const currentUserId = auth.currentUser?.uid || 'guest_' + Math.random().toString(36).substring(7); // Use a temp id if not logged in just in case, but auth.currentUser should be there
-    const coupon = coupons.find(c => c.code === couponCode.toUpperCase() && c.active);
+    if (!couponCode.trim()) return;
+
+    const currentUserId = auth.currentUser?.uid;
+    const currentUserEmail = auth.currentUser?.email;
+    const localPatientId = localStorage.getItem('patient_id');
+    const localUserId = localStorage.getItem('mecura_user_id');
+    const identifiers = [currentUserId, currentUserEmail, localPatientId, localUserId].filter(Boolean) as string[];
+
+    const searchCode = couponCode.trim().toUpperCase();
+    const coupon = coupons.find(c => c.code.toUpperCase() === searchCode && c.active);
     
     if (coupon) {
-      if (coupon.ownerId && coupon.ownerId === auth.currentUser?.uid) {
+      if (coupon.ownerId && currentUserId && coupon.ownerId === currentUserId) {
         setCouponError('Você não pode usar seu próprio cupom de indicação.');
         return;
       }
       
-      // Check quantity
+      // Check quantity limit across all users
       if (coupon.quantity && coupon.quantity > 0) {
         const currentCount = coupon.usedCount || 0;
         if (currentCount >= coupon.quantity) {
-          setCouponError('Este cupom atingiu o limite máximo de usos.');
+          setCouponError('Este cupom atingiu o limite máximo de utilizações.');
           return;
         }
       }
       
-      // Check if user already used it
-      if (coupon.usedBy && auth.currentUser?.uid && coupon.usedBy.includes(auth.currentUser.uid)) {
-        setCouponError('Você já utilizou este cupom anteriormente.');
+      // Check if this specific user already used it
+      if (coupon.usedBy && identifiers.some(id => coupon.usedBy!.includes(id))) {
+        setCouponError('Você já utilizou este cupom anteriormente. Cada cupom é válido apenas uma vez por cliente.');
         return;
       }
       
@@ -169,11 +177,6 @@ export function PremiumCheckoutScreen() {
 
         if (response.ok) {
           const data = await response.json();
-          if (data.isTestMode) {
-            setIsLoading(false);
-            handleSuccess();
-            return;
-          }
           if (data.init_point) {
             setCardUrl(data.init_point);
             setIsLoading(false);
@@ -181,28 +184,40 @@ export function PremiumCheckoutScreen() {
             try {
               window.open(data.init_point, '_blank');
             } catch (e) {
-              console.log("Popup automático contido pelo navegador, botão direto disponível.");
+              console.log("Popup contido pelo navegador, botão direto disponível.");
             }
             return;
           }
         }
         setIsLoading(false);
-        handleSuccess();
+        alert("Não foi possível gerar a página de pagamento do Mercado Pago. Por favor, tente novamente ou pague via Pix.");
       } catch (err) {
         console.error("Erro ao conectar cartão Mercado Pago: ", err);
         setIsLoading(false);
-        handleSuccess();
+        alert("Erro de conexão ao abrir o Mercado Pago. Verifique sua internet e tente novamente.");
       }
       return;
     }
 
-    handleSuccess();
+    setIsLoading(false);
   };
 
   const handleSuccess = () => {
     setIsLoading(false);
     setSuccessToast("Acesso VIP Premium liberado com sucesso! Redirecionando...");
     setPagamentoPremium(true);
+
+    // Consume coupon for this user
+    if (appliedCoupon) {
+      try {
+        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'guest_' + Date.now();
+        const uemail = auth.currentUser?.email || undefined;
+        useCoupon(appliedCoupon.id, uid, uemail);
+      } catch (e) {
+        console.error("Erro ao registrar uso do cupom:", e);
+      }
+    }
+
     addMessage({
       sender: 'doctor',
       type: "payment_success" as any,

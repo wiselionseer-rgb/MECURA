@@ -177,11 +177,9 @@ async function startServer() {
       res.json({ id: result.id, init_point: result.init_point, sandbox_init_point: result.sandbox_init_point });
     } catch (error: any) {
       console.error("Erro MP Preference:", error?.message || error);
-      return res.json({
-        id: 'test-pref-' + Date.now(),
-        init_point: `${origin}/dashboard?payment=success`,
-        sandbox_init_point: `${origin}/dashboard?payment=success`,
-        isTestMode: true
+      return res.status(500).json({
+        error: "Falha ao criar preferência no Mercado Pago",
+        message: error?.message || "Erro desconhecido"
       });
     }
   });
