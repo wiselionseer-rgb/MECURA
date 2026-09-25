@@ -28,7 +28,7 @@ import {
   Bot,
   User,
   X, Key, AlertTriangle
-, Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck } from 'lucide-react';
+, Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData } from '../data/cbdGuide';
 import { useStore } from '../store/useStore';
@@ -79,6 +79,17 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleTime, setRescheduleTime] = useState('');
   const [appointmentToReschedule, setAppointmentToReschedule] = useState<string | null>(null);
+
+  const [mpStatus, setMpStatus] = useState<{ configured: boolean; tokenPrefix: string | null } | null>(null);
+  const [mpInputToken, setMpInputToken] = useState('');
+  const [isSavingMpToken, setIsSavingMpToken] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/mercadopago-status')
+      .then(res => res.json())
+      .then(data => setMpStatus(data))
+      .catch(() => {});
+  }, []);
   const handleDeleteNotification = async (id: string) => {
     deleteNotification(id);
     try {
@@ -628,6 +639,64 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               <p className="text-xs text-[#8A8A9E] mt-3">
                 A cotação atual é <strong>R$ {exchangeRate.toFixed(2)}</strong>. Esta cotação é usada para converter os preços dos produtos (em USD) para Reais (BRL).
               </p>
+            </div>
+
+            {/* Gateway de Pagamento Mercado Pago */}
+            <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636] max-w-xl">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-mecura-neon" />
+                  <h4 className="text-white font-bold text-base">Gateway Mercado Pago</h4>
+                </div>
+                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${mpStatus?.configured ? 'bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'}`}>
+                  {mpStatus?.configured ? `Ativo (${mpStatus.tokenPrefix})` : 'Modo Teste / Demonstração'}
+                </span>
+              </div>
+              <p className="text-xs text-[#8A8A9E] mb-4 leading-relaxed">
+                Insira o seu <strong>Access Token de Produção</strong> (<code className="text-white">APP_USR-...</code>) obtido no painel de desenvolvedores do Mercado Pago para receber pagamentos reais por Pix e Cartão de Crédito.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="password"
+                  placeholder="Cole aqui seu Access Token (APP_USR-...)"
+                  value={mpInputToken}
+                  onChange={(e) => setMpInputToken(e.target.value)}
+                  className="bg-[#0A0A0F] text-white border border-[#262636] rounded-xl px-4 py-3 flex-1 focus:outline-none focus:border-mecura-neon text-sm"
+                />
+                <button
+                  disabled={isSavingMpToken || !mpInputToken.trim()}
+                  onClick={async () => {
+                    if (!mpInputToken.trim()) return;
+                    setIsSavingMpToken(true);
+                    try {
+                      const res = await fetch('/api/save-mercadopago-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accessToken: mpInputToken.trim() })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setSupportToastMessage('Token Mercado Pago salvo com sucesso!');
+                        setShowSupportToast(true);
+                        setMpInputToken('');
+                        const statusRes = await fetch('/api/mercadopago-status');
+                        setMpStatus(await statusRes.json());
+                      } else {
+                        setSupportToastMessage(data.error || 'Erro ao salvar token');
+                        setShowSupportToast(true);
+                      }
+                    } catch (e) {
+                      setSupportToastMessage('Erro de conexão ao salvar');
+                      setShowSupportToast(true);
+                    } finally {
+                      setIsSavingMpToken(false);
+                    }
+                  }}
+                  className="bg-mecura-neon text-black font-bold px-6 py-3 rounded-xl hover:bg-[#b5ff33] transition-colors whitespace-nowrap disabled:opacity-50 text-sm"
+                >
+                  {isSavingMpToken ? 'Salvando...' : 'Salvar Token'}
+                </button>
+              </div>
             </div>
           </div>
         )}

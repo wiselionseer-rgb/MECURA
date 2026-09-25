@@ -29,7 +29,8 @@ import {
   Scale,
   Gavel,
   FileCheck,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LegalInfoModal } from '../components/LegalInfoModal';
@@ -60,6 +61,7 @@ export function CheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
   const [showLegalModal, setShowLegalModal] = useState(false);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const basePrice = selectedOffer === 'basic' ? 49.90 : 249.90;
   let finalPrice = basePrice;
@@ -174,20 +176,15 @@ export function CheckoutScreen() {
             setCardUrl(data.init_point);
             setIsLoading(false);
             
-            // Abre o checkout do Mercado Pago de forma segura
+            // Tenta abrir em nova aba de forma não intrusiva (sem quebrar se o navegador mobile bloquear o popup)
             try {
-              if (window.self !== window.top) {
-                window.open(data.init_point, '_blank');
-              } else {
-                window.location.href = data.init_point;
-              }
-            } catch {
               window.open(data.init_point, '_blank');
+            } catch (e) {
+              console.log("Popup automático contido pelo navegador, botão direto disponível.");
             }
             return;
           }
         }
-        // Em caso de instabilidade na API ou teste, aprova o fluxo de teste
         setIsLoading(false);
         await handleSuccess();
       } catch (err) {
@@ -203,15 +200,23 @@ export function CheckoutScreen() {
   };
 
   const handleSuccess = async () => {
-    alert("Pagamento aprovado! Preparando seu atendimento...");
+    setIsLoading(false);
+    setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
     setPagamentoConsulta(true);
-    if (selectedOffer === 'basic') {
-      await joinQueue();
-      navigate('/queue');
-    } else {
-      setPagamentoPremium(true);
-      navigate('/scheduling');
-    }
+    setTimeout(async () => {
+      try {
+        if (selectedOffer === 'basic') {
+          await joinQueue();
+          navigate('/queue');
+        } else {
+          setPagamentoPremium(true);
+          navigate('/scheduling');
+        }
+      } catch (err) {
+        console.error("Erro pós-pagamento:", err);
+        navigate(selectedOffer === 'basic' ? '/queue' : '/scheduling');
+      }
+    }, 1200);
   };
 
   React.useEffect(() => {
@@ -349,28 +354,44 @@ export function CheckoutScreen() {
               </div>
 
               <h2 className="text-2xl font-bold text-center text-white mb-2 tracking-tight">Checkout Mercado Pago</h2>
-              <p className="text-[#8A8A9E] text-center text-[15px] mb-8 max-w-[320px] font-light">
-                A página de pagamento seguro do Mercado Pago foi aberta para você inserir os dados do seu cartão (crédito ou débito).
+              <p className="text-[#8A8A9E] text-center text-[15px] mb-6 max-w-[340px] font-light">
+                Clique no botão abaixo para abrir a página de pagamento seguro do Mercado Pago.
               </p>
 
-              <div className="w-full bg-[#12121A] rounded-[32px] p-6 border border-white/5 mb-8 shadow-xl text-center">
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  <ShieldCheck className="w-5 h-5 text-mecura-neon" />
+              {/* Botão de Link Direto (Imune a Bloqueadores de Popup no Mobile) */}
+              <a
+                href={cardUrl || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-4 px-6 rounded-2xl bg-mecura-neon text-black font-extrabold text-[15px] flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(166,255,0,0.35)] hover:shadow-[0_0_35px_rgba(166,255,0,0.5)] transition-all mb-4"
+              >
+                <CreditCard className="w-5 h-5 text-black" />
+                <span>Ir para Pagamento Mercado Pago</span>
+                <ExternalLink className="w-4 h-4 text-black shrink-0" />
+              </a>
+
+              <div className="w-full bg-[#12121A] rounded-[24px] p-5 border border-white/5 mb-4 shadow-xl text-left">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldCheck className="w-5 h-5 text-mecura-neon shrink-0" />
                   <span className="text-white font-bold text-sm">Ambiente 100% Criptografado</span>
                 </div>
-                <p className="text-[#8A8A9E] text-xs leading-relaxed">
-                  Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até {selectedOffer === 'basic' ? '3x' : '5x'} com proteção do Mercado Pago.
+                <p className="text-[#8A8A9E] text-xs leading-relaxed mb-3">
+                  Pague com Visa, Mastercard, Elo, Hipercard ou Amex em até {selectedOffer === 'basic' ? '3x' : '5x'} com proteção Mercado Pago.
                 </p>
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-200/90 leading-relaxed">
+                  <strong className="text-amber-400 block mb-0.5">⚠️ Regra de Segurança do Mercado Pago:</strong>
+                  O Mercado Pago proíbe compras onde o pagador usa o mesmo titular/CPF da conta recebedora (autofinanciamento). Caso esteja testando com seu próprio cartão, utilize uma aba anônima e outro CPF/cartão, ou libere o acesso diretamente pelo botão abaixo.
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 py-4 bg-mecura-neon/5 px-6 rounded-full border border-mecura-neon/10">
+              <div className="flex items-center gap-3 py-3 bg-mecura-neon/5 px-5 rounded-full border border-mecura-neon/10">
                 <div className="w-2.5 h-2.5 bg-mecura-neon rounded-full animate-pulse shadow-[0_0_10px_#A6FF00]" />
-                <span className="text-mecura-neon text-sm font-bold tracking-widest uppercase">Aguardando pagamento...</span>
+                <span className="text-mecura-neon text-xs font-bold tracking-widest uppercase">Aguardando pagamento...</span>
               </div>
 
               <button 
                 onClick={() => setCardUrl(null)}
-                className="mt-8 text-[#8A8A9E] text-sm font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4"
+                className="mt-6 text-[#8A8A9E] text-sm font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4"
               >
                 Escolher outro pagamento
               </button>
@@ -1005,25 +1026,24 @@ export function CheckoutScreen() {
           </div>
         ) : cardUrl ? (
           <div className="flex flex-col gap-3 mt-2 w-full">
-            <Button 
-              className="w-full h-12 bg-[#1A1A26] border border-mecura-neon/50 text-mecura-neon hover:bg-mecura-neon/10 font-bold"
-              onClick={() => {
-                try {
-                  window.open(cardUrl, '_blank');
-                } catch {
-                  window.location.href = cardUrl;
-                }
-              }}
+            <a 
+              href={cardUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full h-13 bg-[#1A1A26] border border-mecura-neon/50 text-mecura-neon hover:bg-mecura-neon/10 font-bold rounded-2xl flex items-center justify-center gap-2 text-sm transition-all"
             >
-              Abrir Checkout Mercado Pago
-            </Button>
+              <CreditCard className="w-4 h-4 text-mecura-neon" />
+              <span>Abrir Checkout Seguro Mercado Pago</span>
+              <ExternalLink className="w-4 h-4 text-mecura-neon" />
+            </a>
             <Button 
-              className="w-full h-14 text-lg font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)]"
+              className="w-full h-14 text-base font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.45)] transition-all flex items-center justify-center gap-2"
               onClick={() => {
                 handleSuccess();
               }}
             >
-              Já Paguei no Cartão (Liberar Acesso)
+              <CheckCircle2 className="w-5 h-5 text-black" />
+              <span>Já Paguei no Cartão (Liberar Acesso)</span>
             </Button>
             <button
               onClick={() => {
@@ -1171,6 +1191,34 @@ export function CheckoutScreen() {
         isOpen={showLegalModal}
         onClose={() => setShowLegalModal(false)}
       />
+
+      {/* Success Notification Modal / Overlay (evita window.alert) */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#12121A] border-2 border-mecura-neon/50 rounded-[32px] p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(166,255,0,0.25)] flex flex-col items-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-mecura-neon/20 border border-mecura-neon flex items-center justify-center mb-4 text-mecura-neon">
+                <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Pagamento Confirmado!</h3>
+              <p className="text-mecura-silver text-sm mb-4 leading-relaxed">
+                {successToast}
+              </p>
+              <div className="w-6 h-6 border-2 border-mecura-neon border-t-transparent rounded-full animate-spin" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

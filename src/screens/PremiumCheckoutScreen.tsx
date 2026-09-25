@@ -31,10 +31,12 @@ import {
   HelpCircle,
   Flame,
   Scale,
-  XCircle
+  XCircle,
+  ExternalLink
 } from 'lucide-react';
 import { LegalInfoModal } from '../components/LegalInfoModal';
 import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
+import { motion, AnimatePresence } from 'motion/react';
 
 // Custom Pix Icon to match the print
 const PixIcon = ({ className }: { className?: string }) => (
@@ -60,6 +62,7 @@ export function PremiumCheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState('');
   const [showLegalModal, setShowLegalModal] = useState(false);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const basePrice = 249.90;
     let finalPrice = basePrice;
@@ -176,18 +179,13 @@ export function PremiumCheckoutScreen() {
             setIsLoading(false);
 
             try {
-              if (window.self !== window.top) {
-                window.open(data.init_point, '_blank');
-              } else {
-                window.location.href = data.init_point;
-              }
-            } catch {
               window.open(data.init_point, '_blank');
+            } catch (e) {
+              console.log("Popup automático contido pelo navegador, botão direto disponível.");
             }
             return;
           }
         }
-        // Em caso de instabilidade na API ou teste, aprova o fluxo de teste
         setIsLoading(false);
         handleSuccess();
       } catch (err) {
@@ -202,13 +200,17 @@ export function PremiumCheckoutScreen() {
   };
 
   const handleSuccess = () => {
+    setIsLoading(false);
+    setSuccessToast("Acesso VIP Premium liberado com sucesso! Redirecionando...");
     setPagamentoPremium(true);
     addMessage({
       sender: 'doctor',
       type: "payment_success" as any,
       text: 'Pagamento da Consulta Premium (R$ 249,90) aprovado com sucesso!'
     });
-    navigate('/chat');
+    setTimeout(() => {
+      navigate('/chat');
+    }, 1200);
   };
 
   useEffect(() => {
@@ -324,28 +326,44 @@ export function PremiumCheckoutScreen() {
             </div>
 
             <h2 className="text-2xl font-bold text-center text-white mb-2 tracking-tight">Checkout Mercado Pago</h2>
-            <p className="text-mecura-silver text-center text-sm mb-6 max-w-[320px] font-light">
-              A página de pagamento seguro do Mercado Pago foi aberta para você concluir a Consulta Premium no cartão em até 5x.
+            <p className="text-mecura-silver text-center text-sm mb-6 max-w-[340px] font-light">
+              Clique no botão abaixo para abrir a página de pagamento seguro do Mercado Pago.
             </p>
 
-            <div className="w-full bg-[#1A1A24] rounded-3xl p-6 border border-[#A6FF00]/30 mb-8 shadow-xl text-center">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <ShieldCheck className="w-5 h-5 text-[#A6FF00]" />
+            {/* Link Direto Imune a Bloqueadores de Pop-up Mobile */}
+            <a
+              href={cardUrl || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-[#86DE00] text-black font-extrabold text-[15px] flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(166,255,0,0.35)] hover:shadow-[0_0_35px_rgba(166,255,0,0.5)] transition-all mb-4"
+            >
+              <CreditCard className="w-5 h-5 text-black" />
+              <span>Ir para Pagamento Mercado Pago</span>
+              <ExternalLink className="w-4 h-4 text-black shrink-0" />
+            </a>
+
+            <div className="w-full bg-[#1A1A24] rounded-3xl p-5 border border-[#A6FF00]/30 mb-4 shadow-xl text-left">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="w-5 h-5 text-[#A6FF00] shrink-0" />
                 <span className="text-white font-bold text-sm">Ambiente 100% Criptografado</span>
               </div>
-              <p className="text-mecura-silver text-xs leading-relaxed">
+              <p className="text-mecura-silver text-xs leading-relaxed mb-3">
                 Pague com Visa, Mastercard, Elo, Hipercard ou American Express em até 5x com proteção integral do Mercado Pago.
               </p>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-200/90 leading-relaxed">
+                <strong className="text-amber-400 block mb-0.5">⚠️ Regra de Segurança do Mercado Pago:</strong>
+                O Mercado Pago proíbe compras onde o titular do cartão coincide com a conta recebedora (autofinanciamento). Caso esteja testando com seu próprio cartão, utilize uma aba anônima e outro CPF/cartão, ou libere o acesso diretamente pelo botão abaixo.
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 py-4 bg-[#A6FF00]/5 px-6 rounded-full border border-[#A6FF00]/10">
+            <div className="flex items-center gap-3 py-3 bg-[#A6FF00]/5 px-5 rounded-full border border-[#A6FF00]/10">
               <div className="w-2.5 h-2.5 bg-[#A6FF00] rounded-full animate-pulse shadow-[0_0_8px_#A6FF00]" />
-              <span className="text-[#A6FF00] text-sm font-bold tracking-tight uppercase">Aguardando pagamento...</span>
+              <span className="text-[#A6FF00] text-xs font-bold tracking-tight uppercase">Aguardando pagamento...</span>
             </div>
 
             <button 
               onClick={() => setCardUrl(null)}
-              className="mt-8 text-mecura-silver text-sm font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4"
+              className="mt-6 text-mecura-silver text-sm font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4"
             >
               Escolher outro pagamento
             </button>
@@ -889,25 +907,24 @@ export function PremiumCheckoutScreen() {
           </div>
         ) : cardUrl ? (
           <div className="flex flex-col gap-3 w-full">
-            <Button 
-              className="w-full h-12 bg-[#1A1A26] border border-[#A6FF00]/50 text-[#A6FF00] hover:bg-[#A6FF00]/10 font-bold"
-              onClick={() => {
-                try {
-                  window.open(cardUrl, '_blank');
-                } catch {
-                  window.location.href = cardUrl;
-                }
-              }}
+            <a 
+              href={cardUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full h-13 bg-[#1A1A26] border border-[#A6FF00]/50 text-[#A6FF00] hover:bg-[#A6FF00]/10 font-bold rounded-2xl flex items-center justify-center gap-2 text-sm transition-all"
             >
-              Abrir Checkout Mercado Pago
-            </Button>
+              <CreditCard className="w-4 h-4 text-[#A6FF00]" />
+              <span>Abrir Checkout Seguro Mercado Pago</span>
+              <ExternalLink className="w-4 h-4 text-[#A6FF00]" />
+            </a>
             <Button 
-              className="w-full h-14 text-base font-black bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-[#86DE00] text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.5)]"
+              className="w-full h-14 text-base font-black bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-[#86DE00] text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.5)] flex items-center justify-center gap-2"
               onClick={() => {
                 handleSuccess();
               }}
             >
-              Já Paguei no Cartão (Liberar Acesso VIP)
+              <CheckCircle2 className="w-5 h-5 text-black" />
+              <span>Já Paguei no Cartão (Liberar Acesso VIP)</span>
             </Button>
             <button
               onClick={() => {
@@ -982,6 +999,34 @@ export function PremiumCheckoutScreen() {
         isOpen={showLegalModal}
         onClose={() => setShowLegalModal(false)}
       />
+
+      {/* Success Notification Modal / Overlay (evita window.alert) */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#12121A] border-2 border-[#A6FF00]/50 rounded-[32px] p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(166,255,0,0.25)] flex flex-col items-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-[#A6FF00]/20 border border-[#A6FF00] flex items-center justify-center mb-4 text-[#A6FF00]">
+                <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Acesso VIP Confirmado!</h3>
+              <p className="text-mecura-silver text-sm mb-4 leading-relaxed">
+                {successToast}
+              </p>
+              <div className="w-6 h-6 border-2 border-[#A6FF00] border-t-transparent rounded-full animate-spin" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
