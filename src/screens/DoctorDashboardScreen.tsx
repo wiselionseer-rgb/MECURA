@@ -53,7 +53,9 @@ import {
   ShieldCheck,
   ArrowRight,
   AlertCircle,
-  Crown
+  Crown,
+  PhoneCall,
+  Pill
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -137,7 +139,8 @@ export function DoctorDashboardScreen() {
     addMessage, deleteMessage, clearPrescriptionMessages, 
     consultationActive, endConsultation, resetConsultation, setSelectedOffer, 
     allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
-    subscribeToMessages, subscribeToAppointments 
+    subscribeToMessages, subscribeToAppointments,
+    consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages
   } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
@@ -370,7 +373,8 @@ export function DoctorDashboardScreen() {
   }, [allGuideProducts, productSearchTerm, productBrandFilter, productOriginFilter, productDiseaseFilter, productDiseaseSearchInput]);
   const [selectedProduct, setSelectedProduct] = useState<CBDProduct | null>(null);
   const [dosageInput, setDosageInput] = useState('');
-  const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string} | null>(null);
+  const [selectedUploadDocType, setSelectedUploadDocType] = useState<'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento'>('receita');
+  const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queuePlanFilter, setQueuePlanFilter] = useState<'all' | 'premium' | 'basic'>('all');
@@ -478,11 +482,13 @@ export function DoctorDashboardScreen() {
   useEffect(() => {
     const unsubscribeQueue = subscribeToQueue();
     const unsubscribeAppointments = subscribeToAppointments();
+    const unsubscribeHistory = subscribeToAllConsultationHistory();
     return () => {
       unsubscribeQueue();
       unsubscribeAppointments();
+      unsubscribeHistory();
     };
-  }, [subscribeToQueue, subscribeToAppointments]);
+  }, [subscribeToQueue, subscribeToAppointments, subscribeToAllConsultationHistory]);
 
   useEffect(() => {
     console.log("Current patient changed:", currentPatient);
@@ -587,55 +593,78 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleWhatsAppCall = async (patient: any) => {
+  const handleWhatsAppCall = (patient: any) => {
     if (!patient) return;
     const patientName = patient.patientName || userName || 'Paciente';
     const firstName = patientName.split(' ')[0];
-    const rawPhone = patient.phone || patient.answers?.phone || patient.answers?.whatsapp || userPhone || '';
-    const cleanDigits = rawPhone.replace(/\D/g, '');
     
-    // Brazilian formatting: if 10 or 11 digits, prepend 55
+    // 1. Comprehensive lookup for the patient's phone number
+    let rawPhone = 
+      patient.phone || 
+      patient.whatsapp || 
+      patient.telefone || 
+      patient.celular || 
+      patient.patientPhone || 
+      patient.answers?.phone || 
+      patient.answers?.whatsapp || 
+      patient.answers?.telefone || 
+      (currentPatient && currentPatient.id === patient.id ? (currentPatient.phone || currentPatient.answers?.phone) : '') ||
+      userPhone || 
+      '';
+    
+    let cleanDigits = String(rawPhone || '').replace(/\D/g, '');
+
+    // 2. If no phone found, prompt doctor
+    if (!cleanDigits) {
+      const promptPhone = window.prompt(`O paciente ${patientName} não possui número de WhatsApp cadastrado na fila.\n\nPor favor, informe o WhatsApp com DDD (ex: 11999998888):`);
+      if (promptPhone) {
+        cleanDigits = promptPhone.replace(/\D/g, '');
+      }
+    }
+
+    if (!cleanDigits) {
+      alert("Nenhum número de WhatsApp informado para este paciente.");
+      return;
+    }
+
+    // Format phone to international Brazilian format (55 + DDD + Number)
     let finalPhone = cleanDigits;
     if (finalPhone.length === 10 || finalPhone.length === 11) {
       finalPhone = `55${finalPhone}`;
     }
 
-    const defaultMsg = `Olá ${firstName}! Aqui é o Dr. Guilherme da equipe médica MeCura. É a sua vez para a sua consulta de avaliação médica canábica! Por favor, acesse o app ou me confirme por aqui para iniciarmos seu atendimento.`;
-    
-    // Send in-app notification to patient
+    const defaultMsg = `Olá ${firstName}! Aqui é o Dr. Guilherme da equipe médica MeCura. É a sua vez para a sua consulta de avaliação médica canábica! Por favor, acesse o aplicativo ou me responda por aqui para darmos início ao seu atendimento.`;
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${finalPhone}&text=${encodeURIComponent(defaultMsg)}`;
+
+    // 3. Open WhatsApp IMMEDIATELY & SYNCHRONOUSLY using a DOM link click so browser popup blockers do not intercept it
     try {
-      if (patient.id) {
-        await setDoc(doc(db, 'notifications', patient.id), {
-          text: `🔔 O Dr. Guilherme acabou de te chamar pelo WhatsApp (${rawPhone || 'seu número'})! Acesse a consulta.`,
-          timestamp: new Date().toISOString(),
-          type: 'whatsapp_call'
-        });
-        
-        // Also send message to active consultation if exists
-        const msgRef = doc(collection(db, 'active_consultations', patient.id, 'messages'));
-        await setDoc(msgRef, {
-          id: msgRef.id,
-          text: `💬 Chamado WhatsApp enviado para ${rawPhone || 'paciente'}. Dr. Guilherme aguarda você na sala de consulta!`,
-          sender: 'doctor',
-          type: 'text',
-          timestamp: new Date().toISOString()
-        });
-      }
-    } catch (err) {
-      console.warn("Could not save WhatsApp call notification to Firestore:", err);
+      const link = document.createElement('a');
+      link.href = whatsappUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      window.open(whatsappUrl, '_blank');
     }
 
-    if (finalPhone) {
-      const whatsappUrl = `https://wa.me/${finalPhone}?text=${encodeURIComponent(defaultMsg)}`;
-      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      // Prompt doctor if phone is missing
-      const promptPhone = window.prompt(`O paciente ${patientName} não possui WhatsApp cadastrado. Digite o número com DDD (ex: 11999998888):`);
-      if (promptPhone) {
-        let pClean = promptPhone.replace(/\D/g, '');
-        if (pClean.length === 10 || pClean.length === 11) pClean = `55${pClean}`;
-        window.open(`https://wa.me/${pClean}?text=${encodeURIComponent(defaultMsg)}`, '_blank', 'noopener,noreferrer');
-      }
+    // 4. In background, send in-app notification & active chat message
+    if (patient.id) {
+      setDoc(doc(db, 'notifications', patient.id), {
+        text: `🔔 O Dr. Guilherme acabou de te chamar pelo WhatsApp! Acesse o app para a consulta.`,
+        timestamp: new Date().toISOString(),
+        type: 'whatsapp_call'
+      }).catch(err => console.warn("Could not save notification:", err));
+
+      const msgRef = doc(collection(db, 'active_consultations', patient.id, 'messages'));
+      setDoc(msgRef, {
+        id: msgRef.id,
+        text: `💬 Chamado WhatsApp enviado para o paciente (+${finalPhone}). Dr. Guilherme aguarda você na sala de consulta!`,
+        sender: 'doctor',
+        type: 'text',
+        timestamp: new Date().toISOString()
+      }).catch(err => console.warn("Could not save consultation message:", err));
     }
   };
 
@@ -664,6 +693,14 @@ export function DoctorDashboardScreen() {
     }
   };
 
+  const handleTriggerFileInput = (docType: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento') => {
+    setSelectedUploadDocType(docType);
+    setShowAttachmentMenu(false);
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 50);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -672,7 +709,8 @@ export function DoctorDashboardScreen() {
         setPendingAttachment({
           name: file.name,
           url: reader.result as string,
-          type: file.type
+          type: file.type,
+          docType: selectedUploadDocType
         });
       };
       reader.readAsDataURL(file);
@@ -681,32 +719,61 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  // useEffect(() => {
-  //   messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-  // }, [messages]);
+  const handleSendAttachment = (customAttachment = pendingAttachment) => {
+    if (!customAttachment) return;
 
-  // Removed local mock queue to use store's queue
+    const docType = customAttachment.docType || 'receita';
+    let messageType: 'prescription' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document' = 'document';
+    let defaultTitle = 'Documento';
+
+    if (docType === 'receita') {
+      messageType = 'prescription';
+      defaultTitle = 'Receita Digital Assinada';
+    } else if (docType === 'laudo_inicial') {
+      messageType = 'medical_report';
+      defaultTitle = 'Laudo Médico Inicial';
+    } else if (docType === 'laudo_evolutivo') {
+      messageType = 'medical_report';
+      defaultTitle = 'Laudo Médico Evolutivo';
+    } else if (docType === 'laudo_psicomotor') {
+      messageType = 'psychomotor_report';
+      defaultTitle = 'Laudo Psicomotor (Aptidão)';
+    } else if (docType === 'laudo_agronomico') {
+      messageType = 'agronomic_report';
+      defaultTitle = 'Parecer Técnico Agronômico';
+    }
+
+    addMessage({
+      sender: 'doctor',
+      type: messageType,
+      docType: docType,
+      text: inputText.trim() || undefined,
+      attachment: {
+        ...customAttachment,
+        docType: docType,
+        title: customAttachment.title || defaultTitle
+      }
+    });
+
+    setPendingAttachment(null);
+    setInputText('');
+  };
 
   const handleSend = () => {
     if (!inputText.trim() && !pendingAttachment) return;
     
+    if (pendingAttachment) {
+      handleSendAttachment(pendingAttachment);
+      return;
+    }
+
     if (inputText.trim()) {
       addMessage({
         text: inputText,
         sender: 'doctor'
       });
+      setInputText('');
     }
-
-    if (pendingAttachment) {
-      addMessage({
-        sender: 'doctor',
-        type: 'prescription',
-        attachment: pendingAttachment
-      });
-      setPendingAttachment(null);
-    }
-    
-    setInputText('');
   };
 
   const handleRemoveDoctorMessage = async (messageId: string, label?: string) => {
@@ -1040,12 +1107,6 @@ export function DoctorDashboardScreen() {
           text: prescNotes
         });
       }
-
-      // Adicionar o card de download da receita novamente para o paciente
-      await addMessage({
-        sender: 'doctor',
-        type: 'prescription'
-      });
     }
 
     // 2. Gerar o PDF com os dados editados
@@ -2557,8 +2618,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         </div>
                       </div>
                     </div>
-                  ) : msg.type === 'prescription' ? (
-                    <div className="w-[70%] max-w-xl bg-gradient-to-r from-mecura-surface to-mecura-surface-light border border-mecura-neon/30 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
+                  ) : (msg.type === 'prescription' || msg.docType === 'receita') ? (
+                    <div className="w-[75%] max-w-xl bg-gradient-to-r from-mecura-surface to-mecura-surface-light border border-mecura-neon/30 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -2573,13 +2634,212 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         <span className="pointer-events-none">Remover</span>
                       </button>
                       <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-mecura-neon/5 to-transparent" />
-                      <div className="flex items-center gap-4 relative z-10">
-                        <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20">
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20 shrink-0">
                           <FileText className="w-6 h-6 text-mecura-neon" />
                         </div>
-                        <div>
-                          <h3 className="text-white font-bold text-sm mb-0.5">Receita Digital Enviada</h3>
-                          <p className="text-mecura-silver text-xs">O paciente já pode acessar e baixar o PDF.</p>
+                        <div className="flex-1 pr-16">
+                          <span className="text-[10px] text-mecura-neon font-bold uppercase tracking-wider bg-mecura-neon/10 border border-mecura-neon/20 px-2 py-0.5 rounded-full inline-block mb-1">
+                            Receita Digital Assinada
+                          </span>
+                          <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Receita_Digital_MeCura.pdf'}</h3>
+                          <p className="text-mecura-silver text-xs">Arquivo anexado e disponível para o paciente baixar em 1 clique.</p>
+                          {msg.attachment?.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = msg.attachment!.url;
+                                a.download = msg.attachment!.name || 'Receita_Digital.pdf';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-mecura-neon/10 border border-mecura-neon/30 hover:bg-mecura-neon hover:text-black text-mecura-neon text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar Anexo
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (msg.type === 'medical_report' || msg.docType === 'laudo_inicial' || msg.docType === 'laudo_evolutivo') ? (
+                    <div className={`w-[75%] max-w-xl bg-gradient-to-r ${msg.docType === 'laudo_evolutivo' ? 'from-[#0F172A] to-[#1E293B] border-blue-500/30' : 'from-[#1A160F] to-[#261E14] border-amber-500/30'} border rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group`}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Laudo Médico');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover laudo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className={`w-12 h-12 rounded-xl ${msg.docType === 'laudo_evolutivo' ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30'} flex items-center justify-center border shrink-0`}>
+                          <FileCheck className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 pr-16">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mb-1 ${msg.docType === 'laudo_evolutivo' ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30' : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'}`}>
+                            {msg.docType === 'laudo_evolutivo' ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial'}
+                          </span>
+                          <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Laudo_Medico.pdf'}</h3>
+                          <p className="text-mecura-silver text-xs">Documento médico oficial assinado e liberado para o paciente.</p>
+                          {msg.attachment?.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = msg.attachment!.url;
+                                a.download = msg.attachment!.name || 'Laudo_Medico.pdf';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 border text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                                msg.docType === 'laudo_evolutivo'
+                                  ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500 hover:text-white text-blue-400'
+                                  : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500 hover:text-black text-amber-400'
+                              }`}
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar Anexo
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor') ? (
+                    <div className="w-[75%] max-w-xl bg-gradient-to-r from-[#170F24] to-[#251A36] border border-purple-500/30 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Laudo Psicomotor');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover laudo psicomotor"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className="w-12 h-12 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center border border-purple-500/30 shrink-0">
+                          <ShieldCheck className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 pr-16">
+                          <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full inline-block mb-1">
+                            Laudo Psicomotor (Lei Seca / CTB)
+                          </span>
+                          <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Laudo_Psicomotor.pdf'}</h3>
+                          <p className="text-mecura-silver text-xs">Atestado de aptidão psicomotora anexado para o paciente.</p>
+                          {msg.attachment?.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = msg.attachment!.url;
+                                a.download = msg.attachment!.name || 'Laudo_Psicomotor.pdf';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500 hover:text-white text-purple-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar Anexo
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico') ? (
+                    <div className="w-[75%] max-w-xl bg-gradient-to-r from-[#0C1E14] to-[#142A1D] border border-emerald-500/30 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Laudo Agronômico');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover laudo agronômico"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
+                          <Sprout className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 pr-16">
+                          <span className="text-[10px] text-emerald-300 font-bold uppercase tracking-wider bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-block mb-1">
+                            Parecer Técnico Agronômico (HC)
+                          </span>
+                          <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Parecer_Agronomico.pdf'}</h3>
+                          <p className="text-mecura-silver text-xs">Parecer pericial de cultivo e fitomassa disponível para o paciente.</p>
+                          {msg.attachment?.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = msg.attachment!.url;
+                                a.download = msg.attachment!.name || 'Parecer_Agronomico.pdf';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white text-emerald-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar Anexo
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (msg.type === 'document' || msg.attachment) ? (
+                    <div className="w-[75%] max-w-xl bg-gradient-to-r from-mecura-surface to-mecura-surface-light border border-white/15 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Documento');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover documento"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className="w-12 h-12 rounded-xl bg-white/10 text-white flex items-center justify-center border border-white/20 shrink-0">
+                          <Paperclip className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 pr-16">
+                          <span className="text-[10px] text-mecura-silver font-bold uppercase tracking-wider bg-white/5 border border-white/10 px-2 py-0.5 rounded-full inline-block mb-1">
+                            Documento Anexado
+                          </span>
+                          <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Documento.pdf'}</h3>
+                          <p className="text-mecura-silver text-xs">Arquivo anexado na consulta.</p>
+                          {msg.attachment?.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = msg.attachment!.url;
+                                a.download = msg.attachment!.name || 'Documento.pdf';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/10 border border-white/20 hover:bg-white hover:text-black text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar Anexo
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2752,49 +3012,77 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             </div>
 
             {pendingAttachment && (
-              <div className="max-w-5xl mx-auto mb-4">
-                <div className="inline-flex items-center gap-4 bg-mecura-surface border border-mecura-neon/30 rounded-xl p-3 pr-4">
+              <div className="max-w-5xl mx-auto mb-4 w-full">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#161622] border border-mecura-neon/40 rounded-2xl p-4 shadow-2xl">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-mecura-neon/10 flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-mecura-neon" />
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                      pendingAttachment.docType === 'receita' ? 'bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30' :
+                      pendingAttachment.docType === 'laudo_inicial' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
+                      pendingAttachment.docType === 'laudo_evolutivo' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
+                      pendingAttachment.docType === 'laudo_psicomotor' ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30' :
+                      pendingAttachment.docType === 'laudo_agronomico' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
+                      'bg-white/10 text-white border border-white/20'
+                    }`}>
+                      {pendingAttachment.docType === 'receita' && <FileText className="w-6 h-6" />}
+                      {pendingAttachment.docType === 'laudo_inicial' && <FileCheck className="w-6 h-6" />}
+                      {pendingAttachment.docType === 'laudo_evolutivo' && <FileCheck className="w-6 h-6" />}
+                      {pendingAttachment.docType === 'laudo_psicomotor' && <ShieldCheck className="w-6 h-6" />}
+                      {pendingAttachment.docType === 'laudo_agronomico' && <Sprout className="w-6 h-6" />}
+                      {pendingAttachment.docType === 'documento' && <Paperclip className="w-6 h-6" />}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white truncate max-w-[200px]">{pendingAttachment.name}</p>
-                      <p className="text-xs text-mecura-silver">Aguardando envio...</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-mecura-silver">Tipo de Arquivo:</span>
+                        <select
+                          value={pendingAttachment.docType || 'receita'}
+                          onChange={(e) => setPendingAttachment({
+                            ...pendingAttachment,
+                            docType: e.target.value as any
+                          })}
+                          className="bg-[#0A0A0F] border border-white/20 rounded-lg px-2 py-0.5 text-xs text-white focus:outline-none focus:border-mecura-neon font-bold cursor-pointer"
+                        >
+                          <option value="receita">📋 Receita Médica</option>
+                          <option value="laudo_inicial">📑 Laudo Inicial</option>
+                          <option value="laudo_evolutivo">📑 Laudo Evolutivo</option>
+                          <option value="laudo_psicomotor">⚖️ Laudo Psicomotor</option>
+                          <option value="laudo_agronomico">🌱 Parecer Agronômico</option>
+                          <option value="documento">📎 Outro Documento</option>
+                        </select>
+                      </div>
+                      <p className="text-sm font-bold text-white truncate max-w-[280px] sm:max-w-md">{pendingAttachment.name}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-4 pl-4 border-l border-mecura-elevated">
+                  <div className="flex items-center gap-2 self-end sm:self-center">
                     <button 
                       onClick={() => setPendingAttachment(null)}
-                      className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-white transition-colors"
+                      className="px-3 py-2 hover:bg-white/10 rounded-xl text-mecura-silver hover:text-white transition-colors text-xs font-semibold flex items-center gap-1 cursor-pointer"
                       title="Cancelar"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-4 h-4" /> Cancelar
                     </button>
                     <button 
-                      onClick={() => {
-                        addMessage({
-                          sender: 'doctor',
-                          type: 'prescription',
-                          attachment: pendingAttachment
-                        });
-                        setPendingAttachment(null);
-                      }}
-                      className="px-4 py-2 bg-mecura-neon text-black text-sm font-bold rounded-lg hover:bg-[#b5ff33] transition-colors flex items-center gap-2"
+                      onClick={() => handleSendAttachment(pendingAttachment)}
+                      className="px-4 py-2.5 bg-mecura-neon text-black text-xs md:text-sm font-bold rounded-xl hover:bg-[#b5ff33] transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(166,255,0,0.25)] cursor-pointer"
                     >
                       <Send className="w-4 h-4" />
-                      Enviar Receita
+                      {pendingAttachment.docType === 'receita' ? 'Enviar Receita' :
+                       pendingAttachment.docType === 'laudo_inicial' ? 'Enviar Laudo Inicial' :
+                       pendingAttachment.docType === 'laudo_evolutivo' ? 'Enviar Laudo Evolutivo' :
+                       pendingAttachment.docType === 'laudo_psicomotor' ? 'Enviar Laudo Psicomotor' :
+                       pendingAttachment.docType === 'laudo_agronomico' ? 'Enviar Parecer Agronômico' :
+                       'Enviar Documento'}
                     </button>
                   </div>
                 </div>
               </div>
             )}
             
-            <div className="flex items-center gap-4 max-w-5xl mx-auto">
+            <div className="flex items-center gap-4 max-w-5xl mx-auto w-full">
               <div className="relative">
                 <button 
                   onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                  className="w-12 h-12 rounded-full bg-mecura-surface border border-mecura-elevated flex items-center justify-center text-mecura-silver hover:text-mecura-neon hover:border-mecura-neon/50 transition-all hover:scale-105"
+                  className="w-12 h-12 rounded-full bg-mecura-surface border border-mecura-elevated flex items-center justify-center text-mecura-silver hover:text-mecura-neon hover:border-mecura-neon/50 transition-all hover:scale-105 cursor-pointer"
+                  title="Anexar documentos e receitas"
                 >
                   <PlusCircle className="w-6 h-6" />
                 </button>
@@ -2802,28 +3090,69 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 {/* Attachment Menu */}
                 {showAttachmentMenu && (
                   <div
-                    className="absolute bottom-full left-0 mb-4 w-56 bg-mecura-surface border border-mecura-elevated rounded-2xl shadow-2xl overflow-hidden z-50"
+                    className="absolute bottom-full left-0 mb-4 w-64 bg-[#161622] border border-[#262636] rounded-2xl shadow-2xl overflow-hidden z-50 divide-y divide-white/5"
                   >
+                    <div className="px-4 py-2.5 bg-[#0A0A0F]/80 text-[10px] font-bold text-mecura-silver uppercase tracking-wider">
+                      Anexar Documento para o Paciente
+                    </div>
+                    
                     <button 
-                      onClick={() => {
-                        setShowAttachmentMenu(false);
-                        // Small delay to ensure menu closes smoothly before opening file picker
-                        setTimeout(() => fileInputRef.current?.click(), 50);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-mecura-pearl hover:bg-mecura-surface-light hover:text-white transition-colors border-b border-mecura-elevated"
+                      onClick={() => handleTriggerFileInput('receita')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-mecura-neon transition-colors cursor-pointer text-left"
                     >
-                      <FileText className="w-4 h-4 text-mecura-silver" />
-                      Adicionar Receita
+                      <FileText className="w-4 h-4 text-mecura-neon" />
+                      <span>Anexar <strong>Receita Médica</strong> (PDF)</span>
                     </button>
+
+                    <button 
+                      onClick={() => handleTriggerFileInput('laudo_inicial')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    >
+                      <FileCheck className="w-4 h-4 text-amber-400" />
+                      <span>Anexar <strong>Laudo Inicial</strong> (PDF)</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleTriggerFileInput('laudo_evolutivo')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-blue-400 transition-colors cursor-pointer text-left"
+                    >
+                      <FileCheck className="w-4 h-4 text-blue-400" />
+                      <span>Anexar <strong>Laudo Evolutivo</strong> (PDF)</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleTriggerFileInput('laudo_psicomotor')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-purple-400 transition-colors cursor-pointer text-left"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-purple-400" />
+                      <span>Anexar <strong>Laudo Psicomotor</strong> (PDF)</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleTriggerFileInput('laudo_agronomico')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-emerald-400 transition-colors cursor-pointer text-left"
+                    >
+                      <Sprout className="w-4 h-4 text-emerald-400" />
+                      <span>Anexar <strong>Laudo Agronômico</strong> (PDF)</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleTriggerFileInput('documento')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-white transition-colors cursor-pointer text-left"
+                    >
+                      <Paperclip className="w-4 h-4 text-mecura-silver" />
+                      <span>Anexar <strong>Outro Documento / Exame</strong></span>
+                    </button>
+
                     <button 
                       onClick={() => {
                         setShowAttachmentMenu(false);
                         setShowProductSearchModal(true);
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-mecura-pearl hover:bg-mecura-surface-light hover:text-white transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-xs text-mecura-neon hover:bg-white/5 transition-colors cursor-pointer text-left bg-mecura-neon/5"
                     >
-                      <Search className="w-4 h-4 text-mecura-silver" />
-                      Buscar produto
+                      <Search className="w-4 h-4 text-mecura-neon" />
+                      <span className="font-bold">Buscar produto no Catálogo</span>
                     </button>
                   </div>
                 )}
@@ -4422,83 +4751,207 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {!selectedHistoryItem ? (
                   <>
-                    {useStore.getState().consultationHistory
-                      .filter(h => (h.patientName || '').toLowerCase().includes((historySearchTerm || '').toLowerCase()))
-                      .sort((a, b) => b.date.getTime() - a.date.getTime())
-                      .map((history) => (
-                        <div 
-                          key={history.id} 
-                          onClick={() => setSelectedHistoryItem(history)}
-                          className="p-5 rounded-2xl bg-mecura-surface/30 border border-mecura-elevated hover:border-mecura-neon/30 transition-all group cursor-pointer"
-                        >
-                          <div className="flex justify-between items-start mb-4">
-                            <div>
-                              <h3 className="font-bold text-white text-lg">{history.patientName}</h3>
-                              <div className="flex items-center gap-3 mt-1">
-                                <span className="text-xs text-mecura-silver flex items-center gap-1">
-                                  <Activity className="w-3 h-3" /> {format(history.date, 'dd/MM/yyyy')}
-                                </span>
-                                <span className="text-xs text-mecura-silver flex items-center gap-1">
-                                  <MessageSquare className="w-3 h-3" /> {history.messages.length} mensagens
-                                </span>
+                    {consultationHistory
+                      .filter(h => {
+                        const term = (historySearchTerm || '').toLowerCase().trim();
+                        if (!term) return true;
+                        const matchName = (h.patientName || '').toLowerCase().includes(term);
+                        const matchCpf = (h.cpf || '').toLowerCase().includes(term);
+                        const matchPhone = (h.phone || '').toLowerCase().includes(term);
+                        const matchSummary = (h.summary || '').toLowerCase().includes(term);
+                        return matchName || matchCpf || matchPhone || matchSummary;
+                      })
+                      .sort((a, b) => {
+                        const timeA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+                        const timeB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+                        return timeB - timeA;
+                      })
+                      .map((history) => {
+                        const histDate = history.date instanceof Date ? history.date : new Date(history.date);
+                        const isHistDateValid = !isNaN(histDate.getTime());
+                        const formattedDate = isHistDateValid ? format(histDate, 'dd/MM/yyyy HH:mm') : 'Data recente';
+                        
+                        return (
+                          <div 
+                            key={history.id} 
+                            onClick={async () => {
+                              setSelectedHistoryItem(history);
+                              if (history.id) {
+                                const msgs = await fetchPatientMessages(history.id);
+                                setSelectedHistoryItem((prev: any) => prev && prev.id === history.id ? { ...prev, messages: msgs } : prev);
+                              }
+                            }}
+                            className="p-5 rounded-2xl bg-[#12121A] border border-mecura-elevated hover:border-mecura-neon/40 hover:bg-[#161622] transition-all group cursor-pointer shadow-lg"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="font-bold text-white text-lg group-hover:text-mecura-neon transition-colors">{history.patientName}</h3>
+                                  {history.isPremium ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-mecura-neon/15 border border-mecura-neon/30 text-mecura-neon text-[10px] font-bold tracking-wider">
+                                      ⭐ PREMIUM
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-mecura-silver text-[10px] font-bold">
+                                      ESSENCIAL
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    history.status === 'finished' 
+                                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                                      : history.status === 'in-consultation'
+                                      ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+                                      : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                                  }`}>
+                                    {history.status === 'finished' ? 'Finalizada' : history.status === 'in-consultation' ? 'Em Atendimento' : 'Aguardando'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                  <span className="text-xs text-mecura-silver flex items-center gap-1">
+                                    <Activity className="w-3.5 h-3.5 text-mecura-neon" /> {formattedDate}
+                                  </span>
+                                  {history.cpf && (
+                                    <span className="text-xs text-gray-400 font-mono">
+                                      CPF: {history.cpf}
+                                    </span>
+                                  )}
+                                  {history.phone && (
+                                    <span className="text-xs text-gray-400">
+                                      Tel: {history.phone}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
+                              <button className="self-start sm:self-center px-3 py-1.5 rounded-xl bg-mecura-neon/10 group-hover:bg-mecura-neon group-hover:text-black text-mecura-neon text-xs font-bold flex items-center gap-1.5 transition-all">
+                                <Eye className="w-4 h-4" />
+                                <span>Ver Prontuário</span>
+                              </button>
                             </div>
-                            <button className="p-2 rounded-xl bg-mecura-surface text-mecura-neon opacity-0 group-hover:opacity-100 transition-all">
-                              <Eye className="w-5 h-5" />
-                            </button>
+                            
+                            <p className="text-sm text-gray-300 leading-relaxed italic bg-black/20 p-3 rounded-xl border border-white/5">
+                              "{history.summary}"
+                            </p>
+
+                            {history.answers?.objectives && Array.isArray(history.answers.objectives) && history.answers.objectives.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-1.5">
+                                {history.answers.objectives.map((obj: string, i: number) => (
+                                  <span key={i} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-gray-300 text-[11px]">
+                                    • {obj}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-sm text-mecura-silver leading-relaxed italic">
-                            "{history.summary}"
-                          </p>
-                          <div className="mt-4 pt-4 border-t border-mecura-elevated/50 flex flex-wrap gap-2">
-                            {history.messages.filter(m => m.type === 'prescription' || m.type === 'product').map((m, i) => (
-                              <span key={i} className="px-2 py-1 rounded-md bg-mecura-neon/10 text-mecura-neon text-[10px] font-bold uppercase tracking-wider">
-                                Prescrição Enviada
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     
-                    {useStore.getState().consultationHistory.filter(h => (h.patientName || '').toLowerCase().includes((historySearchTerm || '').toLowerCase())).length === 0 && (
-                      <div className="text-center py-12">
-                        <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto mb-4">
-                          <Search className="w-8 h-8 text-mecura-elevated" />
+                    {consultationHistory.filter(h => {
+                      const term = (historySearchTerm || '').toLowerCase().trim();
+                      if (!term) return true;
+                      return (h.patientName || '').toLowerCase().includes(term) || (h.cpf || '').toLowerCase().includes(term);
+                    }).length === 0 && (
+                      <div className="text-center py-16">
+                        <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto mb-4 border border-mecura-elevated">
+                          <Search className="w-8 h-8 text-mecura-silver" />
                         </div>
-                        <p className="text-mecura-silver">Nenhum histórico encontrado para esta busca.</p>
+                        <h4 className="text-white font-bold text-base mb-1">Nenhum atendimento encontrado</h4>
+                        <p className="text-mecura-silver text-xs">Os registros de pacientes e atendimentos finalizados aparecerão automaticamente aqui sincronizados com o banco de dados.</p>
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                    <button 
-                      onClick={() => setSelectedHistoryItem(null)}
-                      className="flex items-center gap-2 text-mecura-neon hover:underline text-sm font-medium mb-4"
-                    >
-                      <PlusCircle className="w-4 h-4 rotate-45" /> Voltar para a lista
-                    </button>
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    {/* Top Bar with Back and Actions */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                      <button 
+                        onClick={() => setSelectedHistoryItem(null)}
+                        className="inline-flex items-center gap-2 text-mecura-neon hover:text-[#b5ff33] text-sm font-bold transition-colors cursor-pointer"
+                      >
+                        <PlusCircle className="w-4 h-4 rotate-45" /> Voltar para a lista de histórico
+                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            handleWhatsAppCall(selectedHistoryItem);
+                          }}
+                          className="px-3.5 py-2 bg-[#25D366]/20 hover:bg-[#25D366] text-[#25D366] hover:text-black border border-[#25D366]/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <PhoneCall className="w-3.5 h-3.5" />
+                          <span>Chamar no WhatsApp</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowHistoryModal(false);
+                            handleStartConsultation(selectedHistoryItem);
+                          }}
+                          className="px-4 py-2 bg-mecura-neon hover:bg-[#b5ff33] text-black rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)] cursor-pointer"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Abrir Chat do Paciente</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Patient Overview Card */}
+                    <div className="p-5 rounded-2xl bg-[#12121A] border border-mecura-elevated">
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2.5">
+                            <h3 className="text-white font-bold text-xl">{selectedHistoryItem.patientName}</h3>
+                            {selectedHistoryItem.isPremium && (
+                              <span className="px-2 py-0.5 rounded-full bg-mecura-neon/20 border border-mecura-neon/40 text-mecura-neon text-xs font-bold">
+                                ⭐ PREMIUM
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-mecura-silver mt-1 flex items-center gap-1">
+                            <Activity className="w-3.5 h-3.5 text-mecura-neon" />
+                            Atendimento registrado em: {selectedHistoryItem.date instanceof Date ? format(selectedHistoryItem.date, 'dd/MM/yyyy HH:mm') : format(new Date(selectedHistoryItem.date), 'dd/MM/yyyy HH:mm')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                          <span className="text-gray-400 block text-[10px] uppercase tracking-wider mb-0.5">CPF</span>
+                          <span className="text-white font-mono font-medium">{selectedHistoryItem.cpf || 'Não informado'}</span>
+                        </div>
+                        <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                          <span className="text-gray-400 block text-[10px] uppercase tracking-wider mb-0.5">Nascimento</span>
+                          <span className="text-white font-medium">{selectedHistoryItem.birthDate || 'Não informada'}</span>
+                        </div>
+                        <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                          <span className="text-gray-400 block text-[10px] uppercase tracking-wider mb-0.5">Telefone</span>
+                          <span className="text-white font-medium">{selectedHistoryItem.phone || 'Não informado'}</span>
+                        </div>
+                        <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+                          <span className="text-gray-400 block text-[10px] uppercase tracking-wider mb-0.5">Status</span>
+                          <span className="text-mecura-neon font-bold">{selectedHistoryItem.status === 'finished' ? 'Finalizada' : selectedHistoryItem.status === 'in-consultation' ? 'Em Atendimento' : 'Fila'}</span>
+                        </div>
+                      </div>
+                    </div>
 
                     {/* Evolution Chart */}
-                    <div className="p-6 rounded-3xl bg-mecura-surface/30 border border-mecura-elevated">
+                    <div className="p-6 rounded-3xl bg-[#12121A] border border-mecura-elevated">
                       <h4 className="text-white font-bold mb-6 flex items-center gap-2">
                         <Activity className="w-5 h-5 text-mecura-neon" /> Gráfico de Evolução (Intensidade dos Sintomas)
                       </h4>
                       <div className="h-[200px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart
-                            data={useStore.getState().consultationHistory
-                              .filter(h => h.patientName === selectedHistoryItem.patientName)
-                              .sort((a, b) => a.date.getTime() - b.date.getTime())
+                            data={consultationHistory
+                              .filter(h => h.patientName === selectedHistoryItem.patientName || h.id === selectedHistoryItem.id)
+                              .sort((a, b) => (a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime()) - (b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime()))
                               .map(h => ({
-                                date: format(h.date, 'dd/MM'),
-                                intensity: h.intensity || 0
+                                date: h.date instanceof Date ? format(h.date, 'dd/MM') : format(new Date(h.date), 'dd/MM'),
+                                intensity: h.intensity || 5
                               }))
                             }
                           >
                             <defs>
                               <linearGradient id="colorIntensity" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#00F2FF" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#00F2FF" stopOpacity={0}/>
+                                <stop offset="5%" stopColor="#A6FF00" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="#A6FF00" stopOpacity={0}/>
                               </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#1E1E2D" vertical={false} />
@@ -4506,9 +4959,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                             <YAxis stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
                             <Tooltip 
                               contentStyle={{ backgroundColor: '#0A0A0F', border: '1px solid #1E1E2D', borderRadius: '12px' }}
-                              itemStyle={{ color: '#00F2FF' }}
+                              itemStyle={{ color: '#A6FF00' }}
                             />
-                            <Area type="monotone" dataKey="intensity" stroke="#00F2FF" strokeWidth={3} fillOpacity={1} fill="url(#colorIntensity)" />
+                            <Area type="monotone" dataKey="intensity" stroke="#A6FF00" strokeWidth={3} fillOpacity={1} fill="url(#colorIntensity)" />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
@@ -4517,59 +4970,105 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       </p>
                     </div>
 
-                    {/* Prescriptions & Orientations */}
-                    <div className="space-y-6">
+                    {/* Prescriptions, Reports & Attachments */}
+                    <div className="space-y-4">
                       <h4 className="text-white font-bold flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-mecura-neon" /> Prescrições e Orientações
+                        <FileText className="w-5 h-5 text-mecura-neon" /> Documentos e Prescrições Registradas
                       </h4>
                       
-                      {selectedHistoryItem.messages
-                        .filter(m => m.type === 'prescription' || m.type === 'product' || m.type === 'prescription_notes')
+                      {selectedHistoryItem.messages && selectedHistoryItem.messages
+                        .filter((m: any) => m.type === 'prescription' || m.type === 'medical_report' || m.type === 'psychomotor_report' || m.type === 'agronomic_report' || m.type === 'document' || m.attachment || m.type === 'product' || m.type === 'prescription_notes')
                         .map((msg: any, idx: number) => (
-                          <div key={idx} className="p-6 rounded-2xl bg-mecura-surface/50 border border-mecura-elevated">
+                          <div key={idx} className="p-5 rounded-2xl bg-[#12121A] border border-mecura-elevated">
+                            {/* Product */}
                             {msg.type === 'product' && msg.productData && (
-                              <div className="flex gap-4">
-                                <img src={msg.productData.image || "https://images.unsplash.com/photo-1608681286823-3801264b321a?q=80&w=400&auto=format&fit=crop"} alt={msg.productData.name} referrerPolicy="no-referrer" className="w-20 h-20 rounded-xl object-cover border border-mecura-elevated" />
+                              <div className="flex gap-4 items-start">
+                                <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 border border-mecura-neon/20 flex items-center justify-center flex-shrink-0">
+                                  <Pill className="w-6 h-6 text-mecura-neon" />
+                                </div>
                                 <div>
-                                  <h5 className="text-white font-bold">{msg.productData.name}</h5>
-                                  <p className="text-xs text-mecura-neon mt-1">{msg.productData.brand}</p>
-                                  <div className="mt-2 space-y-1">
-                                    {(Array.isArray(msg.productData.dosage) ? msg.productData.dosage : [msg.productData.dosage || '']).map((d: string, i: number) => (
-                                      <p key={`${msg.id}-protocol-${i}`} className="text-xs text-mecura-silver">• {d}</p>
-                                    ))}
-                                  </div>
+                                  <span className="text-[10px] text-mecura-neon uppercase font-bold tracking-wider">Medicamento Prescrito</span>
+                                  <h5 className="text-white font-bold text-sm">{msg.productData.name}</h5>
+                                  <p className="text-xs text-mecura-silver mt-0.5">{msg.productData.brand} • {msg.productData.origin}</p>
+                                  {msg.productData.dosage && (
+                                    <div className="mt-2 text-xs text-gray-300 bg-black/20 p-2 rounded-lg">
+                                      {(Array.isArray(msg.productData.dosage) ? msg.productData.dosage : [msg.productData.dosage]).map((d: string, i: number) => (
+                                        <p key={i}>• {d}</p>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}
-                            {msg.type === 'prescription' && (
-                              <div className="prose prose-invert prose-sm max-w-none">
-                                <Markdown>{msg.text}</Markdown>
+
+                            {/* Attached Document / Prescription / Reports with Download Button */}
+                            {msg.attachment?.url && (
+                              <div className="flex items-center justify-between gap-4 mt-2">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white">
+                                    <FileText className="w-5 h-5 text-mecura-neon" />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-mecura-neon font-bold uppercase tracking-wider block">
+                                      {msg.attachment.title || (msg.type === 'medical_report' ? 'Laudo Médico' : msg.type === 'psychomotor_report' ? 'Laudo Psicomotor' : msg.type === 'agronomic_report' ? 'Parecer Agronômico' : 'Receita Digital')}
+                                    </span>
+                                    <p className="text-xs text-white font-semibold">{msg.attachment.name || 'documento.pdf'}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const a = document.createElement('a');
+                                    a.href = msg.attachment.url;
+                                    a.download = msg.attachment.name || 'Documento_MeCura.pdf';
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                  }}
+                                  className="px-3.5 py-2 bg-mecura-neon text-black font-bold text-xs rounded-xl hover:bg-[#b5ff33] flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                                >
+                                  <Download className="w-3.5 h-3.5" /> Baixar PDF
+                                </button>
                               </div>
                             )}
+
+                            {/* Prescription Notes */}
                             {msg.type === 'prescription_notes' && (
-                              <div className="mt-4 p-4 rounded-xl bg-mecura-neon/5 border border-mecura-neon/20">
-                                <p className="text-xs font-bold text-mecura-neon uppercase mb-2">Orientações Médicas</p>
-                                <p className="text-sm text-mecura-silver leading-relaxed">{msg.text}</p>
+                              <div className="mt-2 p-3.5 rounded-xl bg-mecura-neon/5 border border-mecura-neon/20">
+                                <p className="text-xs font-bold text-mecura-neon uppercase mb-1">Orientações Médicas e Posologia</p>
+                                <p className="text-xs text-mecura-silver leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                               </div>
                             )}
                           </div>
                         ))}
                       
-                      {selectedHistoryItem.messages.filter(m => m.type === 'prescription' || m.type === 'product' || m.type === 'prescription_notes').length === 0 && (
+                      {(!selectedHistoryItem.messages || selectedHistoryItem.messages.filter((m: any) => m.type === 'prescription' || m.type === 'medical_report' || m.type === 'psychomotor_report' || m.type === 'agronomic_report' || m.type === 'document' || m.attachment || m.type === 'product' || m.type === 'prescription_notes').length === 0) && (
                         <div className="p-8 text-center rounded-2xl border border-dashed border-mecura-elevated">
-                          <p className="text-mecura-silver text-sm">Nenhuma receita ou orientação registrada nesta consulta.</p>
+                          <p className="text-mecura-silver text-sm">Nenhuma receita ou arquivo anexado registrado nesta consulta.</p>
                         </div>
                       )}
                     </div>
 
-                    {/* Full Summary */}
-                    <div className="p-6 rounded-2xl bg-mecura-surface/20 border border-mecura-elevated">
-                      <h4 className="text-white font-bold mb-4 flex items-center gap-2">
-                        <BrainCircuit className="w-5 h-5 text-mecura-neon" /> Resumo Clínico
+                    {/* Clinical Summary & Objectives */}
+                    <div className="p-6 rounded-2xl bg-[#12121A] border border-mecura-elevated">
+                      <h4 className="text-white font-bold mb-3 flex items-center gap-2">
+                        <BrainCircuit className="w-5 h-5 text-mecura-neon" /> Resumo Clínico & Queixas
                       </h4>
-                      <p className="text-mecura-silver text-sm leading-relaxed">
+                      <p className="text-gray-300 text-sm leading-relaxed mb-4">
                         {selectedHistoryItem.summary}
                       </p>
+                      {selectedHistoryItem.answers?.objectives && Array.isArray(selectedHistoryItem.answers.objectives) && (
+                        <div className="pt-3 border-t border-white/5">
+                          <span className="text-xs text-mecura-silver font-bold uppercase tracking-wider block mb-2">Objetivos de Tratamento Informados:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedHistoryItem.answers.objectives.map((obj: string, i: number) => (
+                              <span key={i} className="px-2.5 py-1 rounded-lg bg-mecura-neon/10 border border-mecura-neon/20 text-mecura-neon text-xs font-medium">
+                                ✓ {obj}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

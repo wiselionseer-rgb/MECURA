@@ -133,7 +133,7 @@ async function startServer() {
         });
       }
 
-      const numPrice = Number(price);
+      const numPrice = Math.round(Number(price) * 100) / 100;
       // R$ 49,90 em até 3x, R$ 249,90 em até 5x
       const maxInstallments = req.body.installments ? Number(req.body.installments) : (numPrice > 100 ? 5 : 3);
 
@@ -209,7 +209,12 @@ async function startServer() {
         return res.status(500).json({ error: "Configuração do Mercado Pago ausente no servidor." });
       }
 
-      console.log(`Tentando criar pagamento Pix: R$${price} para ${email}`);
+      const cleanPrice = Math.round(Number(price) * 100) / 100;
+      if (cleanPrice <= 0) {
+        return res.status(400).json({ error: "O valor da transação deve ser maior que R$ 0,00." });
+      }
+
+      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${email}`);
 
       const payment = new Payment(mpInfo.client);
       const isSellerEmail = email && (
@@ -220,7 +225,7 @@ async function startServer() {
 
       const result = await payment.create({
         body: {
-          transaction_amount: Number(price),
+          transaction_amount: cleanPrice,
           description: title,
           payment_method_id: 'pix',
           payer: {

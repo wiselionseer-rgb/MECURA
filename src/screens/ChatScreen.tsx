@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Send, FileText, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
@@ -415,8 +415,8 @@ export function ChatScreen() {
                   </button>
                 </div>
               </motion.div>
-            ) : msg.type === 'prescription' ? (
-              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#1A1A26] to-[#0A0A0F] border border-mecura-neon/40 rounded-3xl p-6 mb-2 relative overflow-hidden group">
+            ) : (msg.type === 'prescription' || msg.docType === 'receita') ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#1A1A26] to-[#0A0A0F] border border-mecura-neon/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
                 {/* Holographic/Scanner background effect */}
                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay" />
                 <div className="absolute -top-24 -right-24 w-48 h-48 bg-mecura-neon/20 blur-[50px] rounded-full group-hover:bg-mecura-neon/30 transition-colors duration-700" />
@@ -429,29 +429,31 @@ export function ChatScreen() {
                     <div className="text-right">
                       <span className="text-[10px] text-mecura-neon uppercase tracking-widest font-mono">Status</span>
                       <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
-                        <CheckCheck className="w-3 h-3 text-mecura-neon" /> Assinada
+                        <CheckCheck className="w-3 h-3 text-mecura-neon" /> Assinada Digitalmente
                       </p>
                     </div>
                   </div>
 
                   <h3 className="text-white font-bold text-2xl mb-1">Receita Digital</h3>
-                  <p className="text-mecura-silver text-xs mb-6 font-mono">ID: RX-{Math.random().toString(36).substring(2, 8).toUpperCase()}</p>
+                  <p className="text-mecura-silver text-xs mb-6 font-mono">
+                    {msg.attachment?.name || `ID: RX-${Math.random().toString(36).substring(2, 8).toUpperCase()}`}
+                  </p>
                   
                   <div className="flex flex-col gap-3">
                     {msg.attachment ? (
                       <Button 
                         onClick={() => {
                           const a = document.createElement('a');
-                          a.href = msg.attachment.url;
-                          a.download = msg.attachment.name;
+                          a.href = msg.attachment!.url;
+                          a.download = msg.attachment!.name || 'Receita_Digital_MeCura.pdf';
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);
                         }} 
-                        className="w-full bg-mecura-neon text-black hover:bg-[#b5ff33] font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12"
+                        className="w-full bg-mecura-neon text-black hover:bg-[#b5ff33] font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 cursor-pointer"
                       >
                         <Download className="w-4 h-4 mr-2" />
-                        Baixar PDF
+                        Baixar Receita PDF
                       </Button>
                     ) : (
                       <button
@@ -463,7 +465,7 @@ export function ChatScreen() {
                              handleGeneratePDF();
                            }
                         }}
-                        className={`w-full flex items-center justify-center bg-mecura-neon text-black font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 ${!pdfBlob ? 'opacity-70 cursor-wait' : 'hover:bg-[#b5ff33]'}`}
+                        className={`w-full flex items-center justify-center bg-mecura-neon text-black font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 cursor-pointer ${!pdfBlob ? 'opacity-70 cursor-wait' : 'hover:bg-[#b5ff33]'}`}
                       >
                         {isGeneratingPDF ? (
                           <span className="flex items-center gap-2">
@@ -472,16 +474,172 @@ export function ChatScreen() {
                           </span>
                         ) : (
                           <span className="flex items-center gap-2">
-                            <Download className="w-4 h-4" /> Baixar PDF
+                            <Download className="w-4 h-4" /> Baixar Receita PDF
                           </span>
                         )}
                       </button>
                     )}
-                    <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/5 rounded-xl h-12" onClick={() => navigate('/pharmacy')}>
+                    <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/5 rounded-xl h-12 cursor-pointer" onClick={() => navigate('/pharmacy')}>
                       <ShoppingCart className="w-4 h-4 mr-2" />
                       Ir para a Loja
                     </Button>
                   </div>
+                </div>
+              </div>
+            ) : (msg.type === 'medical_report' || msg.docType === 'laudo_inicial' || msg.docType === 'laudo_evolutivo') ? (
+              <div className={`w-[90%] sm:w-[80%] bg-gradient-to-br ${msg.docType === 'laudo_evolutivo' ? 'from-[#0F172A] to-[#0A0F1D] border-blue-500/40' : 'from-[#1E1911] to-[#0D0B07] border-amber-500/40'} border rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl`}>
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${msg.docType === 'laudo_evolutivo' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'}`}>
+                      <FileCheck className="w-7 h-7" />
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[10px] uppercase tracking-widest font-mono ${msg.docType === 'laudo_evolutivo' ? 'text-blue-400' : 'text-amber-400'}`}>Oficial</span>
+                      <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
+                        <CheckCheck className={`w-3 h-3 ${msg.docType === 'laudo_evolutivo' ? 'text-blue-400' : 'text-amber-400'}`} /> Assinado Digitalmente
+                      </p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-bold text-2xl mb-1">
+                    {msg.docType === 'laudo_evolutivo' ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial'}
+                  </h3>
+                  <p className="text-mecura-silver text-xs mb-6">
+                    {msg.attachment?.name || 'Documento médico assinado para prontuário e instrução legal.'}
+                  </p>
+                  
+                  {msg.attachment?.url && (
+                    <Button 
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = msg.attachment!.url;
+                        a.download = msg.attachment!.name || 'Laudo_Medico.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }} 
+                      className={`w-full font-bold shadow-xl rounded-xl h-12 cursor-pointer flex items-center justify-center ${
+                        msg.docType === 'laudo_evolutivo'
+                          ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+                          : 'bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_20px_rgba(245,158,11,0.3)]'
+                      }`}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Baixar Laudo PDF
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor') ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#1E1230] to-[#0D0714] border border-purple-500/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-14 h-14 bg-purple-500/15 border border-purple-500/30 text-purple-400 rounded-2xl flex items-center justify-center">
+                      <ShieldCheck className="w-7 h-7" />
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-purple-400 uppercase tracking-widest font-mono">CTB / Aptidão</span>
+                      <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
+                        <CheckCheck className="w-3 h-3 text-purple-400" /> Atestado Válido
+                      </p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-bold text-2xl mb-1">Laudo Psicomotor</h3>
+                  <p className="text-purple-300 text-xs mb-6">
+                    {msg.attachment?.name || 'Atestado de capacidade psicomotora e aptidão (Lei Seca / CTB).'}
+                  </p>
+                  
+                  {msg.attachment?.url && (
+                    <Button 
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = msg.attachment!.url;
+                        a.download = msg.attachment!.name || 'Laudo_Psicomotor.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }} 
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(168,85,247,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Baixar Laudo Psicomotor PDF
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico') ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#0F2417] to-[#07130C] border border-emerald-500/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-14 h-14 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-2xl flex items-center justify-center">
+                      <Sprout className="w-7 h-7" />
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-emerald-400 uppercase tracking-widest font-mono">Salvo-Conduto / HC</span>
+                      <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
+                        <CheckCheck className="w-3 h-3 text-emerald-400" /> Parecer Pericial
+                      </p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-bold text-2xl mb-1">Parecer Técnico Agronômico</h3>
+                  <p className="text-emerald-300 text-xs mb-6">
+                    {msg.attachment?.name || 'Dimensionamento oficial de cultivo e fitomassa para Habeas Corpus.'}
+                  </p>
+                  
+                  {msg.attachment?.url && (
+                    <Button 
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = msg.attachment!.url;
+                        a.download = msg.attachment!.name || 'Parecer_Agronomico.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }} 
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-[0_0_20px_rgba(16,185,129,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Baixar Parecer Agronômico PDF
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (msg.type === 'document' || msg.attachment) ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#161622] to-[#0A0A0F] border border-white/20 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-14 h-14 bg-white/10 border border-white/20 text-white rounded-2xl flex items-center justify-center">
+                      <Paperclip className="w-7 h-7" />
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-mecura-silver uppercase tracking-widest font-mono">Arquivo</span>
+                      <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
+                        <CheckCheck className="w-3 h-3 text-mecura-neon" /> Disponível
+                      </p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-bold text-xl mb-1">{msg.attachment?.title || 'Documento Anexado'}</h3>
+                  <p className="text-mecura-silver text-xs mb-6 truncate">{msg.attachment?.name || 'arquivo.pdf'}</p>
+                  
+                  {msg.attachment?.url && (
+                    <Button 
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = msg.attachment!.url;
+                        a.download = msg.attachment!.name || 'documento.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }} 
+                      className="w-full bg-white/15 hover:bg-white text-white hover:text-black font-bold border border-white/20 rounded-xl h-12 cursor-pointer flex items-center justify-center transition-colors"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Baixar Documento
+                    </Button>
+                  )}
                 </div>
               </div>
             ) : msg.type === 'acompanhamento_card' ? (

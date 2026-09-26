@@ -2,16 +2,46 @@ import { create } from 'zustand';
 
 export type UserTier = 'Essencial' | 'Avançado' | 'Premium' | 'Elite' | 'Black';
 
+export interface BlockedDate {
+  id: string;
+  date: string; // 'YYYY-MM-DD'
+  fullDay?: boolean;
+  times?: string[];
+  reason?: string;
+  createdAt?: string;
+}
+
+export interface ConsultationHistoryItem {
+  id: string;
+  patientId?: string;
+  patientName: string;
+  email?: string;
+  phone?: string;
+  cpf?: string;
+  birthDate?: string;
+  date: Date;
+  messages: Message[];
+  summary?: string;
+  intensity?: number;
+  status?: 'waiting' | 'in-consultation' | 'finished';
+  isPremium?: boolean;
+  plan?: string;
+  answers?: any;
+}
+
 export interface Message {
   id: string;
   text?: string;
   sender: 'user' | 'doctor';
   timestamp: Date;
-  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success';
+  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document';
+  docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento';
   attachment?: {
     name: string;
     url: string;
     type: string;
+    docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento';
+    title?: string;
   };
   productData?: {
     name: string;
@@ -82,6 +112,10 @@ interface AppState {
     status: 'pending' | 'confirmed' | 'cancelled';
     type: string;
   }>;
+  blockedDates: BlockedDate[];
+  blockDate: (date: string, reason?: string, fullDay?: boolean, times?: string[]) => Promise<void>;
+  unblockDate: (idOrDate: string) => Promise<void>;
+  subscribeToBlockedDates: () => () => void;
   addAppointment: (appointment: { patientName: string; date: string; time: string; type: string; status?: 'pending' | 'confirmed' | 'cancelled' }) => void;
   confirmAppointment: (id: string) => void;
   cancelAppointment: (id: string, reason?: string) => void;
@@ -121,14 +155,7 @@ interface AppState {
   isConsultationFinished: boolean;
   bonusBalance: number;
   incrementBonus: (amount: number, userId?: string) => Promise<void>;
-  consultationHistory: Array<{
-    id: string;
-    patientName: string;
-    date: Date;
-    messages: Message[];
-    summary?: string;
-    intensity?: number;
-  }>;
+  consultationHistory: ConsultationHistoryItem[];
   activeConsultationId: string | null;
   setActiveConsultationId: (id: string | null) => void;
   startConsultation: (patientId?: string) => void;
@@ -136,6 +163,8 @@ interface AppState {
   setIsConsultationFinished: (status: boolean) => void;
   resetConsultation: () => void;
   fetchConsultationHistory: (patientId: string) => Promise<void>;
+  subscribeToAllConsultationHistory: () => () => void;
+  fetchPatientMessages: (patientId: string) => Promise<Message[]>;
   
   // Chat
   messages: Message[];
@@ -203,6 +232,36 @@ export const useStore = create<AppState>((set, get) => ({
   setConsultationStatus: (status) => set({ consultationStatus: status }),
   
   allAppointments: [],
+  blockedDates: [],
+  blockDate: async (date, reason, fullDay = true, times = []) => {
+    try {
+      const docId = date;
+      const data = {
+        date,
+        reason: reason || 'Agenda bloqueada pelo médico',
+        fullDay,
+        times: fullDay ? [] : times,
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(doc(db, 'blocked_dates', docId), data);
+      set((state) => {
+        const filtered = state.blockedDates.filter(b => b.id !== docId && b.date !== date);
+        return { blockedDates: [...filtered, { id: docId, ...data }] };
+      });
+    } catch (error) {
+      console.error("Error blocking date in Firestore:", error);
+    }
+  },
+  unblockDate: async (idOrDate) => {
+    try {
+      await deleteDoc(doc(db, 'blocked_dates', idOrDate));
+      set((state) => ({
+        blockedDates: state.blockedDates.filter(b => b.id !== idOrDate && b.date !== idOrDate)
+      }));
+    } catch (error) {
+      console.error("Error unblocking date in Firestore:", error);
+    }
+  },
   addAppointment: async (appointment) => {
     try {
       const docRef = await addDoc(collection(db, 'appointments'), {
@@ -600,6 +659,20 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
   
+  subscribeToBlockedDates: () => {
+    console.log("Subscribing to blocked_dates collection...");
+    const q = query(collection(db, 'blocked_dates'));
+    return onSnapshot(q, (snapshot) => {
+      const blocked = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      })) as BlockedDate[];
+      set({ blockedDates: blocked });
+    }, (error) => {
+      console.error("Error subscribing to blocked dates:", error);
+    });
+  },
+  
   consultationActive: false,
   isConsultationFinished: false,
   fetchConsultationHistory: async (patientId) => {
@@ -627,6 +700,81 @@ export const useStore = create<AppState>((set, get) => ({
       console.error("Error fetching history:", error);
     }
   },
+
+  fetchPatientMessages: async (patientId: string) => {
+    try {
+      const messagesRef = collection(db, 'active_consultations', patientId, 'messages');
+      const q = query(messagesRef, orderBy('timestamp', 'asc'));
+      const snap = await getDocs(q);
+      const msgs: Message[] = snap.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : new Date())
+        } as Message;
+      });
+      return msgs;
+    } catch (err) {
+      console.error("Error fetching patient messages for history:", err);
+      return [];
+    }
+  },
+
+  subscribeToAllConsultationHistory: () => {
+    const qQueue = query(collection(db, 'queue'), orderBy('joinedAt', 'desc'));
+    return onSnapshot(qQueue, async (snapshot) => {
+      const historyList: ConsultationHistoryItem[] = [];
+
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const pId = docSnap.id;
+        const pName = data.patientName || data.name || 'Paciente';
+        const pDate = data.finishedAt?.toDate ? data.finishedAt.toDate() : 
+                     (data.joinedAt?.toDate ? data.joinedAt.toDate() : 
+                     (data.joinedAt ? new Date(data.joinedAt) : new Date()));
+        
+        let intensity = 5;
+        if (data.answers?.intensity !== undefined) {
+          intensity = Number(data.answers.intensity);
+        } else if (data.answers?.symptomIntensity !== undefined) {
+          intensity = Number(data.answers.symptomIntensity);
+        }
+
+        let summary = 'Atendimento médico realizado na plataforma MeCura.';
+        if (data.answers?.objectives && Array.isArray(data.answers.objectives) && data.answers.objectives.length > 0) {
+          summary = `Tratamento para: ${data.answers.objectives.join(', ')}.`;
+        } else if (data.answers?.primaryComplaint) {
+          summary = `Queixa principal: ${data.answers.primaryComplaint}`;
+        } else if (data.lastMessageText) {
+          summary = data.lastMessageText;
+        }
+
+        historyList.push({
+          id: pId,
+          patientId: pId,
+          patientName: pName,
+          email: data.email,
+          phone: data.phone || data.whatsapp || data.answers?.phone || data.answers?.whatsapp,
+          cpf: data.cpf || data.answers?.cpf,
+          birthDate: data.birthDate || data.answers?.birthDate,
+          date: pDate,
+          messages: [],
+          summary: summary,
+          intensity: intensity,
+          status: data.status || 'waiting',
+          isPremium: !!(data.isPremium || data.plan === 'premium' || data.selectedOffer === 'premium' || data.answers?.isPremium),
+          plan: data.plan || data.selectedOffer || 'basic',
+          answers: data.answers || {}
+        });
+      }
+
+      set({ consultationHistory: historyList });
+    }, (error) => {
+      console.error("Error subscribing to consultation history:", error);
+    });
+  },
+
   bonusBalance: 0,
   incrementBonus: async (amount: number, userId?: string) => {
     const targetId = userId || auth.currentUser?.uid || get().patientId;
@@ -657,29 +805,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
   },
-  consultationHistory: [
-    {
-      id: 'h1',
-      patientName: 'Lucas Neres',
-      date: new Date('2026-03-15T10:00:00'),
-      messages: [
-        { id: 'm1', text: 'Olá Lucas, como você está se sentindo hoje?', sender: 'doctor', timestamp: new Date('2026-03-15T10:00:00') },
-        { id: 'm2', text: 'Estou melhorando das dores, mas ainda sinto ansiedade.', sender: 'user', timestamp: new Date('2026-03-15T10:01:00') }
-      ],
-      summary: 'Paciente relatou melhora nas dores crônicas, mas persistência de sintomas de ansiedade.',
-      intensity: 8
-    },
-    {
-      id: 'h2',
-      patientName: 'Ana Oliveira',
-      date: new Date('2026-03-20T14:30:00'),
-      messages: [
-        { id: 'm3', text: 'Boa tarde Ana. Como foi o uso do óleo nas últimas semanas?', sender: 'doctor', timestamp: new Date('2026-03-20T14:30:00') }
-      ],
-      summary: 'Acompanhamento de rotina.',
-      intensity: 5
-    }
-  ],
+  consultationHistory: [],
   activeConsultationId: null,
   setActiveConsultationId: (id) => set({ activeConsultationId: id }),
   

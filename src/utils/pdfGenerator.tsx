@@ -143,22 +143,159 @@ export const generatePrescriptionPDF = async (
     });
   }
 
+  interface PrescriptionPageData {
+    guideTitle: string;
+    guideSubtitle: string;
+    badge: string;
+    pageNumber: number;
+    totalPages: number;
+    items: PrescriptionItemData[];
+    itemStartIndex: number;
+    notesText?: string;
+  }
+
+  const allPagesToRender: PrescriptionPageData[] = [];
+
+  guidesToRender.forEach(guide => {
+    const items = guide.items;
+    const hasNotes = Boolean(customNotesText && customNotesText.trim());
+
+    if (items.length <= 1) {
+      allPagesToRender.push({
+        guideTitle: guide.title,
+        guideSubtitle: guide.subtitle,
+        badge: guide.badge,
+        pageNumber: 1,
+        totalPages: 1,
+        items: items,
+        itemStartIndex: 0,
+        notesText: hasNotes ? customNotesText : undefined
+      });
+    } else if (items.length === 2 && (!hasNotes || customNotesText.length < 250)) {
+      allPagesToRender.push({
+        guideTitle: guide.title,
+        guideSubtitle: guide.subtitle,
+        badge: guide.badge,
+        pageNumber: 1,
+        totalPages: 1,
+        items: items,
+        itemStartIndex: 0,
+        notesText: hasNotes ? customNotesText : undefined
+      });
+    } else if (items.length === 2) {
+      allPagesToRender.push({
+        guideTitle: guide.title,
+        guideSubtitle: guide.subtitle,
+        badge: guide.badge,
+        pageNumber: 1,
+        totalPages: 2,
+        items: items,
+        itemStartIndex: 0,
+        notesText: undefined
+      });
+      allPagesToRender.push({
+        guideTitle: guide.title,
+        guideSubtitle: guide.subtitle,
+        badge: guide.badge,
+        pageNumber: 2,
+        totalPages: 2,
+        items: [],
+        itemStartIndex: 2,
+        notesText: customNotesText
+      });
+    } else if (items.length === 3) {
+      allPagesToRender.push({
+        guideTitle: guide.title,
+        guideSubtitle: guide.subtitle,
+        badge: guide.badge,
+        pageNumber: 1,
+        totalPages: 2,
+        items: items.slice(0, 2),
+        itemStartIndex: 0,
+        notesText: undefined
+      });
+      allPagesToRender.push({
+        guideTitle: guide.title,
+        guideSubtitle: guide.subtitle,
+        badge: guide.badge,
+        pageNumber: 2,
+        totalPages: 2,
+        items: items.slice(2),
+        itemStartIndex: 2,
+        notesText: hasNotes ? customNotesText : undefined
+      });
+    } else {
+      const chunks: PrescriptionItemData[][] = [];
+      for (let i = 0; i < items.length; i += 2) {
+        chunks.push(items.slice(i, i + 2));
+      }
+      const totalP = hasNotes ? chunks.length + 1 : chunks.length;
+      let curP = 1;
+      let startIdx = 0;
+      chunks.forEach((chunk) => {
+        allPagesToRender.push({
+          guideTitle: guide.title,
+          guideSubtitle: guide.subtitle,
+          badge: guide.badge,
+          pageNumber: curP,
+          totalPages: totalP,
+          items: chunk,
+          itemStartIndex: startIdx,
+          notesText: undefined
+        });
+        startIdx += chunk.length;
+        curP++;
+      });
+      if (hasNotes) {
+        allPagesToRender.push({
+          guideTitle: guide.title,
+          guideSubtitle: guide.subtitle,
+          badge: guide.badge,
+          pageNumber: curP,
+          totalPages: totalP,
+          items: [],
+          itemStartIndex: startIdx,
+          notesText: customNotesText
+        });
+      }
+    }
+  });
+
   const PdfComponent = () => {
     return (
       <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
-        {guidesToRender.map((guide, gIdx) => (
-          <div key={gIdx} className="relative p-12 border border-[#E2E8F0] box-border flex flex-col justify-between" style={{ width: "794px", minHeight: "1123px", backgroundColor: "#FFFFFF", color: "#111827", pageBreakAfter: gIdx < guidesToRender.length - 1 ? "always" : "auto" }}>
-            {/* Guide Badge */}
-            <div className="absolute top-6 right-6 bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              {guide.badge}
+        {allPagesToRender.map((page, pIdx) => (
+          <div 
+            key={pIdx} 
+            className="prescription-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
+            style={{ 
+              width: "794px", 
+              height: "1123px", 
+              minHeight: "1123px", 
+              maxHeight: "1123px", 
+              padding: "36px 44px", 
+              backgroundColor: "#FFFFFF", 
+              color: "#111827",
+              boxSizing: "border-box",
+              overflow: "hidden"
+            }}
+          >
+            {/* Guide Badge and Page Indicator */}
+            <div className="absolute top-5 right-11 flex items-center gap-2">
+              <span className="text-[10px] text-[#64748B] font-bold">
+                Página {page.pageNumber} de {page.totalPages}
+              </span>
+              <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                {page.badge}
+              </span>
             </div>
 
             <div>
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-4 mb-6 pt-4">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-3 mb-4 pt-1">
                 <div>
                   <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[11px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                  <p className="text-[10px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
                     CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                   </p>
                 </div>
@@ -170,45 +307,44 @@ export const generatePrescriptionPDF = async (
               </div>
 
               {/* Title & Subtitle */}
-              <div className="text-center my-6">
-                <h1 className="text-lg font-bold text-[#1E1B4B] uppercase tracking-widest m-0">
-                  {guide.title}
+              <div className="text-center my-3">
+                <h1 className="text-lg font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
+                  {page.guideTitle}
                 </h1>
                 <p className="text-xs font-semibold text-[#059669] tracking-wider uppercase mt-1 m-0">
-                  {guide.subtitle}
+                  {page.guideSubtitle}
                 </p>
-                <div className="w-16 h-0.5 bg-[#059669] mx-auto mt-2" />
+                <div className="w-16 h-0.5 bg-[#059669] mx-auto mt-1.5" />
               </div>
 
               {/* Patient Info Box */}
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-4 mb-8 flex justify-between items-center">
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-4 py-2.5 mb-4 flex justify-between items-center">
                 <div>
-                  <span className="text-[#64748B] block text-[10px] uppercase font-bold mb-1">Paciente</span>
+                  <span className="text-[#64748B] block text-[9px] uppercase font-bold mb-0.5">Paciente</span>
                   <span className="font-bold text-[#0F172A] text-sm">{sanitizedUserName}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[#64748B] block text-[10px] uppercase font-bold mb-1">CPF / Nasc.</span>
+                  <span className="text-[#64748B] block text-[9px] uppercase font-bold mb-0.5">CPF / Nasc.</span>
                   <span className="font-semibold text-[#334155] text-xs">{cpfText} • {birthDateText}</span>
                 </div>
               </div>
 
-              {/* Items List */}
-              <div className="space-y-6 my-6">
-                {guide.items.length === 0 ? (
-                  <p className="text-xs text-[#94A3B8] italic m-0">Nenhum produto cadastrado para esta guia.</p>
-                ) : (
-                  guide.items.map((item, idx) => {
+              {/* Items List for this page */}
+              {page.items.length > 0 && (
+                <div className="space-y-4 my-3">
+                  {page.items.map((item, idx) => {
                     const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
                     const activeIng = item.activeIngredients || enriched.activeIngredients;
                     const pharmForm = item.pharmaceuticalForm || enriched.pharmaceuticalForm;
                     const quantity = item.quantity || enriched.quantity;
                     const admRoute = item.administrationRoute || enriched.administrationRoute;
+                    const displayIndex = page.itemStartIndex + idx + 1;
 
                     return (
-                      <div key={idx} className="border-b border-[#F1F5F9] pb-5" style={{ pageBreakInside: "avoid" }}>
-                        <div className="flex items-baseline justify-between mb-2">
+                      <div key={idx} className="border-b border-[#F1F5F9] pb-3">
+                        <div className="flex items-baseline justify-between mb-1.5">
                           <span className="text-sm font-bold text-[#0F172A] m-0">
-                            {idx + 1}. {item.name}
+                            {displayIndex}. {item.name}
                           </span>
                           <span className="text-[10px] bg-[#F1F5F9] text-[#334155] font-bold px-2 py-0.5 rounded border border-[#E2E8F0] m-0">
                             {item.brand || enriched.brand} ({item.origin || enriched.origin})
@@ -216,45 +352,47 @@ export const generatePrescriptionPDF = async (
                         </div>
 
                         {/* Active Ingredient & Presentation */}
-                        <div className="pl-5 mb-3 space-y-1 text-xs text-[#475569]">
+                        <div className="pl-4 mb-2 space-y-0.5 text-xs text-[#475569]">
                           <p className="m-0"><span className="font-semibold text-[#1E293B]">Princípio Ativo:</span> {activeIng}</p>
                           <p className="m-0"><span className="font-semibold text-[#1E293B]">Apresentação & Via:</span> {pharmForm} • Qtd: {quantity} • {admRoute}</p>
                         </div>
 
                         {/* Dosage */}
-                        <div className="pl-5 space-y-1 text-xs text-[#334155]">
-                          <span className="font-semibold text-[#1E293B] block text-[11px] mb-1">Posologia e Modo de Uso:</span>
+                        <div className="pl-4 space-y-0.5 text-xs text-[#334155]">
+                          <span className="font-semibold text-[#1E293B] block text-[11px] mb-0.5">Posologia e Modo de Uso:</span>
                           {item.dosage.map((d, dIdx) => (
-                            <p key={dIdx} className="m-0 leading-relaxed">• {d}</p>
+                            <p key={dIdx} className="m-0 leading-relaxed text-[11px]">• {d}</p>
                           ))}
                         </div>
                       </div>
                     );
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
 
-              {/* Notes */}
-              {customNotesText && (
-                <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-4 text-xs text-[#334155] mt-6 rounded-r">
+              {/* Notes block if present on this page */}
+              {page.notesText && (
+                <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-3.5 text-xs text-[#334155] mt-3 rounded-r">
                   <span className="font-bold block text-[11px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
-                  <div className="flex flex-col gap-1.5">
-                    {customNotesText.split('\n').map((p, i) => p.trim() ? <p key={i} className="text-[11px] leading-relaxed m-0" style={{ pageBreakInside: "avoid" }} dangerouslySetInnerHTML={{ __html: p }}></p> : null)}
+                  <div className="flex flex-col gap-1">
+                    {page.notesText.split('\n').map((p, i) => p.trim() ? (
+                      <p key={i} className="text-[10.5px] leading-relaxed m-0" dangerouslySetInnerHTML={{ __html: p }} />
+                    ) : null)}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Independent Signature Block for this guide */}
-            <div className="pt-8 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
-              <div className="text-[10px] text-[#64748B] space-y-1">
-                <p className="m-0">Data de Emissão: {emissionDateStr}</p>
+            {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
+            <div className="pt-4 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
+              <div className="text-[10px] text-[#64748B] space-y-0.5">
+                <p className="m-0 font-medium">Data de Emissão: {emissionDateStr}</p>
                 <p className="m-0">Validade: 30 dias a partir da data de emissão</p>
-                <p className="text-[9px] text-[#94A3B8] mt-1 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
+                <p className="text-[9px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
               </div>
 
-              <div className="text-center w-52">
-                <div className="border-b border-[#94A3B8] pb-1 mb-2" />
+              <div className="text-center w-56">
+                <div className="border-b border-[#94A3B8] pb-1 mb-1.5" />
                 <p className="text-xs font-bold text-[#0F172A] m-0">{docName}</p>
                 <p className="text-[10px] text-[#475569] font-semibold m-0">{docCrm}</p>
                 <p className="text-[9px] text-[#64748B] m-0">Assinatura Digital / Prescritor</p>
@@ -284,39 +422,23 @@ export const generatePrescriptionPDF = async (
     // Wait for React to render and Tailwind to apply styles
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const wrapperDiv = container.firstElementChild as HTMLElement;
-    const guideDivs = wrapperDiv ? (Array.from(wrapperDiv.children) as HTMLElement[]) : [];
+    const pageElements = container.querySelectorAll<HTMLElement>('.prescription-pdf-page');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-    if (guideDivs.length > 0) {
-      for (let i = 0; i < guideDivs.length; i++) {
-        const guideDiv = guideDivs[i];
-        const canvas = await html2canvas(guideDiv, {
+    if (pageElements.length > 0) {
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i];
+        const canvas = await html2canvas(pageEl, {
           scale: 2,
           useCORS: true,
           logging: false,
           windowWidth: 794
         });
         const imgData = canvas.toDataURL('image/jpeg', 0.98);
-        const imgWidth = 210;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
-        if (imgHeight <= 299) {
-          pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-        } else {
-          let heightLeft = imgHeight;
-          let position = 0;
-          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-          heightLeft -= 297;
-          while (heightLeft > 5) {
-            position = heightLeft - imgHeight;
-            pdf.addPage('a4', 'portrait');
-            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-            heightLeft -= 297;
-          }
-        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       }
     }
 
@@ -354,88 +476,153 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
   const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
+  const diag = patientData?.customDiagnosis || '';
+  const rat = patientData?.customRationale || '';
+  const plan = patientData?.customTreatmentPlan || '';
+  const mon = patientData?.customMonitoring || '';
+
+  const totalLength = diag.length + rat.length + plan.length + mon.length;
+  const needsTwoPages = totalLength > 800 || (Boolean(diag && rat) && Boolean(plan && mon));
+
+  interface ReportPageData {
+    pageNumber: number;
+    totalPages: number;
+    title: string;
+    sections: { title: string; content: string }[];
+  }
+
+  const reportPages: ReportPageData[] = [];
+
+  if (!needsTwoPages) {
+    const sections: { title: string; content: string }[] = [];
+    if (diag) sections.push({ title: 'Diagnóstico e Resumo Clínico', content: diag });
+    if (rat) sections.push({ title: 'Raciocínio Terapêutico', content: rat });
+    if (plan) sections.push({ title: 'Plano de Tratamento Canabinoide', content: plan });
+    if (mon) sections.push({ title: 'Acompanhamento e Monitoramento', content: mon });
+
+    reportPages.push({
+      pageNumber: 1,
+      totalPages: 1,
+      title: 'LAUDO MÉDICO',
+      sections
+    });
+  } else {
+    const page1Sections: { title: string; content: string }[] = [];
+    if (diag) page1Sections.push({ title: 'Diagnóstico e Resumo Clínico', content: diag });
+    if (rat) page1Sections.push({ title: 'Raciocínio Terapêutico', content: rat });
+
+    const page2Sections: { title: string; content: string }[] = [];
+    if (plan) page2Sections.push({ title: 'Plano de Tratamento Canabinoide', content: plan });
+    if (mon) page2Sections.push({ title: 'Acompanhamento e Monitoramento', content: mon });
+
+    reportPages.push({
+      pageNumber: 1,
+      totalPages: 2,
+      title: 'LAUDO MÉDICO',
+      sections: page1Sections
+    });
+    reportPages.push({
+      pageNumber: 2,
+      totalPages: 2,
+      title: 'LAUDO MÉDICO (CONTINUAÇÃO)',
+      sections: page2Sections
+    });
+  }
+
   const PdfComponent = () => {
     return (
       <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
-        <div className="relative p-12 border border-[#E2E8F0] box-border flex flex-col justify-between" style={{ width: "794px", minHeight: "1123px", backgroundColor: "#FFFFFF", color: "#111827" }}>
-          <div>
-            {/* Header */}
-            <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-4 mb-6 pt-4">
-              <div>
-                <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                <p className="text-[11px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
-                  CENTRO INTEGRADO DE MEDICINA CANABINOIDE
-                </p>
+        {reportPages.map((page, pIdx) => (
+          <div 
+            key={pIdx}
+            className="medical-report-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
+            style={{ 
+              width: "794px", 
+              height: "1123px", 
+              minHeight: "1123px", 
+              maxHeight: "1123px", 
+              padding: "36px 44px", 
+              backgroundColor: "#FFFFFF", 
+              color: "#111827",
+              boxSizing: "border-box",
+              overflow: "hidden"
+            }}
+          >
+            {/* Page number */}
+            <div className="absolute top-5 right-11 text-[10px] text-[#64748B] font-bold">
+              Página {page.pageNumber} de {page.totalPages}
+            </div>
+
+            <div>
+              {/* Header */}
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-3 mb-4 pt-1">
+                <div>
+                  <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
+                  <p className="text-[10px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                    CENTRO INTEGRADO DE MEDICINA CANABINOIDE
+                  </p>
+                </div>
+                <div className="text-right">
+                  <h3 className="text-sm font-bold text-[#1E1B4B] m-0">{docName}</h3>
+                  <p className="text-xs text-[#475569] font-semibold m-0">{docCrm}</p>
+                  <p className="text-[10px] text-[#64748B] m-0">{docSpec}</p>
+                </div>
               </div>
-              <div className="text-right">
-                <h3 className="text-sm font-bold text-[#1E1B4B] m-0">{docName}</h3>
-                <p className="text-xs text-[#475569] font-semibold m-0">{docCrm}</p>
-                <p className="text-[10px] text-[#64748B] m-0">{docSpec}</p>
+
+              {/* Title */}
+              <div className="text-center mb-5">
+                <h1 className="text-lg font-black text-[#1E1B4B] tracking-widest uppercase mb-2">{page.title}</h1>
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="flex items-center gap-2 text-sm text-[#475569]">
+                    <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
+                    <span className="font-semibold">{sanitizedUserName}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-6 text-xs text-[#64748B]">
+                    {birthDateText !== 'Não informada' && (
+                      <span className="flex items-center gap-1">
+                        <span className="font-bold text-[#475569]">NASCIMENTO:</span> {birthDateText}
+                      </span>
+                    )}
+                    {cpfText !== 'Não informado' && (
+                      <span className="flex items-center gap-1">
+                        <span className="font-bold text-[#475569]">CPF:</span> {cpfText}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sections for this page */}
+              <div className="space-y-5">
+                {page.sections.map((sec, sIdx) => (
+                  <div key={sIdx}>
+                    <h4 className="text-xs font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2">
+                      {sec.title}
+                    </h4>
+                    <div className="text-xs text-[#334155] leading-relaxed flex flex-col gap-1.5 text-justify">
+                      {sec.content.split('\n').map((p, i) => p.trim() ? (
+                        <p key={i} className="m-0">{p}</p>
+                      ) : <div key={i} className="h-1" />)}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="text-center mb-8">
-              <h1 className="text-xl font-black text-[#1E1B4B] tracking-widest uppercase mb-2">LAUDO MÉDICO</h1>
-              <div className="flex flex-col items-center gap-1">
-                <div className="flex items-center gap-2 text-sm text-[#475569]">
-                  <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
-                  <span className="font-semibold">{sanitizedUserName}</span>
-                </div>
-                <div className="flex items-center justify-center gap-6 text-xs text-[#64748B]">
-                  {birthDateText !== 'Não informada' && (
-                    <span className="flex items-center gap-1">
-                      <span className="font-bold text-[#475569]">NASCIMENTO:</span> {birthDateText}
-                    </span>
-                  )}
-                  {cpfText !== 'Não informado' && (
-                    <span className="flex items-center gap-1">
-                      <span className="font-bold text-[#475569]">CPF:</span> {cpfText}
-                    </span>
-                  )}
+            {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
+            <div className="mt-auto pt-4 border-t border-[#E2E8F0]">
+              <div className="flex flex-col items-center">
+                <div className="w-56 h-0 border-b border-[#CBD5E1] mb-1.5"></div>
+                <p className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</p>
+                <p className="text-[10px] text-[#64748B] m-0 mb-2">{docCrm} • Assinatura Digital / Prescritor</p>
+                <div className="flex justify-between w-full text-[9px] text-[#94A3B8] font-semibold">
+                  <span>Data de Emissão: {emissionDateStr}</span>
+                  <span>Válido em todo o território nacional</span>
                 </div>
               </div>
-            </div>
-
-            <div className="space-y-6">
-              {patientData?.customDiagnosis && (
-                <div>
-                  <h4 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2">Diagnóstico e Resumo Clínico</h4>
-                  <div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customDiagnosis.split('\n').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>
-                </div>
-              )}
-              {patientData?.customRationale && (
-                <div>
-                  <h4 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2">Raciocínio Terapêutico</h4>
-                  <div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customRationale.split('\n').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>
-                </div>
-              )}
-              {patientData?.customTreatmentPlan && (
-                <div>
-                  <h4 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2">Plano de Tratamento Canabinoide</h4>
-                  <div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customTreatmentPlan.split('\n').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>
-                </div>
-              )}
-              {patientData?.customMonitoring && (
-                <div>
-                  <h4 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2">Acompanhamento e Monitoramento</h4>
-                  <div className="text-sm text-[#334155] leading-relaxed flex flex-col gap-2">{patientData.customMonitoring.split('\n').map((p: string, i: number) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }}>{p}</p> : <div key={i} className="h-2" />)}</div>
-                </div>
-              )}
             </div>
           </div>
-
-          <div className="mt-auto pt-8 border-t border-[#E2E8F0]" style={{ pageBreakInside: "avoid" }}>
-            <div className="flex flex-col items-center">
-              <div className="w-52 h-0 border-b border-[#CBD5E1] mb-2"></div>
-              <p className="text-sm font-bold text-[#1E1B4B]">{docName}</p>
-              <p className="text-xs text-[#64748B] mb-4">{docCrm}</p>
-              <div className="flex justify-between w-full text-[10px] text-[#94A3B8] font-semibold">
-                <span>{emissionDateStr}</span>
-                <span>Válido em todo o território nacional</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
     );
   };
@@ -456,30 +643,23 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   try {
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const reportDiv = (container.firstElementChild?.firstElementChild || container.firstElementChild || container) as HTMLElement;
-    const canvas = await html2canvas(reportDiv, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      windowWidth: 794
-    });
+    const pageElements = container.querySelectorAll<HTMLElement>('.medical-report-pdf-page');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    if (imgHeight <= 299) {
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-    } else {
-      let heightLeft = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= 297;
-      while (heightLeft > 5) {
-        position = heightLeft - imgHeight;
-        pdf.addPage('a4', 'portrait');
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-        heightLeft -= 297;
+    if (pageElements.length > 0) {
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i];
+        const canvas = await html2canvas(pageEl, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 794
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       }
     }
 
@@ -499,6 +679,8 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   }
 };
 
+
+
 export const generatePsychomotorReportPDF = async (userName: string, patientData?: any) => {
   const sanitize = (text: string) => {
     return (text || '').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
@@ -511,19 +693,44 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const cpfText = sanitize(patientData?.cpf || 'Não informado');
   const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
   
-  const docName = "Dr. Guilherme Taveira Dias";
-  const docCrm = "CRM/MT 17259";
-  const docSpec = "Especialista em Medicina Canabinoide";
+  const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
+  const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
+  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
+
+  const defaultParagraphs = [
+    `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${sanitizedUserName}</strong>, inscrito(a) no CPF <strong>${cpfText}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.`,
+    `O(a) paciente faz uso terapêutico de produtos derivados de Cannabis, estritamente conforme prescrição médica, sob supervisão e com acompanhamento clínico contínuo.`,
+    `Atesto, baseado em exames clínicos e testes de rastreio de capacidade psicomotora realizados durante as consultas de monitoramento, que o uso das medicações prescritas, nas doses estipuladas, <strong>NÃO RESULTA</strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou comprometimento dos reflexos e estado de alerta do paciente.`,
+    `O tratamento prescrito não interfere em sua capacidade de operar máquinas complexas, conduzir veículos automotores ou exercer atividades laborais que exijam atenção e precisão, não configurando infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).`,
+    `Ressalto que os canabinoides prescritos têm finalidade exclusivamente terapêutica, sendo legalmente importados (RDC 660/2022 ANVISA) e/ou adquiridos via Associações de Pacientes, e não se enquadram como substâncias psicoativas entorpecentes de uso recreativo capazes de causar dependência ou prejuízo sensório-motor nas doses tituladas.`
+  ];
+
+  const customText = patientData?.customPsychomotorText;
+  const paragraphs = customText ? customText.split('\n').filter((p: string) => p.trim()) : defaultParagraphs;
 
   const PdfComponent = () => {
     return (
       <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
-        <div className="relative p-12 border border-[#E2E8F0] box-border flex flex-col justify-between" style={{ width: "794px", minHeight: "1123px", backgroundColor: "#FFFFFF", color: "#111827" }}>
+        <div 
+          className="psychomotor-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
+          style={{ 
+            width: "794px", 
+            height: "1123px", 
+            minHeight: "1123px", 
+            maxHeight: "1123px", 
+            padding: "36px 44px", 
+            backgroundColor: "#FFFFFF", 
+            color: "#111827",
+            boxSizing: "border-box",
+            overflow: "hidden"
+          }}
+        >
           <div>
-            <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-4 mb-6 pt-4">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-3 mb-4 pt-1">
               <div>
                 <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                <p className="text-[11px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                <p className="text-[10px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
                   CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                 </p>
               </div>
@@ -534,10 +741,11 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
               </div>
             </div>
 
-            <div className="text-center mb-8">
-              <h1 className="text-xl font-black text-[#1E1B4B] tracking-widest uppercase mb-2">LAUDO PSICOMOTOR</h1>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#059669] mb-4">AVALIAÇÃO DA LEI DO DROGÔMETRO / APTIDÃO</p>
-              <div className="flex flex-col items-center gap-1">
+            {/* Title */}
+            <div className="text-center mb-6">
+              <h1 className="text-lg font-black text-[#1E1B4B] tracking-widest uppercase mb-1">LAUDO PSICOMOTOR</h1>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#059669] mb-3">AVALIAÇÃO DA LEI DO DROGÔMETRO / APTIDÃO</p>
+              <div className="flex flex-col items-center gap-0.5">
                 <div className="flex items-center gap-2 text-sm text-[#475569]">
                   <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
                   <span className="font-semibold">{sanitizedUserName}</span>
@@ -557,50 +765,22 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
               </div>
             </div>
 
-            <div className="space-y-6 text-sm text-[#334155] leading-relaxed text-justify">
-              <div className="flex flex-col gap-4">
-                {patientData?.customPsychomotorText 
-                  ? patientData.customPsychomotorText.split('\n').map((p, i) => p.trim() ? <p key={i} style={{ pageBreakInside: "avoid" }} dangerouslySetInnerHTML={{ __html: p }}></p> : null)
-                  : <>
-                      <p style={{ pageBreakInside: "avoid" }}>
-                        Declaro, para os devidos fins de direito, que o(a) paciente <strong>{sanitizedUserName}</strong>, 
-                        inscrito(a) no CPF <strong>{cpfText}</strong>, encontra-se em acompanhamento médico regular neste 
-                        Centro Integrado de Medicina Canabinoide.
-                      </p>
-                      <p style={{ pageBreakInside: "avoid" }}>
-                        O(a) paciente faz uso terapêutico de produtos derivados de Cannabis, estritamente conforme 
-                        prescrição médica, sob supervisão e com acompanhamento clínico contínuo. 
-                      </p>
-                      <p style={{ pageBreakInside: "avoid" }}>
-                        Atesto, baseado em exames clínicos e testes de rastreio de capacidade psicomotora realizados 
-                        durante as consultas de monitoramento, que o uso das medicações prescritas, nas doses estipuladas, 
-                        <strong> NÃO RESULTA </strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou 
-                        comprometimento dos reflexos e estado de alerta do paciente.
-                      </p>
-                      <p style={{ pageBreakInside: "avoid" }}>
-                        O tratamento prescrito não interfere em sua capacidade de operar máquinas complexas, conduzir 
-                        veículos automotores ou exercer atividades laborais que exijam atenção e precisão, não configurando 
-                        infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).
-                      </p>
-                      <p style={{ pageBreakInside: "avoid" }}>
-                        Ressalto que os canabinoides prescritos têm finalidade exclusivamente terapêutica, 
-                        sendo legalmente importados (RDC 660/2022 ANVISA) e/ou adquiridos via Associações de Pacientes, 
-                        e não se enquadram como substâncias psicoativas entorpecentes de uso recreativo capazes de 
-                        causar dependência ou prejuízo sensório-motor nas doses tituladas.
-                      </p>
-                    </>
-                }
-              </div>
+            {/* Statement Paragraphs */}
+            <div className="space-y-3.5 text-xs text-[#334155] leading-relaxed text-justify">
+              {paragraphs.map((p: string, i: number) => (
+                <p key={i} className="m-0 leading-relaxed" dangerouslySetInnerHTML={{ __html: p }} />
+              ))}
             </div>
           </div>
 
-          <div className="mt-auto pt-8 border-t border-[#E2E8F0]" style={{ pageBreakInside: "avoid" }}>
+          {/* Doctor Signature & Emission Footer */}
+          <div className="mt-auto pt-4 border-t border-[#E2E8F0]">
             <div className="flex flex-col items-center">
-              <div className="w-52 h-0 border-b border-[#CBD5E1] mb-2"></div>
-              <p className="text-sm font-bold text-[#1E1B4B]">{docName}</p>
-              <p className="text-xs text-[#64748B] mb-4">{docCrm}</p>
-              <div className="flex justify-between w-full text-[10px] text-[#94A3B8] font-semibold">
-                <span>{emissionDateStr}</span>
+              <div className="w-56 h-0 border-b border-[#CBD5E1] mb-1.5"></div>
+              <p className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</p>
+              <p className="text-[10px] text-[#64748B] m-0 mb-2">{docCrm} • Assinatura Digital / Prescritor</p>
+              <div className="flex justify-between w-full text-[9px] text-[#94A3B8] font-semibold">
+                <span>Data de Emissão: {emissionDateStr}</span>
                 <span>Válido em todo o território nacional</span>
               </div>
             </div>
@@ -626,30 +806,23 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   try {
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    const reportDiv = (container.firstElementChild?.firstElementChild || container.firstElementChild || container) as HTMLElement;
-    const canvas = await html2canvas(reportDiv, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      windowWidth: 794
-    });
+    const pageElements = container.querySelectorAll<HTMLElement>('.psychomotor-pdf-page');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    if (imgHeight <= 299) {
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-    } else {
-      let heightLeft = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= 297;
-      while (heightLeft > 5) {
-        position = heightLeft - imgHeight;
-        pdf.addPage('a4', 'portrait');
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-        heightLeft -= 297;
+    if (pageElements.length > 0) {
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i];
+        const canvas = await html2canvas(pageEl, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 794
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       }
     }
 

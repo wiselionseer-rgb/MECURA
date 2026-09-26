@@ -84,7 +84,7 @@ export function PremiumCheckoutScreen() {
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const basePrice = 249.90;
-    let finalPrice = basePrice;
+  let finalPrice = basePrice;
   if (appliedCoupon) {
     if (appliedCoupon.discountType === 'fixed') {
       finalPrice = Math.max(0, basePrice - appliedCoupon.discount);
@@ -92,6 +92,7 @@ export function PremiumCheckoutScreen() {
       finalPrice = basePrice * (1 - appliedCoupon.discount / 100);
     }
   }
+  finalPrice = Math.round(finalPrice * 100) / 100;
 
   const handleApplyCoupon = () => {
     setCouponError('');
@@ -140,6 +141,12 @@ export function PremiumCheckoutScreen() {
 
     localStorage.setItem('last_offer', 'premium');
 
+    // Se o cupom deu 100% de desconto (grátis)
+    if (finalPrice <= 0) {
+      handleSuccess();
+      return;
+    }
+
     try {
       if (appliedCoupon?.ownerId) {
         await incrementBonus(50, appliedCoupon.ownerId);
@@ -172,11 +179,17 @@ export function PremiumCheckoutScreen() {
             setIsLoading(false);
             return;
           }
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          console.error("Erro MP Pix:", errData);
+          alert(errData.details || errData.error || "Falha ao gerar o Pix via Mercado Pago.");
+          setIsLoading(false);
+          return;
         }
       } catch (err) {
         console.error("Erro ao gerar PIX: ", err);
       }
-      alert("Falha ao gerar o Pix. Tente novamente.");
+      alert("Falha ao gerar o Pix. Verifique sua conexão e tente novamente.");
       setIsLoading(false);
       return;
     }

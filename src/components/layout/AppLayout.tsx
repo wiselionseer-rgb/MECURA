@@ -17,9 +17,6 @@ export function AppLayout() {
   const { userName, patientId, resetConsultation, subscribeToQueue, fetchConsultationHistory } = useStore();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Show gamification header only on specific screens
-  const showGamificationHeader = ['/queue', '/chat', '/prescription'].includes(location.pathname);
-
   // Global queue subscription
   useEffect(() => {
     const unsubscribe = subscribeToQueue();
@@ -127,32 +124,6 @@ export function AppLayout() {
         
         <EnableNotificationsBanner userId={patientId || auth.currentUser?.uid} />
         <NotificationToast />
-
-        {showGamificationHeader && (
-          <motion.div 
-            initial={{ y: -20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="flex justify-between items-center px-6 py-4 bg-[#0A0A0F]/80 backdrop-blur-xl border-b border-white/5 z-20 sticky top-0"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#161622] border-2 border-mecura-neon flex items-center justify-center shadow-[0_0_10px_rgba(166,255,0,0.2)] relative">
-                <User className="w-5 h-5 text-mecura-neon" />
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-mecura-neon rounded-full border-2 border-mecura-bg animate-pulse" />
-              </div>
-              <div>
-                <p className="text-[11px] text-[#8A8A9E] uppercase tracking-wider font-bold">Nível Guardião</p>
-                <p className="text-sm font-bold text-mecura-neon">5.200 pts</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => navigate('/dashboard')}
-              className="flex items-center gap-2 bg-[#161622] px-4 py-2 rounded-full border border-white/5 hover:border-mecura-neon/30 hover:bg-[#1A1A26] transition-all"
-            >
-              <Store className="w-4 h-4 text-mecura-neon" />
-              <span className="text-xs font-bold text-white">Painel</span>
-            </button>
-          </motion.div>
-        )}
 
         <main className="flex-1 overflow-hidden relative">
           <motion.div

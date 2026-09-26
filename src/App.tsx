@@ -37,7 +37,7 @@ import { subscribeToBackgroundNotifications } from './utils/notifications';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
-  const { subscribeToExchangeRate, subscribeToAppointments } = useStore();
+  const { subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates } = useStore();
 
   useEffect(() => {
     // Auto-subscribe to background notifications if already granted
@@ -55,12 +55,14 @@ export default function App() {
 
     const unsubscribeExchange = subscribeToExchangeRate();
     const unsubscribeAppointments = subscribeToAppointments();
+    const unsubscribeBlockedDates = subscribeToBlockedDates();
     return () => {
       unsubscribeExchange();
       unsubscribeAppointments();
+      unsubscribeBlockedDates();
       unsubscribeAuth();
     };
-  }, [subscribeToExchangeRate, subscribeToAppointments]);
+  }, [subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates]);
 
   return (
     <ErrorBoundary>
