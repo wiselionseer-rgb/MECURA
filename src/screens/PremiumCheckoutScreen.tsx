@@ -23,6 +23,7 @@ import {
   CheckCircle2, 
   Award, 
   Zap, 
+  RefreshCw, 
   Clock, 
   Brain,
   Sprout,
@@ -57,6 +58,24 @@ export function PremiumCheckoutScreen() {
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToTop = React.useCallback(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+      window.scrollTo(0, 0);
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollToTop();
+  }, [step, pixData, scrollToTop]);
 
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -109,6 +128,7 @@ export function PremiumCheckoutScreen() {
       }
       
       setAppliedCoupon(coupon);
+      localStorage.setItem('mecura_applied_coupon', JSON.stringify(coupon));
     } else {
       setCouponError('Cupom inválido ou inativo.');
     }
@@ -208,11 +228,15 @@ export function PremiumCheckoutScreen() {
     setPagamentoPremium(true);
 
     // Consume coupon for this user
-    if (appliedCoupon) {
+    const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
+    const couponToConsume = appliedCoupon || (savedCouponStr ? JSON.parse(savedCouponStr) : null);
+
+    if (couponToConsume) {
       try {
-        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'guest_' + Date.now();
+        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
         const uemail = auth.currentUser?.email || undefined;
-        useCoupon(appliedCoupon.id, uid, uemail);
+        useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
+        localStorage.removeItem('mecura_applied_coupon');
       } catch (e) {
         console.error("Erro ao registrar uso do cupom:", e);
       }
@@ -258,6 +282,44 @@ export function PremiumCheckoutScreen() {
     };
   }, [pixData]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentParam = params.get('payment');
+    const paymentId = params.get('payment_id') || params.get('collection_id');
+    const statusParam = params.get('status') || params.get('collection_status');
+
+    if (!paymentId && !statusParam) {
+      setPagamentoPremium(false);
+    }
+
+    if (paymentParam === 'failed' || paymentParam === 'cancelled' || statusParam === 'rejected') {
+      alert('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+
+    if (paymentId && (paymentParam === 'success' || statusParam === 'approved')) {
+      setIsLoading(true);
+      fetch(`/api/payment-status/${paymentId}`)
+        .then(res => res.json())
+        .then(data => {
+          setIsLoading(false);
+          if (data.status === 'approved' || data.status === 'completed') {
+            window.history.replaceState({}, '', window.location.pathname);
+            handleSuccess();
+          } else {
+            alert('O Mercado Pago informou que este pagamento ainda não foi aprovado.');
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        })
+        .catch(err => {
+          setIsLoading(false);
+          console.error("Erro ao verificar pagamento MP:", err);
+          window.history.replaceState({}, '', window.location.pathname);
+        });
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-[#0A0A0F] text-mecura-pearl relative font-sans">
       {/* Background Glow - Gold */}
@@ -285,7 +347,10 @@ export function PremiumCheckoutScreen() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-40 pt-4">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-6 pb-40 pt-4"
+      >
         {pixData ? (
           <div className="flex flex-col items-center pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-xl bg-[#A6FF0033]">
@@ -898,24 +963,29 @@ export function PremiumCheckoutScreen() {
             </Button>
             <Button 
               className="w-full h-14 text-base font-black bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-[#86DE00] text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.5)]"
+              disabled={isLoading}
               onClick={async () => {
-              try {
-                setIsLoading(true);
-                const response = await fetch(`/api/payment-status/${pixData.id}`);
-                const data = await response.json();
-                setIsLoading(false);
-                if (data.status === 'approved' || data.status === 'completed') {
-                  handleSuccess();
-                } else {
-                  alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+                if (!pixData?.id) {
+                  alert("Código Pix não gerado.");
+                  return;
                 }
-              } catch (e) {
-                setIsLoading(false);
-                alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
-              }
-            }} disabled={isLoading}
+                try {
+                  setIsLoading(true);
+                  const response = await fetch(`/api/payment-status/${pixData.id}`);
+                  const data = await response.json();
+                  setIsLoading(false);
+                  if (data.status === 'approved' || data.status === 'completed') {
+                    handleSuccess();
+                  } else {
+                    alert("⚠️ O Mercado Pago ainda NÃO identificou o pagamento deste Pix.\n\nStatus atual: Pendente.\n\nPor favor, realize o pagamento via Pix no aplicativo do seu banco. O acesso VIP é liberado automaticamente em instantes assim que compensado!");
+                  }
+                } catch (e) {
+                  setIsLoading(false);
+                  alert("Não foi possível verificar o pagamento no momento. Tente novamente em instantes.");
+                }
+              }}
             >
-              Já Paguei (Liberar Acesso VIP)
+              Já Paguei (Verificar no Mercado Pago)
             </Button>
           </div>
         ) : cardUrl ? (
@@ -931,13 +1001,14 @@ export function PremiumCheckoutScreen() {
               <ExternalLink className="w-4 h-4 text-[#A6FF00]" />
             </a>
             <Button 
-              className="w-full h-14 text-base font-black bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-[#86DE00] text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.5)] flex items-center justify-center gap-2"
+              className="w-full h-14 text-base font-bold bg-[#161622] border border-[#A6FF00]/40 text-[#A6FF00] hover:bg-[#A6FF00]/10 transition-all flex items-center justify-center gap-2"
+              disabled={isLoading}
               onClick={() => {
-                handleSuccess();
+                alert("O acesso VIP via cartão é liberado automaticamente assim que você concluir o pagamento na tela do Mercado Pago. Se já pagou, aguarde o redirecionamento ou atualize a página.");
               }}
             >
-              <CheckCircle2 className="w-5 h-5 text-black" />
-              <span>Já Paguei no Cartão (Liberar Acesso VIP)</span>
+              <RefreshCw className="w-4 h-4 text-[#A6FF00]" />
+              <span>Aguardando Aprovação do Mercado Pago...</span>
             </Button>
             <button
               onClick={() => {

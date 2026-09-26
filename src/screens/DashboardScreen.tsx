@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {  useState, useEffect } from 'react';
 import {  useStore } from '../store/useStore';
+import {  useAdminStore } from '../store/useAdminStore';
 import {  auth } from '../firebase';
 import {  motion } from 'motion/react';
 import {  AdvisorChatWidget } from '../components/AdvisorChatWidget';
@@ -70,11 +71,31 @@ export function DashboardScreen() {
     const paymentStatus = params.get('payment');
     const status = params.get('status');
     const collectionStatus = params.get('collection_status');
+    const paymentId = params.get('payment_id') || params.get('collection_id');
+
+    if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
     
-    if (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved') {
+    if (paymentId && (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved')) {
       const isBasic = localStorage.getItem('last_offer') !== 'premium';
       
       const processSuccess = async () => {
+        try {
+          const res = await fetch(`/api/payment-status/${paymentId}`);
+          const data = await res.json();
+          if (data.status !== 'approved' && data.status !== 'completed') {
+            console.warn("Mercado Pago informou pagamento não aprovado:", data);
+            window.history.replaceState({}, '', window.location.pathname);
+            return;
+          }
+        } catch (err) {
+          console.error("Falha ao verificar status MP:", err);
+          window.history.replaceState({}, '', window.location.pathname);
+          return;
+        }
+
         if (isBasic) {
           if (!pagamento_consulta) {
             setPagamentoConsulta(true);
@@ -84,6 +105,21 @@ export function DashboardScreen() {
           setPagamentoPremium(true);
           setPagamentoConsulta(true);
         }
+
+        // Consume saved coupon if used
+        const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
+        if (savedCouponStr) {
+          try {
+            const couponToConsume = JSON.parse(savedCouponStr);
+            const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
+            const uemail = auth.currentUser?.email || undefined;
+            await useAdminStore.getState().useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
+            localStorage.removeItem('mecura_applied_coupon');
+          } catch (e) {
+            console.error("Erro ao consumir cupom no retorno MP:", e);
+          }
+        }
+
         // Limpa os parâmetros da URL
         window.history.replaceState({}, '', window.location.pathname);
         
@@ -333,7 +369,7 @@ export function DashboardScreen() {
               
               
             </motion.div>
-          ) : pagamento_consulta || consultationActive ? (
+          ) : consultationActive && !isConsultationFinished ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -359,8 +395,36 @@ export function DashboardScreen() {
                   Retomar Consulta <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
-              
-              
+            </motion.div>
+          ) : pagamento_consulta && !isConsultationFinished ? (
+            <motion.div 
+              variants={itemVariants}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-mecura-neon/30 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer"
+              onClick={() => {
+                joinQueue();
+                navigate('/queue');
+              }}
+            >
+              <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
+              <div className="relative z-10 flex flex-col items-start">
+                <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
+                  <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
+                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">PAGAMENTO CONFIRMADO</span>
+                </div>
+                
+                <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
+                  Consulta<br/>Liberada
+                </h2>
+                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
+                  Seu pagamento foi confirmado. Entre na sala de espera para ser atendido.
+                </p>
+                
+                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all">
+                  Entrar na Fila <ChevronRight className="w-4 h-4 ml-1" />
+                </button>
+              </div>
             </motion.div>
           ) : (
             <motion.div 

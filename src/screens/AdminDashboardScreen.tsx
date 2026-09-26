@@ -139,6 +139,64 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [patients, setPatients] = useState<any[]>([]);
   const [queueCount, setQueueCount] = useState(0);
   const [payments, setPayments] = useState<any[]>([]);
+  const [isRefreshingCoupons, setIsRefreshingCoupons] = useState(false);
+
+  // Live real-time coupon sync in Admin Dashboard
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'coupons'), (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          code: d.code || docSnap.id,
+          discount: Number(d.discount) || 0,
+          discountType: d.discountType || 'percentage',
+          active: d.active !== undefined ? d.active : true,
+          quantity: d.quantity !== undefined ? Number(d.quantity) : 0,
+          usedCount: Number(d.usedCount) || 0,
+          usedBy: Array.isArray(d.usedBy) ? d.usedBy : [],
+          ownerId: d.ownerId || undefined,
+        });
+      });
+      if (list.length > 0) {
+        useAdminStore.setState({ coupons: list });
+      }
+    }, (err) => {
+      console.warn("Live coupons error in admin:", err);
+    });
+
+    return () => unsub();
+  }, []);
+
+  const handleRefreshCoupons = async () => {
+    setIsRefreshingCoupons(true);
+    try {
+      const snap = await getDocs(collection(db, 'coupons'));
+      const list: any[] = [];
+      snap.forEach(docSnap => {
+        const d = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          code: d.code || docSnap.id,
+          discount: Number(d.discount) || 0,
+          discountType: d.discountType || 'percentage',
+          active: d.active !== undefined ? d.active : true,
+          quantity: d.quantity !== undefined ? Number(d.quantity) : 0,
+          usedCount: Number(d.usedCount) || 0,
+          usedBy: Array.isArray(d.usedBy) ? d.usedBy : [],
+          ownerId: d.ownerId || undefined,
+        });
+      });
+      if (list.length > 0) {
+        useAdminStore.setState({ coupons: list });
+      }
+    } catch (e) {
+      console.error("Erro ao atualizar cupons:", e);
+    } finally {
+      setIsRefreshingCoupons(false);
+    }
+  };
 
   useEffect(() => {
     // Fetch users (patients)
@@ -1129,31 +1187,115 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
         )}
         {activeTab === 'coupons' && (
           <div className="max-w-4xl mx-auto space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Cupons de Desconto</h2>
-              <Button onClick={() => setShowAddCoupon(true)}>
-                <Plus className="w-4 h-4 mr-2" /> Novo Cupom
-              </Button>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold">Cupons de Desconto</h2>
+                <p className="text-xs text-[#8A8A9E] mt-0.5">Sincronização em tempo real na nuvem (Firestore)</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="outline" 
+                  onClick={handleRefreshCoupons}
+                  disabled={isRefreshingCoupons}
+                  className="border-[#262636] hover:bg-white/5 text-xs text-white"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshingCoupons ? 'animate-spin text-mecura-neon' : ''}`} />
+                  {isRefreshingCoupons ? 'Atualizando...' : 'Atualizar Lista'}
+                </Button>
+                <Button onClick={() => setShowAddCoupon(true)} className="bg-mecura-neon text-black font-bold hover:bg-mecura-neon/90">
+                  <Plus className="w-4 h-4 mr-2" /> Novo Cupom
+                </Button>
+              </div>
             </div>
+
             <div className="grid gap-4">
-              {coupons.map(coupon => (
-                <div key={coupon.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
-                    <p className="text-[#8A8A9E] text-sm mt-1">{coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador: ${coupon.ownerId})` : ''}</p>
-                    <p className="text-[#8A8A9E] text-xs mt-1">Usados: {coupon.usedCount || 0} / {coupon.quantity ? coupon.quantity : 'Ilimitado'}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`px-3 py-1 rounded-full text-xs ${coupon.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                      {coupon.active ? 'Ativo' : 'Inativo'}
-                    </span>
-                    <button onClick={() => updateCoupon(coupon.id, { active: !coupon.active })} className="text-[#8A8A9E] hover:text-white">
-                      {coupon.active ? <XCircle className="w-5 h-5"/> : <CheckCircle className="w-5 h-5"/>}
-                    </button>
-                    <button onClick={() => deleteCoupon(coupon.id)} className="text-[#8A8A9E] hover:text-red-400"><Trash2 className="w-5 h-5"/></button>
-                  </div>
+              {coupons.length === 0 ? (
+                <div className="bg-[#161622] border border-[#262636] p-10 rounded-2xl text-center text-[#8A8A9E]">
+                  <Ticket className="w-10 h-10 mx-auto mb-3 opacity-40 text-mecura-neon" />
+                  <p className="text-base font-semibold text-white">Nenhum cupom cadastrado ainda</p>
+                  <p className="text-xs mt-1">Clique em "+ Novo Cupom" para criar o primeiro cupom da plataforma.</p>
                 </div>
-              ))}
+              ) : (
+                coupons.map(coupon => {
+                  const usedCount = coupon.usedCount || 0;
+                  const isMaxReached = coupon.quantity && coupon.quantity > 0 && usedCount >= coupon.quantity;
+
+                  return (
+                    <div key={coupon.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <h3 className="font-black text-xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
+                            {usedCount > 0 && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 inline-flex items-center gap-1 shadow-sm">
+                                ⚡ {usedCount} {usedCount === 1 ? 'uso registrado' : 'usos registrados'}
+                              </span>
+                            )}
+                            {isMaxReached && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                Limite Atingido
+                              </span>
+                            )}
+                          </div>
+                          
+                          <p className="text-[#8A8A9E] text-sm mt-1">
+                            {coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador: ${coupon.ownerId})` : ''}
+                          </p>
+
+                          <div className="flex items-center gap-3 mt-1.5 text-xs text-[#8A8A9E]">
+                            <span>
+                              Usados: <strong className="text-white">{usedCount}</strong> / {coupon.quantity ? coupon.quantity : 'Ilimitado (1x por cliente)'}
+                            </span>
+                            {coupon.quantity && coupon.quantity > 0 && (
+                              <span className="text-[11px] text-[#A0A0B0]">
+                                • Restam: <strong className="text-mecura-neon">{Math.max(0, coupon.quantity - usedCount)}</strong>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${coupon.active ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                            {coupon.active ? 'Ativo' : 'Inativo'}
+                          </span>
+                          <button 
+                            onClick={() => updateCoupon(coupon.id, { active: !coupon.active })} 
+                            className="text-[#8A8A9E] hover:text-white transition-colors"
+                            title={coupon.active ? "Desativar cupom" : "Ativar cupom"}
+                          >
+                            {coupon.active ? <XCircle className="w-5 h-5 text-amber-400 hover:text-amber-300"/> : <CheckCircle className="w-5 h-5 text-green-400 hover:text-green-300"/>}
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (confirm(`Tem certeza que deseja excluir o cupom ${coupon.code}?`)) {
+                                deleteCoupon(coupon.id);
+                              }
+                            }} 
+                            className="text-[#8A8A9E] hover:text-red-400 transition-colors"
+                            title="Excluir cupom"
+                          >
+                            <Trash2 className="w-5 h-5"/>
+                          </button>
+                        </div>
+                      </div>
+
+                      {coupon.usedBy && coupon.usedBy.length > 0 && (
+                        <div className="text-[11px] text-[#8A8A9E] pt-3 border-t border-white/5 flex flex-wrap items-center gap-1.5">
+                          <span className="text-white/90 font-medium">Clientes que já utilizaram ({coupon.usedBy.length}):</span>
+                          {coupon.usedBy.slice(-4).map((ident, i) => (
+                            <span key={i} className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[10px] text-white/80 font-mono">
+                              {ident.length > 25 ? `${ident.substring(0, 22)}...` : ident}
+                            </span>
+                          ))}
+                          {coupon.usedBy.length > 4 && (
+                            <span className="text-[10px] text-mecura-neon font-bold">+{coupon.usedBy.length - 4} outros</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

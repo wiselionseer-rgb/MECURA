@@ -121,9 +121,20 @@ export const useAdminStore = create<AdminState>()(
       },
       useCoupon: async (id, userId, userEmail) => {
         const identifiers = [userId, userEmail].filter(Boolean) as string[];
+        if (identifiers.length === 0) {
+          identifiers.push('paciente_' + Date.now().toString(36));
+        }
+
+        const currentCoupons = useAdminStore.getState().coupons;
+        const target = currentCoupons.find(
+          c => c.id === id || c.code.trim().toUpperCase() === id.trim().toUpperCase()
+        );
+        const resolvedId = target?.id || id;
+        const resolvedCode = target?.code || id.toUpperCase();
+
         set((state) => ({
           coupons: state.coupons.map((c) => {
-            if (c.id === id) {
+            if (c.id === resolvedId || c.code.trim().toUpperCase() === resolvedCode.trim().toUpperCase()) {
               const currentUsedBy = c.usedBy || [];
               const newUsedBy = Array.from(new Set([...currentUsedBy, ...identifiers]));
               return { 
@@ -137,9 +148,11 @@ export const useAdminStore = create<AdminState>()(
         }));
 
         try {
-          await setDoc(doc(db, 'coupons', id), {
+          await setDoc(doc(db, 'coupons', resolvedId), {
+            code: resolvedCode,
             usedCount: increment(1),
-            usedBy: arrayUnion(...identifiers)
+            usedBy: arrayUnion(...identifiers),
+            lastUsedAt: new Date().toISOString()
           }, { merge: true });
         } catch (e) {
           console.warn("Erro ao registrar uso do cupom no Firestore:", e);

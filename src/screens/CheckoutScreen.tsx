@@ -56,6 +56,24 @@ export function CheckoutScreen() {
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const pollingInterval = React.useRef<NodeJS.Timeout | null>(null);
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollToTop = React.useCallback(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+      window.scrollTo(0, 0);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    scrollToTop();
+  }, [step, pixData, selectedOffer, evolutionTab, scrollToTop]);
 
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -108,6 +126,7 @@ export function CheckoutScreen() {
       }
       
       setAppliedCoupon(coupon);
+      localStorage.setItem('mecura_applied_coupon', JSON.stringify(coupon));
     } else {
       setCouponError('Cupom inválido ou inativo.');
     }
@@ -207,11 +226,15 @@ export function CheckoutScreen() {
     setPagamentoConsulta(true);
 
     // Consume coupon for this user
-    if (appliedCoupon) {
+    const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
+    const couponToConsume = appliedCoupon || (savedCouponStr ? JSON.parse(savedCouponStr) : null);
+
+    if (couponToConsume) {
       try {
-        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'guest_' + Date.now();
+        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
         const uemail = auth.currentUser?.email || undefined;
-        await useCoupon(appliedCoupon.id, uid, uemail);
+        await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
+        localStorage.removeItem('mecura_applied_coupon');
       } catch (e) {
         console.error("Erro ao registrar uso do cupom:", e);
       }
@@ -266,24 +289,45 @@ export function CheckoutScreen() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paymentParam = params.get('payment');
+    const paymentId = params.get('payment_id') || params.get('collection_id');
+    const statusParam = params.get('status') || params.get('collection_status');
+
+    if (!paymentId && !statusParam) {
+      // Entrando no checkout para comprar: limpar qualquer estado falso residual
+      setPagamentoConsulta(false);
+      localStorage.removeItem('mecura_pagamento');
+    }
     
-    if (paymentParam === 'failed' || paymentParam === 'cancelled') {
+    if (paymentParam === 'failed' || paymentParam === 'cancelled' || statusParam === 'rejected') {
       setSelectedOffer('basic');
       setStep('checkout');
       setPaymentMethod('card');
       setPagamentoConsulta(false);
-      alert('O pagamento com cartão não foi concluído no Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
+      alert('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
 
-    if (paymentParam === 'success') {
-      const status = params.get('status') || params.get('collection_status');
-      if (status === 'approved') {
-        window.history.replaceState({}, '', window.location.pathname);
-        handleSuccess();
-        return;
-      }
+    if (paymentId && (paymentParam === 'success' || statusParam === 'approved')) {
+      setIsLoading(true);
+      fetch(`/api/payment-status/${paymentId}`)
+        .then(res => res.json())
+        .then(data => {
+          setIsLoading(false);
+          if (data.status === 'approved' || data.status === 'completed') {
+            window.history.replaceState({}, '', window.location.pathname);
+            handleSuccess();
+          } else {
+            alert('O Mercado Pago informou que este pagamento ainda não foi aprovado.');
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        })
+        .catch(err => {
+          setIsLoading(false);
+          console.error("Erro ao verificar pagamento MP:", err);
+          window.history.replaceState({}, '', window.location.pathname);
+        });
+      return;
     }
 
     if (!selectedOffer) {
@@ -315,6 +359,7 @@ export function CheckoutScreen() {
             if (step === 'checkout') setStep('evolution');
             else if (step === 'evolution') setStep('discount');
             else navigate(-1);
+            scrollToTop();
           }}
           className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
         >
@@ -328,7 +373,10 @@ export function CheckoutScreen() {
         </div>
       </motion.div>
 
-      <div className={`flex-1 overflow-y-auto pt-24 ${step === 'evolution' ? 'pb-52' : 'pb-40'} px-4 sm:px-6 flex flex-col relative z-10`}>
+      <div 
+        ref={scrollContainerRef}
+        className={`flex-1 overflow-y-auto pt-24 ${step === 'evolution' ? 'pb-52' : 'pb-40'} px-4 sm:px-6 flex flex-col relative z-10`}
+      >
         <AnimatePresence mode="wait">
           {pixData ? (
             <motion.div 
@@ -1045,6 +1093,10 @@ export function CheckoutScreen() {
             <Button 
               className="w-full h-14 text-lg font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)]"
               onClick={async () => {
+                if (!pixData?.id) {
+                  alert("Código Pix não gerado.");
+                  return;
+                }
                 try {
                   setIsLoading(true);
                   const response = await fetch(`/api/payment-status/${pixData.id}`);
@@ -1053,16 +1105,16 @@ export function CheckoutScreen() {
                   if (data.status === 'approved' || data.status === 'completed') {
                     handleSuccess();
                   } else {
-                    alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+                    alert("⚠️ O Mercado Pago ainda NÃO identificou o pagamento deste Pix.\n\nStatus atual: Pendente.\n\nPor favor, pague o código Pix no aplicativo do seu banco. A liberação ocorre automaticamente em segundos assim que o banco repassar a confirmação!");
                   }
                 } catch (e) {
                   setIsLoading(false);
-                  alert("Pagamento ainda não confirmado. Aguarde alguns instantes.");
+                  alert("Não foi possível consultar o status do Pix no momento. Tente novamente em instantes.");
                 }
               }} 
               disabled={isLoading}
             >
-              Já Paguei (Liberar Acesso)
+              Já Paguei (Verificar no Mercado Pago)
             </Button>
           </div>
         ) : cardUrl ? (
@@ -1078,13 +1130,14 @@ export function CheckoutScreen() {
               <ExternalLink className="w-4 h-4 text-mecura-neon" />
             </a>
             <Button 
-              className="w-full h-14 text-base font-bold bg-mecura-neon text-black shadow-[0_0_30px_rgba(166,255,0,0.3)] hover:shadow-[0_0_40px_rgba(166,255,0,0.45)] transition-all flex items-center justify-center gap-2"
+              className="w-full h-14 text-base font-bold bg-[#161622] border border-mecura-neon/40 text-mecura-neon hover:bg-mecura-neon/10 transition-all flex items-center justify-center gap-2"
+              disabled={isLoading}
               onClick={() => {
-                handleSuccess();
+                alert("O acesso via cartão é liberado automaticamente assim que você concluir o pagamento na página do Mercado Pago e for redirecionado. Se você já pagou na outra aba, aguarde o redirecionamento ou atualize a página.");
               }}
             >
-              <CheckCircle2 className="w-5 h-5 text-black" />
-              <span>Já Paguei no Cartão (Liberar Acesso)</span>
+              <RefreshCw className="w-4 h-4 text-mecura-neon" />
+              <span>Aguardando Aprovação do Mercado Pago...</span>
             </Button>
             <button
               onClick={() => {
@@ -1101,7 +1154,10 @@ export function CheckoutScreen() {
           <div className="w-full flex flex-col items-center">
             <Button 
               className="w-full h-14 text-lg font-bold bg-mecura-neon text-black shadow-[0_0_35px_rgba(166,255,0,0.35)] hover:shadow-[0_0_45px_rgba(166,255,0,0.5)] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
-              onClick={() => setStep('evolution')}
+              onClick={() => {
+                setStep('evolution');
+                scrollToTop();
+              }}
             >
               <span>Continuar para Pagamento</span>
               <ArrowRight className="w-5 h-5" />
@@ -1124,6 +1180,7 @@ export function CheckoutScreen() {
                   onClick={() => {
                     setSelectedOffer('premium');
                     setStep('checkout');
+                    scrollToTop();
                   }}
                 >
                   <div className="flex items-center justify-center gap-2 w-full">
@@ -1140,6 +1197,7 @@ export function CheckoutScreen() {
                   onClick={() => {
                     setSelectedOffer('basic');
                     setStep('checkout');
+                    scrollToTop();
                   }}
                   className="text-[#8A8A9E] text-xs sm:text-[13px] font-semibold hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-1"
                 >
@@ -1160,6 +1218,7 @@ export function CheckoutScreen() {
                   onClick={() => {
                     setSelectedOffer('basic');
                     setStep('checkout');
+                    scrollToTop();
                   }}
                 >
                   <div className="flex items-center justify-center gap-2 w-full">
@@ -1173,7 +1232,10 @@ export function CheckoutScreen() {
                 </Button>
 
                 <button 
-                  onClick={() => setEvolutionTab('vip')}
+                  onClick={() => {
+                    setEvolutionTab('vip');
+                    scrollToTop();
+                  }}
                   className="text-mecura-neon text-xs sm:text-[13px] font-bold hover:underline py-1 flex items-center gap-1.5"
                 >
                   <Crown className="w-3.5 h-3.5 fill-current" />
@@ -1204,7 +1266,10 @@ export function CheckoutScreen() {
             </Button>
 
             <button 
-              onClick={() => setStep('evolution')}
+              onClick={() => {
+                setStep('evolution');
+                scrollToTop();
+              }}
               className="text-[#8A8A9E] text-[13px] font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-1.5 mt-1"
             >
               Voltar e alterar opções de plano

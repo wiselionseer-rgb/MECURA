@@ -537,7 +537,8 @@ export const useStore = create<AppState>((set, get) => ({
              // Doctor started it!
              set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: currentUserId });
           } else if (queueData[myIndex].status === 'finished') {
-             set({ isConsultationFinished: true, consultationActive: false, inQueue: false, activeConsultationId: currentUserId });
+             if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
+             set({ isConsultationFinished: true, consultationActive: false, pagamento_consulta: false, inQueue: false, activeConsultationId: currentUserId });
           } else {
              set({ 
                queuePosition: myIndex, // 0 means next
@@ -565,7 +566,8 @@ export const useStore = create<AppState>((set, get) => ({
                }
                set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: queueData[myIndex].id });
             } else if (queueData[myIndex].status === 'finished') {
-               set({ isConsultationFinished: true, consultationActive: false, inQueue: false, activeConsultationId: queueData[myIndex].id });
+               if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
+               set({ isConsultationFinished: true, consultationActive: false, pagamento_consulta: false, inQueue: false, activeConsultationId: queueData[myIndex].id });
             } else {
                set({ 
                  queuePosition: myIndex,
@@ -784,9 +786,15 @@ export const useStore = create<AppState>((set, get) => ({
       }
     }
 
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('mecura_pagamento');
+    }
+
     set((state) => ({ 
       consultationActive: false, 
       isConsultationFinished: true,
+      pagamento_consulta: false,
+      inQueue: false,
       activeConsultationId: null,
       consultationHistory: [
         ...state.consultationHistory,
@@ -799,6 +807,7 @@ export const useStore = create<AppState>((set, get) => ({
     consultationActive: false, 
     isConsultationFinished: false,
     pagamento_consulta: false, 
+    inQueue: false,
     answers: { objectives: [] }, 
     messages: [] 
   }) },
@@ -1045,15 +1054,25 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   
-  clearTriage: () => set({
-    answers: { objectives: [] },
-    onboardingStep: 1,
-    hasCompletedOnboarding: false,
-    consultationStatus: 'pending',
-    isConsultationFinished: false,
-    activeConsultationId: null,
-    messages: []
-  }),
+  clearTriage: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('mecura_pagamento');
+      localStorage.removeItem('mecura_applied_coupon');
+    }
+    return set({
+      answers: { objectives: [] },
+      onboardingStep: 1,
+      hasCompletedOnboarding: false,
+      consultationStatus: 'pending',
+      isConsultationFinished: false,
+      consultationActive: false,
+      pagamento_consulta: false,
+      pagamento_premium: false,
+      inQueue: false,
+      activeConsultationId: null,
+      messages: []
+    });
+  },
   
   reset: () => { if (typeof window !== 'undefined') { localStorage.removeItem('mecura_patientId'); localStorage.removeItem('mecura_pagamento'); } return set({
     userName: '',

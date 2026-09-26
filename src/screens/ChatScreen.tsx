@@ -12,7 +12,7 @@ import { auth } from '../firebase';
 
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { userName, userCpf, userBirthDate, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId, isConsultationFinished } = useStore();
+  const { userName, userCpf, userBirthDate, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId, isConsultationFinished, pagamento_consulta } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
@@ -22,21 +22,11 @@ export function ChatScreen() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   useEffect(() => {
-    if (messages.some(m => m.type === 'prescription') && !pdfBlob && !isGeneratingPDF) {
-      setIsGeneratingPDF(true);
-      generatePrescriptionPDF(userName, messages, {
-        birthDate: userBirthDate || (answers && answers.birthDate),
-        cpf: userCpf || (answers && answers.cpf),
-        returnBlob: true
-      }).then(url => {
-        if (url instanceof Blob) setPdfBlob(url);
-        setIsGeneratingPDF(false);
-      }).catch(err => {
-        console.error(err);
-        setIsGeneratingPDF(false);
-      });
+    // If not in active consultation, not finished, and not paid, return to dashboard
+    if (!consultationActive && !isConsultationFinished && !pagamento_consulta && messages.length === 0) {
+      navigate('/dashboard');
     }
-  }, [messages, pdfBlob, isGeneratingPDF, userName, userBirthDate, userCpf, answers]);
+  }, [consultationActive, isConsultationFinished, pagamento_consulta, messages.length, navigate]);
 
   useEffect(() => {
     if (patientId) {
@@ -593,8 +583,21 @@ export function ChatScreen() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      {!isConsultationFinished && (
+      {/* Input Area or Finished Banner */}
+      {isConsultationFinished ? (
+        <div className="p-4 bg-[#12121A] border-t border-white/10 absolute bottom-0 left-0 right-0 z-20 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-[#8A8A9E]">
+            <CheckCircle className="w-4 h-4 text-mecura-neon shrink-0" />
+            <span>Atendimento concluído e receita emitida.</span>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-4 py-2 bg-mecura-neon text-black rounded-full font-bold text-xs hover:bg-mecura-neon/90 transition-all shrink-0"
+          >
+            Voltar ao Início
+          </button>
+        </div>
+      ) : (
         <div className="p-4 bg-mecura-bg border-t border-mecura-elevated absolute bottom-0 left-0 right-0 z-20">
           <div className="flex items-center gap-3">
             <input

@@ -267,68 +267,73 @@ export const generatePrescriptionPDF = async (
   };
 
   const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '0';
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
   container.style.top = '0';
+  container.style.width = '794px';
   container.style.zIndex = '-9999';
+  container.style.opacity = '0';
+  container.style.pointerEvents = 'none';
   
   document.body.appendChild(container);
 
   const root = createRoot(container);
   root.render(<PdfComponent />);
 
-  // Wait for React to render and Tailwind to apply styles
-  await new Promise(resolve => setTimeout(resolve, 800));
+  try {
+    // Wait for React to render and Tailwind to apply styles
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-  const wrapperDiv = container.firstElementChild as HTMLElement;
-  const guideDivs = wrapperDiv ? (Array.from(wrapperDiv.children) as HTMLElement[]) : [];
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const wrapperDiv = container.firstElementChild as HTMLElement;
+    const guideDivs = wrapperDiv ? (Array.from(wrapperDiv.children) as HTMLElement[]) : [];
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-  if (guideDivs.length > 0) {
-    for (let i = 0; i < guideDivs.length; i++) {
-      const guideDiv = guideDivs[i];
-      const canvas = await html2canvas(guideDiv, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        windowWidth: 794
-      });
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
-      const imgWidth = 210;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      if (i > 0) {
-        pdf.addPage('a4', 'portrait');
-      }
-      if (imgHeight <= 299) {
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-      } else {
-        let heightLeft = imgHeight;
-        let position = 0;
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-        heightLeft -= 297;
-        while (heightLeft > 5) {
-          position = heightLeft - imgHeight;
+    if (guideDivs.length > 0) {
+      for (let i = 0; i < guideDivs.length; i++) {
+        const guideDiv = guideDivs[i];
+        const canvas = await html2canvas(guideDiv, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 794
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgWidth = 210;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        if (i > 0) {
           pdf.addPage('a4', 'portrait');
+        }
+        if (imgHeight <= 299) {
+          pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+        } else {
+          let heightLeft = imgHeight;
+          let position = 0;
           pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
           heightLeft -= 297;
+          while (heightLeft > 5) {
+            position = heightLeft - imgHeight;
+            pdf.addPage('a4', 'portrait');
+            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+            heightLeft -= 297;
+          }
         }
       }
     }
-  }
 
-  const filename = `Receita_Medica_${sanitizedUserName}.pdf`;
-  let resultBlob: Blob | undefined;
-  if (patientData?.returnBlob) {
-    resultBlob = pdf.output('blob');
-  } else {
-    pdf.save(filename);
+    const filename = `Receita_Medica_${sanitizedUserName}.pdf`;
+    let resultBlob: Blob | undefined;
+    if (patientData?.returnBlob) {
+      resultBlob = pdf.output('blob');
+    } else {
+      pdf.save(filename);
+    }
+    return resultBlob;
+  } finally {
+    root.unmount();
+    if (container.parentNode) {
+      document.body.removeChild(container);
+    }
   }
-
-  root.unmount();
-  if (container.parentNode) {
-    document.body.removeChild(container);
-  }
-  return resultBlob;
 };
 
 
@@ -436,58 +441,62 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   };
 
   const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '0';
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
   container.style.top = '0';
+  container.style.width = '794px';
   container.style.zIndex = '-9999';
-  container.style.opacity = '1';
+  container.style.opacity = '0';
+  container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
   const root = createRoot(container);
   root.render(<PdfComponent />);
 
-  await new Promise(resolve => setTimeout(resolve, 800));
+  try {
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-  const reportDiv = (container.firstElementChild?.firstElementChild || container.firstElementChild || container) as HTMLElement;
-  const canvas = await html2canvas(reportDiv, {
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    windowWidth: 794
-  });
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const imgData = canvas.toDataURL('image/jpeg', 0.98);
-  const imgWidth = 210;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    const reportDiv = (container.firstElementChild?.firstElementChild || container.firstElementChild || container) as HTMLElement;
+    const canvas = await html2canvas(reportDiv, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: 794
+    });
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+    const imgWidth = 210;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-  if (imgHeight <= 299) {
-    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-  } else {
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= 297;
-    while (heightLeft > 5) {
-      position = heightLeft - imgHeight;
-      pdf.addPage('a4', 'portrait');
+    if (imgHeight <= 299) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    } else {
+      let heightLeft = imgHeight;
+      let position = 0;
       pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
       heightLeft -= 297;
+      while (heightLeft > 5) {
+        position = heightLeft - imgHeight;
+        pdf.addPage('a4', 'portrait');
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= 297;
+      }
+    }
+
+    const filename = `Laudo_Medico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
+    let resultBlob: Blob | undefined;
+    if (patientData?.returnBlob) {
+      resultBlob = pdf.output('blob');
+    } else {
+      pdf.save(filename);
+    }
+    return resultBlob;
+  } finally {
+    root.unmount();
+    if (container.parentNode) {
+      document.body.removeChild(container);
     }
   }
-
-  const filename = `Laudo_Medico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
-  let resultBlob: Blob | undefined;
-  if (patientData?.returnBlob) {
-    resultBlob = pdf.output('blob');
-  } else {
-    pdf.save(filename);
-  }
-
-  root.unmount();
-  if (container.parentNode) {
-    document.body.removeChild(container);
-  }
-  return resultBlob;
 };
 
 export const generatePsychomotorReportPDF = async (userName: string, patientData?: any) => {
@@ -602,58 +611,62 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   };
 
   const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '0';
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
   container.style.top = '0';
+  container.style.width = '794px';
   container.style.zIndex = '-9999';
-  container.style.opacity = '1';
+  container.style.opacity = '0';
+  container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
   const root = createRoot(container);
   root.render(<PdfComponent />);
 
-  await new Promise(resolve => setTimeout(resolve, 800));
+  try {
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-  const reportDiv = (container.firstElementChild?.firstElementChild || container.firstElementChild || container) as HTMLElement;
-  const canvas = await html2canvas(reportDiv, {
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    windowWidth: 794
-  });
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const imgData = canvas.toDataURL('image/jpeg', 0.98);
-  const imgWidth = 210;
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    const reportDiv = (container.firstElementChild?.firstElementChild || container.firstElementChild || container) as HTMLElement;
+    const canvas = await html2canvas(reportDiv, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: 794
+    });
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+    const imgWidth = 210;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-  if (imgHeight <= 299) {
-    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-  } else {
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= 297;
-    while (heightLeft > 5) {
-      position = heightLeft - imgHeight;
-      pdf.addPage('a4', 'portrait');
+    if (imgHeight <= 299) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    } else {
+      let heightLeft = imgHeight;
+      let position = 0;
       pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
       heightLeft -= 297;
+      while (heightLeft > 5) {
+        position = heightLeft - imgHeight;
+        pdf.addPage('a4', 'portrait');
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= 297;
+      }
+    }
+
+    const filename = `Laudo_Psicomotor_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
+    let resultBlob: Blob | undefined;
+    if (patientData?.returnBlob) {
+      resultBlob = pdf.output('blob');
+    } else {
+      pdf.save(filename);
+    }
+    return resultBlob;
+  } finally {
+    root.unmount();
+    if (container.parentNode) {
+      document.body.removeChild(container);
     }
   }
-
-  const filename = `Laudo_Psicomotor_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
-  let resultBlob: Blob | undefined;
-  if (patientData?.returnBlob) {
-    resultBlob = pdf.output('blob');
-  } else {
-    pdf.save(filename);
-  }
-
-  root.unmount();
-  if (container.parentNode) {
-    document.body.removeChild(container);
-  }
-  return resultBlob;
 };
 
 export interface AgronomicReportData {
@@ -679,12 +692,13 @@ export interface AgronomicReportData {
 
 export const generateAgronomicReportPDF = async (userName: string, agronomicData?: AgronomicReportData) => {
   const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '0';
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
   container.style.top = '0';
   container.style.width = '794px';
   container.style.zIndex = '-9999';
-  container.style.opacity = '1';
+  container.style.opacity = '0';
+  container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
   const sanitizedUserName = (agronomicData?.customPatientName || userName || 'LUCAS DANIEL NERES').toUpperCase();
@@ -1172,72 +1186,74 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   const root = createRoot(container);
   root.render(<PdfComponent />);
 
-  await new Promise(resolve => setTimeout(resolve, 800));
+  try {
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-  const pdf = new jsPDF({
-    unit: 'mm',
-    format: 'a4',
-    orientation: 'portrait'
-  });
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait'
+    });
 
-  const pageElements = container.querySelectorAll<HTMLElement>('.agronomic-pdf-page');
+    const pageElements = container.querySelectorAll<HTMLElement>('.agronomic-pdf-page');
 
-  if (pageElements.length > 0) {
-    for (let i = 0; i < pageElements.length; i++) {
-      const pageEl = pageElements[i];
-      const canvas = await html2canvas(pageEl, {
+    if (pageElements.length > 0) {
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i];
+        const canvas = await html2canvas(pageEl, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 794
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      }
+    } else {
+      const contentEl = (container.firstElementChild || container) as HTMLElement;
+      const canvas = await html2canvas(contentEl, {
         scale: 2,
         useCORS: true,
         logging: false,
         windowWidth: 794
       });
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
-      if (i > 0) {
-        pdf.addPage('a4', 'portrait');
-      }
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-    }
-  } else {
-    const contentEl = (container.firstElementChild || container) as HTMLElement;
-    const canvas = await html2canvas(contentEl, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      windowWidth: 794
-    });
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgWidth = 210;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    if (imgHeight <= 299) {
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-    } else {
-      let heightLeft = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= 297;
-      while (heightLeft > 5) {
-        position = heightLeft - imgHeight;
-        pdf.addPage('a4', 'portrait');
+      if (imgHeight <= 299) {
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      } else {
+        let heightLeft = imgHeight;
+        let position = 0;
         pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
         heightLeft -= 297;
+        while (heightLeft > 5) {
+          position = heightLeft - imgHeight;
+          pdf.addPage('a4', 'portrait');
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+          heightLeft -= 297;
+        }
       }
     }
+
+    const filename = `Parecer_Agronomico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
+
+    let resultBlob: Blob | undefined;
+    if (agronomicData?.returnBlob) {
+      resultBlob = pdf.output('blob');
+    } else {
+      pdf.save(filename);
+    }
+
+    return resultBlob;
+  } finally {
+    root.unmount();
+    if (container.parentNode) {
+      document.body.removeChild(container);
+    }
   }
-
-  const filename = `Parecer_Agronomico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
-
-  let resultBlob: Blob | undefined;
-  if (agronomicData?.returnBlob) {
-    resultBlob = pdf.output('blob');
-  } else {
-    pdf.save(filename);
-  }
-
-  root.unmount();
-  if (container.parentNode) {
-    document.body.removeChild(container);
-  }
-
-  return resultBlob;
 };
