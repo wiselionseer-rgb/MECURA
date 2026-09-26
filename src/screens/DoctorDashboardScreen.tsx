@@ -375,6 +375,7 @@ export function DoctorDashboardScreen() {
   const [dosageInput, setDosageInput] = useState('');
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento'>('receita');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
+  const [isSendingAttachment, setIsSendingAttachment] = useState(false);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queuePlanFilter, setQueuePlanFilter] = useState<'all' | 'premium' | 'basic'>('all');
@@ -712,6 +713,25 @@ export function DoctorDashboardScreen() {
           type: file.type,
           docType: selectedUploadDocType
         });
+
+        // Pre-upload in background to avoid any delay when doctor clicks send
+        try {
+          fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              data: reader.result as string,
+              type: file.type
+            })
+          }).then(res => res.ok ? res.json() : null).then(data => {
+            if (data?.url) {
+              setPendingAttachment(prev => (prev && prev.name === file.name) ? { ...prev, url: data.url } : prev);
+            }
+          }).catch(err => console.warn("Background upload error:", err));
+        } catch (e) {
+          console.warn("Background upload setup error:", e);
+        }
       };
       reader.readAsDataURL(file);
       // Reset input so the same file can be selected again if needed
@@ -719,44 +739,76 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleSendAttachment = (customAttachment = pendingAttachment) => {
-    if (!customAttachment) return;
+  const handleSendAttachment = async (customAttachment = pendingAttachment) => {
+    if (!customAttachment || isSendingAttachment) return;
 
-    const docType = customAttachment.docType || 'receita';
-    let messageType: 'prescription' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document' = 'document';
-    let defaultTitle = 'Documento';
+    setIsSendingAttachment(true);
+    try {
+      let finalAttachment = { ...customAttachment };
 
-    if (docType === 'receita') {
-      messageType = 'prescription';
-      defaultTitle = 'Receita Digital Assinada';
-    } else if (docType === 'laudo_inicial') {
-      messageType = 'medical_report';
-      defaultTitle = 'Laudo Médico Inicial';
-    } else if (docType === 'laudo_evolutivo') {
-      messageType = 'medical_report';
-      defaultTitle = 'Laudo Médico Evolutivo';
-    } else if (docType === 'laudo_psicomotor') {
-      messageType = 'psychomotor_report';
-      defaultTitle = 'Laudo Psicomotor (Aptidão)';
-    } else if (docType === 'laudo_agronomico') {
-      messageType = 'agronomic_report';
-      defaultTitle = 'Parecer Técnico Agronômico';
-    }
-
-    addMessage({
-      sender: 'doctor',
-      type: messageType,
-      docType: docType,
-      text: inputText.trim() || undefined,
-      attachment: {
-        ...customAttachment,
-        docType: docType,
-        title: customAttachment.title || defaultTitle
+      // If still a base64 data URL, upload to server now to guarantee it never exceeds Firestore's 1MB limit
+      if (finalAttachment.url && finalAttachment.url.startsWith('data:')) {
+        try {
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: finalAttachment.name,
+              data: finalAttachment.url,
+              type: finalAttachment.type || 'application/pdf'
+            })
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            if (upData.url) {
+              finalAttachment.url = upData.url;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn("Direct upload error during send:", uploadErr);
+        }
       }
-    });
 
-    setPendingAttachment(null);
-    setInputText('');
+      const docType = finalAttachment.docType || 'receita';
+      let messageType: 'prescription' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document' = 'document';
+      let defaultTitle = 'Documento';
+
+      if (docType === 'receita') {
+        messageType = 'prescription';
+        defaultTitle = 'Receita Digital Assinada';
+      } else if (docType === 'laudo_inicial') {
+        messageType = 'medical_report';
+        defaultTitle = 'Laudo Médico Inicial';
+      } else if (docType === 'laudo_evolutivo') {
+        messageType = 'medical_report';
+        defaultTitle = 'Laudo Médico Evolutivo';
+      } else if (docType === 'laudo_psicomotor') {
+        messageType = 'psychomotor_report';
+        defaultTitle = 'Laudo Psicomotor (Aptidão)';
+      } else if (docType === 'laudo_agronomico') {
+        messageType = 'agronomic_report';
+        defaultTitle = 'Parecer Técnico Agronômico';
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: messageType,
+        docType: docType,
+        text: inputText.trim() || undefined,
+        attachment: {
+          ...finalAttachment,
+          docType: docType,
+          title: finalAttachment.title || defaultTitle
+        }
+      }, currentPatient?.id);
+
+      setPendingAttachment(null);
+      setInputText('');
+    } catch (err) {
+      console.error("Error sending attachment:", err);
+    } finally {
+      setIsSendingAttachment(false);
+    }
   };
 
   const handleSend = () => {
@@ -3062,15 +3114,25 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     </button>
                     <button 
                       onClick={() => handleSendAttachment(pendingAttachment)}
-                      className="px-4 py-2.5 bg-mecura-neon text-black text-xs md:text-sm font-bold rounded-xl hover:bg-[#b5ff33] transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(166,255,0,0.25)] cursor-pointer"
+                      disabled={isSendingAttachment}
+                      className="px-4 py-2.5 bg-mecura-neon text-black text-xs md:text-sm font-bold rounded-xl hover:bg-[#b5ff33] transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(166,255,0,0.25)] cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                     >
-                      <Send className="w-4 h-4" />
-                      {pendingAttachment.docType === 'receita' ? 'Enviar Receita' :
-                       pendingAttachment.docType === 'laudo_inicial' ? 'Enviar Laudo Inicial' :
-                       pendingAttachment.docType === 'laudo_evolutivo' ? 'Enviar Laudo Evolutivo' :
-                       pendingAttachment.docType === 'laudo_psicomotor' ? 'Enviar Laudo Psicomotor' :
-                       pendingAttachment.docType === 'laudo_agronomico' ? 'Enviar Parecer Agronômico' :
-                       'Enviar Documento'}
+                      {isSendingAttachment ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Enviando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          {pendingAttachment.docType === 'receita' ? 'Enviar Receita' :
+                           pendingAttachment.docType === 'laudo_inicial' ? 'Enviar Laudo Inicial' :
+                           pendingAttachment.docType === 'laudo_evolutivo' ? 'Enviar Laudo Evolutivo' :
+                           pendingAttachment.docType === 'laudo_psicomotor' ? 'Enviar Laudo Psicomotor' :
+                           pendingAttachment.docType === 'laudo_agronomico' ? 'Enviar Parecer Agronômico' :
+                           'Enviar Documento'}
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

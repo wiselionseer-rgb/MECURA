@@ -115,6 +115,8 @@ interface AppState {
   blockedDates: BlockedDate[];
   blockDate: (date: string, reason?: string, fullDay?: boolean, times?: string[]) => Promise<void>;
   unblockDate: (idOrDate: string) => Promise<void>;
+  blockMonth: (yearMonth: string, reason?: string) => Promise<void>;
+  unblockMonth: (yearMonth: string) => Promise<void>;
   subscribeToBlockedDates: () => () => void;
   addAppointment: (appointment: { patientName: string; date: string; time: string; type: string; status?: 'pending' | 'confirmed' | 'cancelled' }) => void;
   confirmAppointment: (id: string) => void;
@@ -168,7 +170,7 @@ interface AppState {
   
   // Chat
   messages: Message[];
-  addMessage: (msg: Omit<Message, 'id' | 'timestamp'>) => void;
+  addMessage: (msg: Omit<Message, 'id' | 'timestamp'>, customConsultationId?: string) => Promise<void>;
   deleteMessage: (messageId: string, customConsultationId?: string) => Promise<void>;
   clearPrescriptionMessages: (customConsultationId?: string) => Promise<void>;
   setMessages: (messages: Message[]) => void;
@@ -184,7 +186,7 @@ interface AppState {
   clearTriage: () => void;
 }
 
-import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useAdminStore } from './useAdminStore';
@@ -260,6 +262,62 @@ export const useStore = create<AppState>((set, get) => ({
       }));
     } catch (error) {
       console.error("Error unblocking date in Firestore:", error);
+    }
+  },
+  blockMonth: async (yearMonth, reason) => {
+    try {
+      const [yearStr, monthStr] = yearMonth.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const daysCount = new Date(year, month, 0).getDate();
+      
+      const batch = writeBatch(db);
+      const newBlockedItems: BlockedDate[] = [];
+      const nowIso = new Date().toISOString();
+
+      for (let day = 1; day <= daysCount; day++) {
+        const dayStr = day < 10 ? `0${day}` : `${day}`;
+        const dateStr = `${yearMonth}-${dayStr}`;
+        const docRef = doc(db, 'blocked_dates', dateStr);
+        const data = {
+          date: dateStr,
+          reason: reason || 'Mês inteiro bloqueado pelo médico',
+          fullDay: true,
+          times: [],
+          createdAt: nowIso
+        };
+        batch.set(docRef, data);
+        newBlockedItems.push({ id: dateStr, ...data });
+      }
+
+      await batch.commit();
+
+      set((state) => {
+        const remaining = state.blockedDates.filter(b => !b.date.startsWith(yearMonth));
+        return { blockedDates: [...remaining, ...newBlockedItems] };
+      });
+      console.log(`[blockMonth] Mês ${yearMonth} bloqueado com sucesso (${daysCount} dias).`);
+    } catch (error) {
+      console.error("Error blocking month in Firestore:", error);
+    }
+  },
+  unblockMonth: async (yearMonth) => {
+    try {
+      const state = get();
+      const toDelete = state.blockedDates.filter(b => b.date.startsWith(yearMonth));
+      if (toDelete.length > 0) {
+        const batch = writeBatch(db);
+        for (const item of toDelete) {
+          batch.delete(doc(db, 'blocked_dates', item.id || item.date));
+        }
+        await batch.commit();
+      }
+      set((state) => ({
+        blockedDates: state.blockedDates.filter(b => !b.date.startsWith(yearMonth))
+      }));
+      console.log(`[unblockMonth] Mês ${yearMonth} desbloqueado com sucesso.`);
+    } catch (error) {
+      console.error("Error unblocking month in Firestore:", error);
     }
   },
   addAppointment: async (appointment) => {
@@ -939,21 +997,55 @@ export const useStore = create<AppState>((set, get) => ({
   }) },
   
   messages: [],
-  addMessage: async (msg) => {
+  addMessage: async (msg, customConsultationId?: string) => {
     const state = get();
     // Add a random suffix to Date.now() to prevent duplicate keys if messages are added in the same millisecond
     const uniqueId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
-    const newMessage = { ...msg, id: uniqueId, timestamp: new Date() };
+    let newMessage = { ...msg, id: uniqueId, timestamp: new Date() };
     
-    // Optimistic update
+    // 1. Optimistic update
     set((state) => ({
       messages: [...state.messages, newMessage]
     }));
 
-    // Save to Firestore if in an active consultation
-    // For doctor, activeConsultationId is set. For patient, patientId is set.
-    // If patient is logged in and refreshed, patientId might be null, so fallback to auth.currentUser?.uid
-    const consultationId = state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    // 2. If attachment is a large base64 data URL, upload to server first so Firestore document stays tiny (< 2KB)
+    if (newMessage.attachment?.url && newMessage.attachment.url.startsWith('data:')) {
+      try {
+        console.log("[addMessage] Uploading file to server endpoint /api/upload:", newMessage.attachment.name);
+        const upRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: newMessage.attachment.name,
+            data: newMessage.attachment.url,
+            type: newMessage.attachment.type || 'application/pdf'
+          })
+        });
+
+        if (upRes.ok) {
+          const upData = await upRes.json();
+          if (upData.url) {
+            const updatedAtt = {
+              ...newMessage.attachment,
+              url: upData.url
+            };
+            newMessage = {
+              ...newMessage,
+              attachment: updatedAtt
+            };
+            set((s) => ({
+              messages: s.messages.map(m => m.id === uniqueId ? { ...m, attachment: updatedAtt } : m)
+            }));
+            console.log("[addMessage] File uploaded successfully to server. Permanent URL:", upData.url);
+          }
+        }
+      } catch (uploadErr) {
+        console.warn("[addMessage] Failed to upload to /api/upload, proceeding with fallback:", uploadErr);
+      }
+    }
+
+    // 3. Save to Firestore if in an active consultation
+    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
     console.log("addMessage called. consultationId:", consultationId, "msg:", msg);
     
     if (consultationId) {
@@ -989,9 +1081,9 @@ export const useStore = create<AppState>((set, get) => ({
         const queueRef = doc(db, 'queue', consultationId);
         await updateDoc(queueRef, {
           lastMessageAt: newMessage.timestamp.toISOString(),
-          lastMessageText: newMessage.text || (newMessage.type === 'product' ? 'Produto prescrito' : 'Mensagem'),
+          lastMessageText: newMessage.text || (newMessage.type === 'prescription' ? 'Receita Médica Digital' : (newMessage.type === 'medical_report' ? 'Laudo Médico Oficial' : (newMessage.type === 'product' ? 'Produto prescrito' : 'Documento anexado'))),
           hasUnread: newMessage.sender === 'user' // Only mark unread if patient sent it
-        });
+        }).catch(err => console.warn("Could not update queue doc:", err));
         console.log("Queue document updated successfully.");
         
         // Trigger background push
@@ -999,7 +1091,7 @@ export const useStore = create<AppState>((set, get) => ({
           triggerBackgroundPush(
             consultationId,
             'Nova mensagem da Mecura',
-            newMessage.text ? (newMessage.text.length > 50 ? newMessage.text.substring(0, 50) + '...' : newMessage.text) : 'Você tem uma nova atualização no consultório.',
+            newMessage.text ? (newMessage.text.length > 50 ? newMessage.text.substring(0, 50) + '...' : newMessage.text) : (newMessage.type === 'prescription' ? 'Receita médica enviada' : 'Você tem uma nova atualização no consultório.'),
             '/chat'
           );
         } else if (newMessage.sender === 'user') {

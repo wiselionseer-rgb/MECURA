@@ -1,6 +1,7 @@
 import express from "express";
 import webpush from "web-push";
 import path from "node:path";
+import fs from "node:fs";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
 import { db } from "./src/firebase";
@@ -47,6 +48,70 @@ async function startServer() {
   console.log("-----------------------------------------");
 
   // API Routes
+
+  const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+
+  // Upload endpoint: accepts file base64, saves to uploads/, returns clean URL
+  app.post("/api/upload", (req, res) => {
+    try {
+      const { filename, data, type } = req.body;
+      if (!data) {
+        return res.status(400).json({ error: "Nenhum dado enviado" });
+      }
+
+      const fileExt = path.extname(filename || 'documento.pdf') || '.pdf';
+      const cleanBaseName = path.basename(filename || 'arquivo', fileExt).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const uniqueFileName = `${Date.now()}_${cleanBaseName}${fileExt}`;
+      const filePath = path.join(UPLOADS_DIR, uniqueFileName);
+
+      // Support data URL: data:application/pdf;base64,... or raw base64
+      const base64Data = data.includes(';base64,') ? data.split(';base64,')[1] : data;
+      const buffer = Buffer.from(base64Data, 'base64');
+      fs.writeFileSync(filePath, buffer);
+
+      const fileUrl = `/api/files/${uniqueFileName}`;
+      console.log(`[UPLOAD] Arquivo salvo com sucesso: ${uniqueFileName} (${buffer.length} bytes)`);
+
+      res.json({
+        success: true,
+        url: fileUrl,
+        name: filename || uniqueFileName,
+        size: buffer.length,
+        type: type || 'application/pdf'
+      });
+    } catch (err: any) {
+      console.error("[UPLOAD] Erro ao salvar arquivo:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Serve uploaded files directly with correct Content-Type and download headers
+  app.get("/api/files/:filename", (req, res) => {
+    try {
+      const safeFilename = path.basename(req.params.filename);
+      const filePath = path.join(UPLOADS_DIR, safeFilename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send("Arquivo não encontrado.");
+      }
+
+      const ext = path.extname(safeFilename).toLowerCase();
+      let contentType = 'application/octet-stream';
+      if (ext === '.pdf') contentType = 'application/pdf';
+      else if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.webp') contentType = 'image/webp';
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.sendFile(filePath);
+    } catch (err: any) {
+      res.status(500).send("Erro ao carregar arquivo.");
+    }
+  });
 
   const vapidPublic = process.env.VAPID_PUBLIC_KEY || "BNhGkh4NPQdL5-v97cIGWleXsEuVlZiW6YGu3866y33lZuMB_INQ-nJh0Ff-DECy-uIO-E2X4KdDvEw2oo0--Aw";
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY || "qQnw0dxc2m0c1fFN444rwuE0mWbZrrYeiQcbTKeXy8M";
