@@ -46,7 +46,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     brandLower.includes('associação') ||
     brandLower.includes('associacao') ||
     brandLower.includes('nacional') ||
-    /associação|nacional|óleo integral|pomada|flor|flores/i.test(nameLower)
+    /associação|nacional|óleo integral|óleo balanceado|balanceado|óleo rico|cbd isolado|pomada|flor|flores/i.test(nameLower)
   );
 };
 

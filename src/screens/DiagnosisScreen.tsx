@@ -59,7 +59,10 @@ export function DiagnosisScreen() {
           <ChevronRight className="w-6 h-6 rotate-180" />
         </button>
         <span className="text-mecura-neon font-bold tracking-widest text-sm uppercase">Mecura</span>
-        <button className="text-mecura-silver text-sm font-medium flex items-center gap-1">
+        <button 
+          onClick={() => window.open('https://wa.me/5566996280883?text=' + encodeURIComponent('Olá! Gostaria de tirar uma dúvida sobre o meu resultado de compatibilidade e a consulta na Mecura.'), '_blank')}
+          className="text-mecura-silver hover:text-mecura-neon text-sm font-medium flex items-center gap-1 transition-colors cursor-pointer"
+        >
           Ajuda <HelpCircle className="w-4 h-4" />
         </button>
       </header>

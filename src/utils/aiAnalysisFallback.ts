@@ -194,10 +194,10 @@ export function generateClinicalAnalysisFallback(
     }
 
     nationalList.push({
-      name: "ÓLEO INTEGRAL THC/CBD 100mg/ml - Associação Nacional",
-      indication: "Analgesia Sistêmica Contínua e Modulação Neuroinflamatória",
-      usage: "Tomar **05 a 08 gotas** de 12/12 horas sublingual após refeição.",
-      notes: "01 Frasco 30mL - Associação Brasileira. Efeito entourage com fitocanabinoides integrais."
+      name: "Óleo Balanceado CBD/THC 1:1 (CBD 25mg/ml + THC 25mg/ml)",
+      indication: "Analgesia Sistêmica Contínua, Fibromialgia e Modulação Neuroinflamatória",
+      usage: "Tomar **03 a 05 gotas** de 12/12 horas sublingual após refeição.",
+      notes: "01 Frasco 30mL - Associação Nacional. Proporção áurea equilibrada 1:1 com alta sinergia analgésica."
     });
     nationalList.push({
       name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
@@ -372,10 +372,10 @@ export function generateClinicalAnalysisFallback(
     }
 
     nationalList.push({
-      name: "ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml - Associação Nacional",
-      indication: "Controle da Ansiedade, Estresse e Equilíbrio Neuroquímico",
-      usage: "Tomar **06 a 08 gotas** pela manhã e **06 gotas** à tarde.",
-      notes: "01 Frasco de 30mL - Associação Brasileira. Uso sublingual contínuo com titulação progressiva."
+      name: "Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional",
+      indication: "Controle da Ansiedade, Estresse e Equilíbrio Neuroquímico (0% THC)",
+      usage: "Tomar **04 a 06 gotas** pela manhã e **04 a 06 gotas** à tarde sublingual.",
+      notes: "01 Frasco de 30mL - Associação Nacional. Canabidiol isolado de alta pureza livre de psicoatividade."
     });
     nationalList.push({
       name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",

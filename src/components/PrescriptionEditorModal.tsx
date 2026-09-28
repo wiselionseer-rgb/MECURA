@@ -16,7 +16,7 @@ import {
   Globe
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { enrichMedicationDetails } from '../data/cbdGuide';
+import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 
@@ -79,6 +79,19 @@ export function PrescriptionEditorModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Clean up legacy confusing dosage phrasing if present
+  useEffect(() => {
+    if (isOpen && notes && notes.includes('2/3 a noite')) {
+      const sanitized = notes.replace(
+        /reduzir em 1\/3 a dose da manh[ãa] e 2\/3 a noite/gi,
+        'reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição'
+      );
+      if (sanitized !== notes) {
+        setNotes(sanitized);
+      }
+    }
+  }, [isOpen, notes, setNotes]);
 
   if (!isOpen) return null;
 
@@ -211,6 +224,29 @@ export function PrescriptionEditorModal({
         `Perfil: ${prod.strainProfile} • Momento: ${prod.usageMoment}. Microdosagem com avaliação de resposta a cada 15-30 minutos.`
       ],
       description: prod.description || 'Produto vegetal importado em embalagem selada de 14g ou extração concentrada com laudo sob demanda.'
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddNationalItem = (productName: string) => {
+    const prod = NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
+    const enriched = enrichMedicationDetails(productName, 'Associação Nacional', 'Nacional', prod?.type, prod);
+    const newItem: PrescriptionItemData = {
+      name: prod?.name || productName,
+      brand: 'Associação Nacional (Brasil)',
+      origin: 'Nacional',
+      activeIngredients: enriched.activeIngredients,
+      concentration: enriched.concentration,
+      pharmaceuticalForm: enriched.pharmaceuticalForm,
+      quantity: enriched.quantity,
+      administrationRoute: enriched.administrationRoute,
+      dosage: prod?.usageInstructions 
+        ? [prod.usageInstructions, 'Aumentar gradualmente conforme resposta clínica e tolerabilidade individual.']
+        : [
+            'Tomar 03 gotas de 12/12 horas por via sublingual.',
+            'Aumentar 01 gota a cada 05 dias até atingir a dose terapêutica de controle.'
+          ],
+      description: prod?.description || enriched.description || 'Medicamento nacional autorizado de associação brasileira.'
     };
     setItems(prev => [...prev, newItem]);
   };
@@ -501,6 +537,41 @@ export function PrescriptionEditorModal({
                         <Plus className="w-3.5 h-3.5" /> + Importado
                       </button>
 
+                      {/* Associação Nacional Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-nacional"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddNationalItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 rounded-lg text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
+                            + Prescrever Associação Nacional...
+                          </option>
+                          <optgroup label="Óleos CBD Isolado (0% THC)" className="bg-[#0A0A0F] text-white">
+                            <option value="Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional">CBD Isolado 100mg/ml (30ml) - R$ 180</option>
+                            <option value="Óleo Rico em CBD ISOLADO 200mg/ml - Associação Nacional">CBD Isolado 200mg/ml (30ml) - R$ 280</option>
+                          </optgroup>
+                          <optgroup label="Óleos Balanceados CBD / THC" className="bg-[#0A0A0F] text-white">
+                            <option value="Óleo Balanceado CBD/THC 1:1 (CBD 25mg/ml + THC 25mg/ml)">Balanceado 1:1 (CBD 25mg + THC 25mg) - R$ 210</option>
+                            <option value="Óleo Balanceado CBD/THC 2:1 (CBD 50mg/ml + THC 25mg/ml)">Balanceado 2:1 (CBD 50mg + THC 25mg) - R$ 230</option>
+                            <option value="Óleo Balanceado CBD/THC 3:1 (CBD 30mg/ml + THC 10mg/ml)">Balanceado 3:1 (CBD 30mg + THC 10mg) - R$ 190</option>
+                            <option value="Óleo Balanceado CBD/THC 5:1 (CBD 50mg/ml + THC 10mg/ml)">Balanceado 5:1 (CBD 50mg + THC 10mg) - R$ 220</option>
+                          </optgroup>
+                          <optgroup label="Extratos Integrais e Outros" className="bg-[#0A0A0F] text-white">
+                            <option value="Óleo Integral THC/CBD 100mg/ml - Associação Nacional">Óleo Integral THC/CBD 100mg/ml - R$ 210</option>
+                            <option value="Óleo Integral PREDOMINANTE THC 100mg/ml - Associação Nacional">Óleo Integral THC 100mg/ml (Noturno) - R$ 240</option>
+                            <option value="Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional">Pomada Canábica 500mg (50g) - R$ 140</option>
+                            <option value="Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional">Flor in natura THC 15g (Vaporização) - R$ 450</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
                       {/* Flowermed Quick Prescribe Dropdown */}
                       <div className="relative inline-block">
                         <select
@@ -759,17 +830,72 @@ export function PrescriptionEditorModal({
                 </div>
 
                 {/* Section 3: Notes & Instructions */}
-                <div className="p-4 bg-mecura-surface/40 border border-mecura-elevated rounded-2xl space-y-2">
-                  <label className="text-xs font-bold text-white uppercase tracking-wider block">
-                    Orientações Gerais & Observações Farmacológicas
-                  </label>
+                <div className="p-4 bg-mecura-surface/40 border border-mecura-elevated rounded-2xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="text-xs font-bold text-white uppercase tracking-wider block">
+                      Orientações Gerais & Observações Farmacológicas
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const standardText = 'Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
+                        if (!notes || !notes.trim()) {
+                          setNotes(standardText);
+                        } else if (!notes.includes('alimentos gordurosos')) {
+                          setNotes(notes.trim() + '\n\n' + standardText);
+                        }
+                      }}
+                      className="text-[11px] font-semibold text-mecura-neon hover:text-mecura-neon-light flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Inserir orientações padrão
+                    </button>
+                  </div>
                   <textarea
-                    rows={3}
+                    rows={4}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Instruções de titulação, conservação do frasco, retorno em 30 dias..."
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3 text-xs md:text-sm text-white focus:outline-none focus:border-purple-500/50 resize-none leading-relaxed"
                   />
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const phrase = '- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.';
+                        if (!notes.includes('reduzir em 1/3 a dose da manhã')) {
+                          setNotes(notes ? `${notes.trim()}\n${phrase}` : phrase);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-mecura-silver hover:text-white transition-colors border border-white/5 cursor-pointer"
+                    >
+                      + Sonolência diurna (reduzir 1/3 manhã, noite normal conforme prescrição)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const phrase = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.';
+                        if (!notes.includes('alimentos gordurosos')) {
+                          setNotes(notes ? `${notes.trim()}\n${phrase}` : phrase);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-mecura-silver hover:text-white transition-colors border border-white/5 cursor-pointer"
+                    >
+                      + Alimentos gordurosos (+ absorção)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const phrase = '- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
+                        if (!notes.includes('2 horas antes ou depois')) {
+                          setNotes(notes ? `${notes.trim()}\n${phrase}` : phrase);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-mecura-silver hover:text-white transition-colors border border-white/5 cursor-pointer"
+                    >
+                      + Intervalo de 2h de outros remédios
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

@@ -33,7 +33,188 @@ export interface CBDCategory {
   products: CBDProduct[];
 }
 
+export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
+  {
+    name: "Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo CBD Isolado (0% THC)",
+    activeIngredients: "Canabidiol (CBD) Isolado Puro (>99.8% de pureza)",
+    concentration: "CBD 100 mg/mL (0,0% THC) • Total 3.000 mg de CBD",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 180.00,
+    details: ["Frasco 30mL", "CBD 100mg/ml (10%)", "0,0% THC Garantido", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Óleo com Canabidiol isolado de alta pureza, totalmente livre de THC (0,0%). Indicado para pacientes com alta sensibilidade a canabinoides, crianças, profissionais submetidos a testes toxicológicos (antidoping/concursos), autismo (TEA), ansiedade e controle de crises convulsivas sem efeitos psicoativos.",
+    usageInstructions: "• Tomar 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 05 dias conforme orientação médica.",
+    indications: "Ansiedade, Estresse Crônico, TEA (Autismo), Epilepsia, Pacientes sensíveis ao THC"
+  },
+  {
+    name: "Óleo Rico em CBD ISOLADO 200mg/ml - Associação Nacional",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo CBD Isolado Alta Potência (0% THC)",
+    activeIngredients: "Canabidiol (CBD) Isolado Puro (>99.8% de pureza) - Alta Concentração",
+    concentration: "CBD 200 mg/mL (0,0% THC) • Total 6.000 mg de CBD",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 280.00,
+    details: ["Frasco 30mL", "CBD 200mg/ml (20%)", "0,0% THC Garantido", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Formulação concentrada de Canabidiol isolado de alta potência (200mg/ml), com zero THC (0,0%). Otimizado para redução do volume ingerido por tomada em tratamentos de alta dosagem, neuropatias e síndromes convulsivas graves.",
+    usageInstructions: "• Tomar 02 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir. Aumentar 01 gota por tomada a cada 05 dias sob acompanhamento médico.",
+    indications: "Epilepsia Refratária, Síndromes Raras (Dravet/Lennox-Gastaut), Doenças Neurodegenerativas, Altas Dosagens"
+  },
+  {
+    name: "Óleo Balanceado CBD/THC 1:1 (CBD 25mg/ml + THC 25mg/ml)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 1:1",
+    activeIngredients: "Extrato Integral Equilibrado de Cannabis Sativa (CBD + Delta-9-THC)",
+    concentration: "CBD 25 mg/mL + THC 25 mg/mL (Proporção 1:1 | Total 50 mg/mL)",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 210.00,
+    details: ["Frasco 30mL", "CBD 25mg/ml + THC 25mg/ml (1:1)", "Canabinoides Totais: 50mg/ml", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Proporção áurea 1:1 que potencializa o efeito entourage sinérgico entre CBD e THC. Excelente para analgesia moderada a severa, fibromialgia, espasticidade em esclerose múltipla, artrite reumatóide e controle de dor crônica com efeito protetor e ansiolítico do CBD.",
+    usageInstructions: "• Iniciar com 02 a 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 04 a 05 dias até controle homeostático.",
+    indications: "Dor Crônica Neuropática, Fibromialgia, Espasticidade (Esclerose Múltipla), Artrite Reumatóide, Cuidados Paliativos"
+  },
+  {
+    name: "Óleo Balanceado CBD/THC 2:1 (CBD 50mg/ml + THC 25mg/ml)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 2:1",
+    activeIngredients: "Extrato Padronizado de Cannabis Sativa (CBD + Delta-9-THC)",
+    concentration: "CBD 50 mg/mL + THC 25 mg/mL (Proporção 2:1 | Total 75 mg/mL)",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 230.00,
+    details: ["Frasco 30mL", "CBD 50mg/ml + THC 25mg/ml (2:1)", "Canabinoides Totais: 75mg/ml", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Fórmula balanceada 2:1 com predomínio modulador de CBD e presença terapêutica efetiva de THC. Proporciona controle álgico e anti-inflamatório com reduzida incidência de sonolência diurna ou alterações psicoativas.",
+    usageInstructions: "• Iniciar com 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Aumentar 01 gota por tomada a cada 05 dias.",
+    indications: "Dor Inflamatória, Distúrbios do Sono com Dor Concomitante, Ansiedade Somatizada, Rigidez Articular, Endometriose"
+  },
+  {
+    name: "Óleo Balanceado CBD/THC 3:1 (CBD 30mg/ml + THC 10mg/ml)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 3:1",
+    activeIngredients: "Extrato Padronizado de Cannabis Sativa (CBD + Delta-9-THC)",
+    concentration: "CBD 30 mg/mL + THC 10 mg/mL (Proporção 3:1 | Total 40 mg/mL)",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 190.00,
+    details: ["Frasco 30mL", "CBD 30mg/ml + THC 10mg/ml (3:1)", "Canabinoides Totais: 40mg/ml", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Formulação suave 3:1 especialmente indicada para idosos, sensíveis a opioides ou pacientes em primeiro contato com THC medicinal. Excelente margem terapêutica para analgesia leve a moderada e ansiedade somatizada com tolerabilidade máxima.",
+    usageInstructions: "• Tomar 03 gotas sublinguais pela manhã e 03 gotas à noite. Reter sob a língua por 60 segundos. Titular 01 gota a cada 05 dias conforme resposta clínica.",
+    indications: "Idosos, Pacientes Sensíveis a Fármacos, Início de Terapia com THC, Dores Leves a Moderadas, Tensão Muscular"
+  },
+  {
+    name: "Óleo Balanceado CBD/THC 5:1 (CBD 50mg/ml + THC 10mg/ml)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 5:1",
+    activeIngredients: "Extrato Padronizado de Cannabis Sativa (CBD + Delta-9-THC)",
+    concentration: "CBD 50 mg/mL + THC 10 mg/mL (Proporção 5:1 | Total 60 mg/mL)",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 220.00,
+    details: ["Frasco 30mL", "CBD 50mg/ml + THC 10mg/ml (5:1)", "Canabinoides Totais: 60mg/ml", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Formulação com predomínio de Canabidiol e microdose sinérgica de THC na proporção 5:1. Otimiza a homeostase do sistema endocanabinoide, atuando em ansiedade crônica, estresse, dores inflamatórias e distúrbios cognitivos sem provocar letargia diurna.",
+    usageInstructions: "• Tomar 03 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 05 dias sob supervisão médica.",
+    indications: "Ansiedade Severa, TAG, Estresse Crônico, TDAH, Autismo (TEA), Dores Neuropáticas com Base Inflamatória"
+  },
+  {
+    name: "Óleo Integral THC/CBD 100mg/ml - Associação Nacional",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum",
+    activeIngredients: "Extrato Integral de Cannabis Sativa (Full Spectrum)",
+    concentration: "Canabinoides Totais 100 mg/mL (CBD + THC balanceado)",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 210.00,
+    details: ["Frasco 30ml", "100mg/ml de Canabinoides Totais", "Relação THC/CBD balanceada", "Produto Nacional"],
+    description: "Óleo integral balanceado de Associação Brasileira com proporção 1:1. Indicado para dores crônicas, fibromialgia, espasticidade e rigidez.",
+    usageInstructions: "• Iniciar com 03 gotas de 12/12 horas sublingual. Aumentar 1 gota a cada 04 dias conforme intensidade dos sintomas.",
+    indications: "Dor Crônica, Rigidez, Fibromialgia, Espasmos"
+  },
+  {
+    name: "Óleo Integral PREDOMINANTE THC 100mg/ml - Associação Nacional",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum THC",
+    activeIngredients: "Extrato Integral Predominante em Delta-9-THC",
+    concentration: "THC 100 mg/mL • Frasco 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 240.00,
+    details: ["Frasco 30ml", "100mg/ml THC", "Uso Noturno", "Associação Nacional"],
+    description: "Extrato integral predominante em THC para insônia severa, relaxamento profundo e dores noturnas agudas.",
+    usageInstructions: "• Tomar 04 a 06 gotas sublinguais 1 hora antes de deitar. Uso noturno preferencial.",
+    indications: "Insônia Grave, Dores Noturnas, Desaceleração Mental"
+  },
+  {
+    name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Pomada Tópica",
+    activeIngredients: "Fitocanabinoides Integrais (CBD/THC) com Óleos Essenciais",
+    concentration: "500 mg Canabinoides / 50g",
+    pharmaceuticalForm: "Pomada Tópica",
+    quantity: "01 Pote de 50g",
+    administrationRoute: "Via Tópica (Uso Externo)",
+    priceBRL: 140.00,
+    details: ["Pote 50g", "500mg Canabinoides", "Uso tópico local", "Associação Nacional"],
+    description: "Uso tópico para alívio localizado de dores musculares, articulares, artrite, tendinite e lesões desportivas.",
+    usageInstructions: "• Aplicar quantidade suficiente na região afetada 2 a 3 vezes ao dia, massageando até completa absorção.",
+    indications: "Dores Musculares, Artrite, Tendinite, Inflamação Localizada"
+  },
+  {
+    name: "Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Flor in natura (Inalação/Vaporização)",
+    activeIngredients: "Flores Secas Padronizadas de Cannabis sp. ricas em THC",
+    concentration: "~18% a 22% THC (Lote sob Demanda)",
+    pharmaceuticalForm: "Flores Secas Inteiras (15g)",
+    quantity: "01 Embalagem Selada de 15g",
+    administrationRoute: "Via Inalatória (Vaporização)",
+    priceBRL: 450.00,
+    details: ["Embalagem 15g", "Rica em THC", "Uso inalatório em crises álgicas", "Associação Nacional"],
+    description: "Flores in natura secas para resgate inalatório rápido via vaporizador medicinal térmico sem combustão. Indicado para quebra de crises álgicas intensas e espasmos agudos.",
+    usageInstructions: "• Vaporizar 0,1g a 0,15g em vaporizador térmico medicinal a 175°C-185°C. Proibida a combustão.",
+    indications: "Crises Álgicas Agudas, Enxaqueca Severa, Espasmos Agudos"
+  }
+];
+
 export const cbdGuideData: CBDCategory[] = [
+  {
+    id: "associacoes_nacionais",
+    title: "ASSOCIAÇÃO NACIONAL (MEDICAMENTOS BRASILEIROS AUTORIZADOS)",
+    description: "Medicamentos nacionais de Associações Brasileiras autorizadas. Formulações padronizadas de alta qualidade com rendimento prolongado (~60 dias), excelente custo-benefício e entrega direta em todo o território nacional.",
+    indicationsList: [
+      "Dor Crônica & Fibromialgia",
+      "Ansiedade, Estresse & Pânico",
+      "Insônia & Distúrbios do Sono",
+      "Epilepsia & Convulsões",
+      "Autismo (TEA) & TDAH",
+      "Doenças Neurodegenerativas (Parkinson e Alzheimer)",
+      "Espasticidade & Esclerose Múltipla",
+      "Inflamação Crônica & Artrite",
+      "Cuidados Paliativos"
+    ],
+    dosageGuidance: "Uso sublingual. Reter por 60 segundos sob a língua antes de engolir. Titulação gradual 'start low, go slow' a cada 4 a 5 dias.",
+    products: NATIONAL_ASSOCIATION_PRODUCTS
+  },
   {
     id: "flowermed_oficial",
     title: "LINHA FLOWERMED (EUA • FDA & ANVISA)",
@@ -1106,7 +1287,39 @@ function _enrichMedicationDetails(
     };
   }
 
-  const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
+  // Check if product is from National Association catalog
+  const nationalMatch = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
+    const pLower = p.name.toLowerCase();
+    if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
+    
+    // Check specific formulations
+    if (nameLower.includes('isolado') && (nameLower.includes('100mg') || nameLower.includes('100 mg')) && p.name.includes('100mg/ml')) return true;
+    if (nameLower.includes('isolado') && (nameLower.includes('200mg') || nameLower.includes('200 mg')) && p.name.includes('200mg/ml')) return true;
+    if (nameLower.includes('balanceado') && nameLower.includes('1:1') && p.name.includes('1:1')) return true;
+    if (nameLower.includes('balanceado') && nameLower.includes('2:1') && p.name.includes('2:1')) return true;
+    if (nameLower.includes('balanceado') && nameLower.includes('3:1') && p.name.includes('3:1')) return true;
+    if (nameLower.includes('balanceado') && nameLower.includes('5:1') && p.name.includes('5:1')) return true;
+    
+    return false;
+  });
+
+  if (nationalMatch) {
+    return {
+      name: nationalMatch.name,
+      activeIngredients: nationalMatch.activeIngredients || 'Extrato Padronizado de Cannabis Sativa',
+      concentration: nationalMatch.concentration || 'Conforme rótulo',
+      pharmaceuticalForm: nationalMatch.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: nationalMatch.quantity || '01 Frasco de 30 mL',
+      administrationRoute: nationalMatch.administrationRoute || 'Via Sublingual / Oral',
+      brand: 'Associação Nacional',
+      origin: 'Nacional',
+      type: nationalMatch.type || 'Óleo Medicinal Nacional',
+      description: nationalMatch.description || 'Medicamento de Associação Brasileira autorizada.',
+      usageInstructions: nationalMatch.usageInstructions || '• Administrar por via sublingual. Reter por 60 segundos antes de engolir.'
+    };
+  }
+
+  const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
   const typeLower = (type || '').toLowerCase();

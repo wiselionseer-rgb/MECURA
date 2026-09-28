@@ -1128,11 +1128,18 @@ export function DoctorDashboardScreen() {
         }
       ]);
     }
-    const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferencia, não obrigatorio) - podendo aumentar em até 5x a absorção.\n- Se observado sonolencia durante o dia apos a administração do medicamento, reduzir em 1/3 a dose da manhã e 2/3 a noite.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos continuos.';
+    const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
     
     let finalNotes = notes || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
     if (notes && !notes.includes('alimentos gordurosos')) {
       finalNotes += '\n\n' + defaultNotesToAdd;
+    }
+    // Auto-update legacy confusing phrasing if present
+    if (finalNotes.includes('2/3 a noite')) {
+      finalNotes = finalNotes.replace(
+        /reduzir em 1\/3 a dose da manh[ãa] e 2\/3 a noite/gi,
+        'reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição'
+      );
     }
     setPrescNotes(finalNotes);
     setPrescriptionTab('edit');
@@ -1508,7 +1515,7 @@ CIDs Secundários: ${cidsSecundarios}`;
     });
 
     // 3. Add prescription notes
-    const protocolNotes = `PROTOCOLO DE ENTRADA ACESSÍVEL (FASE 1):\n- Medicamento Inicial: ${prodName} (Associação Brasileira)\n- Posologia Econômica: ${dosage.join(' ')}\n- Rendimento estimado: 45 a 60 dias.\n- Fase 2 (Evolução): Reavaliação em 30 a 45 dias para verificar resposta terapêutica e evolução progressiva se necessário.\n- Administrar com alimentos gordurosos (preferencia, não obrigatorio) - podendo aumentar em até 5x a absorção.\n- Se observado sonolencia durante o dia apos a administração do medicamento, reduzir em 1/3 a dose da manhã e 2/3 a noite.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos continuos.`;
+    const protocolNotes = `PROTOCOLO DE ENTRADA ACESSÍVEL (FASE 1):\n- Medicamento Inicial: ${prodName} (Associação Brasileira)\n- Posologia Econômica: ${dosage.join(' ')}\n- Rendimento estimado: 45 a 60 dias.\n- Fase 2 (Evolução): Reavaliação em 30 a 45 dias para verificar resposta terapêutica e evolução progressiva se necessário.\n- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.`;
 
     addMessage({
       sender: 'doctor',
@@ -1584,7 +1591,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
         REGRA OBRIGATÓRIA E INEGOCIÁVEL PARA MEDICAMENTOS NACIONAIS:
         INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS (FLOWERMED, GREENBUDZCBD OU AMBOS), A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE E OBRIGATORIAMENTE A TRÍADE COMPLETA:
-        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Óleo Integral CBD 100mg/ml, THC/CBD 100mg/ml ou CBG 50mg/ml - Associação Nacional);
+        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
         - 2. EXTRAÇÃO (Pomada Canábica Terapêutica 500mg, Extrato Concentrado RSO ou Resina Concentrada - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
         - 3. FLORES (Flores in natura de cannabis sp 15g ricas em CBD ou THC - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
         Desta forma, fica estritamente a critério e autonomia do paciente escolher se prefere seguir com o tratamento completo de medicamentos nacionais ou com os importados.
@@ -1632,7 +1639,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
            **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS - TRÍADE COMPLETA: ÓLEO, EXTRAÇÃO E FLOR):**
            (OBRIGATÓRIO: Gerar SEMPRE e INDEPENDENTE da marca de importados os 3 medicamentos nacionais abaixo: 1 ÓLEO, 1 EXTRAÇÃO e 1 FLOR IN NATURA)
-           Medicamento: (Óleo Sublingual Integral CBD, THC/CBD 100mg/ml ou Predominante THC 100mg/ml - Associação Nacional)
+           Medicamento: (Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1 ou Óleo Integral THC/CBD 100mg/ml - Associação Nacional)
            Indicação: (Condição primária alvo e homeostase basal contínua)
            Modo de Uso: (Posologia, via sublingual e titulação gradual)
            Observações: (Reter 60 a 90 segundos sublingual)
@@ -1863,7 +1870,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         </div>
         
         <nav className="flex md:flex-col gap-2 md:gap-6 flex-1 justify-center md:justify-start">
-          <button className="p-3 rounded-xl bg-mecura-neon/10 text-mecura-neon relative group hidden md:block">
+          <button 
+            onClick={() => setActiveView('chat')}
+            className={`p-3 rounded-xl transition-colors relative group hidden md:block ${activeView === 'chat' ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-mecura-silver hover:text-white hover:bg-white/5'}`}
+          >
             <Users className="w-6 h-6" />
             <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Fila de Pacientes
@@ -1902,8 +1912,15 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         </nav>
 
         <div className="flex md:flex-col gap-2 md:gap-4 items-center">
-          <button className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors hidden md:block">
+          <button 
+            onClick={() => setActiveView('analytics')}
+            title="Configurações e Dashboard"
+            className={`p-3 rounded-xl transition-colors relative group hidden md:block ${activeView === 'analytics' ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-mecura-silver hover:text-white hover:bg-white/5'}`}
+          >
             <Settings className="w-6 h-6" />
+            <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+              Configurações
+            </div>
           </button>
           <button 
             onClick={() => navigate('/')}

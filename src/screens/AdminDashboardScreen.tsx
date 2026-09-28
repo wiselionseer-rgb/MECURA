@@ -1,7 +1,7 @@
 import html2pdf from "html2pdf.js";
 import Markdown from 'react-markdown';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { isToday, isThisWeek, isThisMonth, parseISO, isFuture, startOfDay } from 'date-fns';
@@ -31,6 +31,7 @@ import {
 , Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData } from '../data/cbdGuide';
+import { mergeProductCatalogs } from '../utils/productCatalog';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { db, auth } from '../firebase';
@@ -124,12 +125,16 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     setPromotionsText,
     catalogUrl,
     setCatalogUrl,
-    productCategories,
+    productCategories: rawProductCategories,
     setProductCategories,
     addProduct,
     updateProduct,
     deleteProduct
   } = useAdminStore();
+
+  const productCategories = useMemo(() => {
+    return mergeProductCatalogs(cbdGuideData, rawProductCategories);
+  }, [rawProductCategories]);
   const { queue, subscribeToQueue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
