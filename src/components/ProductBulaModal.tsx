@@ -102,12 +102,22 @@ export function ProductBulaModal({ product, onClose, exchangeRate }: ProductBula
                     </div>
 
                     <div className="pt-4 border-t border-white/10 mt-auto">
-                      <span className="text-xs text-mecura-silver block mb-1">Preço Estimado</span>
-                      <p className="text-lg font-black text-mecura-neon">
-                        {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte Valor')}
-                      </p>
-                      {product.priceUSD && !product.priceBRL && (
-                        <p className="text-[10px] text-mecura-silver/60">Baseado no câmbio atual (US$ {product.priceUSD.toFixed(2)})</p>
+                      <span className="text-xs text-mecura-silver block mb-1">
+                        {isImportado ? 'Preço Estimado' : 'Aquisição'}
+                      </span>
+                      {isImportado ? (
+                        <>
+                          <p className="text-lg font-black text-mecura-neon">
+                            {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte Valor')}
+                          </p>
+                          {product.priceUSD && !product.priceBRL && (
+                            <p className="text-[10px] text-mecura-silver/60">Baseado no câmbio atual (US$ {product.priceUSD.toFixed(2)})</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm font-bold text-emerald-400">
+                          Direto com a Associação Nacional
+                        </p>
                       )}
                     </div>
                   </div>

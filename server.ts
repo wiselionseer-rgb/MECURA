@@ -213,6 +213,66 @@ async function startServer() {
     }
   });
 
+  // ROTA: Sincronização em tempo real de pagamentos direto da conta do Mercado Pago
+  app.get("/api/mercadopago-payments", async (req, res) => {
+    try {
+      const mpInfo = await getMpClient();
+      if (!mpInfo) {
+        return res.json({ configured: false, count: 0, payments: [] });
+      }
+
+      const response = await fetch("https://api.mercadopago.com/v1/payments/search?status=approved&sort=date_created&criteria=desc&limit=100", {
+        headers: {
+          "Authorization": `Bearer ${mpInfo.token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn("[MP SYNC] Erro na API do Mercado Pago:", errText);
+        return res.json({ configured: true, count: 0, payments: [] });
+      }
+
+      const data = await response.json();
+      const results = (data.results || []).map((p: any) => {
+        const val = Number(p.transaction_amount) || 0;
+        const desc = (p.description || '').toLowerCase();
+        const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento');
+        return {
+          mpId: String(p.id),
+          type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
+          value: val,
+          plan: isPrem ? 'premium' : 'basic',
+          isPremium: isPrem,
+          status: p.status,
+          date: p.date_approved || p.date_created,
+          payerEmail: p.payer?.email,
+          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ''}`.trim() : undefined,
+          paymentMethod: p.payment_method_id
+        };
+      });
+
+      // Sincroniza cada pagamento aprovado no Firestore na coleção 'payments'
+      for (const p of results) {
+        try {
+          await setDoc(doc(db, "payments", p.mpId), p, { merge: true });
+        } catch (fsErr) {
+          // ignore individual sync errors
+        }
+      }
+
+      console.log(`[MP SYNC] ${results.length} pagamentos aprovados sincronizados do Mercado Pago.`);
+      res.json({
+        configured: true,
+        count: results.length,
+        payments: results
+      });
+    } catch (e: any) {
+      console.error("[MP SYNC] Erro ao sincronizar:", e);
+      res.status(500).json({ configured: false, error: e.message });
+    }
+  });
+
   app.post("/api/save-mercadopago-token", async (req, res) => {
     try {
       const { accessToken } = req.body;

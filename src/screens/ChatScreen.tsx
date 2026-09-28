@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
@@ -13,7 +13,12 @@ import { auth } from '../firebase';
 
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { userName, userCpf, userBirthDate, answers, endConsultation, messages, addMessage, setMessages, consultationActive, resetConsultation, setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, patientId, isConsultationFinished, pagamento_consulta } = useStore();
+  const { 
+    userName, userCpf, userBirthDate, answers, endConsultation, 
+    messages, addMessage, setMessages, consultationActive, resetConsultation, 
+    setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
+    patientId, isConsultationFinished, pagamento_consulta, queue 
+  } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
@@ -24,58 +29,6 @@ export function ChatScreen() {
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
-  useEffect(() => {
-    const hasLocalPayment = typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true';
-    // If not in active consultation, not finished, and not paid, return to dashboard
-    if (!consultationActive && !isConsultationFinished && !pagamento_consulta && !hasLocalPayment && messages.length === 0) {
-      navigate('/dashboard');
-    }
-  }, [consultationActive, isConsultationFinished, pagamento_consulta, messages.length, navigate]);
-
-  useEffect(() => {
-    if (patientId) {
-      requestNotificationPermission().then(granted => {
-        if (granted) {
-          subscribeToBackgroundNotifications(patientId);
-        }
-      });
-    }
-  }, [patientId]);
-
-  const playNotificationSound = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
-      oscillator.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.1); // Drop to A4
-      
-      gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-      
-      oscillator.start(audioCtx.currentTime);
-      oscillator.stop(audioCtx.currentTime + 0.3);
-    } catch (e) {
-      console.error("Audio play failed", e);
-    }
-  };
-
-  useEffect(() => {
-    if (messages.length > prevMessageCount) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.sender === 'doctor') {
-        playNotificationSound();
-      }
-    }
-    setPrevMessageCount(messages.length);
-  }, [messages, prevMessageCount]);
-
   const [currentUid, setCurrentUid] = useState<string | null>(auth.currentUser?.uid || null);
 
   useEffect(() => {
@@ -85,15 +38,43 @@ export function ChatScreen() {
     return () => unsubscribe();
   }, []);
 
-  const effectiveConsultationId = activeConsultationId || patientId || currentUid || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null) || undefined;
+  const effectiveConsultationId = 
+    activeConsultationId || 
+    patientId || 
+    currentUid || 
+    (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null) || 
+    undefined;
 
   useEffect(() => {
-    // If patientId is lost due to refresh, fallback to currentUid or localStorage
+    // Subscribe to messages in Firestore
     if (effectiveConsultationId) {
       const unsubscribe = subscribeToMessages(effectiveConsultationId);
       return () => unsubscribe();
     }
   }, [effectiveConsultationId, subscribeToMessages]);
+
+  const isConsultationConcluded = useMemo(() => {
+    if (isConsultationFinished) return true;
+    
+    // Check if the doctor has sent the final consultation closing message
+    const hasFinalDoctorMsg = messages.some(
+      m => m.sender === 'doctor' && (
+        m.text?.toLowerCase().includes('consulta finalizada') || 
+        m.text?.toLowerCase().includes('atendimento finalizado') ||
+        m.text?.toLowerCase().includes('consulta foi finalizada')
+      )
+    );
+    if (hasFinalDoctorMsg) return true;
+
+    // Check if queue status for this patient is finished
+    const currentId = effectiveConsultationId || patientId;
+    if (currentId) {
+      const qEntry = queue.find(p => p.id === currentId);
+      if (qEntry && qEntry.status === 'finished') return true;
+    }
+
+    return false;
+  }, [isConsultationFinished, messages, effectiveConsultationId, patientId, queue]);
 
   const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
 
@@ -388,13 +369,22 @@ export function ChatScreen() {
           <h2 className="text-white font-bold text-lg leading-tight">Dr. Guilherme Taveira Dias</h2>
           <p className="text-xs text-mecura-silver">CRM: 12345/SP</p>
         </div>
-        <button 
-          onClick={handleFinish}
-          className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-mecura-neon transition-colors"
-          title="Acessar Área do Paciente"
-        >
-          <User className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => navigate('/protocol')}
+            className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors border border-mecura-neon/20"
+            title="Ver Protocolo & Receituário"
+          >
+            <Droplets className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={handleFinish}
+            className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-colors"
+            title="Acessar Área do Paciente"
+          >
+            <User className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Chat Area */}
@@ -452,8 +442,16 @@ export function ChatScreen() {
                     {/* Details */}
                     <div className="flex-1 flex flex-col">
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-[#58D68D] uppercase tracking-wider mb-1">® {msg.productData.brand}</span>
-                        <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">🇺🇸 {msg.productData.origin}</span>
+                        <span className="text-[10px] font-bold text-[#2D5A27] uppercase tracking-wider mb-1">
+                          ® {msg.productData.brand || (msg.productData.origin === 'Nacional' ? 'Associação Nacional' : 'Importado')}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          msg.productData.origin === 'Nacional' || (msg.productData.brand || '').toLowerCase().includes('associação')
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : 'bg-blue-100 text-blue-800 border border-blue-300'
+                        }`}>
+                          {msg.productData.origin === 'Nacional' || (msg.productData.brand || '').toLowerCase().includes('associação') ? '🇧🇷 Nacional' : '🇺🇸 Importado'}
+                        </span>
                       </div>
                       <h3 className="text-black font-bold text-base leading-tight mb-2">{msg.productData.name}</h3>
                       <ul className="text-gray-600 text-[11px] space-y-1 mb-2">
@@ -464,6 +462,13 @@ export function ChatScreen() {
                           </li>
                         ))}
                       </ul>
+                      {msg.productData.origin !== 'Nacional' && !(msg.productData.brand || '').toLowerCase().includes('associação') && (
+                        <div className="mt-1">
+                          <span className="text-xs font-bold text-[#1e3a8a] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                            R$ {(((msg.productData.priceUSD || (msg.productData.priceBRL ? msg.productData.priceBRL / 5.0 : 80.00))) * exchangeRate).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -820,18 +825,39 @@ export function ChatScreen() {
       </div>
 
       {/* Input Area or Finished Banner */}
-      {isConsultationFinished ? (
-        <div className="p-4 bg-[#12121A] border-t border-white/10 absolute bottom-0 left-0 right-0 z-20 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-[#8A8A9E]">
-            <CheckCircle className="w-4 h-4 text-mecura-neon shrink-0" />
-            <span>Atendimento concluído e receita emitida.</span>
+      {isConsultationConcluded ? (
+        <div className="p-4 bg-[#12121A]/95 backdrop-blur-xl border-t border-white/10 absolute bottom-0 left-0 right-0 z-20 shadow-[0_-10px_25px_rgba(0,0,0,0.5)]">
+          <div className="max-w-2xl mx-auto space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.6)]" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Atendimento Concluído pelo Médico
+                </span>
+              </div>
+              <span className="text-[11px] text-[#8A8A9E]">
+                Histórico Preservado
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                onClick={() => navigate('/protocol')}
+                className="h-12 rounded-2xl bg-mecura-neon text-[#0A0A0F] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#8EE000] active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)] cursor-pointer"
+              >
+                <Droplets className="w-4 h-4" />
+                Ver Protocolo & Receitas
+              </button>
+
+              <button
+                onClick={() => navigate('/pharmacy')}
+                className="h-12 rounded-2xl bg-[#1A1A28] hover:bg-[#222234] border border-white/10 text-white font-bold text-xs flex items-center justify-center gap-2 active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <ShoppingCart className="w-4 h-4 text-mecura-neon" />
+                Comprar Medicamentos
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="px-4 py-2 bg-mecura-neon text-black rounded-full font-bold text-xs hover:bg-mecura-neon/90 transition-all shrink-0"
-          >
-            Voltar ao Início
-          </button>
         </div>
       ) : (
         <div className="p-4 bg-mecura-bg border-t border-mecura-elevated absolute bottom-0 left-0 right-0 z-20">

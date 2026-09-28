@@ -235,10 +235,21 @@ export function PremiumCheckoutScreen() {
     setIsLoading(false);
   };
 
-  const handleSuccess = () => {
+  const handleSuccess = async (mpIdCustom?: string) => {
     setIsLoading(false);
     setSuccessToast("Acesso VIP Premium liberado com sucesso! Redirecionando...");
     setPagamentoPremium(true);
+
+    try {
+      await addDoc(collection(db, 'payments'), {
+        mpId: mpIdCustom || pixData?.id || 'mp_premium_' + Date.now(),
+        type: 'Consulta Premium',
+        value: finalPrice || 249.90,
+        date: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Erro ao registrar pagamento premium:", e);
+    }
 
     // Consume coupon for this user
     const savedCouponStr = localStorage.getItem('mecura_applied_coupon');

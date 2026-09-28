@@ -3,7 +3,7 @@ import {  useState, useEffect } from 'react';
 import {  useStore } from '../store/useStore';
 import {  useAdminStore } from '../store/useAdminStore';
 import {  auth, db } from '../firebase';
-import {  doc, onSnapshot } from 'firebase/firestore';
+import { addDoc, collection } from 'firebase/firestore';
 import {  motion } from 'motion/react';
 import {  AdvisorChatWidget } from '../components/AdvisorChatWidget';
 import {  ReferralModal } from '../components/ReferralModal';
@@ -65,7 +65,7 @@ export function DashboardScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const [videoFailed, setVideoFailed] = useState(false);
-  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue, subscribeToQueue } = useStore();
+  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue } = useStore();
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -102,9 +102,29 @@ export function DashboardScreen() {
             setPagamentoConsulta(true);
           }
           await joinQueue();
+          try {
+            await addDoc(collection(db, 'payments'), {
+              mpId: paymentId,
+              type: 'Consulta Básica',
+              value: 49.90,
+              date: new Date().toISOString()
+            });
+          } catch (e) {
+            console.error("Erro ao registrar pagamento em payments:", e);
+          }
         } else {
           setPagamentoPremium(true);
           setPagamentoConsulta(true);
+          try {
+            await addDoc(collection(db, 'payments'), {
+              mpId: paymentId,
+              type: 'Consulta Premium',
+              value: 249.90,
+              date: new Date().toISOString()
+            });
+          } catch (e) {
+            console.error("Erro ao registrar pagamento premium em payments:", e);
+          }
         }
 
         // Consume saved coupon if used
@@ -134,38 +154,6 @@ export function DashboardScreen() {
       processSuccess();
     }
   }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue, navigate]);
-
-  // Real-time synchronization of user document & queue in Dashboard
-  useEffect(() => {
-    const unsubQueue = subscribeToQueue();
-    let unsubUser: (() => void) | null = null;
-    
-    const uid = auth.currentUser?.uid || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null);
-    if (uid) {
-      try {
-        unsubUser = onSnapshot(doc(db, 'users', uid), (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.pagamento_consulta === true || data.bypassedPayment === true) {
-              setPagamentoConsulta(true);
-            }
-            if (data.consultationStatus === 'in-consultation' || data.doctorActive === true) {
-              useStore.setState({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: uid, pagamento_consulta: true });
-            } else if (data.consultationStatus === 'waiting' || data.inQueue === true) {
-              useStore.setState({ inQueue: true, pagamento_consulta: true });
-            }
-          }
-        });
-      } catch (err) {
-        console.warn("Error listening to user in DashboardScreen:", err);
-      }
-    }
-
-    return () => {
-      if (unsubQueue) unsubQueue();
-      if (unsubUser) unsubUser();
-    };
-  }, [subscribeToQueue, setPagamentoConsulta]);
 
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
   const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);
@@ -282,26 +270,6 @@ export function DashboardScreen() {
         animate="show"
         className="px-6 mt-6 space-y-8 z-10"
       >
-        {consultationActive && !isConsultationFinished && (
-          <div 
-            onClick={() => navigate('/chat')}
-            className="w-full bg-mecura-neon/15 border border-mecura-neon/40 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-[0_0_25px_rgba(166,255,0,0.2)] cursor-pointer hover:bg-mecura-neon/20 transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-mecura-neon flex items-center justify-center text-black font-bold shrink-0">
-                <MessageCircle className="w-5 h-5 text-black" />
-              </div>
-              <div>
-                <p className="text-white text-sm font-bold">O médico iniciou sua consulta!</p>
-                <p className="text-mecura-silver text-xs">Atendimento em andamento. Clique para abrir a sala de consulta.</p>
-              </div>
-            </div>
-            <button className="px-4 py-2 bg-mecura-neon text-black font-bold text-xs rounded-xl hover:bg-[#b5ff33] shrink-0">
-              Entrar Agora
-            </button>
-          </div>
-        )}
-
         {/* Hero Section (Status Card) */}
         <section>
           {isConsultationFinished ? (
@@ -310,7 +278,7 @@ export function DashboardScreen() {
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               className="relative border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
-              onClick={() => navigate('/chat')}
+              onClick={() => navigate('/protocol')}
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
@@ -359,8 +327,6 @@ export function DashboardScreen() {
                   Ver Documentos <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
-              
-              
             </motion.div>
           ) : inQueue ? (
             <motion.div 
@@ -422,7 +388,7 @@ export function DashboardScreen() {
               
               
             </motion.div>
-          ) : consultationActive && !isConsultationFinished ? (
+          ) : (consultationActive || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_active') === 'true')) && !isConsultationFinished ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -449,33 +415,32 @@ export function DashboardScreen() {
                 </button>
               </div>
             </motion.div>
-          ) : pagamento_consulta && !isConsultationFinished ? (
+          ) : (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) && !isConsultationFinished ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-mecura-neon/30 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer"
               onClick={() => {
-                joinQueue();
-                navigate('/queue');
+                navigate('/chat');
               }}
             >
               <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
-                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">PAGAMENTO CONFIRMADO</span>
+                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">CONSULTA DISPONÍVEL</span>
                 </div>
                 
                 <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
-                  Consulta<br/>Liberada
+                  Acessar<br/>Consultório
                 </h2>
                 <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
-                  Seu pagamento foi confirmado. Entre na sala de espera para ser atendido.
+                  Sua consulta está liberada. Entre na sala de atendimento para falar com o médico.
                 </p>
                 
                 <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all">
-                  Entrar na Fila <ChevronRight className="w-4 h-4 ml-1" />
+                  Abrir Consulta <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
             </motion.div>
@@ -553,7 +518,17 @@ export function DashboardScreen() {
           <div className={`grid gap-3 ${!pagamento_premium ? 'grid-cols-3' : 'grid-cols-4'}`}>
             {/* Chat / Consultation */}
             <button 
-              onClick={() => navigate(consultationActive || isConsultationFinished ? '/chat' : (inQueue || pagamento_consulta) ? '/queue' : '/checkout')} 
+              onClick={() => {
+                const hasLocalPayment = typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true';
+                const hasLocalActive = typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_active') === 'true';
+                if (consultationActive || isConsultationFinished || hasLocalActive || hasLocalPayment || pagamento_consulta) {
+                  navigate('/chat');
+                } else if (inQueue) {
+                  navigate('/queue');
+                } else {
+                  navigate('/checkout');
+                }
+              }} 
               className="flex flex-col items-center gap-2.5 group outline-none"
             >
               <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
@@ -577,8 +552,8 @@ export function DashboardScreen() {
 
             {/* Protocol */}
             <button 
-              onClick={() => isConsultationFinished ? navigate('/protocol') : alert('Seu protocolo estará disponível após a prescrição.')}
-              className={`flex flex-col items-center gap-2.5 group outline-none ${!isConsultationFinished && 'opacity-60'}`}
+              onClick={() => navigate('/protocol')}
+              className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer"
             >
               <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
                 <Droplets className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
@@ -1228,7 +1203,7 @@ export function DashboardScreen() {
 
               {/* Item 6: Receituário & Protocolo */}
               <div 
-                onClick={() => openHighlightRoute('/prescription-view')}
+                onClick={() => openHighlightRoute('/protocol')}
                 className="p-3.5 rounded-[18px] bg-[#161622] hover:bg-[#1A1A28] border border-white/5 hover:border-mecura-neon/40 transition-all cursor-pointer group flex items-start gap-3 shadow-sm"
               >
                 <div className="w-9 h-9 rounded-xl bg-[#1A1A24] border border-white/10 group-hover:border-mecura-neon/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">

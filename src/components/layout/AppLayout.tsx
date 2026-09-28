@@ -55,12 +55,9 @@ export function AppLayout() {
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = setTimeout(() => {
-      // Inactivity timeout reached
+      // Inactivity timeout reached - do not clear active consultations or payments
       if (auth.currentUser) {
         navigate('/dashboard');
-      } else {
-        resetConsultation();
-        navigate('/');
       }
     }, INACTIVITY_TIMEOUT);
   };

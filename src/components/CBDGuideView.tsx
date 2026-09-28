@@ -455,9 +455,15 @@ export function CBDGuideView() {
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <span className="text-sm font-black text-mecura-neon block bg-mecura-neon/10 px-2.5 py-1 rounded-lg border border-mecura-neon/20">
-                          {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte')}
-                        </span>
+                        {product.origin?.toLowerCase().includes('importado') ? (
+                          <span className="text-sm font-black text-mecura-neon block bg-mecura-neon/10 px-2.5 py-1 rounded-lg border border-mecura-neon/20">
+                            {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte')}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-emerald-400 block bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                            Associação
+                          </span>
+                        )}
                       </div>
                     </div>
                     
@@ -922,9 +928,15 @@ export function CBDGuideView() {
 
                             </div>
                             <div className="text-right flex-shrink-0">
-                              <span className="text-sm font-black text-mecura-neon block">
-                                {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte')}
-                              </span>
+                              {product.origin?.toLowerCase().includes('importado') ? (
+                                <span className="text-sm font-black text-mecura-neon block">
+                                  {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte')}
+                                </span>
+                              ) : (
+                                <span className="text-xs font-bold text-emerald-400 block">
+                                  Associação
+                                </span>
+                              )}
                               {product.origin && (
                                 <span className="text-[10px] text-mecura-silver/70 block mt-0.5">
                                   {product.origin}
@@ -1043,9 +1055,15 @@ export function CBDGuideView() {
                                 )}
                               </td>
                               <td className="py-3.5 px-4 text-right align-top">
-                                <span className="text-sm font-bold text-mecura-neon whitespace-nowrap">
-                                  {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : '-')}
-                                </span>
+                                {product.origin?.toLowerCase().includes('importado') ? (
+                                  <span className="text-sm font-bold text-mecura-neon whitespace-nowrap">
+                                    {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : '-')}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-bold text-emerald-400 whitespace-nowrap">
+                                    Associação
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           ))}

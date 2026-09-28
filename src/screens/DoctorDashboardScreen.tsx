@@ -141,7 +141,8 @@ export function DoctorDashboardScreen() {
     consultationActive, endConsultation, resetConsultation, setSelectedOffer, 
     allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
     subscribeToMessages, subscribeToAppointments, activeConsultationId,
-    consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages
+    consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages,
+    exchangeRate
   } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
@@ -1088,6 +1089,9 @@ export function DoctorDashboardScreen() {
       }
     }
 
+    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const isNational = selectedProduct.origin === 'Nacional' || (selectedProduct.manufacturer || '').toLowerCase().includes('associação');
+
     addMessage({
       text: `Prescrição de ${selectedProduct.name}`,
       sender: 'doctor',
@@ -1095,14 +1099,16 @@ export function DoctorDashboardScreen() {
       productData: {
         name: selectedProduct.name,
         brand: selectedProduct.manufacturer,
-        origin: selectedProduct.origin,
+        origin: isNational ? 'Nacional' : (selectedProduct.origin || 'Importado'),
         details: details,
         dosage: [fullDosage],
         description: description,
         italicText: italicText,
-        image: image
+        image: image,
+        priceUSD: isNational ? undefined : (selectedProduct.priceUSD || (selectedProduct.priceBRL ? selectedProduct.priceBRL / exchangeRate : undefined)),
+        priceBRL: isNational ? undefined : (selectedProduct.priceBRL || (selectedProduct.priceUSD ? selectedProduct.priceUSD * exchangeRate : undefined))
       }
-    });
+    }, targetPatientId);
 
     
     setShowProductSearchModal(false);
@@ -1166,7 +1172,11 @@ export function DoctorDashboardScreen() {
             quantity: m.productData.quantity || enriched.quantity,
             administrationRoute: m.productData.administrationRoute || enriched.administrationRoute,
             dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
-            description: m.productData.description || enriched.description || ''
+            description: m.productData.description || enriched.description || '',
+            image: m.productData.image,
+            details: m.productData.details,
+            priceUSD: m.productData.priceUSD,
+            priceBRL: m.productData.priceBRL
           });
         }
       }
@@ -1229,10 +1239,50 @@ export function DoctorDashboardScreen() {
       await clearPrescriptionMessages(targetPatientId);
       
       for (const item of prescItems) {
+        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(item.name) || item.origin === 'Nacional';
+        
+        let foundCatProd: any = null;
+        const cleanName = item.name.toLowerCase().trim();
+        for (const cat of productCategories) {
+          const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()));
+          if (p) { foundCatProd = p; break; }
+        }
+        if (!foundCatProd) {
+          foundCatProd = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+        }
+        if (!foundCatProd) {
+          foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+        }
+
+        const enriched = enrichMedicationDetails(
+          item.name, 
+          item.brand || (isNational ? 'Associação Nacional' : 'GreenBudzCBD'), 
+          item.origin || (isNational ? 'Nacional' : 'Importado'), 
+          item.type, 
+          foundCatProd
+        );
+
         await addMessage({
           sender: 'doctor',
           type: 'product',
-          productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
+          productData: { 
+            name: item.name,
+            brand: item.brand || (foundCatProd ? foundCatProd.manufacturer : enriched.brand),
+            origin: item.origin || (foundCatProd ? foundCatProd.origin : enriched.origin),
+            type: item.type || (foundCatProd ? foundCatProd.type : enriched.type),
+            activeIngredients: item.activeIngredients || enriched.activeIngredients,
+            concentration: item.concentration || enriched.concentration,
+            pharmaceuticalForm: item.pharmaceuticalForm || enriched.pharmaceuticalForm,
+            quantity: item.quantity || enriched.quantity,
+            administrationRoute: item.administrationRoute || enriched.administrationRoute,
+            details: item.details && item.details.length > 0 ? item.details : (foundCatProd?.details || [enriched.activeIngredients]),
+            dosage: item.dosage && item.dosage.length > 0 ? item.dosage : ['Tomar conforme orientação médica.'],
+            description: item.description || foundCatProd?.description || enriched.description || '',
+            italicText: foundCatProd?.italicText || 'Produto Prescrito',
+            image: item.image || foundCatProd?.image || (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
+            priceUSD: isNational ? undefined : (item.priceUSD || foundCatProd?.priceUSD),
+            priceBRL: isNational ? undefined : (item.priceBRL || foundCatProd?.priceBRL)
+          }
         }, targetPatientId);
       }
       
@@ -1272,10 +1322,50 @@ export function DoctorDashboardScreen() {
       // 1. Atualizar o chat com os cards de medicamentos
       await clearPrescriptionMessages(targetPatientId);
       for (const item of prescItems) {
+        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(item.name) || item.origin === 'Nacional';
+        
+        let foundCatProd: any = null;
+        const cleanName = item.name.toLowerCase().trim();
+        for (const cat of productCategories) {
+          const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()));
+          if (p) { foundCatProd = p; break; }
+        }
+        if (!foundCatProd) {
+          foundCatProd = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+        }
+        if (!foundCatProd) {
+          foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+        }
+
+        const enriched = enrichMedicationDetails(
+          item.name, 
+          item.brand || (isNational ? 'Associação Nacional' : 'GreenBudzCBD'), 
+          item.origin || (isNational ? 'Nacional' : 'Importado'), 
+          item.type, 
+          foundCatProd
+        );
+
         await addMessage({
           sender: 'doctor',
           type: 'product',
-          productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
+          productData: { 
+            name: item.name,
+            brand: item.brand || (foundCatProd ? foundCatProd.manufacturer : enriched.brand),
+            origin: item.origin || (foundCatProd ? foundCatProd.origin : enriched.origin),
+            type: item.type || (foundCatProd ? foundCatProd.type : enriched.type),
+            activeIngredients: item.activeIngredients || enriched.activeIngredients,
+            concentration: item.concentration || enriched.concentration,
+            pharmaceuticalForm: item.pharmaceuticalForm || enriched.pharmaceuticalForm,
+            quantity: item.quantity || enriched.quantity,
+            administrationRoute: item.administrationRoute || enriched.administrationRoute,
+            details: item.details && item.details.length > 0 ? item.details : (foundCatProd?.details || [enriched.activeIngredients]),
+            dosage: item.dosage && item.dosage.length > 0 ? item.dosage : ['Tomar conforme orientação médica.'],
+            description: item.description || foundCatProd?.description || enriched.description || '',
+            italicText: foundCatProd?.italicText || 'Produto Prescrito',
+            image: item.image || foundCatProd?.image || (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
+            priceUSD: isNational ? undefined : (item.priceUSD || foundCatProd?.priceUSD),
+            priceBRL: isNational ? undefined : (item.priceBRL || foundCatProd?.priceBRL)
+          }
         }, targetPatientId);
       }
 
@@ -2073,8 +2163,12 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         ${selectedBrand === 'greenbudz' || selectedBrand === 'both' ? `[LINHA GREENBUDZCBD (EUA)]:
         ${productCategories.flatMap(c => c.products.filter(p => p.manufacturer === 'GreenBudzCBD')).map(p => `- ${p.name} (${p.type}): R$ ${p.priceBRL}. ${p.indications || p.description || ''}`).join('\n')}` : ''}
 
-        CATÁLOGO OFICIAL DE ASSOCIAÇÕES NACIONAIS (BRASIL):
-        ${productCategories.flatMap(c => c.products.filter(p => p.origin === 'Nacional')).map(p => `- ${p.name} (${p.type}): R$ ${p.priceBRL}. ${p.indications || p.description || ''}`).join('\n')}
+        CATÁLOGO OFICIAL DE ASSOCIAÇÕES NACIONAIS (BRASIL) (SEM PREÇO/VALOR):
+        ${productCategories.flatMap(c => c.products.filter(p => p.origin === 'Nacional')).map(p => `- ${p.name} (${p.type}): ${p.indications || p.description || ''}`).join('\n')}
+        
+        REGRA RIGOROSA DE PREÇOS:
+        - JAMAIS inclua valores ou preços (R$) para medicamentos de Associação Nacional. Os medicamentos de associações devem ser apresentados sem valores.
+        - Valores e preços (R$) são permitidos APENAS para os medicamentos IMPORTADOS.
         
         Formato de Saída Exigido (Markdown estruturado e clínico):
         1. Diagnóstico Sindrômico e Avaliação Clínica
@@ -2154,6 +2248,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
   };
 
   const parseMedications = (text: string) => {
+    if (!text) return [];
     const medications: Array<{
       name: string;
       dosage: string;
@@ -2161,80 +2256,85 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       origin: 'Importado' | 'Nacional';
     }> = [];
     
-    // Try parsing as a Markdown table first
-    if (text.includes('| Medicamento |') || text.includes('| **Medicamento** |') || text.includes('|Medicamento|')) {
-      const lines = text.split('\n');
-      let inTable = false;
-      for (let line of lines) {
-        if (line.trim().startsWith('|') && line.includes('Medicamento') && line.includes('Indicação')) {
-          inTable = true;
-          continue;
-        }
-        if (inTable && line.trim().startsWith('|') && line.includes('---')) {
-          continue; // Skip separator
-        }
-        if (inTable && line.trim().startsWith('|')) {
-          const cols = line.split('|').map(c => c.trim()).filter(c => c !== '');
-          if (cols.length >= 3) {
-            const rawName = cols[0].replace(/\*\*/g, '').trim();
-            let isNational = false;
-            if (/greenbudz|flowermed|sphera|sour lifter|lemon octane|forbidden fruit|gellato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|importado/i.test(rawName)) {
-              isNational = false;
-            } else if (/ÓLEO INTEGRAL|POMADA|EXTRAÇÃO|EXTRATO|RESINA|GOMA|FLOR IN NATURA|FLORES IN NATURA|CANNABIS SP|ASSOCIAÇÃO|NACIONAL|INTEGRAL/i.test(rawName)) {
-              isNational = true;
-            }
-            medications.push({
-              name: rawName,
-              dosage: cols[2].replace(/\*\*/g, '').trim(),
-              instructions: cols[3] ? cols[3].replace(/\*\*/g, '').trim() : '',
-              origin: isNational ? 'Nacional' : 'Importado'
-            });
+    // Split into sections if present
+    const importMatch = text.match(/OPÇÕES\s+IMPORTADAS[\s\S]*?(?=OPÇÕES\s+NACIONAIS|ASSOCIAÇÕES\s+BRASILEIRAS|$)/i);
+    const nationalMatch = text.match(/(?:OPÇÕES\s+NACIONAIS|ASSOCIAÇÕES\s+BRASILEIRAS)[\s\S]*$/i);
+
+    const parseSectionBlocks = (sectionText: string, defaultOrigin: 'Importado' | 'Nacional') => {
+      // Try parsing table
+      if (sectionText.includes('| Medicamento |') || sectionText.includes('| **Medicamento** |') || sectionText.includes('|Medicamento|')) {
+        const lines = sectionText.split('\n');
+        let inTable = false;
+        for (let line of lines) {
+          if (line.trim().startsWith('|') && line.includes('Medicamento') && line.includes('Indicação')) {
+            inTable = true;
+            continue;
           }
-        } else if (inTable && !line.trim().startsWith('|')) {
-          inTable = false; // End of table
+          if (inTable && line.trim().startsWith('|') && line.includes('---')) {
+            continue;
+          }
+          if (inTable && line.trim().startsWith('|')) {
+            const cols = line.split('|').map(c => c.trim()).filter(c => c !== '');
+            if (cols.length >= 3) {
+              const rawName = cols[0].replace(/\*\*/g, '').trim();
+              const isNat = defaultOrigin === 'Nacional' || /associação|nacional|cannabis sp/i.test(rawName);
+              medications.push({
+                name: rawName,
+                dosage: cols[2].replace(/\*\*/g, '').trim(),
+                instructions: cols[3] ? cols[3].replace(/\*\*/g, '').trim() : '',
+                origin: isNat ? 'Nacional' : 'Importado'
+              });
+            }
+          } else if (inTable && !line.trim().startsWith('|')) {
+            inTable = false;
+          }
         }
       }
-    }
 
-    // If table parsing found nothing, try the list format with regex to handle inline fields
-    if (medications.length === 0) {
-      const blocks = text.split(/\bMedicamento\b/i);
+      // If no table found, parse list blocks
+      const blocks = sectionText.split(/\bMedicamento\b/i);
       for (let i = 1; i < blocks.length; i++) {
         const block = blocks[i];
-        
-        // Extract fields using Regex, handling possible inline text
         const nameMatch = block.match(/.*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|\bPosologia\b|\bPosologia\/Uso\b|\bObservações\b|\bObservação Clínica\b|$)/is);
         const dosageMatch = block.match(/(?:\bModo de Uso\b|\bPosologia\b|\bPosologia\/Uso\b).*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bObservações\b|\bObservação Clínica\b|$)/is);
         const instructionsMatch = block.match(/(?:\bObservações\b|\bObservação Clínica\b).*?:\s*(.*?)(?=\bIndicação\b|\bIndicações\b|\bDoença\b|\bModo de Uso\b|\bPosologia\b|\bPosologia\/Uso\b|$)/is);
         
         if (nameMatch && nameMatch[1].trim()) {
           let rawName = nameMatch[1].replace(/\*\*/g, '').replace(/^- /, '').replace(/\*$/, '').trim();
-          // Safety check: if rawName is too long (over 100 chars), it's probably grabbing the wrong section
           if (rawName.length > 150) {
-            rawName = rawName.substring(0, 150) + "..."; // Truncate to avoid UI breaks, though this means parsing failed
+            rawName = rawName.substring(0, 150) + "...";
           }
           
-          let isNational = false;
-          if (/greenbudz|flowermed|sphera|sour lifter|lemon octane|forbidden fruit|gellato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|importado/i.test(rawName)) {
-            isNational = false;
-          } else if (/ÓLEO INTEGRAL|POMADA|EXTRAÇÃO|EXTRATO|RESINA|GOMA|FLOR IN NATURA|FLORES IN NATURA|CANNABIS SP|ASSOCIAÇÃO|NACIONAL|INTEGRAL/i.test(rawName) || (block.includes('Associação') || block.includes('Nacional') || block.includes('Brasileira') || block.includes('TRÍADE'))) {
-            isNational = true;
-          }
+          const isExplicitlyNat = /associação|associacao|cannabis sp 15g|associação brasileira|associação nacional/i.test(rawName);
+          const isExplicitlyImp = /flowermed|greenbudz|sphera|sour lifter|lemon octane|forbidden fruit|gellato|gelato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|hemp oil|broad spectrum|cbg|cbn|drops by/i.test(rawName);
+
+          const finalOrigin: 'Importado' | 'Nacional' = isExplicitlyImp 
+            ? 'Importado' 
+            : (isExplicitlyNat || defaultOrigin === 'Nacional') 
+              ? 'Nacional' 
+              : 'Importado';
 
           medications.push({
             name: rawName,
             dosage: dosageMatch ? dosageMatch[1].replace(/\*\*/g, '').trim() : '',
             instructions: instructionsMatch ? instructionsMatch[1].replace(/\*\*/g, '').trim() : '',
-            origin: isNational ? 'Nacional' : 'Importado'
+            origin: finalOrigin
           });
         }
       }
+    };
+
+    if (importMatch && nationalMatch) {
+      parseSectionBlocks(importMatch[0], 'Importado');
+      parseSectionBlocks(nationalMatch[0], 'Nacional');
+    } else {
+      parseSectionBlocks(text, 'Importado');
     }
     
     return medications;
   };
 
-  const addPrescribedMedication = (med: any) => {
+  const addPrescribedMedication = async (med: any) => {
     // Add to addedMedications state
     setAddedMedications(prev => {
       if (!prev.includes(med.name)) {
@@ -2243,23 +2343,23 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       return prev;
     });
 
-    // Find product across productCategories, FLOWERMED_PRODUCTS, and FLOWER_EXTRACTIONS_PRODUCTS
-    let foundProduct: any = null;
     const cleanMedName = med.name.toLowerCase().trim();
 
-    for (const category of productCategories) {
-      const product = category.products.find(p => 
-        p.name.toLowerCase() === cleanMedName ||
-        p.name.toLowerCase().includes(cleanMedName) ||
-        cleanMedName.includes(p.name.toLowerCase())
-      );
-      if (product) {
-        foundProduct = product;
-        break;
-      }
-    }
+    // Check if explicitly an association product
+    const isExplicitlyNational = 
+      med.origin === 'Nacional' ||
+      cleanMedName.includes('associação') || 
+      cleanMedName.includes('associacao') || 
+      cleanMedName.includes('associação nacional') ||
+      cleanMedName.includes('associação brasileira') ||
+      cleanMedName.includes('cannabis sp 15g') ||
+      cleanMedName.includes('pomada canábica terapêutica');
 
-    if (!foundProduct) {
+    // Find product across catalogs
+    let foundProduct: any = null;
+
+    // Check Flowermed and Extractions first for imported products
+    if (!isExplicitlyNational) {
       const fm = FLOWERMED_PRODUCTS.find(p => 
         p.name.toLowerCase() === cleanMedName ||
         p.name.toLowerCase().includes(cleanMedName) ||
@@ -2268,54 +2368,80 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       if (fm) {
         foundProduct = { ...fm, manufacturer: 'Flowermed (EUA)', origin: 'Importado' };
       }
-    }
 
-    if (!foundProduct) {
-      const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => 
-        p.name.toLowerCase() === cleanMedName ||
-        p.name.toLowerCase().includes(cleanMedName) ||
-        cleanMedName.includes(p.name.toLowerCase())
-      );
-      if (fe) {
-        foundProduct = { ...fe, manufacturer: 'Importado (Folheto Especial)', origin: 'Importado' };
+      if (!foundProduct) {
+        const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => 
+          p.name.toLowerCase() === cleanMedName ||
+          p.name.toLowerCase().includes(cleanMedName) ||
+          cleanMedName.includes(p.name.toLowerCase())
+        );
+        if (fe) {
+          foundProduct = { ...fe, manufacturer: 'Importado (Folheto Especial)', origin: 'Importado' };
+        }
       }
     }
 
-    const defaultManufacturer = med.origin === 'Nacional' 
+    if (!foundProduct) {
+      for (const category of productCategories) {
+        const product = category.products.find(p => 
+          p.name.toLowerCase() === cleanMedName ||
+          p.name.toLowerCase().includes(cleanMedName) ||
+          cleanMedName.includes(p.name.toLowerCase())
+        );
+        if (product) {
+          foundProduct = product;
+          break;
+        }
+      }
+    }
+
+    const isNational = isExplicitlyNational || (foundProduct ? foundProduct.origin === 'Nacional' : med.origin === 'Nacional');
+
+    const defaultManufacturer = isNational 
       ? 'Associação Brasileira' 
-      : (/flowermed|sphera|gummies d9|nano syrup/i.test(med.name) ? 'Flowermed (EUA)' : (/sour lifter|lemon octane|forbidden|gellato|glitter|astro|strawpicana|superglue|zoap|trop|girl cookies|syringe|budder/i.test(med.name) ? 'Importado (Folheto Especial)' : 'GreenBudzCBD'));
+      : (/flowermed|sphera|gummies d9|nano syrup|broad spectrum|cbg|cbn/i.test(med.name) ? 'Flowermed (EUA)' : (/sour lifter|lemon octane|forbidden|gellato|gelato|glitter|astro|strawpicana|superglue|zoap|trop|girl cookies|syringe|budder/i.test(med.name) ? 'Importado (Folheto Especial)' : 'GreenBudzCBD'));
 
     const enriched = enrichMedicationDetails(
       foundProduct ? foundProduct.name : med.name,
       foundProduct ? foundProduct.manufacturer : defaultManufacturer,
-      foundProduct ? foundProduct.origin : med.origin,
+      foundProduct ? foundProduct.origin : (isNational ? 'Nacional' : 'Importado'),
       foundProduct ? foundProduct.type : undefined,
       foundProduct
     );
 
-    addMessage({
+    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+
+    const finalPriceBRL = isNational 
+      ? undefined 
+      : (foundProduct?.priceBRL || (foundProduct?.priceUSD ? foundProduct.priceUSD * exchangeRate : 440.00));
+    
+    const finalPriceUSD = isNational 
+      ? undefined 
+      : (foundProduct?.priceUSD || (foundProduct?.priceBRL ? foundProduct.priceBRL / exchangeRate : 80.00));
+
+    await addMessage({
       text: `Prescrição de ${med.name}`,
       sender: 'doctor',
       type: 'product',
       productData: {
         name: foundProduct ? foundProduct.name : med.name,
-        brand: foundProduct ? foundProduct.manufacturer : enriched.brand,
-        origin: foundProduct ? foundProduct.origin : enriched.origin,
+        brand: isNational ? 'Associação Nacional' : (foundProduct?.manufacturer || defaultManufacturer),
+        origin: isNational ? 'Nacional' : 'Importado',
         type: foundProduct ? foundProduct.type : enriched.type,
         activeIngredients: enriched.activeIngredients,
         concentration: enriched.concentration,
         pharmaceuticalForm: enriched.pharmaceuticalForm,
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
-        details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients],
+        details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients].filter(Boolean),
         dosage: [med.dosage || 'Tomar conforme orientação médica.'],
         description: foundProduct && foundProduct.description ? foundProduct.description : (med.instructions || enriched.description),
-        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : 'Produto Autorizado',
-        image: foundProduct && foundProduct.image ? foundProduct.image : "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop",
-        priceUSD: foundProduct && foundProduct.priceUSD ? foundProduct.priceUSD : undefined
+        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : (isNational ? 'Opção Nacional Autorizada' : 'Produto Autorizado Anvisa'),
+        image: foundProduct && foundProduct.image ? foundProduct.image : (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
+        priceUSD: finalPriceUSD,
+        priceBRL: finalPriceBRL
       }
-    });
-    setShowAnalysisModal(false);
+    }, targetPatientId);
   };
 
   return (
@@ -3957,16 +4083,33 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                               <>
                                 {importedMeds.length > 0 && (
                                   <div className="space-y-2.5">
-                                    <h5 className="text-[11px] font-bold text-blue-400 uppercase tracking-wider border-b border-blue-500/20 pb-1">Tratamento Principal (Importados)</h5>
+                                    <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
+                                      <h5 className="text-[11px] font-bold text-blue-400 uppercase tracking-wider">Tratamento Principal (Importados)</h5>
+                                      <button
+                                        type="button"
+                                        onClick={() => importedMeds.forEach(m => addPrescribedMedication(m))}
+                                        className="text-[10px] font-bold text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 px-2 py-0.5 rounded border border-blue-500/40 transition-colors"
+                                      >
+                                        + Prescrever Todos Importados
+                                      </button>
+                                    </div>
                                     {importedMeds.map((med, idx) => renderMed(med, idx, false))}
                                   </div>
                                 )}
                                 {nationalMeds.length > 0 && (
                                   <div className="space-y-2.5 mt-4">
-                                    <h5 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider border-b border-emerald-500/20 pb-1 flex items-center justify-between">
-                                      <span>🇧🇷 Tratamento Nacional (Óleo, Extração e Flor)</span>
-                                      <span className="text-[9px] text-emerald-300 font-semibold px-1.5 py-0.5 bg-emerald-500/20 rounded border border-emerald-500/30">Opção do Paciente</span>
-                                    </h5>
+                                    <div className="border-b border-emerald-500/20 pb-1 flex items-center justify-between">
+                                      <h5 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                        <span>🇧🇷 Tratamento Nacional (Tríade)</span>
+                                      </h5>
+                                      <button
+                                        type="button"
+                                        onClick={() => nationalMeds.forEach(m => addPrescribedMedication(m))}
+                                        className="text-[10px] font-bold text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 px-2 py-0.5 rounded border border-emerald-500/40 transition-colors"
+                                      >
+                                        + Prescrever Tríade Nacional
+                                      </button>
+                                    </div>
                                     {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
                                   </div>
                                 )}
@@ -4494,9 +4637,18 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           <>
                             {importedMeds.length > 0 && (
                               <div>
-                                <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4 border-b border-blue-500/20 pb-2">
-                                  Tratamento Principal (Medicamentos Importados)
-                                </h4>
+                                <div className="flex items-center justify-between mb-4 border-b border-blue-500/20 pb-2">
+                                  <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider">
+                                    Tratamento Principal (Medicamentos Importados)
+                                  </h4>
+                                  <button
+                                    type="button"
+                                    onClick={() => importedMeds.forEach(m => addPrescribedMedication(m))}
+                                    className="text-xs font-bold text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1 rounded-lg border border-blue-500/40 transition-colors shadow-sm"
+                                  >
+                                    + Prescrever Todos os Importados
+                                  </button>
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   {importedMeds.map((med, idx) => renderMed(med, idx, false))}
                                 </div>
@@ -4505,10 +4657,19 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                             
                             {nationalMeds.length > 0 && (
                               <div>
-                                <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-500/20 pb-2 mt-2 flex items-center justify-between">
-                                  <span>🇧🇷 Tratamento Nacional (Tríade: Óleo, Extração e Flor)</span>
-                                  <span className="text-[10px] text-emerald-300 font-semibold px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 rounded-full">Opção do Paciente</span>
-                                </h4>
+                                <div className="flex items-center justify-between mb-4 border-b border-emerald-500/20 pb-2 mt-4">
+                                  <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                                    <span>🇧🇷 Tratamento Nacional (Tríade: Óleo, Extração e Flor)</span>
+                                    <span className="text-[10px] text-emerald-300 font-semibold px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 rounded-full">Opção do Paciente</span>
+                                  </h4>
+                                  <button
+                                    type="button"
+                                    onClick={() => nationalMeds.forEach(m => addPrescribedMedication(m))}
+                                    className="text-xs font-bold text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 px-3 py-1 rounded-lg border border-emerald-500/40 transition-colors shadow-sm"
+                                  >
+                                    + Prescrever Tríade Nacional
+                                  </button>
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
                                 </div>
@@ -5079,7 +5240,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                 }`}>
                                   {product.origin || (isImported ? 'Importado' : 'Nacional')}
                                 </span>
-                                {product.priceBRL && (
+                                {isImported && product.priceBRL && (
                                   <span className="text-[11px] font-mono font-bold text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded-md border border-mecura-neon/20">
                                     R$ {product.priceBRL}
                                   </span>

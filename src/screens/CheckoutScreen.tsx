@@ -233,10 +233,27 @@ export function CheckoutScreen() {
     setIsLoading(false);
   };
 
-  const handleSuccess = async () => {
+  const handleSuccess = async (mpIdCustom?: string) => {
     setIsLoading(false);
     setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
     setPagamentoConsulta(true);
+
+    try {
+      const isPrem = selectedOffer === 'premium';
+      await addDoc(collection(db, 'payments'), {
+        mpId: mpIdCustom || pixData?.id || 'mp_' + (isPrem ? 'premium_' : 'basic_') + Date.now(),
+        type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
+        value: finalPrice || (isPrem ? 249.90 : 49.90),
+        plan: isPrem ? 'premium' : 'basic',
+        isPremium: isPrem,
+        patientName: auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || 'Paciente',
+        patientEmail: auth.currentUser?.email || undefined,
+        patientId: auth.currentUser?.uid || localStorage.getItem('patient_id') || undefined,
+        date: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Erro ao registrar pagamento em payments:", e);
+    }
 
     // Consume coupon for this user
     const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
@@ -278,15 +295,7 @@ export function CheckoutScreen() {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
               if (pollingInterval.current) clearInterval(pollingInterval.current);
-              try {
-                await addDoc(collection(db, 'payments'), {
-                  mpId: pixData.id,
-                  type: selectedOffer === 'basic' ? 'Consulta Básica (R$ 49,90)' : 'Consulta VIP Premium (R$ 249,90)',
-                  value: finalPrice,
-                  date: new Date().toISOString()
-                });
-              } catch(err) { console.error(err); }
-              handleSuccess();
+              handleSuccess(pixData.id);
             }
           }
         } catch (e) {
@@ -329,7 +338,7 @@ export function CheckoutScreen() {
           setIsLoading(false);
           if (data.status === 'approved' || data.status === 'completed') {
             window.history.replaceState({}, '', window.location.pathname);
-            handleSuccess();
+            handleSuccess(paymentId);
           } else {
             alert('O Mercado Pago informou que este pagamento ainda não foi aprovado.');
             window.history.replaceState({}, '', window.location.pathname);

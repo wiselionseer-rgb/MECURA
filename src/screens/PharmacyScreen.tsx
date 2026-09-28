@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
@@ -21,8 +21,23 @@ import {
   Tag,
   FileText,
   Sparkles,
-  Gift
+  Gift,
+  Building2,
+  Download
 } from 'lucide-react';
+import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
+import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
+import { cbdGuideData } from '../data/cbdGuide';
+import { generatePrescriptionPDF } from '../utils/pdfGenerator';
+import { deliverPdfBlob } from '../utils/downloadHelper';
+
+function WhatsAppIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.694.06-2.03-.491-1.615-.662-2.644-2.31-2.724-2.418-.081-.108-.65-.866-.65-1.65 0-.783.407-1.168.552-1.328.144-.16.315-.2.42-.2.105 0 .21 0 .3.005.096.005.225-.037.352.269.13.313.447 1.092.486 1.172.04.08.066.174.013.28-.053.107-.08.174-.16.268-.08.093-.17.208-.242.279-.08.08-.164.167-.07.329.094.161.417.689.897 1.116.618.55 1.139.721 1.301.802.161.08.257.067.352-.04.095-.108.406-.472.514-.633.107-.162.215-.134.362-.08.148.053.937.442 1.098.522.161.08.269.121.309.188.04.068.04.393-.104.798z"/>
+    </svg>
+  );
+}
 
 const SHIPPING_FEE_USD = 36.00;
 const FIXED_IMPORT_TAX_BRL = 39.90;
@@ -30,30 +45,180 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 export function PharmacyScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { messages } = useStore();
-    const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText } = useAdminStore();
+  const { messages, userName, userBirthDate, userCpf, userPhone, exchangeRate } = useStore();
+  const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText } = useAdminStore();
   
   useEffect(() => {
     if (promotionsText.includes('Desconto progressivo por volume')) {
       setPromotionsText('🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.');
     }
   }, [promotionsText, setPromotionsText]);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   
-  // Extract prescribed items from messages
-  const { exchangeRate } = useStore();
-  const prescriptionItems = messages
-    .filter(msg => msg.type === 'product' && msg.productData)
-    .map((msg, index) => ({
-      id: msg.id,
-      name: msg.productData!.name,
-      brand: msg.productData!.brand,
-      origin: msg.productData!.origin,
-      details: msg.productData!.details,
-      priceUSD: msg.productData!.priceUSD || (index === 0 ? 117.70 : 43.67), // Default prices if not provided
-      durationPerUnit: 60, // Default duration
-      image: msg.productData!.image,
-    }));
+  // Extract prescribed items from messages & classify accurately
+  const prescriptionItems = useMemo(() => {
+    const rawItems = messages
+      .filter(msg => msg.type === 'product' && msg.productData)
+      .map((msg, index) => {
+        const prod = msg.productData!;
+        const nameLower = (prod.name || '').toLowerCase();
+        const brandLower = (prod.brand || '').toLowerCase();
+        const originLower = (prod.origin || '').toLowerCase();
+
+        // Check if explicitly imported
+        const isExplicitlyImported = 
+          prod.origin === 'Importado' ||
+          brandLower.includes('flowermed') || 
+          brandLower.includes('greenbudz') || 
+          brandLower.includes('folheto') ||
+          brandLower.includes('sphera') ||
+          originLower.includes('importad') ||
+          originLower.includes('eua') ||
+          originLower.includes('usa') ||
+          nameLower.includes('flowermed') ||
+          nameLower.includes('greenbudz') ||
+          nameLower.includes('sphera') ||
+          nameLower.includes('lemon octane') ||
+          nameLower.includes('sour lifter') ||
+          nameLower.includes('forbidden fruit') ||
+          nameLower.includes('superglue') ||
+          nameLower.includes('gelato') ||
+          nameLower.includes('glitter bomb') ||
+          nameLower.includes('astro candy') ||
+          nameLower.includes('strawpicana') ||
+          nameLower.includes('zoap') ||
+          nameLower.includes('trop banana') ||
+          nameLower.includes('girl cookies') ||
+          nameLower.includes('syringe') ||
+          nameLower.includes('budder') ||
+          nameLower.includes('chill vibe') ||
+          nameLower.includes('calm vibe') ||
+          nameLower.includes('full balance') ||
+          nameLower.includes('drops by') ||
+          nameLower.includes('d9 nano') ||
+          nameLower.includes('hemp oil') ||
+          nameLower.includes('broad spectrum');
+
+        const isAssociacao = !isExplicitlyImported && (
+          originLower.includes('nacional') ||
+          originLower.includes('associação') ||
+          originLower.includes('associacao') ||
+          brandLower.includes('associação') ||
+          brandLower.includes('associacao') ||
+          brandLower.includes('nacional') ||
+          nameLower.includes('associação') ||
+          nameLower.includes('associacao') ||
+          nameLower.includes('nacional')
+        );
+
+        // Resolve USD base price for imported items so that exchangeRate converts it dynamically
+        let resolvedPriceUSD: number | undefined = prod.priceUSD;
+
+        if (!isAssociacao) {
+          const cleanName = nameLower.trim();
+
+          const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          if (fe) {
+            if (fe.priceUSD) resolvedPriceUSD = fe.priceUSD;
+            else if (fe.priceBRL) resolvedPriceUSD = fe.priceBRL / 5.0;
+          }
+
+          if (!resolvedPriceUSD) {
+            const fm = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+            if (fm) {
+              if (fm.priceUSD) resolvedPriceUSD = fm.priceUSD;
+              else if (fm.priceBRL) resolvedPriceUSD = fm.priceBRL / 5.0;
+            }
+          }
+
+          if (!resolvedPriceUSD) {
+            for (const cat of cbdGuideData) {
+              const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()) || pr.name.toLowerCase().includes(cleanName));
+              if (p) {
+                if (p.priceUSD) resolvedPriceUSD = p.priceUSD;
+                else if (p.priceBRL) resolvedPriceUSD = p.priceBRL / 5.0;
+                break;
+              }
+            }
+          }
+
+          if (!resolvedPriceUSD) {
+            if (prod.priceBRL) {
+              resolvedPriceUSD = prod.priceBRL / 5.0;
+            } else {
+              resolvedPriceUSD = index === 0 ? 80.00 : 39.90;
+            }
+          }
+        }
+
+        const unitPriceBRL = isAssociacao 
+          ? 0 
+          : Number(((resolvedPriceUSD || 80.00) * exchangeRate).toFixed(2));
+
+        return {
+          id: msg.id,
+          name: prod.name,
+          brand: isAssociacao ? 'Associação Nacional' : (prod.brand || 'GreenBudz / Flowermed (EUA)'),
+          origin: isAssociacao ? 'Nacional' : (prod.origin || 'Importado'),
+          details: prod.details || [],
+          dosage: prod.dosage || [],
+          description: prod.description || '',
+          isAssociacao: Boolean(isAssociacao),
+          priceUSD: resolvedPriceUSD,
+          priceBRL: unitPriceBRL,
+          unitPriceBRL,
+          durationPerUnit: 60,
+          image: prod.image,
+        };
+      });
+
+    // If no imported items were found in the current messages, provide the doctor's recommended imported treatment
+    const hasAnyImported = rawItems.some(i => !i.isAssociacao);
+    
+    if (!hasAnyImported) {
+      const defaultImported = [
+        {
+          id: 'rx-imported-flowermed-1',
+          name: 'GreenBudzCBD CalmVibe CBD 6000mg + Mint',
+          brand: 'GreenBudzCBD (EUA)',
+          origin: 'Importado',
+          details: ['30ml 200mg/ml', 'Extrato Premium CO2', 'Sabor Menta'],
+          dosage: ['10 gotas sublinguais pela manhã e à noite.'],
+          description: 'Extrato de alta potência para regulação do sono, alívio de estresse e equilíbrio do sistema endocanabinoide.',
+          isAssociacao: false,
+          priceUSD: 80.00,
+          priceBRL: 80.00 * exchangeRate,
+          unitPriceBRL: 80.00 * exchangeRate,
+          durationPerUnit: 60,
+          image: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop'
+        },
+        {
+          id: 'rx-imported-flowermed-2',
+          name: 'GreenBudzCBD Chill Gummies Vibe THC 10mg 1:1 CBD 10mg - 30ct',
+          brand: 'GreenBudzCBD (EUA)',
+          origin: 'Importado',
+          details: ['10mg THC + 10mg CBD por goma', 'Proporção 1:1 Equilibrada', '30 unidades'],
+          dosage: ['1 goma 45 minutos antes de dormir ou em momentos de tensão.'],
+          description: 'Gomas terapêuticas de liberação prolongada para relaxamento mental e alívio do estresse.',
+          isAssociacao: false,
+          priceUSD: 39.90,
+          priceBRL: 39.90 * exchangeRate,
+          unitPriceBRL: 39.90 * exchangeRate,
+          durationPerUnit: 30,
+          image: 'https://images.unsplash.com/photo-1626015561570-80e227092928?q=80&w=400&auto=format&fit=crop'
+        }
+      ];
+      return [...defaultImported, ...rawItems];
+    }
+
+    return rawItems;
+  }, [messages, exchangeRate]);
+
+  const importedItems = prescriptionItems.filter(item => !item.isAssociacao);
+  const associacaoItems = prescriptionItems.filter(item => item.isAssociacao);
+  const hasImportedItems = importedItems.length > 0;
+  const hasAssociacaoItems = associacaoItems.length > 0;
 
   // Cart State
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -61,7 +226,7 @@ export function PharmacyScreen() {
   // Initialize quantities when items change
   useEffect(() => {
     const newQuantities: Record<string, number> = {};
-    prescriptionItems.forEach(item => {
+    importedItems.forEach(item => {
       if (!quantities[item.id]) {
         newQuantities[item.id] = 1;
       } else {
@@ -71,7 +236,7 @@ export function PharmacyScreen() {
     if (Object.keys(newQuantities).length > 0 && Object.keys(quantities).length === 0) {
       setQuantities(newQuantities);
     }
-  }, [prescriptionItems]);
+  }, [importedItems]);
 
   const [coupon, setCoupon] = useState('');
   const [discount, setDiscount] = useState(0);
@@ -87,10 +252,6 @@ export function PharmacyScreen() {
     city: ''
   });
 
-  // Payment State
-  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit_card'>('pix');
-  const [installments, setInstallments] = useState(1);
-
   const handleQuantityChange = (id: string, delta: number) => {
     setQuantities(prev => ({
       ...prev,
@@ -98,13 +259,13 @@ export function PharmacyScreen() {
     }));
   };
 
-  // Calculations
+  // Calculations ONLY for imported items
   const calculateSubtotal = () => {
     let total = 0;
     
-    prescriptionItems.forEach(item => {
+    importedItems.forEach(item => {
       const qty = quantities[item.id] || 1;
-      const basePrice = item.priceUSD * exchangeRate;
+      const basePrice = item.unitPriceBRL;
       let itemTotal = basePrice * qty;
       
       const nameLower = item.name.toLowerCase();
@@ -132,25 +293,83 @@ export function PharmacyScreen() {
         itemTotal = (setsOf2 * 49.90 * exchangeRate) + (remainder * basePrice);
       }
 
-      
       total += itemTotal;
     });
     
     return total;
   };
 
-  const shippingFeeBRL = SHIPPING_FEE_USD * exchangeRate;
+  const shippingFeeBRL = hasImportedItems ? SHIPPING_FEE_USD * exchangeRate : 0;
+  const fixedImportTaxBRL = hasImportedItems ? FIXED_IMPORT_TAX_BRL : 0;
   const subtotal = calculateSubtotal();
-  const totalBeforeDiscount = subtotal + shippingFeeBRL + FIXED_IMPORT_TAX_BRL;
-  const pixDiscount = paymentMethod === 'pix' ? totalBeforeDiscount * 0.05 : 0;
-  const finalTotal = totalBeforeDiscount - discount - pixDiscount;
+  const totalBeforeDiscount = hasImportedItems ? (subtotal + shippingFeeBRL + fixedImportTaxBRL) : 0;
+  const finalTotal = Math.max(0, totalBeforeDiscount - discount);
+
+  const handleSendWhatsAppOrder = () => {
+    const itemsText = importedItems.map(item => {
+      const qty = quantities[item.id] || 1;
+      const itemTotal = item.unitPriceBRL * qty;
+      return `• *${qty}x* ${item.name} (${item.brand}) - R$ ${itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    }).join('\n');
+
+    const addressText = address.street.trim()
+      ? `${address.street}, ${address.number || 'S/N'} ${address.complement ? `(${address.complement})` : ''}
+Bairro: ${address.neighborhood || 'Não informado'}
+Cidade: ${address.city || ''} - ${address.state || ''}
+CEP: ${address.cep || ''}`
+      : 'A combinar com a equipe';
+
+    const patientInfo = `Nome: ${userName || 'Paciente'}${userCpf ? `\nCPF: ${userCpf}` : ''}${userPhone ? `\nTelefone: ${userPhone}` : ''}`;
+
+    const message = `🌿 *SOLICITAÇÃO DE PEDIDO - FARMÁCIA GREENBUDZ* 🌿
+
+👤 *DADOS DO PACIENTE:*
+${patientInfo}
+
+📦 *MEDICAMENTOS PRESCRITOS:*
+${itemsText}
+
+🚚 *ENDEREÇO DE ENTREGA:*
+${addressText}
+
+💰 *RESUMO FINANCEIRO:*
+• Subtotal dos Produtos: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+• Frete Internacional: R$ ${shippingFeeBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+• Taxas de Importação fixa: R$ ${fixedImportTaxBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+*VALOR TOTAL ESTIMADO: R$ ${finalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*
+
+Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientações de finalização e envio! ✨`;
+
+    const whatsappUrl = `https://wa.me/5566996280883?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    navigate('/dashboard');
+  };
+
+  const handleDownloadPrescription = async () => {
+    setIsDownloadingPdf(true);
+    try {
+      const pName = userName || 'Paciente';
+      const blob = await generatePrescriptionPDF(pName, messages, {
+        customPatientName: pName,
+        birthDate: userBirthDate,
+        cpf: userCpf,
+        returnBlob: true
+      }) as Blob;
+      if (blob) {
+        deliverPdfBlob(blob, `Receita_Medica_${pName.replace(/\s+/g, '_')}.pdf`);
+      }
+    } catch (e) {
+      console.error("Erro ao gerar receita:", e);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center gap-3 mb-8">
       {[
         { num: 1, label: 'Carrinho' },
-        { num: 2, label: 'Entrega' },
-        { num: 3, label: 'Pagamento' }
+        { num: 2, label: 'Entrega & Solicitação' }
       ].map((s, idx) => (
         <div key={s.num} className="flex items-center">
           <div className="flex flex-col items-center gap-1.5">
@@ -167,8 +386,8 @@ export function PharmacyScreen() {
               step >= s.num ? 'text-white' : 'text-[#6A6A7E]'
             }`}>{s.label}</span>
           </div>
-          {idx < 2 && (
-            <div className={`w-10 h-[2px] mb-4 mx-2 transition-colors duration-500 ${
+          {idx < 1 && (
+            <div className={`w-12 h-[2px] mb-4 mx-2 transition-colors duration-500 ${
               step > s.num ? 'bg-mecura-neon/50' : 'bg-[#262636]'
             }`} />
           )}
@@ -182,7 +401,7 @@ export function PharmacyScreen() {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="space-y-6 pb-32"
+      className="space-y-6 pb-48 sm:pb-56"
     >
       {/* Trust Banner */}
       <div className="bg-gradient-to-r from-[#1A2E1A] to-[#121A12] border border-mecura-neon/20 rounded-2xl p-4 flex items-start gap-4 shadow-[0_0_20px_rgba(166,255,0,0.05)] relative overflow-hidden">
@@ -196,7 +415,7 @@ export function PharmacyScreen() {
             <ShieldCheck className="w-4 h-4 text-mecura-neon" />
           </h4>
           <p className="text-[#8A8A9E] text-xs mt-1 leading-relaxed">
-            Produtos originais dos EUA. Vendido e entregue por <strong className="text-white">GreenBudz</strong>. Cuidamos de todo o processo alfandegário com taxa fixa.
+            Produtos originais dos EUA. Vendido e entregue por <strong className="text-white">GreenBudz / Flowermed</strong>. Cuidamos de todo o processo alfandegário com taxa fixa.
           </p>
         </div>
       </div>
@@ -208,247 +427,248 @@ export function PharmacyScreen() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-gradient-to-br from-[#1A2E05] via-[#121A0A] to-[#0A0A0F] border border-mecura-neon/40 rounded-[24px] p-6 mb-8 relative overflow-hidden shadow-[0_0_40px_rgba(166,255,0,0.15)]"
           >
-            {/* Animated background elements */}
-            <motion.div 
-              animate={{ 
-                scale: [1, 1.2, 1],
-                opacity: [0.3, 0.5, 0.3],
-                rotate: [0, 90, 0]
-              }}
-              transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-              className="absolute -right-20 -top-20 w-64 h-64 bg-mecura-neon/20 blur-[60px] rounded-full pointer-events-none" 
-            />
-            <motion.div 
-              animate={{ 
-                scale: [1, 1.5, 1],
-                opacity: [0.2, 0.4, 0.2],
-              }}
-              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -left-20 -bottom-20 w-64 h-64 bg-mecura-neon/10 blur-[60px] rounded-full pointer-events-none" 
-            />
-            
             <div className="relative z-10">
-              <div className="flex items-center justify-between mb-6 border-b border-mecura-neon/20 pb-4">
+              <div className="flex items-center justify-between mb-4 border-b border-mecura-neon/20 pb-4">
                 <h4 className="text-mecura-neon font-black text-xl flex items-center gap-2 uppercase tracking-wide">
                   <Sparkles className="w-6 h-6 animate-pulse text-mecura-neon" />
                   Ofertas Especiais
                 </h4>
-                <motion.div 
-                  animate={{ y: [-2, 2, -2] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="px-4 py-1.5 bg-mecura-neon text-[#0A0A0F] rounded-full font-black text-xs tracking-widest shadow-[0_0_15px_rgba(166,255,0,0.5)]"
-                >
+                <div className="px-4 py-1.5 bg-mecura-neon text-[#0A0A0F] rounded-full font-black text-xs tracking-widest shadow-[0_0_15px_rgba(166,255,0,0.5)]">
                   ATIVAS AGORA
-                </motion.div>
+                </div>
               </div>
               
               {promotionsText && (
-                <div className="mb-8 space-y-3">
-                  {promotionsText.split('\n').map((line, index) => {
-                    if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
-                      const content = line.substring(1).trim();
-                      const parts = content.split(':');
-                      if (parts.length > 1) {
-                        return (
-                          <motion.div 
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            key={index} 
-                            className="flex items-start gap-3 bg-black/40 p-4 rounded-xl border border-mecura-neon/20 hover:border-mecura-neon/50 transition-colors group"
-                          >
-                            <div className="mt-1 w-2.5 h-2.5 rounded-full bg-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.8)] flex-shrink-0 group-hover:scale-125 transition-transform" />
-                            <div>
-                              <span className="font-black text-mecura-neon text-[15px] tracking-wide">{parts[0]}:</span>
-                              <span className="text-white/90 ml-2 text-[15px] leading-relaxed">{parts.slice(1).join(':')}</span>
-                            </div>
-                          </motion.div>
-                        );
-                      }
-                      return (
-                        <motion.div 
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.1 }}
-                          key={index} 
-                          className="flex items-start gap-3 bg-black/40 p-4 rounded-xl border border-mecura-neon/20 hover:border-mecura-neon/50 transition-colors group"
-                        >
-                          <div className="mt-1.5 w-2 h-2 rounded-full bg-mecura-neon/70 flex-shrink-0 group-hover:scale-125 transition-transform" />
-                          <span className="text-white/90 text-[15px] leading-relaxed">{content}</span>
-                        </motion.div>
-                      );
-                    }
-                    if (line.trim() === '') return <div key={index} className="h-2" />;
-                    return (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        key={index} 
-                        className="font-black text-xl text-white mb-6 flex items-center justify-center text-center tracking-wide"
-                      >
-                        {line}
-                      </motion.div>
-                    );
-                  })}
+                <div className="mb-6 space-y-2 text-sm text-mecura-pearl">
+                  {promotionsText.split('\n').map((line, index) => (
+                    <div key={index} className="leading-relaxed">{line}</div>
+                  ))}
                 </div>
               )}
 
               <div className="flex flex-col gap-3">
-                <motion.a 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                <a 
                   href={'https://drive.google.com/file/d/1X5dDlzrVQ5bENVFd8He96OB-TT39gA8Z/preview'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)] group"
+                  className="flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-3.5 rounded-xl font-black text-[14px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)]"
                 >
-                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                  <Gift className="w-5 h-5 relative z-10" />
-                  <span className="relative z-10">VER CATÁLOGO PRODUTOS VIA INALADA</span>
-                </motion.a>
+                  <Gift className="w-5 h-5" />
+                  <span>VER CATÁLOGO PRODUTOS VIA INALADA</span>
+                </a>
                 
-                <motion.a 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                <a 
                   href={'https://drive.google.com/file/d/1RkfK1c76aaiyLnSeVxSsFif8WAEi3aU_/preview'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="relative overflow-hidden flex items-center justify-center gap-3 w-full bg-mecura-pearl text-[#0A0A0F] px-6 py-4 rounded-xl font-black text-[15px] uppercase tracking-wider hover:bg-white transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)] group"
+                  className="flex items-center justify-center gap-3 w-full bg-mecura-pearl text-[#0A0A0F] px-6 py-3.5 rounded-xl font-black text-[14px] uppercase tracking-wider hover:bg-white transition-colors"
                 >
-                  <div className="absolute inset-0 bg-black/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                  <Gift className="w-5 h-5 relative z-10" />
-                  <span className="relative z-10">VER CATÁLOGO PRODUTOS VIA ORAL</span>
-                </motion.a>
+                  <Gift className="w-5 h-5" />
+                  <span>VER CATÁLOGO PRODUTOS VIA ORAL</span>
+                </a>
               </div>
             </div>
           </motion.div>
         )}
 
-        <h3 className="text-lg font-serif font-bold text-white flex items-center gap-2">
-          Sua Prescrição Médica
-        </h3>
-        
-        {prescriptionItems.length > 0 ? (
-          prescriptionItems.map(item => (
-            <div key={item.id} className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[24px] p-5 space-y-5 shadow-lg relative overflow-hidden group mb-4">
-              <div className="absolute top-0 left-0 w-1 h-full bg-mecura-neon/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+        {/* 1. SEÇÃO DE PRODUTOS IMPORTADOS */}
+        {hasImportedItems && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-serif font-bold text-white flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                🇺🇸 Medicamentos Importados (EUA)
+              </span>
+              <span className="text-xs font-sans text-mecura-silver">
+                {importedItems.length} {importedItems.length === 1 ? 'item' : 'itens'}
+              </span>
+            </h3>
+            
+            {importedItems.map(item => {
+              const qty = quantities[item.id] || 1;
+              const basePrice = item.unitPriceBRL;
+              let itemTotal = basePrice * qty;
+              const nameLower = item.name.toLowerCase();
               
-              <div className="flex gap-4">
-                <div className="w-24 h-24 rounded-2xl bg-white p-2 flex-shrink-0 shadow-inner relative">
-                  <img 
-                    src={item.image || "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"} 
-                    alt={item.name} 
-                    referrerPolicy="no-referrer" 
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      if (target.dataset.fallbackApplied) return;
-                      target.dataset.fallbackApplied = 'true';
-                      
-                      const typeLower = item.name.toLowerCase();
-                      if (typeLower.includes('óleo') || typeLower.includes('oil')) {
-                        target.src = "https://placehold.co/400x400/f8fafc/0f172a?text=Oleo";
-                      } else if (typeLower.includes('goma') || typeLower.includes('gumm')) {
-                        target.src = "https://placehold.co/400x400/f8fafc/0f172a?text=Gomas";
-                      } else {
-                        target.src = "https://placehold.co/400x400/f8fafc/0f172a?text=CBD";
-                      }
-                    }}
-                  />
-                  <div className="absolute -bottom-2 -right-2 bg-[#0A0A0F] border border-[#262636] rounded-lg px-2 py-1 flex items-center gap-1 shadow-lg">
-                    <span className="text-[10px] text-white font-bold">🇺🇸</span>
-                  </div>
-                </div>
-                <div className="flex-1 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider mb-1 block">{item.brand || 'GreenBudzCBD'}</span>
-                    <h4 className="font-bold text-white text-[15px] leading-tight">{item.name}</h4>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {item.details.slice(0, 2).map((detail, idx) => (
-                      <span key={idx} className="text-[10px] bg-[#0A0A0F] border border-[#262636] text-[#8A8A9E] px-2 py-1 rounded-md">
-                        {detail}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              if (nameLower.includes('vibe') && !nameLower.includes('gumm')) {
+                if (qty >= 6) itemTotal *= 0.7;
+                else if (qty >= 4) itemTotal *= 0.8;
+                else if (qty >= 2) itemTotal *= 0.9;
+              } else if (nameLower.includes('chill') && nameLower.includes('gumm')) {
+                itemTotal = (Math.floor(qty / 10) * 350 * exchangeRate) + ((qty % 10) * basePrice);
+              } else if (nameLower.includes('drops by greenbudz') && nameLower.includes('gumm')) {
+                itemTotal = (Math.floor(qty / 2) * 49.90 * exchangeRate) + ((qty % 2) * basePrice);
+              }
 
-              <div className="flex items-end justify-between pt-4 border-t border-[#262636]">
-                <div className="space-y-2">
-                  <span className="text-[11px] text-[#8A8A9E] font-medium">Quantidade</span>
-                  <div className="flex items-center gap-1 bg-[#0A0A0F] border border-[#262636] rounded-xl p-1 w-fit">
-                    <button 
-                      onClick={() => handleQuantityChange(item.id, -1)}
-                      className="w-8 h-8 flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A26] rounded-lg transition-colors"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="font-bold text-white w-6 text-center text-sm">{quantities[item.id] || 1}</span>
-                    <button 
-                      onClick={() => handleQuantityChange(item.id, 1)}
-                      className="w-8 h-8 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 rounded-lg transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+              return (
+                <div key={item.id} className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[24px] p-5 space-y-5 shadow-lg relative overflow-hidden group mb-4">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-mecura-neon/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  
+                  <div className="flex gap-4">
+                    <div className="w-24 h-24 rounded-2xl bg-white p-2 flex-shrink-0 shadow-inner relative">
+                      <img 
+                        src={item.image || "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"} 
+                        alt={item.name} 
+                        referrerPolicy="no-referrer" 
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (target.dataset.fallbackApplied) return;
+                          target.dataset.fallbackApplied = 'true';
+                          target.src = "https://placehold.co/400x400/f8fafc/0f172a?text=Importado";
+                        }}
+                      />
+                      <div className="absolute -bottom-2 -right-2 bg-[#0A0A0F] border border-[#262636] rounded-lg px-2 py-1 flex items-center gap-1 shadow-lg">
+                        <span className="text-[10px] text-white font-bold">🇺🇸</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider mb-1 block">
+                          {item.brand || 'GreenBudzCBD'}
+                        </span>
+                        <h4 className="font-bold text-white text-[15px] leading-tight">{item.name}</h4>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {item.details.slice(0, 2).map((detail, idx) => (
+                          <span key={idx} className="text-[10px] bg-[#0A0A0F] border border-[#262636] text-[#8A8A9E] px-2 py-1 rounded-md">
+                            {detail}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-end justify-between pt-4 border-t border-[#262636]">
+                    <div className="space-y-2">
+                      <span className="text-[11px] text-[#8A8A9E] font-medium">Quantidade</span>
+                      <div className="flex items-center gap-1 bg-[#0A0A0F] border border-[#262636] rounded-xl p-1 w-fit">
+                        <button 
+                          onClick={() => handleQuantityChange(item.id, -1)}
+                          className="w-8 h-8 flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A26] rounded-lg transition-colors"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <span className="font-bold text-white w-6 text-center text-sm">{qty}</span>
+                        <button 
+                          onClick={() => handleQuantityChange(item.id, 1)}
+                          className="w-8 h-8 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 rounded-lg transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/20 px-2 py-1 rounded-md mb-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
+                        <span className="text-[10px] text-mecura-neon font-bold">
+                          Dura aprox. {Math.round((item.durationPerUnit * qty) / 30)} meses
+                        </span>
+                      </div>
+                      <div className="text-xl font-bold text-white tracking-tight">
+                        <span className="text-sm text-[#8A8A9E] font-normal mr-1">R$</span>
+                        {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/20 px-2 py-1 rounded-md mb-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
-                    <span className="text-[10px] text-mecura-neon font-bold">
-                      Dura aprox. {Math.round((item.durationPerUnit * (quantities[item.id] || 1)) / 30)} meses
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold text-white tracking-tight">
-                    <span className="text-sm text-[#8A8A9E] font-normal mr-1">R$</span>
-                    {(() => {
-                      const qty = quantities[item.id] || 1;
-                      const basePrice = item.priceUSD * exchangeRate;
-                      let itemTotal = basePrice * qty;
-                      const nameLower = item.name.toLowerCase();
-                      
-                      if (nameLower.includes('vibe') && !nameLower.includes('gumm')) {
-                        if (qty >= 6) itemTotal *= 0.7;
-                        else if (qty >= 4) itemTotal *= 0.8;
-                        else if (qty >= 2) itemTotal *= 0.9;
-                      } else if (nameLower.includes('chill') && nameLower.includes('gumm')) {
-                        itemTotal = (Math.floor(qty / 10) * 350 * exchangeRate) + ((qty % 10) * basePrice);
-                      } else if (nameLower.includes('drops by greenbudz') && nameLower.includes('gumm')) {
-                        itemTotal = (Math.floor(qty / 2) * 49.90 * exchangeRate) + ((qty % 2) * basePrice);
-                      }
-                      
-                      return itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    })()}
-                  </div>
-                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 2. SEÇÃO DE PRODUTOS DE ASSOCIAÇÃO NACIONAL (SEM PREÇO / SEM COBRANÇA DE IMPORTAÇÃO) */}
+        {hasAssociacaoItems && (
+          <div className="space-y-4 pt-2">
+            <h3 className="text-lg font-serif font-bold text-white flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                🇧🇷 Opções de Associação Nacional (Brasil)
+              </span>
+              <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                Direto na Associação
+              </span>
+            </h3>
+
+            <div className="bg-[#121A16] border border-emerald-500/20 rounded-2xl p-4 text-xs text-emerald-300/90 leading-relaxed flex items-start gap-3 shadow-sm">
+              <Building2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-white block mb-0.5">Aquisição Direta com Associação Brasileira Autorizada</strong>
+                Os itens abaixo foram receitados como opções nacionais de alta qualidade. O fornecimento é intermediado diretamente pela associação credenciada, <strong>sem custos alfandegários ou taxas de importação</strong>.
               </div>
             </div>
-          ))
-        ) : (
+
+            {associacaoItems.map(item => (
+              <div key={item.id} className="bg-gradient-to-b from-[#0D1512] to-[#121A16] border border-emerald-500/30 rounded-[24px] p-5 space-y-4 shadow-lg relative overflow-hidden group mb-3">
+                <div className="flex gap-4">
+                  <div className="w-20 h-20 rounded-2xl bg-[#0A0A0F] border border-emerald-500/20 p-2 flex-shrink-0 shadow-inner relative flex items-center justify-center">
+                    <img 
+                      src={item.image || "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop"} 
+                      alt={item.name} 
+                      referrerPolicy="no-referrer" 
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        if (target.dataset.fallbackApplied) return;
+                        target.dataset.fallbackApplied = 'true';
+                        target.src = "https://placehold.co/400x400/0f241a/10b981?text=Associacao";
+                      }}
+                    />
+                    <div className="absolute -bottom-2 -right-2 bg-[#0A0A0F] border border-emerald-500/30 rounded-lg px-2 py-0.5 flex items-center gap-1 shadow-lg">
+                      <span className="text-[10px] text-white font-bold">🇧🇷</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1 block">
+                        Associação Nacional
+                      </span>
+                      <h4 className="font-bold text-white text-[15px] leading-tight">{item.name}</h4>
+                    </div>
+                    {item.dosage && item.dosage.length > 0 && (
+                      <p className="text-xs text-mecura-silver/90 mt-1.5 line-clamp-2">
+                        {item.dosage.join(' ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-emerald-500/20 flex items-center justify-between">
+                  <span className="text-xs text-emerald-400/80 font-medium">
+                    Fornecimento Institucional
+                  </span>
+                  <span className="text-xs font-bold text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/30">
+                    Sem cobrança no checkout
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!hasImportedItems && !hasAssociacaoItems && (
           <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-8 text-center">
             <Package className="w-12 h-12 text-[#8A8A9E] mx-auto mb-4 opacity-50" />
             <h4 className="text-white font-bold mb-2">Nenhum medicamento prescrito</h4>
-            <p className="text-[#8A8A9E] text-sm">Sua prescrição médica ainda não contém medicamentos ou a consulta não foi finalizada.</p>
+            <p className="text-[#8A8A9E] text-sm">Sua prescrição médica ainda não contém medicamentos registrados no chat.</p>
           </div>
         )}
       </div>
 
-      {/* Order Summary */}
-      {prescriptionItems.length > 0 && (
-        <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-6 space-y-4 relative overflow-hidden">
+      {/* Resumo Financeiro (APENAS SE HOUVER IMPORTADOS) */}
+      {hasImportedItems ? (
+        <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-6 space-y-4 relative overflow-hidden mb-8">
           <div className="absolute -right-10 -top-10 w-32 h-32 bg-mecura-neon/5 blur-3xl rounded-full" />
           
-          <h3 className="font-bold text-white text-lg">Resumo Financeiro</h3>
+          <h3 className="font-bold text-white text-lg">Resumo Financeiro (Importados)</h3>
           
           <div className="space-y-3 text-sm relative z-10">
             <div className="flex justify-between text-[#8A8A9E]">
-              <span>Produtos ({Object.values(quantities).reduce((a, b) => a + b, 0)} itens)</span>
+              <span>Produtos ({importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0)} itens)</span>
               <span className="text-white">R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between text-[#8A8A9E] items-center">
               <span className="flex items-center gap-1.5">
-                Frete
+                Frete Internacional
                 <div className="group relative">
                   <Info className="w-3.5 h-3.5 text-mecura-neon cursor-help" />
                 </div>
@@ -475,7 +695,23 @@ export function PharmacyScreen() {
             </div>
           </div>
         </div>
-      )}
+      ) : hasAssociacaoItems ? (
+        <div className="bg-[#121A16] border border-emerald-500/20 rounded-[24px] p-6 text-center space-y-3">
+          <FileText className="w-10 h-10 text-emerald-400 mx-auto opacity-80" />
+          <h4 className="text-white font-bold text-base">Receita de Associação Nacional</h4>
+          <p className="text-xs text-mecura-silver max-w-sm mx-auto">
+            Utilize o documento oficial da receita para efetuar a aquisição direta junto à associação brasileira indicada.
+          </p>
+          <button
+            onClick={handleDownloadPrescription}
+            disabled={isDownloadingPdf}
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0A0A0F] font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-md"
+          >
+            <Download className="w-4 h-4" />
+            {isDownloadingPdf ? 'Baixando PDF...' : 'Baixar Receita Médica Oficial (PDF)'}
+          </button>
+        </div>
+      ) : null}
     </motion.div>
   );
 
@@ -484,7 +720,7 @@ export function PharmacyScreen() {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="space-y-6 pb-32"
+      className="space-y-6 pb-48 sm:pb-56"
     >
       <div className="text-center space-y-3 mb-8">
         <div className="w-16 h-16 bg-gradient-to-br from-mecura-neon/20 to-transparent rounded-2xl flex items-center justify-center mx-auto border border-mecura-neon/20 shadow-[0_0_20px_rgba(166,255,0,0.1)]">
@@ -502,6 +738,8 @@ export function PharmacyScreen() {
           <input 
             type="text" 
             placeholder="00000-000"
+            value={address.cep}
+            onChange={(e) => setAddress({ ...address, cep: e.target.value })}
             className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E]"
           />
         </div>
@@ -511,6 +749,8 @@ export function PharmacyScreen() {
           <input 
             type="text" 
             placeholder="Rua, Avenida, etc."
+            value={address.street}
+            onChange={(e) => setAddress({ ...address, street: e.target.value })}
             className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E]"
           />
         </div>
@@ -521,6 +761,8 @@ export function PharmacyScreen() {
             <input 
               type="text" 
               placeholder="Ex: 123"
+              value={address.number}
+              onChange={(e) => setAddress({ ...address, number: e.target.value })}
               className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E]"
             />
           </div>
@@ -528,7 +770,9 @@ export function PharmacyScreen() {
             <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Complemento</label>
             <input 
               type="text" 
-              placeholder="Apto, Bloco"
+              placeholder="Apto, Bloco..."
+              value={address.complement}
+              onChange={(e) => setAddress({ ...address, complement: e.target.value })}
               className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E]"
             />
           </div>
@@ -538,7 +782,10 @@ export function PharmacyScreen() {
           <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Bairro</label>
           <input 
             type="text" 
-            className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all"
+            placeholder="Seu bairro"
+            value={address.neighborhood}
+            onChange={(e) => setAddress({ ...address, neighborhood: e.target.value })}
+            className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E]"
           />
         </div>
 
@@ -547,183 +794,70 @@ export function PharmacyScreen() {
             <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Cidade</label>
             <input 
               type="text" 
-              className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all"
+              placeholder="Sua cidade"
+              value={address.city}
+              onChange={(e) => setAddress({ ...address, city: e.target.value })}
+              className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E]"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">UF</label>
+            <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Estado</label>
             <input 
               type="text" 
-              className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all text-center uppercase"
+              placeholder="UF"
               maxLength={2}
+              value={address.state}
+              onChange={(e) => setAddress({ ...address, state: e.target.value.toUpperCase() })}
+              className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E] uppercase text-center"
             />
           </div>
         </div>
-      </div>
-    </motion.div>
-  );
-
-  const renderPayment = () => (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="space-y-6 pb-32"
-    >
-      <div className="text-center space-y-3 mb-6">
-        <div className="w-16 h-16 bg-gradient-to-br from-mecura-neon/20 to-transparent rounded-2xl flex items-center justify-center mx-auto border border-mecura-neon/20 shadow-[0_0_20px_rgba(166,255,0,0.1)]">
-          <Lock className="w-7 h-7 text-mecura-neon" />
-        </div>
-        <h2 className="text-2xl font-serif font-bold text-white">Pagamento Seguro</h2>
-        <p className="text-sm text-[#8A8A9E] max-w-[280px] mx-auto leading-relaxed">
-          Escolha a melhor forma para você. Transação criptografada de ponta a ponta.
-        </p>
-      </div>
-
-      <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-6 space-y-6 shadow-lg">
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setPaymentMethod('pix')}
-            className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-3 transition-all duration-300 relative overflow-hidden ${
-              paymentMethod === 'pix' 
-                ? 'border-mecura-neon bg-mecura-neon/5 shadow-[0_0_15px_rgba(166,255,0,0.1)]' 
-                : 'border-[#2A2A3A] hover:border-[#3A3A4A] bg-[#0A0A0F]'
-            }`}
-          >
-            {paymentMethod === 'pix' && <div className="absolute inset-0 bg-gradient-to-b from-mecura-neon/10 to-transparent opacity-50" />}
-            <QrCode className={`w-7 h-7 relative z-10 ${paymentMethod === 'pix' ? 'text-mecura-neon' : 'text-[#8A8A9E]'}`} />
-            <div className="text-center relative z-10">
-              <span className={`font-bold text-sm block ${paymentMethod === 'pix' ? 'text-white' : 'text-[#8A8A9E]'}`}>PIX</span>
-              <span className="text-[10px] text-[#0A0A0F] font-bold bg-mecura-neon px-2 py-0.5 rounded-full mt-1 inline-block">5% OFF</span>
-            </div>
-          </button>
-          
-          <button
-            onClick={() => setPaymentMethod('credit_card')}
-            className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-center gap-3 transition-all duration-300 relative overflow-hidden ${
-              paymentMethod === 'credit_card' 
-                ? 'border-mecura-neon bg-mecura-neon/5 shadow-[0_0_15px_rgba(166,255,0,0.1)]' 
-                : 'border-[#2A2A3A] hover:border-[#3A3A4A] bg-[#0A0A0F]'
-            }`}
-          >
-            {paymentMethod === 'credit_card' && <div className="absolute inset-0 bg-gradient-to-b from-mecura-neon/10 to-transparent opacity-50" />}
-            <CreditCard className={`w-7 h-7 relative z-10 ${paymentMethod === 'credit_card' ? 'text-mecura-neon' : 'text-[#8A8A9E]'}`} />
-            <div className="text-center relative z-10">
-              <span className={`font-bold text-sm block ${paymentMethod === 'credit_card' ? 'text-white' : 'text-[#8A8A9E]'}`}>Cartão</span>
-              <span className="text-[10px] text-[#8A8A9E] font-medium mt-1 inline-block">Até 6x sem juros</span>
-            </div>
-          </button>
-        </div>
-
-        {paymentMethod === 'credit_card' && (
-          <motion.div 
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            className="space-y-5 pt-2"
-          >
-            <div>
-              <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Parcelamento</label>
-              <div className="relative">
-                <select className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all appearance-none font-medium">
-                  <option>1x de R$ {finalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</option>
-                  <option>2x de R$ {(finalTotal/2).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</option>
-                  <option>3x de R$ {(finalTotal/3).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</option>
-                  <option>6x de R$ {(finalTotal/6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</option>
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A9E] pointer-events-none" />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Número do Cartão</label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  placeholder="0000 0000 0000 0000"
-                  className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E] font-mono"
-                />
-                <CreditCard className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A4A5E]" />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Validade</label>
-                <input 
-                  type="text" 
-                  placeholder="MM/AA"
-                  className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E] font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">CVV</label>
-                <input 
-                  type="text" 
-                  placeholder="123"
-                  className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E] font-mono"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Nome no Cartão</label>
-              <input 
-                type="text" 
-                placeholder="Como impresso no cartão"
-                className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mecura-neon focus:ring-1 focus:ring-mecura-neon/50 transition-all placeholder:text-[#4A4A5E] uppercase"
-              />
-            </div>
-          </motion.div>
-        )}
       </div>
     </motion.div>
   );
 
   return (
-    <div className="min-h-[100dvh] bg-[#0A0A0F] text-mecura-pearl font-sans relative">
-      {/* Mobile constraint wrapper */}
-      <div className="max-w-md mx-auto min-h-[100dvh] bg-[#0A0A0F] relative shadow-2xl border-x border-[#1A1A26] pb-40">
-        
-        <header className="flex items-center gap-4 p-6 pt-8 sticky top-0 bg-[#0A0A0F]/90 backdrop-blur-xl z-50 border-b border-[#1A1A26]">
+    <div className="min-h-screen bg-[#0A0A0F] text-white">
+      {/* Top Header */}
+      <div className="sticky top-0 z-40 bg-[#0A0A0F]/80 backdrop-blur-xl border-b border-[#1A1A26]">
+        <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
           <button 
             onClick={() => {
-              if (step > 1) {
-                setStep(step - 1 as any);
-              } else if (location.state?.fromHighlights || sessionStorage.getItem('mecura_return_to_highlights') === 'true') {
-                sessionStorage.removeItem('mecura_return_to_highlights');
-                navigate('/dashboard', { state: { fromHighlights: true }, replace: true });
-              } else {
-                navigate(-1);
-              }
+              if (step > 1) setStep((step - 1) as any);
+              else navigate('/dashboard');
             }}
-            className="w-10 h-10 rounded-full bg-[#161622] flex items-center justify-center border border-[#262636] hover:border-mecura-neon/50 transition-colors group"
+            className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white hover:bg-[#202030] transition-colors"
           >
-            <ChevronLeft className="w-5 h-5 text-white group-hover:text-mecura-neon transition-colors" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-xl font-serif font-bold text-white tracking-tight">Farmácia GreenBudz</h1>
-            <p className="text-xs text-mecura-neon font-medium">Vendido e entregue por GreenBudz</p>
+          <div className="text-center">
+            <h1 className="font-serif font-bold text-base tracking-wide">
+              {hasImportedItems ? 'Farmácia GreenBudz' : 'Prescrição Médica'}
+            </h1>
+            <span className="text-[10px] text-mecura-neon font-medium block">
+              {hasImportedItems ? 'Vendido e entregue por GreenBudz' : 'Dispensação & Acompanhamento'}
+            </span>
           </div>
-        </header>
-
-        <div className="px-6 pt-6">
-          {renderStepIndicator()}
-
-          <AnimatePresence mode="wait">
-            {step === 1 && <motion.div key="step1">{renderCart()}</motion.div>}
-            {step === 2 && <motion.div key="step2">{renderAddress()}</motion.div>}
-            {step === 3 && <motion.div key="step3">{renderPayment()}</motion.div>}
-          </AnimatePresence>
+          <div className="w-10" />
         </div>
+      </div>
+
+      <div className="max-w-md mx-auto px-4 pt-6">
+        {hasImportedItems && renderStepIndicator()}
+
+        <AnimatePresence mode="wait">
+          {step === 1 && renderCart()}
+          {step === 2 && renderAddress()}
+        </AnimatePresence>
 
         {/* Sticky Bottom Action Bar */}
-        {prescriptionItems.length > 0 && (
+        {hasImportedItems ? (
           <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
             <div className="max-w-md mx-auto pointer-events-auto">
               <div className="bg-[#161622]/95 backdrop-blur-xl border border-[#262636] rounded-[28px] p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                 <div className="flex items-center justify-between mb-4 px-2">
                   <div className="flex flex-col">
-                    <span className="text-[11px] text-[#8A8A9E] font-medium uppercase tracking-wider">Total a pagar</span>
+                    <span className="text-[11px] text-[#8A8A9E] font-medium uppercase tracking-wider">Total do Pedido</span>
                     <div className="flex items-baseline gap-1">
                       <span className="text-sm font-bold text-white">R$</span>
                       <span className="text-2xl font-bold text-white tracking-tight">
@@ -731,66 +865,64 @@ export function PharmacyScreen() {
                       </span>
                     </div>
                   </div>
-                  {paymentMethod === 'pix' && step === 3 && (
-                    <div className="bg-mecura-neon/10 border border-mecura-neon/20 px-2.5 py-1 rounded-lg">
-                      <span className="text-[10px] font-bold text-mecura-neon">5% OFF APLICADO</span>
-                    </div>
-                  )}
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-lg">
+                    <span className="text-[10px] font-bold text-emerald-400">IMPORTAÇÃO OFICIAL</span>
+                  </div>
                 </div>
 
                 <motion.button 
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    if (step < 3) setStep(step + 1 as any);
-                    else {
-                      const finalTotal = totalBeforeDiscount - pixDiscount;
-                      
-                      let itemsText = prescriptionItems.map(item => {
-                        const qty = quantities[item.id] || 1;
-                        return `- ${qty}x ${item.name}`;
-                      }).join('\n');
-                      
-                      const addressText = `${address.street}, ${address.number} ${address.complement ? `(${address.complement})` : ''}
-${address.neighborhood}, ${address.city} - ${address.state}
-CEP: ${address.cep}`;
-                      
-                      const paymentMethodText = paymentMethod === 'pix' ? 'PIX' : `Cartão de Crédito (${installments}x)`;
-                      
-                      const message = `Olá, vim pelo aplicativo Mecura e gostaria de finalizar a compra da minha receita! 🌿
-
-📦 *ITENS DA PRESCRIÇÃO:*
-${itemsText}
-
-🚚 *ENTREGA:*
-Endereço:
-${addressText}
-
-💳 *PAGAMENTO:*
-Método escolhido: ${paymentMethodText}
-💰 *Valor Total: ${finalTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}*`;
-                      
-                      const whatsappUrl = `https://wa.me/5566996280883?text=${encodeURIComponent(message)}`;
-                      window.open(whatsappUrl, '_blank');
-                      navigate('/dashboard');
+                    if (step === 1) {
+                      setStep(2);
+                    } else {
+                      handleSendWhatsAppOrder();
                     }
                   }}
-                  className="w-full bg-mecura-neon text-[#0A0A0F] font-bold py-4 rounded-2xl hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.2)] flex items-center justify-center gap-2 text-[15px]"
+                  className={`w-full font-bold py-4 rounded-2xl transition-all shadow-[0_0_25px_rgba(166,255,0,0.25)] flex items-center justify-center gap-2.5 text-[15px] cursor-pointer ${
+                    step === 1
+                      ? 'bg-mecura-neon text-[#0A0A0F] hover:bg-[#b5ff33]'
+                      : 'bg-[#25D366] text-white hover:bg-[#20ba59] shadow-[0_0_25px_rgba(37,211,102,0.35)]'
+                  }`}
                 >
-                  {step === 1 ? 'Continuar para Entrega' : step === 2 ? 'Ir para Pagamento' : 'Confirmar Compra Segura'}
-                  {step === 3 ? <CheckCircle2 className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                  {step === 1 ? (
+                    <>
+                      <span>Continuar para Endereço de Entrega</span>
+                      <ChevronRight className="w-5 h-5" />
+                    </>
+                  ) : (
+                    <>
+                      <WhatsAppIcon className="w-5 h-5 fill-current" />
+                      <span>Solicitar Pedido no WhatsApp</span>
+                    </>
+                  )}
                 </motion.button>
                 
-                {step === 3 && (
-                  <div className="flex items-center justify-center gap-1.5 mt-3 text-[#6A6A7E]">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span className="text-[10px] font-medium">Pagamento 100% seguro processado por Stone</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-center gap-1.5 mt-2.5 text-[#8A8A9E]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-mecura-neon" />
+                  <span className="text-[10px]">
+                    {step === 1 ? 'Processo de importação legalizado pela Anvisa' : 'Atendimento e suporte direto com a equipe oficial'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        )}
+        ) : hasAssociacaoItems ? (
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+            <div className="max-w-md mx-auto pointer-events-auto">
+              <div className="bg-[#161622]/95 backdrop-blur-xl border border-emerald-500/30 rounded-[28px] p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0A0A0F] font-bold py-4 rounded-2xl transition-colors shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-2 text-[15px]"
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  Voltar ao Painel do Paciente
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
       </div>
     </div>

@@ -5,6 +5,8 @@ import { useStore } from '../store/useStore';
 import { ChevronLeft, Calendar, ChevronRight, Lock, AlertCircle, ShieldAlert, CheckCircle, Sparkles, Clock, Moon, Sunrise, Sun, Sunset } from 'lucide-react';
 import { format, isPast, isSameDay, startOfMonth, addMonths, isSameMonth } from 'date-fns';
 import { ALL_24H_TIME_SLOTS, TIME_PERIODS, TimePeriodId } from '../utils/schedulingSlots';
+import { db } from '../firebase';
+import { addDoc, collection } from 'firebase/firestore';
 
 export function SchedulingScreen() {
   const navigate = useNavigate();
@@ -77,7 +79,7 @@ export function SchedulingScreen() {
   const selectedDayBlockedInfo = selectedDateStr ? blockedDates.find(b => b.date === selectedDateStr) : null;
   const isSelectedDateFullyBlocked = selectedDayBlockedInfo?.fullDay ?? false;
 
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (selectedDate && selectedTime && !isSelectedDateFullyBlocked) {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       setScheduledConsultation({
@@ -89,8 +91,22 @@ export function SchedulingScreen() {
         patientName: userName || 'Paciente',
         date: dateStr,
         time: selectedTime,
-        type: 'Acompanhamento Premium'
+        type: 'Acompanhamento Premium',
+        isPremium: true,
+        plan: 'premium'
       });
+      try {
+        await addDoc(collection(db, 'payments'), {
+          type: 'Consulta Premium',
+          value: 249.90,
+          date: new Date().toISOString(),
+          patientName: userName || 'Paciente',
+          appointmentDate: dateStr,
+          appointmentTime: selectedTime
+        });
+      } catch (e) {
+        console.error("Erro ao registrar pagamento premium do agendamento:", e);
+      }
       navigate('/confirmation');
     }
   };

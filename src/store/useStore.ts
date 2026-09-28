@@ -59,6 +59,7 @@ export interface Message {
     dosage: string[];
     description: string;
     priceUSD?: number;
+    priceBRL?: number;
   };
 }
 
@@ -111,6 +112,10 @@ interface AppState {
     time: string;
     status: 'pending' | 'confirmed' | 'cancelled';
     type: string;
+    isPremium?: boolean;
+    plan?: string;
+    patientId?: string;
+    patientEmail?: string;
   }>;
   blockedDates: BlockedDate[];
   blockDate: (date: string, reason?: string, fullDay?: boolean, times?: string[]) => Promise<void>;
@@ -118,7 +123,7 @@ interface AppState {
   blockMonth: (yearMonth: string, reason?: string) => Promise<void>;
   unblockMonth: (yearMonth: string) => Promise<void>;
   subscribeToBlockedDates: () => () => void;
-  addAppointment: (appointment: { patientName: string; date: string; time: string; type: string; status?: 'pending' | 'confirmed' | 'cancelled' }) => void;
+  addAppointment: (appointment: { patientName: string; date: string; time: string; type: string; status?: 'pending' | 'confirmed' | 'cancelled'; isPremium?: boolean; plan?: string; patientId?: string; patientEmail?: string }) => void;
   confirmAppointment: (id: string) => void;
   cancelAppointment: (id: string, reason?: string) => void;
   rescheduleAppointment: (id: string, date: string, time: string) => Promise<void>;
@@ -145,6 +150,7 @@ interface AppState {
     phone?: string;
     isPremium?: boolean;
     plan?: string;
+    tier?: string;
     isAlerted?: number | boolean;
   }>;
   joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string; isPremium?: boolean; plan?: string }) => Promise<void>;
@@ -222,8 +228,15 @@ export const useStore = create<AppState>((set, get) => ({
     answers: { ...state.answers, [key]: value } 
   })),
   
-  pagamento_consulta: typeof window !== 'undefined' ? localStorage.getItem('mecura_pagamento') === 'true' : false,
-  setPagamentoConsulta: (status) => { if (typeof window !== 'undefined') { localStorage.setItem('mecura_pagamento', status.toString()); } set({ pagamento_consulta: status }); if (status) set({ isConsultationFinished: false }); },
+  pagamento_consulta: typeof window !== 'undefined' ? (localStorage.getItem('mecura_pagamento') === 'true' || localStorage.getItem('mecura_consultation_active') === 'true') : false,
+  setPagamentoConsulta: (status) => { 
+    if (typeof window !== 'undefined') { 
+      if (status) localStorage.setItem('mecura_pagamento', 'true');
+      else localStorage.removeItem('mecura_pagamento'); 
+    } 
+    set({ pagamento_consulta: status }); 
+    if (status) set({ isConsultationFinished: false }); 
+  },
   pagamento_premium: false,
   setPagamentoPremium: (status) => { set({ pagamento_premium: status }); if (status) set({ isConsultationFinished: false }); },
   selectedOffer: null,
@@ -672,7 +685,10 @@ export const useStore = create<AppState>((set, get) => ({
                 showNativeNotification('Consulta Iniciada!', 'O médico te chamou para a consulta. Clique para abrir.', '/chat');
               });
             }
-            if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_pagamento', 'true');
+              localStorage.setItem('mecura_consultation_active', 'true');
+            }
             set({
               consultationActive: true,
               inQueue: false,
@@ -681,7 +697,10 @@ export const useStore = create<AppState>((set, get) => ({
               pagamento_consulta: true
             });
           } else if (myEntry.status === 'finished') {
-            if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('mecura_pagamento');
+              localStorage.removeItem('mecura_consultation_active');
+            }
             set({
               isConsultationFinished: true,
               consultationActive: false,
@@ -690,6 +709,9 @@ export const useStore = create<AppState>((set, get) => ({
               activeConsultationId: resolvedConsultationId
             });
           } else {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_pagamento', 'true');
+            }
             set({
               queuePosition: myIndex, // 0 means next
               estimatedWaitTime: Math.max(1, myIndex + 1) * 15,
@@ -735,7 +757,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
   
-  consultationActive: false,
+  consultationActive: typeof window !== 'undefined' ? (localStorage.getItem('mecura_consultation_active') === 'true') : false,
   isConsultationFinished: false,
   fetchConsultationHistory: async (patientId) => {
     try {
@@ -875,9 +897,15 @@ export const useStore = create<AppState>((set, get) => ({
     const prevId = get().activeConsultationId;
     const isSwitchingPatient = !!(patientId && prevId && patientId !== prevId);
 
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_consultation_active', 'true');
+      localStorage.setItem('mecura_pagamento', 'true');
+    }
+
     set({ 
       consultationActive: true, 
       inQueue: false,
+      pagamento_consulta: true,
       ...(isSwitchingPatient ? { messages: [] } : {}),
       ...(patientId ? { activeConsultationId: patientId } : {})
     });
@@ -976,6 +1004,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_pagamento');
+      localStorage.removeItem('mecura_consultation_active');
     }
 
     set((state) => ({ 
@@ -991,14 +1020,20 @@ export const useStore = create<AppState>((set, get) => ({
     }));
   },
   setIsConsultationFinished: (status) => set({ isConsultationFinished: status }),
-  resetConsultation: () => { if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento'); return set({ 
-    consultationActive: false, 
-    isConsultationFinished: false,
-    pagamento_consulta: false, 
-    inQueue: false,
-    answers: { objectives: [] }, 
-    messages: [] 
-  }) },
+  resetConsultation: () => { 
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('mecura_pagamento');
+      localStorage.removeItem('mecura_consultation_active');
+    }
+    return set({ 
+      consultationActive: false, 
+      isConsultationFinished: false,
+      pagamento_consulta: false, 
+      inQueue: false,
+      answers: { objectives: [] }, 
+      messages: [] 
+    });
+  },
   
   messages: [],
   addMessage: async (msg, customConsultationId?: string) => {
@@ -1284,17 +1319,25 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setMessages: (messages) => set({ messages }),
 
-  exchangeRate: 5.0,
-  setExchangeRate: (rate) => set({ exchangeRate: rate }),
+  exchangeRate: typeof window !== 'undefined' && localStorage.getItem('mecura_exchange_rate') 
+    ? (parseFloat(localStorage.getItem('mecura_exchange_rate')!) || 5.0) 
+    : 5.0,
+  setExchangeRate: (rate) => {
+    if (typeof window !== 'undefined') localStorage.setItem('mecura_exchange_rate', rate.toString());
+    set({ exchangeRate: rate });
+  },
   subscribeToExchangeRate: () => {
     const docRef = doc(db, 'settings', 'exchangeRate');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        console.log('Exchange rate updated from Firestore:', data.rate);
-        set({ exchangeRate: data.rate });
+        const numRate = typeof data.rate === 'number' ? data.rate : parseFloat(data.rate);
+        if (!isNaN(numRate) && numRate > 0) {
+          console.log('Exchange rate updated from Firestore:', numRate);
+          if (typeof window !== 'undefined') localStorage.setItem('mecura_exchange_rate', numRate.toString());
+          set({ exchangeRate: numRate });
+        }
       } else {
-        // If document doesn't exist, create it with default value
         console.log('Exchange rate document does not exist, using default 5.0');
         set({ exchangeRate: 5.0 });
       }
@@ -1303,13 +1346,17 @@ export const useStore = create<AppState>((set, get) => ({
     });
     return unsubscribe;
   },
-  updateExchangeRate: async (rate) => {
+  updateExchangeRate: async (rate: number | string) => {
+    const numRate = typeof rate === 'number' ? rate : parseFloat(String(rate).replace(',', '.'));
+    if (isNaN(numRate) || numRate <= 0) return;
+    
     const path = 'settings/exchangeRate';
     try {
-      console.log('Updating exchange rate to:', rate);
+      console.log('Updating exchange rate to:', numRate);
+      if (typeof window !== 'undefined') localStorage.setItem('mecura_exchange_rate', numRate.toString());
+      set({ exchangeRate: numRate });
       const docRef = doc(db, 'settings', 'exchangeRate');
-      await setDoc(docRef, { rate, updatedAt: new Date().toISOString() });
-      // Local state will be updated by the onSnapshot listener
+      await setDoc(docRef, { rate: numRate, updatedAt: new Date().toISOString() });
       console.log('Exchange rate update request sent to Firestore');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);

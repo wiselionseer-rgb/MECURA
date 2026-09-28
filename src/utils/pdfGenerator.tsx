@@ -19,6 +19,10 @@ export interface PrescriptionItemData {
   administrationRoute?: string;
   dosage: string[];
   description?: string;
+  priceUSD?: number;
+  priceBRL?: number;
+  image?: string;
+  details?: string[];
 }
 
 export interface PatientPrescriptionData {

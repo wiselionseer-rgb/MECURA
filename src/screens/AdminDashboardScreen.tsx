@@ -84,13 +84,41 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [mpStatus, setMpStatus] = useState<{ configured: boolean; tokenPrefix: string | null } | null>(null);
   const [mpInputToken, setMpInputToken] = useState('');
   const [isSavingMpToken, setIsSavingMpToken] = useState(false);
+  const [isSyncingMpPayments, setIsSyncingMpPayments] = useState(false);
 
   useEffect(() => {
     fetch('/api/mercadopago-status')
       .then(res => res.json())
       .then(data => setMpStatus(data))
       .catch(() => {});
+
+    // Sincroniza pagamentos reais do Mercado Pago automaticamente ao abrir o painel
+    fetch('/api/mercadopago-payments').catch(() => {});
   }, []);
+
+  const handleSyncMpPayments = async () => {
+    setIsSyncingMpPayments(true);
+    try {
+      const res = await fetch('/api/mercadopago-payments');
+      const data = await res.json();
+      if (data.configured) {
+        setSupportToastMessage(`${data.count || 0} pagamentos sincronizados com o Mercado Pago!`);
+        setShowSupportToast(true);
+        setTimeout(() => setShowSupportToast(false), 3000);
+      } else {
+        setSupportToastMessage('Token do Mercado Pago não configurado.');
+        setShowSupportToast(true);
+        setTimeout(() => setShowSupportToast(false), 3000);
+      }
+    } catch (e) {
+      console.error(e);
+      setSupportToastMessage('Erro ao sincronizar com Mercado Pago.');
+      setShowSupportToast(true);
+      setTimeout(() => setShowSupportToast(false), 3000);
+    } finally {
+      setIsSyncingMpPayments(false);
+    }
+  };
   const handleDeleteNotification = async (id: string) => {
     deleteNotification(id);
     try {
@@ -146,7 +174,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const productCategories = useMemo(() => {
     return mergeProductCatalogs(cbdGuideData, rawProductCategories, cloudCategories);
   }, [rawProductCategories, cloudCategories]);
-  const { queue, subscribeToQueue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
+  const { queue, subscribeToQueue, allAppointments, subscribeToAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
   const passwordRequests = supportRequests.filter(req => req.userId === 'recovery');
@@ -227,8 +255,9 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       setPatients(usersData);
     });
 
-    // Subscribe to global queue store instead of raw query
+    // Subscribe to global queue store and appointments
     const unsubscribeQueueStore = subscribeToQueue();
+    const unsubscribeAppointmentsStore = subscribeToAppointments();
     // Fetch queue count
     const qQueue = query(collection(db, 'queue'));
     const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
@@ -240,17 +269,14 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenueTotal = revenueFila + revenuePremium;
-
-  return () => {
+    return () => {
       unsubscribeUsers();
       if(unsubscribeQueueStore) unsubscribeQueueStore();
+      if(unsubscribeAppointmentsStore) unsubscribeAppointmentsStore();
       unsubscribeQueue();
       unsubscribePayments();
     };
-  }, [subscribeToQueue]);
+  }, [subscribeToQueue, subscribeToAppointments]);
 
   const [showSupportToast, setShowSupportToast] = useState(false);
   const [supportToastMessage, setSupportToastMessage] = useState("");
@@ -269,11 +295,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       
       setSupportRequests(activeRequests);
     });
-    const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenueTotal = revenueFila + revenuePremium;
 
-  return () => unsubscribe();
+    return () => unsubscribe();
   }, [supportRequests.length]);
 
   // Modals state
@@ -566,8 +589,30 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     }
   };
 
-  const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
+  // Comprehensive payment and revenue calculations strictly from Mercado Pago payments
+  const isPremiumPayment = (p: any) => {
+    const t = (p.type || '').toLowerCase();
+    const pl = (p.plan || '').toLowerCase();
+    const desc = (p.description || '').toLowerCase();
+    return t.includes('premium') || t.includes('vip') || t.includes('acompanhamento') || 
+           pl.includes('premium') || pl.includes('vip') || 
+           desc.includes('premium') || desc.includes('vip') ||
+           p.isPremium === true ||
+           (p.value && Number(p.value) >= 150);
+  };
+
+  const isBasicPayment = (p: any) => !isPremiumPayment(p);
+
+  // Consider strictly approved/recorded payments from Mercado Pago:
+  const recordedBasicPayments = payments.filter(p => isBasicPayment(p) && (!p.status || p.status === 'approved' || p.status === 'completed'));
+  const recordedPremiumPayments = payments.filter(p => isPremiumPayment(p) && (!p.status || p.status === 'approved' || p.status === 'completed'));
+
+  const paidBasicCount = recordedBasicPayments.length;
+  const paidPremiumCount = recordedPremiumPayments.length;
+  const totalConsultasPagas = paidBasicCount + paidPremiumCount;
+
+  const revenueFila = recordedBasicPayments.reduce((acc, p) => acc + (Number(p.value) || 49.90), 0);
+  const revenuePremium = recordedPremiumPayments.reduce((acc, p) => acc + (Number(p.value) || 249.90), 0);
   const revenueTotal = revenueFila + revenuePremium;
 
   return (
@@ -593,11 +638,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           { id: 'legal', label: 'Jurídico & LGPD', icon: Scale }
         ].map((tab) => {
           const Icon = tab.icon;
-          const revenueFila = payments.filter(p => p.type === 'Consulta Básica').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenuePremium = payments.filter(p => p.type === 'Consulta Premium').reduce((acc, p) => acc + (p.value || 0), 0);
-  const revenueTotal = revenueFila + revenuePremium;
 
-  return (
+          return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
@@ -618,7 +660,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
         <div className="mt-auto pt-4 border-t border-white/5">
           <button
             onClick={() => navigate('/')}
-            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10"
+            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 cursor-pointer"
           >
             <LogOut className="w-5 h-5" />
             Sair do Painel
@@ -630,23 +672,42 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       <div className="flex-1 p-6 md:p-12 overflow-y-auto">
         {activeTab === 'overview' && (
           <div className="max-w-4xl mx-auto space-y-6">
-            <h2 className="text-2xl font-bold mb-6">Visão Geral</h2>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-bold">Visão Geral</h2>
+                <p className="text-sm text-[#8A8A9E]">Métricas calculadas exclusivamente a partir de pagamentos reais no Mercado Pago</p>
+              </div>
+              <button
+                onClick={handleSyncMpPayments}
+                disabled={isSyncingMpPayments}
+                className="flex items-center gap-2 bg-[#161622] hover:bg-[#1f1f2e] border border-mecura-neon/40 text-mecura-neon text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                title="Buscar pagamentos aprovados recentes na API do Mercado Pago"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncingMpPayments ? 'animate-spin' : ''}`} />
+                {isSyncingMpPayments ? 'Sincronizando...' : 'Sincronizar Mercado Pago'}
+              </button>
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Total Consultas</div>
-                <div className="text-3xl font-bold text-white">{allAppointments.length + queueCount}</div>
+                <div className="text-[#8A8A9E] mb-2">Total Consultas Pagas</div>
+                <div className="text-3xl font-bold text-white">{totalConsultasPagas}</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">{paidBasicCount} Básicas + {paidPremiumCount} Premium</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
                 <div className="text-[#8A8A9E] mb-2">Consultas Básicas (Pagas)</div>
-                <div className="text-3xl font-bold text-mecura-neon">{payments.filter(p => p.type === 'Consulta Básica').length}</div>
+                <div className="text-3xl font-bold text-mecura-neon">{paidBasicCount}</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">R$ 49,90 cada</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
                 <div className="text-[#8A8A9E] mb-2">Consultas Premium (Pagas)</div>
-                <div className="text-3xl font-bold text-purple-400">{payments.filter(p => p.type === 'Consulta Premium').length}</div>
+                <div className="text-3xl font-bold text-purple-400">{paidPremiumCount}</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">R$ 249,90 cada</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Pacientes</div>
+                <div className="text-[#8A8A9E] mb-2">Pacientes Cadastrados</div>
                 <div className="text-3xl font-bold text-white">{patients.length}</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">Base total cadastrada</div>
               </div>
             </div>
 
@@ -657,18 +718,21 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 <div className="text-3xl font-bold text-mecura-neon">
                   {revenueFila.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
+                <div className="text-xs text-[#8A8A9E] mt-1">{paidBasicCount} consultas a R$ 49,90</div>
               </div>
               <div className="bg-gradient-to-br from-[#161622] to-[#2e1a2b] p-6 rounded-2xl border border-purple-500/30">
                 <div className="text-[#8A8A9E] mb-2">Receita Premium (Mercado Pago)</div>
                 <div className="text-3xl font-bold text-purple-400">
                   {revenuePremium.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
+                <div className="text-xs text-[#8A8A9E] mt-1">{paidPremiumCount} consultas a R$ 249,90</div>
               </div>
               <div className="bg-gradient-to-br from-[#161622] to-[#262636] p-6 rounded-2xl border border-white/20">
                 <div className="text-[#8A8A9E] mb-2">Faturamento Total</div>
                 <div className="text-3xl font-bold text-white">
                   {revenueTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
+                <div className="text-xs text-[#8A8A9E] mt-1">{totalConsultasPagas} pagamentos confirmados</div>
               </div>
             </div>
             <h3 className="text-xl font-bold mt-12 mb-4">Configurações Financeiras</h3>
@@ -676,25 +740,28 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               <div className="text-[#8A8A9E] mb-2 font-medium">Cotação do Dólar (R$)</div>
               <div className="flex gap-4">
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  defaultValue={exchangeRate}
+                  type="text"
+                  key={exchangeRate}
+                  defaultValue={exchangeRate.toFixed(2)}
                   id="exchange-rate-input"
+                  placeholder="Ex: 5.00 ou 2,50"
                   className="bg-[#0A0A0F] text-white border border-[#262636] rounded-xl px-4 py-3 flex-1 focus:outline-none focus:border-mecura-neon"
                 />
                 <button
                   onClick={() => {
                     const el = document.getElementById('exchange-rate-input') as HTMLInputElement;
                     if (el) {
-                      const val = parseFloat(el.value);
+                      const clean = el.value.trim().replace(',', '.');
+                      const val = parseFloat(clean);
                       if (!isNaN(val) && val > 0) {
                         updateExchangeRate(val);
-                        setSupportToastMessage('Cotação salva com sucesso!');
+                        setSupportToastMessage(`Cotação R$ ${val.toFixed(2)} salva com sucesso!`);
+                      } else {
+                        setSupportToastMessage('Por favor insira um valor válido de cotação.');
                       }
                     }
                   }}
-                  className="bg-mecura-neon text-black font-bold px-6 py-3 rounded-xl hover:bg-[#b5ff33] transition-colors whitespace-nowrap"
+                  className="bg-mecura-neon text-black font-bold px-6 py-3 rounded-xl hover:bg-[#b5ff33] transition-colors whitespace-nowrap cursor-pointer"
                 >
                   Salvar
                 </button>
