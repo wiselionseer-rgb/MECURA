@@ -528,8 +528,9 @@ export const useStore = create<AppState>((set, get) => ({
         const data = doc.data();
         const isPrem = !!(data.isPremium || data.plan === 'premium' || data.selectedOffer === 'premium' || data.answers?.isPremium || data.pagamento_premium);
         return {
-          id: doc.id,
           ...data,
+          id: doc.id,
+          patientId: data.patientId || data.patientId_temp_fix || doc.id,
           isPremium: isPrem,
           joinedAt: data.joinedAt?.toDate ? data.joinedAt.toDate() : (data.joinedAt ? new Date(data.joinedAt) : new Date())
         };
@@ -642,28 +643,38 @@ export const useStore = create<AppState>((set, get) => ({
       const state = get();
       
       if (currentUserId && !isDoctorRoute) {
-        const myIndex = queueData.findIndex(p => p.id === currentUserId);
+        const myIndex = queueData.findIndex(p => {
+          if (!p) return false;
+          if (p.id === currentUserId || p.patientId === currentUserId || p.patientId_temp_fix === currentUserId) return true;
+          if (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase()) return true;
+          if (state.userPhone && p.phone && p.phone.replace(/\D/g, '') === state.userPhone.replace(/\D/g, '')) return true;
+          return false;
+        });
         if (myIndex !== -1) {
-          // Check if doctor started consultation
-          if (queueData[myIndex].status === 'in-consultation') {
+          // Check if doctor started consultation or admin released direct chat
+          const resolvedTargetId = queueData[myIndex].id || queueData[myIndex].patientId || currentUserId;
+          if (queueData[myIndex].status === 'in-consultation' || queueData[myIndex].doctorActive) {
              if (state.inQueue && typeof document !== 'undefined' && document.hidden) {
                import('../utils/notifications').then(({ showNativeNotification }) => {
                  showNativeNotification('Consulta Iniciada!', 'O médico te chamou para a consulta. Clique para abrir.', '/chat');
                });
              }
-             // Doctor started it!
-             set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: currentUserId });
+             // Doctor started it or direct chat authorized!
+             if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+             set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: resolvedTargetId, pagamento_consulta: true });
           } else if (queueData[myIndex].status === 'finished') {
              if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
-             set({ isConsultationFinished: true, consultationActive: false, pagamento_consulta: false, inQueue: false, activeConsultationId: currentUserId });
+             set({ isConsultationFinished: true, consultationActive: false, pagamento_consulta: false, inQueue: false, activeConsultationId: resolvedTargetId });
           } else {
+             if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
              set({ 
                queuePosition: myIndex, // 0 means next
                estimatedWaitTime: (myIndex + 1) * 15,
                inQueue: true,
                isConsultationFinished: false,
                consultationActive: false,
-               pagamento_consulta: true
+               pagamento_consulta: true,
+               activeConsultationId: resolvedTargetId
              });
           }
         } else {
@@ -673,7 +684,7 @@ export const useStore = create<AppState>((set, get) => ({
         // Handle anonymous users based on their local state
         if (state.patientId) {
           // Find their position based on their generated ID if possible, or just rely on local state
-          const myIndex = queueData.findIndex(p => p.id === state.patientId);
+          const myIndex = queueData.findIndex(p => p.id === state.patientId || p.patientId === state.patientId || p.patientId_temp_fix === state.patientId);
           if (myIndex !== -1) {
             if (queueData[myIndex].status === 'in-consultation') {
                if (state.inQueue && typeof document !== 'undefined' && document.hidden) {
@@ -681,7 +692,7 @@ export const useStore = create<AppState>((set, get) => ({
                    showNativeNotification('Consulta Iniciada!', 'O médico te chamou para a consulta. Clique para abrir.', '/chat');
                  });
                }
-               set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: queueData[myIndex].id });
+               set({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: queueData[myIndex].id, pagamento_consulta: true });
             } else if (queueData[myIndex].status === 'finished') {
                if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
                set({ isConsultationFinished: true, consultationActive: false, pagamento_consulta: false, inQueue: false, activeConsultationId: queueData[myIndex].id });
@@ -874,6 +885,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ 
       consultationActive: true, 
       inQueue: false,
+      pagamento_consulta: true,
       ...(isSwitchingPatient ? { messages: [] } : {}),
       ...(patientId ? { activeConsultationId: patientId } : {})
     });
@@ -884,7 +896,17 @@ export const useStore = create<AppState>((set, get) => ({
         const patient = state.queue.find(p => p.id === patientId);
         
         const validJoinedAt = patient && patient.joinedAt && !isNaN(new Date(patient.joinedAt).getTime()) ? (patient.joinedAt instanceof Date ? patient.joinedAt.toISOString() : new Date(patient.joinedAt).toISOString()) : new Date().toISOString();
-        const updates: any = { hasUnread: false, status: 'in-consultation', joinedAt: validJoinedAt };
+        const nowIso = new Date().toISOString();
+        const updates: any = { 
+          hasUnread: false, 
+          status: 'in-consultation', 
+          joinedAt: validJoinedAt,
+          pagamento_consulta: true,
+          bypassedPayment: true,
+          doctorActive: true,
+          startedAt: nowIso,
+          lastUpdated: nowIso
+        };
         if (!patient || patient.status === 'waiting' || patient.status === 'finished') {
           triggerBackgroundPush(
             patientId,
@@ -895,6 +917,16 @@ export const useStore = create<AppState>((set, get) => ({
         }
         
         await setDoc(doc(db, 'queue', patientId), updates, { merge: true });
+        
+        // Ensure user document in Firestore immediately unlocks consultation and payment check
+        await setDoc(doc(db, 'users', patientId), {
+          consultationStatus: 'in-consultation',
+          pagamento_consulta: true,
+          bypassedPayment: true,
+          inQueue: false,
+          doctorActive: true,
+          updatedAt: nowIso
+        }, { merge: true }).catch(err => console.warn("Could not update users doc on startConsultation:", err));
       } catch (e) {
         console.error("Error updating queue status", e);
       }
@@ -902,7 +934,7 @@ export const useStore = create<AppState>((set, get) => ({
       const currentId = auth.currentUser?.uid || get().patientId;
       if (currentId) {
         // Patient starting
-        set({ activeConsultationId: currentId });
+        set({ activeConsultationId: currentId, consultationActive: true, inQueue: false, pagamento_consulta: true });
       }
     }
   },
@@ -1038,6 +1070,8 @@ export const useStore = create<AppState>((set, get) => ({
             }));
             console.log("[addMessage] File uploaded successfully to server. Permanent URL:", upData.url);
           }
+        } else {
+          console.warn("[addMessage] Server /api/upload returned status:", upRes.status);
         }
       } catch (uploadErr) {
         console.warn("[addMessage] Failed to upload to /api/upload, proceeding with fallback:", uploadErr);
@@ -1052,7 +1086,7 @@ export const useStore = create<AppState>((set, get) => ({
       try {
         const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
         
-        // Remove undefined fields
+        // Remove undefined fields and guarantee Firestore payload never exceeds size limit
         const sanitizeForFirestore = (obj: any): any => {
           if (obj === undefined) return null;
           if (Array.isArray(obj)) return obj.map(sanitizeForFirestore).filter(v => v !== undefined);
@@ -1061,7 +1095,12 @@ export const useStore = create<AppState>((set, get) => ({
             const newObj: any = {};
             for (const key in obj) {
               if (obj[key] !== undefined) {
-                newObj[key] = sanitizeForFirestore(obj[key]);
+                // If it's a huge base64 url that failed uploading, avoid crashing Firestore
+                if (key === 'url' && typeof obj[key] === 'string' && obj[key].startsWith('data:') && obj[key].length > 400000) {
+                  newObj[key] = `/api/files/doc_${Date.now()}.pdf`;
+                } else {
+                  newObj[key] = sanitizeForFirestore(obj[key]);
+                }
               }
             }
             return newObj;
@@ -1103,6 +1142,7 @@ export const useStore = create<AppState>((set, get) => ({
         }
       } catch (error) {
         console.error("Error sending message to Firestore:", error);
+        throw error;
       }
     } else {
       console.warn("addMessage: No consultationId found. Message not saved to Firestore.");

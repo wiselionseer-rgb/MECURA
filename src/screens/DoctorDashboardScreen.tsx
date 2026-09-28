@@ -137,7 +137,7 @@ export function DoctorDashboardScreen() {
   const { 
     userName, userCpf, userBirthDate, userPhone, answers, messages, 
     addMessage, deleteMessage, clearPrescriptionMessages, 
-    consultationActive, endConsultation, resetConsultation, setSelectedOffer, 
+    consultationActive, activeConsultationId, endConsultation, resetConsultation, setSelectedOffer, 
     allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
     subscribeToMessages, subscribeToAppointments,
     consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages
@@ -376,6 +376,7 @@ export function DoctorDashboardScreen() {
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento'>('receita');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queuePlanFilter, setQueuePlanFilter] = useState<'all' | 'premium' | 'basic'>('all');
@@ -547,6 +548,30 @@ export function DoctorDashboardScreen() {
     startConsultation(patient.id);
     subscribeToMessages(patient.id);
     
+    // Ensure patient document in Firestore immediately has access to chat released
+    try {
+      const nowIso = new Date().toISOString();
+      setDoc(doc(db, 'queue', patient.id), {
+        status: 'in-consultation',
+        doctorActive: true,
+        pagamento_consulta: true,
+        bypassedPayment: true,
+        startedAt: nowIso,
+        lastUpdated: nowIso
+      }, { merge: true }).catch(err => console.warn("Error updating queue on consultation start:", err));
+
+      setDoc(doc(db, 'users', patient.id), {
+        consultationStatus: 'in-consultation',
+        pagamento_consulta: true,
+        bypassedPayment: true,
+        inQueue: false,
+        doctorActive: true,
+        updatedAt: nowIso
+      }, { merge: true }).catch(err => console.warn("Error updating users on consultation start:", err));
+    } catch (err) {
+      console.warn("Could not sync consultation release in Firestore:", err);
+    }
+    
     // Auto-greeting if the patient was just waiting
     if (patient.status === 'waiting') {
       setTimeout(() => {
@@ -705,32 +730,38 @@ export function DoctorDashboardScreen() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      setIsUploadingAttachment(true);
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
+        const rawDataUrl = reader.result as string;
         setPendingAttachment({
           name: file.name,
-          url: reader.result as string,
-          type: file.type,
+          url: rawDataUrl,
+          type: file.type || 'application/pdf',
           docType: selectedUploadDocType
         });
 
-        // Pre-upload in background to avoid any delay when doctor clicks send
+        // Pre-upload immediately to server so permanent URL is stored
         try {
-          fetch('/api/upload', {
+          const upRes = await fetch('/api/upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               filename: file.name,
-              data: reader.result as string,
-              type: file.type
+              data: rawDataUrl,
+              type: file.type || 'application/pdf'
             })
-          }).then(res => res.ok ? res.json() : null).then(data => {
+          });
+          if (upRes.ok) {
+            const data = await upRes.json();
             if (data?.url) {
               setPendingAttachment(prev => (prev && prev.name === file.name) ? { ...prev, url: data.url } : prev);
             }
-          }).catch(err => console.warn("Background upload error:", err));
-        } catch (e) {
-          console.warn("Background upload setup error:", e);
+          }
+        } catch (uploadErr) {
+          console.warn("Background upload error:", uploadErr);
+        } finally {
+          setIsUploadingAttachment(false);
         }
       };
       reader.readAsDataURL(file);
@@ -742,9 +773,20 @@ export function DoctorDashboardScreen() {
   const handleSendAttachment = async (customAttachment = pendingAttachment) => {
     if (!customAttachment || isSendingAttachment) return;
 
+    const targetPatientId = currentPatient?.id || activeConsultationId;
+    if (!targetPatientId) {
+      alert("Por favor, selecione um paciente para enviar o documento.");
+      return;
+    }
+
     setIsSendingAttachment(true);
     try {
       let finalAttachment = { ...customAttachment };
+
+      // If background upload is still finishing, wait briefly
+      if (isUploadingAttachment) {
+        await new Promise(r => setTimeout(r, 600));
+      }
 
       // If still a base64 data URL, upload to server now to guarantee it never exceeds Firestore's 1MB limit
       if (finalAttachment.url && finalAttachment.url.startsWith('data:')) {
@@ -763,9 +805,12 @@ export function DoctorDashboardScreen() {
             if (upData.url) {
               finalAttachment.url = upData.url;
             }
+          } else {
+            throw new Error("Erro no servidor ao salvar anexo.");
           }
-        } catch (uploadErr) {
-          console.warn("Direct upload error during send:", uploadErr);
+        } catch (uploadErr: any) {
+          console.error("Direct upload error during send:", uploadErr);
+          throw new Error("Não foi possível enviar o arquivo ao servidor. Tente novamente.");
         }
       }
 
@@ -800,12 +845,96 @@ export function DoctorDashboardScreen() {
           docType: docType,
           title: finalAttachment.title || defaultTitle
         }
-      }, currentPatient?.id);
+      }, targetPatientId);
 
+      // Only clear attachment if message was successfully saved to Firestore
       setPendingAttachment(null);
       setInputText('');
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error sending attachment:", err);
+      alert(`Não foi possível enviar o anexo: ${err.message || 'Erro inesperado'}. O documento foi mantido para você tentar novamente.`);
+    } finally {
+      setIsSendingAttachment(false);
+    }
+  };
+
+  const handleEmitAndAttachPrescription = async () => {
+    const targetPatientId = currentPatient?.id || activeConsultationId;
+    if (!targetPatientId) {
+      alert("Por favor, selecione um paciente para emitir a receita.");
+      return;
+    }
+    const targetPatientName = currentPatient?.patientName || userName || 'Paciente';
+
+    setIsSendingAttachment(true);
+    try {
+      const blob = await generatePrescriptionPDF(targetPatientName, messages, {
+        returnBlob: true,
+        customPatientName: prescPatientName || targetPatientName,
+        birthDate: prescBirthDate || currentPatient?.birthDate || userBirthDate,
+        cpf: prescCpf || currentPatient?.cpf || userCpf,
+        emissionDate: prescEmissionDate,
+        customDoctorName: prescDoctorName,
+        customDoctorCrm: prescDoctorCrm,
+        customDoctorSpecialty: prescDoctorSpecialty,
+        customItems: prescItems.length > 0 ? prescItems : undefined,
+        customNotes: prescNotes || undefined
+      });
+
+      if (!blob || !(blob instanceof Blob)) {
+        throw new Error("Não foi possível gerar o arquivo PDF.");
+      }
+
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(blob);
+      const dataUrl = await base64Promise;
+
+      const safeName = `Receita_Digital_${targetPatientName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+
+      const upRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: safeName,
+          data: dataUrl,
+          type: 'application/pdf'
+        })
+      });
+
+      let finalUrl = '';
+      if (upRes.ok) {
+        const upData = await upRes.json();
+        if (upData?.url) {
+          finalUrl = upData.url;
+        }
+      }
+
+      if (!finalUrl) {
+        throw new Error("Não foi possível salvar o arquivo da receita no servidor. Tente novamente.");
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: 'prescription',
+        docType: 'receita',
+        text: '📋 Receita Médica Digital Oficial emitida e assinada.',
+        attachment: {
+          name: safeName,
+          url: finalUrl,
+          type: 'application/pdf',
+          docType: 'receita',
+          title: 'Receita Digital Assinada'
+        }
+      }, targetPatientId);
+
+      alert("Receita Digital oficial anexada ao chat do paciente com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao emitir e anexar receita:", err);
+      alert(`Erro ao emitir receita: ${err.message || 'Tente novamente.'}`);
     } finally {
       setIsSendingAttachment(false);
     }
@@ -895,17 +1024,15 @@ export function DoctorDashboardScreen() {
         sender: 'doctor'
       });
     } else if (action === 'send_prescription') {
+      const pId = currentPatient?.id || activeConsultationId;
       addMessage({
         text: "Perfeito! Aqui está a sua receita. Depois, aqui mesmo pelo aplicativo, você pode fazer a compra dos medicamentos.",
         sender: 'doctor'
-      });
+      }, pId || undefined);
       
       setTimeout(() => {
-        addMessage({
-          sender: 'doctor',
-          type: 'prescription'
-        });
-      }, 500);
+        handleEmitAndAttachPrescription();
+      }, 300);
     } else if (action === 'ask_doubt') {
       addMessage({
         text: "Teria alguma dúvida, podemos finalizar?",
@@ -1156,7 +1283,7 @@ export function DoctorDashboardScreen() {
           sender: 'doctor',
           type: 'product',
           productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
-        });
+        }, currentPatient.id);
       }
       
       if (prescNotes && prescNotes.trim()) {
@@ -1164,7 +1291,7 @@ export function DoctorDashboardScreen() {
           sender: 'doctor',
           type: 'prescription_notes',
           text: prescNotes
-        });
+        }, currentPatient.id);
       }
     }
 
@@ -1180,6 +1307,104 @@ export function DoctorDashboardScreen() {
       customItems: prescItems,
       customNotes: prescNotes
     });
+  };
+
+  const handleAttachPrescriptionFromEditor = async () => {
+    const targetPatientId = currentPatient?.id || activeConsultationId;
+    if (!targetPatientId) {
+      alert("Por favor, selecione um paciente para anexar a receita.");
+      return;
+    }
+
+    try {
+      // 1. Atualizar o chat com os medicamentos
+      await clearPrescriptionMessages(targetPatientId);
+      for (const item of prescItems) {
+        await addMessage({
+          sender: 'doctor',
+          type: 'product',
+          productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
+        }, targetPatientId);
+      }
+      
+      if (prescNotes && prescNotes.trim()) {
+        await addMessage({
+          sender: 'doctor',
+          type: 'prescription_notes',
+          text: prescNotes
+        }, targetPatientId);
+      }
+
+      // 2. Gerar o blob do PDF
+      const blob = await generatePrescriptionPDF(prescPatientName, messages, {
+        returnBlob: true,
+        customPatientName: prescPatientName,
+        birthDate: prescBirthDate,
+        cpf: prescCpf,
+        emissionDate: prescEmissionDate,
+        customDoctorName: prescDoctorName,
+        customDoctorCrm: prescDoctorCrm,
+        customDoctorSpecialty: prescDoctorSpecialty,
+        customItems: prescItems,
+        customNotes: prescNotes
+      });
+
+      if (!blob || !(blob instanceof Blob)) {
+        throw new Error("Falha ao gerar o arquivo PDF da receita.");
+      }
+
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(blob);
+      const dataUrl = await base64Promise;
+
+      const safeName = `Receita_Digital_${(prescPatientName || 'Paciente').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+
+      const upRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: safeName,
+          data: dataUrl,
+          type: 'application/pdf'
+        })
+      });
+
+      let finalUrl = '';
+      if (upRes.ok) {
+        const upData = await upRes.json();
+        if (upData?.url) {
+          finalUrl = upData.url;
+        }
+      }
+
+      if (!finalUrl) {
+        throw new Error("Falha ao salvar a receita no servidor. Tente novamente.");
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: 'prescription',
+        docType: 'receita',
+        text: '📋 Receita Médica Digital Oficial emitida e assinada.',
+        attachment: {
+          name: safeName,
+          url: finalUrl,
+          type: 'application/pdf',
+          docType: 'receita',
+          title: 'Receita Digital Assinada'
+        }
+      }, targetPatientId);
+
+      setShowPrescriptionEditorModal(false);
+      alert("Receita Digital emitida e anexada ao chat do paciente com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao anexar receita:", err);
+      alert(`Erro ao anexar receita: ${err.message || 'Tente novamente.'}`);
+    }
   };
 
   const getCidsFromObjectives = (objs: string[]) => {
@@ -3175,6 +3400,17 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       Anexar Documento para o Paciente
                     </div>
                     
+                    <button 
+                      onClick={() => {
+                        setShowAttachmentMenu(false);
+                        handleEmitAndAttachPrescription();
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-neon hover:bg-mecura-neon/10 transition-colors cursor-pointer text-left font-bold"
+                    >
+                      <Sparkles className="w-4 h-4 text-mecura-neon" />
+                      <span>Emitir e Anexar Receita Oficial</span>
+                    </button>
+
                     <button 
                       onClick={() => handleTriggerFileInput('receita')}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-mecura-neon transition-colors cursor-pointer text-left"
@@ -5694,6 +5930,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         notes={prescNotes}
         setNotes={setPrescNotes}
         onDownloadPDF={handleDownloadPrescriptionFromEditor}
+        onAttachToChat={handleAttachPrescriptionFromEditor}
       />
 
       {/* Medical Report (Laudo Médico) View & Edit Modal */}

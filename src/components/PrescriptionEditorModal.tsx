@@ -13,7 +13,9 @@ import {
   Calendar, 
   ShieldCheck,
   Building2,
-  Globe
+  Globe,
+  Send,
+  Loader2
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS } from '../data/cbdGuide';
@@ -42,6 +44,7 @@ interface PrescriptionEditorModalProps {
   notes: string;
   setNotes: (val: string) => void;
   onDownloadPDF: () => void;
+  onAttachToChat?: () => Promise<void> | void;
 }
 
 export function PrescriptionEditorModal({
@@ -65,10 +68,23 @@ export function PrescriptionEditorModal({
   setItems,
   notes,
   setNotes,
-  onDownloadPDF
+  onDownloadPDF,
+  onAttachToChat
 }: PrescriptionEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAttaching, setIsAttaching] = useState(false);
+
+  const handleAttach = async () => {
+    if (onAttachToChat) {
+      setIsAttaching(true);
+      try {
+        await onAttachToChat();
+      } finally {
+        setIsAttaching(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1069,21 +1085,42 @@ export function PrescriptionEditorModal({
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-6 py-2.5 bg-transparent border border-mecura-elevated rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-white hover:bg-white/5 transition-all"
+              className="w-full sm:w-auto px-6 py-2.5 bg-transparent border border-mecura-elevated rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-white hover:bg-white/5 transition-all cursor-pointer"
             >
               Cancelar
             </button>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
               <button
                 type="button"
                 onClick={handleDownload}
-                disabled={isGenerating}
-                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-bold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(168,85,247,0.3)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                disabled={isGenerating || isAttaching}
+                className="w-full sm:w-auto px-5 py-3 bg-[#1A1A24] border border-white/10 hover:bg-white/15 text-white font-bold text-xs md:text-sm rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                {isGenerating ? 'Gerando Documento...' : 'Gerar e Baixar Receita (PDF)'}
+                {isGenerating ? 'Baixando...' : 'Baixar PDF Local'}
               </button>
+
+              {onAttachToChat && (
+                <button
+                  type="button"
+                  onClick={handleAttach}
+                  disabled={isGenerating || isAttaching}
+                  className="w-full sm:w-auto px-6 py-3 bg-mecura-neon hover:bg-[#b5ff33] text-black font-bold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(166,255,0,0.3)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isAttaching ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Anexando ao Chat...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Emitir e Anexar ao Chat</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </motion.div>

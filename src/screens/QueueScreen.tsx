@@ -36,7 +36,10 @@ export function QueueScreen() {
 
   // Find if current user has an entry in Firestore queue
   const currentUserId = auth.currentUser?.uid || patientId || '';
-  const myQueueEntry = queue.find(p => p.id === currentUserId);
+  const myQueueEntry = queue.find((p: any) => 
+    (currentUserId && (p.id === currentUserId || p.patientId === currentUserId || p.patientId_temp_fix === currentUserId)) ||
+    (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase())
+  );
   
   // Real entrance timestamp
   const [queueEnteredAt] = useState<number>(() => {
@@ -139,10 +142,14 @@ export function QueueScreen() {
   }, [subscribeToQueue]);
 
   useEffect(() => {
-    if (consultationActive) {
+    const isDocActive = (myQueueEntry as any)?.doctorActive;
+    if (consultationActive || myQueueEntry?.status === 'in-consultation' || isDocActive) {
+      if (!consultationActive) {
+        useStore.setState({ consultationActive: true, inQueue: false, pagamento_consulta: true, activeConsultationId: myQueueEntry?.id || currentUserId });
+      }
       navigate('/chat');
     }
-  }, [consultationActive, navigate]);
+  }, [consultationActive, myQueueEntry?.status, (myQueueEntry as any)?.doctorActive, navigate, currentUserId, myQueueEntry?.id]);
 
   const formatTime = (totalSecs: number) => {
     const mins = Math.floor(totalSecs / 60);

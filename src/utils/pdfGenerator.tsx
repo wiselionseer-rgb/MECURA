@@ -434,7 +434,7 @@ export const generatePrescriptionPDF = async (
           logging: false,
           windowWidth: 794
         });
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgData = canvas.toDataURL('image/jpeg', 0.88);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -655,7 +655,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
           logging: false,
           windowWidth: 794
         });
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgData = canvas.toDataURL('image/jpeg', 0.88);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }

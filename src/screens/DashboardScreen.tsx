@@ -2,7 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {  useState, useEffect } from 'react';
 import {  useStore } from '../store/useStore';
 import {  useAdminStore } from '../store/useAdminStore';
-import {  auth } from '../firebase';
+import {  auth, db } from '../firebase';
+import {  doc, onSnapshot } from 'firebase/firestore';
 import {  motion } from 'motion/react';
 import {  AdvisorChatWidget } from '../components/AdvisorChatWidget';
 import {  ReferralModal } from '../components/ReferralModal';
@@ -64,7 +65,7 @@ export function DashboardScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const [videoFailed, setVideoFailed] = useState(false);
-  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue } = useStore();
+  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue, subscribeToQueue } = useStore();
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -133,6 +134,38 @@ export function DashboardScreen() {
       processSuccess();
     }
   }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue, navigate]);
+
+  // Real-time synchronization of user document & queue in Dashboard
+  useEffect(() => {
+    const unsubQueue = subscribeToQueue();
+    let unsubUser: (() => void) | null = null;
+    
+    const uid = auth.currentUser?.uid || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null);
+    if (uid) {
+      try {
+        unsubUser = onSnapshot(doc(db, 'users', uid), (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.pagamento_consulta === true || data.bypassedPayment === true) {
+              setPagamentoConsulta(true);
+            }
+            if (data.consultationStatus === 'in-consultation' || data.doctorActive === true) {
+              useStore.setState({ consultationActive: true, inQueue: false, isConsultationFinished: false, activeConsultationId: uid, pagamento_consulta: true });
+            } else if (data.consultationStatus === 'waiting' || data.inQueue === true) {
+              useStore.setState({ inQueue: true, pagamento_consulta: true });
+            }
+          }
+        });
+      } catch (err) {
+        console.warn("Error listening to user in DashboardScreen:", err);
+      }
+    }
+
+    return () => {
+      if (unsubQueue) unsubQueue();
+      if (unsubUser) unsubUser();
+    };
+  }, [subscribeToQueue, setPagamentoConsulta]);
 
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
   const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);
@@ -249,6 +282,26 @@ export function DashboardScreen() {
         animate="show"
         className="px-6 mt-6 space-y-8 z-10"
       >
+        {consultationActive && !isConsultationFinished && (
+          <div 
+            onClick={() => navigate('/chat')}
+            className="w-full bg-mecura-neon/15 border border-mecura-neon/40 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-[0_0_25px_rgba(166,255,0,0.2)] cursor-pointer hover:bg-mecura-neon/20 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-mecura-neon flex items-center justify-center text-black font-bold shrink-0">
+                <MessageCircle className="w-5 h-5 text-black" />
+              </div>
+              <div>
+                <p className="text-white text-sm font-bold">O médico iniciou sua consulta!</p>
+                <p className="text-mecura-silver text-xs">Atendimento em andamento. Clique para abrir a sala de consulta.</p>
+              </div>
+            </div>
+            <button className="px-4 py-2 bg-mecura-neon text-black font-bold text-xs rounded-xl hover:bg-[#b5ff33] shrink-0">
+              Entrar Agora
+            </button>
+          </div>
+        )}
+
         {/* Hero Section (Status Card) */}
         <section>
           {isConsultationFinished ? (
@@ -500,7 +553,7 @@ export function DashboardScreen() {
           <div className={`grid gap-3 ${!pagamento_premium ? 'grid-cols-3' : 'grid-cols-4'}`}>
             {/* Chat / Consultation */}
             <button 
-              onClick={() => navigate(consultationActive || isConsultationFinished ? '/chat' : inQueue ? '/queue' : '/checkout')} 
+              onClick={() => navigate(consultationActive || isConsultationFinished ? '/chat' : (inQueue || pagamento_consulta) ? '/queue' : '/checkout')} 
               className="flex flex-col items-center gap-2.5 group outline-none"
             >
               <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">

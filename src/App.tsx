@@ -32,37 +32,78 @@ import { PharmacyScreen } from './screens/PharmacyScreen';
 import { LegalScreen } from './screens/LegalScreen';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { subscribeToBackgroundNotifications } from './utils/notifications';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 export default function App() {
-  const { subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates } = useStore();
+  const { subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates, subscribeToQueue } = useStore();
 
   useEffect(() => {
-    // Auto-subscribe to background notifications if already granted
+    let unsubscribeUserDoc: (() => void) | null = null;
+
+    // Auto-subscribe to background notifications and real-time user doc updates
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      if (user && typeof window !== 'undefined' && 'Notification' in window) {
-        if (Notification.permission === 'granted') {
-          try {
-            await subscribeToBackgroundNotifications(user.uid);
-          } catch (e) {
-            console.error("Auto push subscription failed:", e);
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+        unsubscribeUserDoc = null;
+      }
+
+      if (user) {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            try {
+              await subscribeToBackgroundNotifications(user.uid);
+            } catch (e) {
+              console.error("Auto push subscription failed:", e);
+            }
           }
+        }
+
+        // Real-time synchronization of user doc to immediately detect payment bypass & consultation release
+        try {
+          unsubscribeUserDoc = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+            if (snap.exists()) {
+              const uData = snap.data();
+              if (uData.pagamento_consulta === true || uData.bypassedPayment === true) {
+                useStore.getState().setPagamentoConsulta(true);
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+              }
+              if (uData.consultationStatus === 'in-consultation' || uData.doctorActive === true) {
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+                useStore.setState({ 
+                  consultationActive: true, 
+                  inQueue: false, 
+                  isConsultationFinished: false, 
+                  activeConsultationId: user.uid, 
+                  pagamento_consulta: true 
+                });
+              } else if (uData.consultationStatus === 'waiting' || uData.inQueue) {
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+                useStore.setState({ inQueue: true, pagamento_consulta: true });
+              }
+            }
+          });
+        } catch (err) {
+          console.warn("Could not subscribe to user document:", err);
         }
       }
     });
 
+    const unsubscribeQueue = subscribeToQueue();
     const unsubscribeExchange = subscribeToExchangeRate();
     const unsubscribeAppointments = subscribeToAppointments();
     const unsubscribeBlockedDates = subscribeToBlockedDates();
     return () => {
+      if (unsubscribeUserDoc) unsubscribeUserDoc();
+      unsubscribeQueue();
       unsubscribeExchange();
       unsubscribeAppointments();
       unsubscribeBlockedDates();
       unsubscribeAuth();
     };
-  }, [subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates]);
+  }, [subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates, subscribeToQueue]);
 
   return (
     <ErrorBoundary>
