@@ -36,10 +36,9 @@ export function base64ToPdfBlob(dataUrl: string, contentType = 'application/pdf'
 }
 
 /**
- * Delivers a PDF blob to the user:
- * - On mobile (iOS/Android): Attempts Web Share API first so user can open in Files, PDF viewer, WhatsApp, etc.
- * - On iOS Safari: Opens in native viewer if share is dismissed/unavailable so it never downloads as broken file.
- * - On Android & Desktop: Uses standard Blob Object URL download that saves a genuine binary .pdf file.
+ * Delivers a PDF blob directly to the user:
+ * - Direct download on Desktop (Windows, Mac, Linux) and Android into the Downloads folder without triggering OS share dialogs.
+ * - On iOS Safari: Opens in native PDF viewer tab so iOS users can read and save immediately.
  */
 export async function deliverPdfBlob(blob: Blob, fileName: string): Promise<boolean> {
   const safeFileName = fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`;
@@ -47,48 +46,23 @@ export async function deliverPdfBlob(blob: Blob, fileName: string): Promise<bool
   // Ensure the blob has the proper MIME type
   const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
 
-  const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-  // 1. Try Web Share API (native on iOS Safari and Android Chrome)
-  if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
-    try {
-      const file = new File([pdfBlob], safeFileName, { type: 'application/pdf' });
-      if (navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: safeFileName,
-          text: 'Documento Médico Digital - MeCura Saúde'
-        });
-        return true;
-      }
-    } catch (shareErr: any) {
-      if (shareErr.name === 'AbortError') {
-        // User deliberately cancelled the share dialog
-        return true;
-      }
-      console.warn("navigator.share não completado, tentando método alternativo:", shareErr);
-    }
-  }
+  try {
+    const blobUrl = URL.createObjectURL(pdfBlob);
 
-  // 2. iOS Safari specific: opening blob directly in a new window allows iOS native PDF reader to display with full zoom/share
-  if (isIOS) {
-    try {
-      const blobUrl = URL.createObjectURL(pdfBlob);
+    // 1. iOS Safari specific: opening blob directly in a new window allows iOS native PDF reader to display with full zoom/save
+    if (isIOS) {
       const win = window.open(blobUrl, '_blank');
       if (!win) {
         window.location.href = blobUrl;
       }
       setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
       return true;
-    } catch (iosErr) {
-      console.warn("Falha ao abrir no iOS:", iosErr);
     }
-  }
 
-  // 3. Fallback to Blob Object URL download (works reliably on Desktop & Android Chrome)
-  try {
-    const blobUrl = URL.createObjectURL(pdfBlob);
+    // 2. Direct binary download (Desktop Windows/Mac and Android)
+    // Directly saves the .pdf file to the Downloads folder without opening OS share sheets (Windows Compartilhar)
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = blobUrl;
@@ -106,7 +80,6 @@ export async function deliverPdfBlob(blob: Blob, fileName: string): Promise<bool
     return true;
   } catch (err) {
     console.error("Falha ao disparar download do Blob:", err);
-    // As last resort, try window.open
     const blobUrl = URL.createObjectURL(pdfBlob);
     window.open(blobUrl, '_blank');
     return true;
