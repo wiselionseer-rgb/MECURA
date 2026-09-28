@@ -93,6 +93,7 @@ import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEdi
 import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
+import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
 const calculateAge = (birthDateStr?: string) => {
   if (!birthDateStr) return null;
@@ -1309,20 +1310,25 @@ export function DoctorDashboardScreen() {
             reader.readAsDataURL(pdfBlob);
           });
           const base64Data = await base64Promise;
+          fileUrl = base64Data;
 
           const fileName = `Receita_${(prescPatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
-          const upRes = await fetch('/api/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              filename: fileName,
-              data: base64Data,
-              type: 'application/pdf'
-            })
-          });
-          if (upRes.ok) {
-            const upData = await upRes.json();
-            fileUrl = upData.url;
+          try {
+            const upRes = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                filename: fileName,
+                data: base64Data,
+                type: 'application/pdf'
+              })
+            });
+            if (upRes.ok) {
+              const upData = await upRes.json();
+              if (upData?.url) fileUrl = upData.url;
+            }
+          } catch (uploadErr) {
+            console.warn("Upload falhou, mantendo base64:", uploadErr);
           }
         }
       } catch (pdfErr) {
@@ -1593,19 +1599,24 @@ CIDs Secundários: ${cidsSecundarios}`;
           reader.readAsDataURL(pdfBlob);
         });
         const base64Data = await base64Promise;
+        fileUrl = base64Data;
 
-        const upRes = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: fileName,
-            data: base64Data,
-            type: 'application/pdf'
-          })
-        });
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          fileUrl = upData?.url || '';
+        try {
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: fileName,
+              data: base64Data,
+              type: 'application/pdf'
+            })
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            if (upData?.url) fileUrl = upData.url;
+          }
+        } catch (uploadErr) {
+          console.warn("Upload falhou, mantendo base64:", uploadErr);
         }
       }
 
@@ -1719,19 +1730,24 @@ CIDs Secundários: ${cidsSecundarios}`;
           reader.readAsDataURL(pdfBlob);
         });
         const base64Data = await base64Promise;
+        fileUrl = base64Data;
 
-        const upRes = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: fileName,
-            data: base64Data,
-            type: 'application/pdf'
-          })
-        });
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          fileUrl = upData?.url || '';
+        try {
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: fileName,
+              data: base64Data,
+              type: 'application/pdf'
+            })
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            if (upData?.url) fileUrl = upData.url;
+          }
+        } catch (uploadErr) {
+          console.warn("Upload falhou, mantendo base64:", uploadErr);
         }
       }
 
@@ -1828,19 +1844,24 @@ CIDs Secundários: ${cidsSecundarios}`;
           reader.readAsDataURL(pdfBlob);
         });
         const base64Data = await base64Promise;
+        fileUrl = base64Data;
 
-        const upRes = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: fileName,
-            data: base64Data,
-            type: 'application/pdf'
-          })
-        });
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          fileUrl = upData?.url || '';
+        try {
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: fileName,
+              data: base64Data,
+              type: 'application/pdf'
+            })
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            if (upData?.url) fileUrl = upData.url;
+          }
+        } catch (uploadErr) {
+          console.warn("Upload falhou, mantendo base64:", uploadErr);
         }
       }
 
@@ -3148,17 +3169,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           </span>
                           <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Receita_Digital_MeCura.pdf'}</h3>
                           <p className="text-mecura-silver text-xs">Arquivo anexado e disponível para o paciente baixar em 1 clique.</p>
-                          {msg.attachment?.url && (
+                          {msg.attachment && (
                             <button
                               type="button"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = msg.attachment!.url;
-                                a.download = msg.attachment!.name || 'Receita_Digital.pdf';
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}
+                              onClick={() => downloadOrGenerateAttachment(msg.attachment, undefined, msg.attachment?.name || 'Receita_Digital.pdf')}
                               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-mecura-neon/10 border border-mecura-neon/30 hover:bg-mecura-neon hover:text-black text-mecura-neon text-xs font-bold rounded-lg transition-colors cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Baixar Anexo
@@ -3192,17 +3206,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           </span>
                           <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Laudo_Medico.pdf'}</h3>
                           <p className="text-mecura-silver text-xs">Documento médico oficial assinado e liberado para o paciente.</p>
-                          {msg.attachment?.url && (
+                          {msg.attachment && (
                             <button
                               type="button"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = msg.attachment!.url;
-                                a.download = msg.attachment!.name || 'Laudo_Medico.pdf';
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}
+                              onClick={() => downloadOrGenerateAttachment(msg.attachment, undefined, msg.attachment?.name || 'Laudo_Medico.pdf')}
                               className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 border text-xs font-bold rounded-lg transition-colors cursor-pointer ${
                                 msg.docType === 'laudo_evolutivo'
                                   ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500 hover:text-white text-blue-400'
@@ -3240,17 +3247,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           </span>
                           <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Laudo_Psicomotor.pdf'}</h3>
                           <p className="text-mecura-silver text-xs">Atestado de aptidão psicomotora anexado para o paciente.</p>
-                          {msg.attachment?.url && (
+                          {msg.attachment && (
                             <button
                               type="button"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = msg.attachment!.url;
-                                a.download = msg.attachment!.name || 'Laudo_Psicomotor.pdf';
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}
+                              onClick={() => downloadOrGenerateAttachment(msg.attachment, undefined, msg.attachment?.name || 'Laudo_Psicomotor.pdf')}
                               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500 hover:text-white text-purple-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Baixar Anexo
@@ -3284,17 +3284,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           </span>
                           <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Parecer_Agronomico.pdf'}</h3>
                           <p className="text-mecura-silver text-xs">Parecer pericial de cultivo e fitomassa disponível para o paciente.</p>
-                          {msg.attachment?.url && (
+                          {msg.attachment && (
                             <button
                               type="button"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = msg.attachment!.url;
-                                a.download = msg.attachment!.name || 'Parecer_Agronomico.pdf';
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}
+                              onClick={() => downloadOrGenerateAttachment(msg.attachment, undefined, msg.attachment?.name || 'Parecer_Agronomico.pdf')}
                               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white text-emerald-400 text-xs font-bold rounded-lg transition-colors cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Baixar Anexo
@@ -3328,17 +3321,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           </span>
                           <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'Documento.pdf'}</h3>
                           <p className="text-mecura-silver text-xs">Arquivo anexado na consulta.</p>
-                          {msg.attachment?.url && (
+                          {msg.attachment && (
                             <button
                               type="button"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = msg.attachment!.url;
-                                a.download = msg.attachment!.name || 'Documento.pdf';
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}
+                              onClick={() => downloadOrGenerateAttachment(msg.attachment, undefined, msg.attachment?.name || 'Documento.pdf')}
                               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/10 border border-white/20 hover:bg-white hover:text-black text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Baixar Anexo
@@ -5542,14 +5528,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    const a = document.createElement('a');
-                                    a.href = msg.attachment.url;
-                                    a.download = msg.attachment.name || 'Documento_MeCura.pdf';
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                  }}
+                                  onClick={() => downloadOrGenerateAttachment(msg.attachment, undefined, msg.attachment.name || 'Documento_MeCura.pdf')}
                                   className="px-3.5 py-2 bg-mecura-neon text-black font-bold text-xs rounded-xl hover:bg-[#b5ff33] flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                                 >
                                   <Download className="w-3.5 h-3.5" /> Baixar PDF

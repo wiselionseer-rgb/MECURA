@@ -1079,33 +1079,42 @@ export const useStore = create<AppState>((set, get) => ({
         });
 
         // Safeguard: Firestore documents have a strict 1,048,576 bytes (1 MiB) limit.
-        // If an attachment is still a huge base64 data URL (> 500KB), protect Firestore from rejecting the document.
-        if (payload.attachment && payload.attachment.url && payload.attachment.url.startsWith('data:') && payload.attachment.url.length > 500000) {
-          console.warn("[addMessage] Attachment payload exceeds safe size for Firestore. Attempting emergency upload.");
+        // If an attachment is still a huge base64 data URL (> 800KB), ensure it is safely uploaded or stored.
+        if (payload.attachment && payload.attachment.url && payload.attachment.url.startsWith('data:') && payload.attachment.url.length > 800000) {
+          console.warn("[addMessage] Large attachment detected (> 800KB). Persisting via API or stored_files.");
+          const fileId = `${Date.now()}_${(payload.attachment.name || 'documento.pdf').replace(/[^a-zA-Z0-9_\.-]/g, '_')}`;
+          
           try {
-            const emergencyRes = await fetch('/api/upload', {
+            const upRes = await fetch('/api/upload', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                filename: payload.attachment.name || 'documento.pdf',
+                filename: payload.attachment.name || fileId,
                 data: payload.attachment.url,
                 type: payload.attachment.type || 'application/pdf'
               })
             });
-            if (emergencyRes.ok) {
-              const emergencyData = await emergencyRes.json();
-              if (emergencyData?.url) {
-                payload.attachment.url = emergencyData.url;
+            if (upRes.ok) {
+              const upData = await upRes.json();
+              if (upData?.url) {
+                payload.attachment.url = upData.url;
               }
+            } else {
+              // Direct Firestore stored_files fallback
+              const base64Data = payload.attachment.url.includes(';base64,')
+                ? payload.attachment.url.split(';base64,')[1]
+                : payload.attachment.url;
+              await setDoc(doc(db, "stored_files", fileId), {
+                filename: fileId,
+                originalName: payload.attachment.name || fileId,
+                base64Data: base64Data.substring(0, 800000),
+                type: payload.attachment.type || 'application/pdf',
+                createdAt: new Date().toISOString()
+              });
+              payload.attachment.url = `/api/files/${fileId}`;
             }
           } catch (e) {
-            console.error("[addMessage] Emergency upload failed:", e);
-          }
-
-          // If still over 500KB, truncate the inline url in Firestore to prevent fatal document rejection
-          if (payload.attachment.url.startsWith('data:') && payload.attachment.url.length > 500000) {
-            console.warn("[addMessage] Truncating inline base64 for Firestore storage to avoid document size error.");
-            payload.attachment.url = ""; // The optimistic state in memory retains the file, but Firestore won't throw
+            console.error("[addMessage] Upload/store fallback:", e);
           }
         }
 

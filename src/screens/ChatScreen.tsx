@@ -5,7 +5,8 @@ import { useStore, Message } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
-import { generatePrescriptionPDF } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF } from '../utils/pdfGenerator';
+import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
 import { auth } from '../firebase';
@@ -94,6 +95,8 @@ export function ChatScreen() {
     }
   }, [effectiveConsultationId, subscribeToMessages]);
 
+  const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
+
   const handleGeneratePDF = async () => {
     setIsGeneratingPDF(true);
     try {
@@ -104,7 +107,7 @@ export function ChatScreen() {
       });
       if (blob instanceof Blob) {
         setPdfBlob(blob);
-        triggerDownloadOrShare(blob);
+        await deliverPdfBlob(blob, `Receita_${(userName || 'Paciente').replace(/\s+/g, '_')}.pdf`);
       }
     } catch(err) {
       console.error(err);
@@ -113,27 +116,77 @@ export function ChatScreen() {
     }
   };
 
-  const triggerDownloadOrShare = async (blob: Blob) => {
-    const fileName = `Receita_${userName || 'Paciente'}.pdf`;
-    if (navigator.share && navigator.canShare) {
-      try {
-        const file = new File([blob], fileName, { type: 'application/pdf' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: 'Receita Médica' });
-          return;
+  const handleDownloadAttachment = async (msg: Message) => {
+    setDownloadingMsgId(msg.id);
+    try {
+      const isEvolutivo = msg.docType === 'laudo_evolutivo';
+      const cleanName = (userName || 'Paciente').replace(/\s+/g, '_');
+      
+      const defaultName = 
+        msg.type === 'prescription' || msg.docType === 'receita' ? `Receita_Digital_${cleanName}.pdf` :
+        msg.docType === 'laudo_evolutivo' ? `Laudo_Evolutivo_${cleanName}.pdf` :
+        msg.docType === 'laudo_inicial' ? `Laudo_Inicial_${cleanName}.pdf` :
+        msg.type === 'medical_report' ? `Laudo_Medico_${cleanName}.pdf` :
+        msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' ? `Laudo_Psicomotor_${cleanName}.pdf` :
+        msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' ? `Parecer_Agronomico_${cleanName}.pdf` :
+        msg.attachment?.name || 'Documento.pdf';
+
+      const fallbackGen = async (): Promise<Blob | null> => {
+        const isPresc = msg.type === 'prescription' || msg.docType === 'receita' || msg.attachment?.docType === 'receita' || msg.attachment?.name?.toLowerCase().includes('receita');
+        const isMed = msg.type === 'medical_report' || msg.docType === 'laudo_inicial' || msg.docType === 'laudo_evolutivo' || msg.attachment?.docType === 'laudo_inicial' || msg.attachment?.docType === 'laudo_evolutivo' || msg.attachment?.name?.toLowerCase().includes('laudo_');
+        const isPsico = msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' || msg.attachment?.docType === 'laudo_psicomotor' || msg.attachment?.name?.toLowerCase().includes('psicomotor');
+        const isAgro = msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' || msg.attachment?.docType === 'laudo_agronomico' || msg.attachment?.name?.toLowerCase().includes('agronomico');
+
+        if (isPresc) {
+          const b = await generatePrescriptionPDF(userName, messages, {
+            birthDate: userBirthDate || (answers && answers.birthDate),
+            cpf: userCpf || (answers && answers.cpf),
+            returnBlob: true
+          });
+          return b instanceof Blob ? b : null;
         }
-      } catch (e) {
-        console.log('Share API falhou, usando fallback', e);
-      }
+        if (isMed) {
+          const b = await generateMedicalReportPDF(userName, messages, {
+            customPatientName: userName,
+            birthDate: userBirthDate || (answers && answers.birthDate),
+            cpf: userCpf || (answers && answers.cpf),
+            answers: answers,
+            returnBlob: true
+          });
+          return b instanceof Blob ? b : null;
+        }
+        if (isPsico) {
+          const b = await generatePsychomotorReportPDF(userName, {
+            customPatientName: userName,
+            birthDate: userBirthDate || (answers && answers.birthDate),
+            cpf: userCpf || (answers && answers.cpf),
+            returnBlob: true
+          });
+          return b instanceof Blob ? b : null;
+        }
+        if (isAgro) {
+          const b = await generateAgronomicReportPDF(userName, {
+            customPatientName: userName,
+            cpf: userCpf || (answers && answers.cpf),
+            returnBlob: true
+          });
+          return b instanceof Blob ? b : null;
+        }
+        return null;
+      };
+
+      await downloadOrGenerateAttachment(msg.attachment, fallbackGen, defaultName);
+    } catch (err) {
+      console.error("Erro ao baixar anexo:", err);
+      alert("Erro ao preparar o arquivo para download. Tente novamente.");
+    } finally {
+      setDownloadingMsgId(null);
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+  };
+
+  const triggerDownloadOrShare = async (blob: Blob) => {
+    const fileName = `Receita_${(userName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
+    await deliverPdfBlob(blob, fileName);
   };
 
   useEffect(() => {
@@ -488,45 +541,22 @@ export function ChatScreen() {
                   </p>
                   
                   <div className="flex flex-col gap-3">
-                    {msg.attachment ? (
-                      <Button 
-                        onClick={() => {
-                          const a = document.createElement('a');
-                          a.href = msg.attachment!.url;
-                          a.download = msg.attachment!.name || 'Receita_Digital_MeCura.pdf';
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                        }} 
-                        className="w-full bg-mecura-neon text-black hover:bg-[#b5ff33] font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 cursor-pointer"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Baixar Receita PDF
-                      </Button>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                           e.preventDefault();
-                           if (pdfBlob) {
-                             triggerDownloadOrShare(pdfBlob);
-                           } else if (!isGeneratingPDF) {
-                             handleGeneratePDF();
-                           }
-                        }}
-                        className={`w-full flex items-center justify-center bg-mecura-neon text-black font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 cursor-pointer ${!pdfBlob ? 'opacity-70 cursor-wait' : 'hover:bg-[#b5ff33]'}`}
-                      >
-                        {isGeneratingPDF ? (
-                          <span className="flex items-center gap-2">
-                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                            Gerando PDF...
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-2">
-                            <Download className="w-4 h-4" /> Baixar Receita PDF
-                          </span>
-                        )}
-                      </button>
-                    )}
+                    <Button 
+                      onClick={() => handleDownloadAttachment(msg)}
+                      disabled={downloadingMsgId === msg.id}
+                      className="w-full bg-mecura-neon text-black hover:bg-[#b5ff33] font-bold shadow-[0_0_20px_rgba(166,255,0,0.25)] rounded-xl h-12 cursor-pointer flex items-center justify-center transition-all active:scale-[0.98]"
+                    >
+                      {downloadingMsgId === msg.id ? (
+                        <span className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          Abrindo Receita PDF...
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <Download className="w-4 h-4 mr-2" /> Baixar Receita PDF
+                        </span>
+                      )}
+                    </Button>
                     <Button variant="outline" className="w-full border-white/10 text-white hover:bg-white/5 rounded-xl h-12 cursor-pointer" onClick={() => navigate('/pharmacy')}>
                       <ShoppingCart className="w-4 h-4 mr-2" />
                       Ir para a Loja
@@ -556,26 +586,26 @@ export function ChatScreen() {
                     {msg.attachment?.name || 'Documento médico assinado para prontuário e instrução legal.'}
                   </p>
                   
-                  {msg.attachment?.url && (
-                    <Button 
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = msg.attachment!.url;
-                        a.download = msg.attachment!.name || 'Laudo_Medico.pdf';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }} 
-                      className={`w-full font-bold shadow-xl rounded-xl h-12 cursor-pointer flex items-center justify-center ${
-                        msg.docType === 'laudo_evolutivo'
-                          ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-[0_0_20px_rgba(59,130,246,0.3)]'
-                          : 'bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_20px_rgba(245,158,11,0.3)]'
-                      }`}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Baixar Laudo PDF
-                    </Button>
-                  )}
+                  <Button 
+                    onClick={() => handleDownloadAttachment(msg)}
+                    disabled={downloadingMsgId === msg.id}
+                    className={`w-full font-bold shadow-xl rounded-xl h-12 cursor-pointer flex items-center justify-center transition-all active:scale-[0.98] ${
+                      msg.docType === 'laudo_evolutivo'
+                        ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-[0_0_20px_rgba(59,130,246,0.3)]'
+                        : 'bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_20px_rgba(245,158,11,0.3)]'
+                    }`}
+                  >
+                    {downloadingMsgId === msg.id ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Abrindo Laudo...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Download className="w-4 h-4 mr-2" /> Baixar Laudo PDF
+                      </span>
+                    )}
+                  </Button>
                 </div>
               </div>
             ) : (msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor') ? (
@@ -598,22 +628,22 @@ export function ChatScreen() {
                     {msg.attachment?.name || 'Atestado de capacidade psicomotora e aptidão (Lei Seca / CTB).'}
                   </p>
                   
-                  {msg.attachment?.url && (
-                    <Button 
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = msg.attachment!.url;
-                        a.download = msg.attachment!.name || 'Laudo_Psicomotor.pdf';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }} 
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(168,85,247,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Baixar Laudo Psicomotor PDF
-                    </Button>
-                  )}
+                  <Button 
+                    onClick={() => handleDownloadAttachment(msg)}
+                    disabled={downloadingMsgId === msg.id}
+                    className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(168,85,247,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center transition-all active:scale-[0.98]"
+                  >
+                    {downloadingMsgId === msg.id ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Abrindo Laudo...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Download className="w-4 h-4 mr-2" /> Baixar Laudo Psicomotor PDF
+                      </span>
+                    )}
+                  </Button>
                 </div>
               </div>
             ) : (msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico') ? (
@@ -636,22 +666,22 @@ export function ChatScreen() {
                     {msg.attachment?.name || 'Dimensionamento oficial de cultivo e fitomassa para Habeas Corpus.'}
                   </p>
                   
-                  {msg.attachment?.url && (
-                    <Button 
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = msg.attachment!.url;
-                        a.download = msg.attachment!.name || 'Parecer_Agronomico.pdf';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }} 
-                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-[0_0_20px_rgba(16,185,129,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Baixar Parecer Agronômico PDF
-                    </Button>
-                  )}
+                  <Button 
+                    onClick={() => handleDownloadAttachment(msg)}
+                    disabled={downloadingMsgId === msg.id}
+                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold shadow-[0_0_20px_rgba(16,185,129,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center transition-all active:scale-[0.98]"
+                  >
+                    {downloadingMsgId === msg.id ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        Abrindo Parecer...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Download className="w-4 h-4 mr-2" /> Baixar Parecer Agronômico PDF
+                      </span>
+                    )}
+                  </Button>
                 </div>
               </div>
             ) : (msg.type === 'document' || msg.attachment) ? (
@@ -672,22 +702,22 @@ export function ChatScreen() {
                   <h3 className="text-white font-bold text-xl mb-1">{msg.attachment?.title || 'Documento Anexado'}</h3>
                   <p className="text-mecura-silver text-xs mb-6 truncate">{msg.attachment?.name || 'arquivo.pdf'}</p>
                   
-                  {msg.attachment?.url && (
-                    <Button 
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = msg.attachment!.url;
-                        a.download = msg.attachment!.name || 'documento.pdf';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }} 
-                      className="w-full bg-white/15 hover:bg-white text-white hover:text-black font-bold border border-white/20 rounded-xl h-12 cursor-pointer flex items-center justify-center transition-colors"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Baixar Documento
-                    </Button>
-                  )}
+                  <Button 
+                    onClick={() => handleDownloadAttachment(msg)}
+                    disabled={downloadingMsgId === msg.id}
+                    className="w-full bg-white/15 hover:bg-white text-white hover:text-black font-bold border border-white/20 rounded-xl h-12 cursor-pointer flex items-center justify-center transition-colors active:scale-[0.98]"
+                  >
+                    {downloadingMsgId === msg.id ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Baixando Arquivo...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Download className="w-4 h-4 mr-2" /> Baixar Documento
+                      </span>
+                    )}
+                  </Button>
                 </div>
               </div>
             ) : msg.type === 'acompanhamento_card' ? (

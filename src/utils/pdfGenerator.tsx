@@ -429,12 +429,12 @@ export const generatePrescriptionPDF = async (
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
         const canvas = await html2canvas(pageEl, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           logging: false,
           windowWidth: 794
         });
-        const imgData = canvas.toDataURL('image/jpeg', 0.88);
+        const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -650,12 +650,12 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
         const canvas = await html2canvas(pageEl, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           logging: false,
           windowWidth: 794
         });
-        const imgData = canvas.toDataURL('image/jpeg', 0.88);
+        const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -813,12 +813,12 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
         const canvas = await html2canvas(pageEl, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           logging: false,
           windowWidth: 794
         });
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -1374,12 +1374,12 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
         const canvas = await html2canvas(pageEl, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           logging: false,
           windowWidth: 794
         });
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -1388,12 +1388,12 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
     } else {
       const contentEl = (container.firstElementChild || container) as HTMLElement;
       const canvas = await html2canvas(contentEl, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         logging: false,
         windowWidth: 794
       });
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const imgData = canvas.toDataURL('image/jpeg', 0.82);
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 

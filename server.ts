@@ -14,13 +14,13 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
-  app.use(express.json({ limit: "100mb" }));
-  app.use(express.urlencoded({ limit: "100mb", extended: true }));
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // CORS middleware to prevent any cross-origin or proxy upload issues
+  // CORS middleware to ensure seamless file uploads and downloads across domains/iframes/mobile
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
@@ -65,8 +65,8 @@ async function startServer() {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
 
-  // Upload endpoint: accepts file base64, saves to uploads/, returns clean URL
-  app.post("/api/upload", (req, res) => {
+  // Upload endpoint: accepts file base64, saves to uploads/ and Firestore for durability
+  app.post("/api/upload", async (req, res) => {
     try {
       const { filename, data, type } = req.body;
       if (!data) {
@@ -82,6 +82,22 @@ async function startServer() {
       const base64Data = data.includes(';base64,') ? data.split(';base64,')[1] : data;
       const buffer = Buffer.from(base64Data, 'base64');
       fs.writeFileSync(filePath, buffer);
+
+      // Also persist to Firestore if size <= 900KB so it survives container restarts/cloud run instances
+      if (buffer.length <= 900000) {
+        try {
+          await setDoc(doc(db, "stored_files", uniqueFileName), {
+            filename: uniqueFileName,
+            originalName: filename || uniqueFileName,
+            base64Data: base64Data,
+            type: type || 'application/pdf',
+            size: buffer.length,
+            createdAt: new Date().toISOString()
+          });
+        } catch (fsErr) {
+          console.warn("[UPLOAD] Erro ao salvar no Firestore (continuando com arquivo local):", fsErr);
+        }
+      }
 
       const fileUrl = `/api/files/${uniqueFileName}`;
       console.log(`[UPLOAD] Arquivo salvo com sucesso: ${uniqueFileName} (${buffer.length} bytes)`);
@@ -99,14 +115,11 @@ async function startServer() {
     }
   });
 
-  // Serve uploaded files directly with correct Content-Type and download headers
-  app.get("/api/files/:filename", (req, res) => {
+  // Serve uploaded files directly with correct Content-Type and download headers (disk or Firestore fallback)
+  app.get("/api/files/:filename", async (req, res) => {
     try {
       const safeFilename = path.basename(req.params.filename);
       const filePath = path.join(UPLOADS_DIR, safeFilename);
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).send("Arquivo não encontrado.");
-      }
 
       const ext = path.extname(safeFilename).toLowerCase();
       let contentType = 'application/octet-stream';
@@ -115,12 +128,39 @@ async function startServer() {
       else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
       else if (ext === '.webp') contentType = 'image/webp';
 
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.sendFile(filePath);
+      const isInline = req.query.inline === '1' || req.query.view === '1';
+      const disposition = isInline ? 'inline' : 'attachment';
+
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(safeFilename)}"`);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.sendFile(filePath);
+      }
+
+      // Fallback: Check Firestore stored_files collection
+      try {
+        const fileDoc = await getDoc(doc(db, "stored_files", safeFilename));
+        if (fileDoc.exists() && fileDoc.data()?.base64Data) {
+          const fileData = fileDoc.data();
+          const buffer = Buffer.from(fileData.base64Data, 'base64');
+          // Cache to disk
+          try { fs.writeFileSync(filePath, buffer); } catch (_) {}
+
+          res.setHeader('Content-Type', fileData.type || contentType);
+          res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(safeFilename)}"`);
+          res.setHeader('Content-Length', buffer.length);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.send(buffer);
+        }
+      } catch (fsErr) {
+        console.warn("[FILES] Erro ao consultar Firestore:", fsErr);
+      }
+
+      return res.status(404).json({ error: "Arquivo não encontrado." });
     } catch (err: any) {
-      res.status(500).send("Erro ao carregar arquivo.");
+      console.error("[FILES] Erro:", err);
+      res.status(500).json({ error: "Erro ao carregar arquivo." });
     }
   });
 

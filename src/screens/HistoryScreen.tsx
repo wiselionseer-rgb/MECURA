@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, FileText, MessageCircle, Receipt, X, ChevronDown } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
+import { deliverPdfBlob } from '../utils/downloadHelper';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function HistoryScreen() {
@@ -91,11 +92,17 @@ export function HistoryScreen() {
             <motion.button 
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => generatePrescriptionPDF(userName, messages, {
-                birthDate: userBirthDate || answers?.birthDate,
-                cpf: userCpf || answers?.cpf
-              })}
-              className="w-full bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)]"
+              onClick={async () => {
+                const blob = await generatePrescriptionPDF(userName, messages, {
+                  birthDate: userBirthDate || answers?.birthDate,
+                  cpf: userCpf || answers?.cpf,
+                  returnBlob: true
+                });
+                if (blob instanceof Blob) {
+                  await deliverPdfBlob(blob, `Receita_${(userName || 'Paciente').replace(/\s+/g, '_')}.pdf`);
+                }
+              }}
+              className="w-full bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] cursor-pointer"
             >
               <FileText className="w-5 h-5" />
               Abrir Receita
