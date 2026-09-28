@@ -79,7 +79,7 @@ export const useAdminStore = create<AdminState>()(
           name: 'Dr. Guilherme Taveira Dias',
           crm: '12345/SP',
           email: 'guilherme@mecura.com',
-          password: '123' // Default password for testing
+          password: 'jesus102030@'
         }
       ],
       addDoctor: (doctor) => set((state) => ({ doctors: [...state.doctors, doctor] })),

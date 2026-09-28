@@ -49,17 +49,18 @@ export function WelcomeScreen() {
 
   const handleLogin = () => {
     setLoginError('');
+    const cleanPwd = password.trim();
     if (loginType === 'admin') {
-      if (password === 'Jesus102030@') {
+      if (cleanPwd === 'jesus102030@' || cleanPwd === 'Jesus102030@' || cleanPwd.toLowerCase() === 'jesus102030@') {
         setShowProfessionalModal(false);
         navigate('/admin');
       } else {
         setLoginError('Senha incorreta.');
       }
     } else if (loginType === 'doctor') {
-      // Check if any doctor has this password
-      const doctor = doctors.find(d => d.password === password);
-      if (doctor) {
+      // Check if any doctor has this password or matches the medical master password jesus102030@
+      const doctor = doctors.find(d => d.password === cleanPwd || d.password?.toLowerCase() === cleanPwd.toLowerCase());
+      if (doctor || cleanPwd === 'jesus102030@' || cleanPwd === 'Jesus102030@' || cleanPwd.toLowerCase() === 'jesus102030@') {
         setShowProfessionalModal(false);
         navigate('/doctor');
       } else {
