@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, Download, Eye, Edit3, User, Calendar, ClipboardList } from 'lucide-react';
+import { X, ShieldCheck, Download, Eye, Edit3, User, Calendar, ClipboardList, Send } from 'lucide-react';
 
 interface PsychomotorReportEditorModalProps {
   isOpen: boolean;
@@ -22,6 +22,8 @@ interface PsychomotorReportEditorModalProps {
   psychomotorText: string;
   setPsychomotorText: (val: string) => void;
   onDownloadPDF: () => void;
+  onSendToChat?: () => Promise<void> | void;
+  isSendingToChat?: boolean;
 }
 
 export function PsychomotorReportEditorModal({
@@ -43,7 +45,9 @@ export function PsychomotorReportEditorModal({
   setDoctorSpecialty,
   psychomotorText,
   setPsychomotorText,
-  onDownloadPDF
+  onDownloadPDF,
+  onSendToChat,
+  isSendingToChat = false
 }: PsychomotorReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -307,24 +311,44 @@ export function PsychomotorReportEditorModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-sm font-semibold text-mecura-silver hover:text-red-400 transition-all flex items-center gap-2"
+              className="px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-sm font-semibold text-mecura-silver hover:text-red-400 transition-all flex items-center gap-2 cursor-pointer"
               title="Sair desta tela sem enviar o laudo para o paciente"
             >
               <X className="w-4 h-4 text-red-400" />
               <span>Sair sem Enviar</span>
             </button>
-            <button
-              onClick={handleDownload}
-              disabled={isGenerating}
-              className="px-6 py-2.5 bg-purple-500 text-white rounded-xl text-sm font-bold hover:bg-purple-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.3)] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={isGenerating || isSendingToChat}
+                className="w-full sm:w-auto px-5 py-2.5 bg-mecura-surface border border-mecura-elevated hover:bg-white/5 text-white font-bold text-xs md:text-sm rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
                 <Download className="w-4 h-4" />
+                {isGenerating ? 'Baixando PDF...' : 'Baixar Cópia (PDF)'}
+              </button>
+
+              {onSendToChat && (
+                <button
+                  type="button"
+                  onClick={onSendToChat}
+                  disabled={isGenerating || isSendingToChat}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.35)] disabled:opacity-50 cursor-pointer hover:scale-[1.02] active:scale-95"
+                >
+                  {isSendingToChat ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Enviando Laudo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Enviar Laudo Psicomotor ao Paciente</span>
+                    </>
+                  )}
+                </button>
               )}
-              Gerar e Baixar Laudo Psicomotor (PDF)
-            </button>
+            </div>
           </div>
         </motion.div>
       </div>

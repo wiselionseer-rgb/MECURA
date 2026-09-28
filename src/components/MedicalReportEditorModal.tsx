@@ -14,7 +14,8 @@ import {
   Sparkles,
   ClipboardList,
   Activity,
-  HeartHandshake
+  HeartHandshake,
+  Send
 } from 'lucide-react';
 
 interface MedicalReportEditorModalProps {
@@ -43,6 +44,9 @@ interface MedicalReportEditorModalProps {
   monitoring: string;
   setMonitoring: (val: string) => void;
   onDownloadPDF: () => void;
+  onSendToChat?: () => Promise<void> | void;
+  isSendingToChat?: boolean;
+  reportType?: 'inicial' | 'evolutivo';
 }
 
 export function MedicalReportEditorModal({
@@ -70,7 +74,10 @@ export function MedicalReportEditorModal({
   setTreatmentPlan,
   monitoring,
   setMonitoring,
-  onDownloadPDF
+  onDownloadPDF,
+  onSendToChat,
+  isSendingToChat = false,
+  reportType = 'inicial'
 }: MedicalReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -440,23 +447,48 @@ export function MedicalReportEditorModal({
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-red-400 transition-all flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-red-400 transition-all flex items-center justify-center gap-2 cursor-pointer"
               title="Sair desta tela sem enviar o laudo para o paciente"
             >
               <X className="w-4 h-4 text-red-400" />
               <span>Sair sem Enviar</span>
             </button>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={handleDownload}
-                disabled={isGenerating}
-                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-bold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.25)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                disabled={isGenerating || isSendingToChat}
+                className="w-full sm:w-auto px-5 py-2.5 bg-mecura-surface border border-mecura-elevated hover:bg-white/5 text-white font-bold text-xs md:text-sm rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                {isGenerating ? 'Gerando Laudo...' : 'Gerar e Baixar Laudo Clínico (PDF)'}
+                {isGenerating ? 'Baixando PDF...' : 'Baixar Cópia (PDF)'}
               </button>
+
+              {onSendToChat && (
+                <button
+                  type="button"
+                  onClick={onSendToChat}
+                  disabled={isGenerating || isSendingToChat}
+                  className={`w-full sm:w-auto px-6 py-3 font-extrabold text-xs md:text-sm rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer ${
+                    reportType === 'evolutivo'
+                      ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-[0_0_25px_rgba(59,130,246,0.35)]'
+                      : 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black shadow-[0_0_25px_rgba(245,158,11,0.35)]'
+                  }`}
+                >
+                  {isSendingToChat ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <span>Enviando Laudo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>{reportType === 'evolutivo' ? 'Enviar Laudo Evolutivo ao Paciente' : 'Enviar Laudo Inicial ao Paciente'}</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </motion.div>

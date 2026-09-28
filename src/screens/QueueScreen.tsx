@@ -35,10 +35,10 @@ export function QueueScreen() {
   const [displayPosition, setDisplayPosition] = useState<number | null>(null);
 
   // Find if current user has an entry in Firestore queue
-  const currentUserId = auth.currentUser?.uid || patientId || '';
-  const myQueueEntry = queue.find((p: any) => 
-    (currentUserId && (p.id === currentUserId || p.patientId === currentUserId || p.patientId_temp_fix === currentUserId)) ||
-    (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase())
+  const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
+  const myQueueEntry = queue.find(p => 
+    (currentUserId && p.id === currentUserId) ||
+    (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
   
   // Real entrance timestamp
@@ -142,14 +142,20 @@ export function QueueScreen() {
   }, [subscribeToQueue]);
 
   useEffect(() => {
-    const isDocActive = (myQueueEntry as any)?.doctorActive;
-    if (consultationActive || myQueueEntry?.status === 'in-consultation' || isDocActive) {
+    if (consultationActive || myQueueEntry?.status === 'in-consultation') {
       if (!consultationActive) {
-        useStore.setState({ consultationActive: true, inQueue: false, pagamento_consulta: true, activeConsultationId: myQueueEntry?.id || currentUserId });
+        useStore.setState({
+          consultationActive: true,
+          inQueue: false,
+          isConsultationFinished: false,
+          activeConsultationId: myQueueEntry?.id || currentUserId,
+          pagamento_consulta: true
+        });
       }
+      playNotificationSound();
       navigate('/chat');
     }
-  }, [consultationActive, myQueueEntry?.status, (myQueueEntry as any)?.doctorActive, navigate, currentUserId, myQueueEntry?.id]);
+  }, [consultationActive, myQueueEntry?.status, myQueueEntry?.id, currentUserId, navigate]);
 
   const formatTime = (totalSecs: number) => {
     const mins = Math.floor(totalSecs / 60);
@@ -177,6 +183,36 @@ export function QueueScreen() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 z-10 max-w-lg mx-auto w-full">
+        {/* Banner de Chamada do Médico */}
+        {(myQueueEntry?.status === 'in-consultation' || myQueueEntry?.isAlerted || consultationActive) && (
+          <div className="w-full mb-6 p-4 rounded-2xl bg-gradient-to-r from-mecura-neon/20 via-emerald-500/20 to-mecura-neon/10 border-2 border-mecura-neon animate-pulse flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_0_35px_rgba(166,255,0,0.35)]">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-mecura-neon text-black flex items-center justify-center font-bold text-2xl shrink-0 shadow-[0_0_15px_rgba(166,255,0,0.5)]">
+                🩺
+              </div>
+              <div className="text-left">
+                <h4 className="text-white font-extrabold text-base leading-snug">O Dr. Guilherme está te chamando!</h4>
+                <p className="text-xs text-mecura-silver">Sua consulta no chat já foi liberada e está ativa.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                useStore.setState({
+                  consultationActive: true,
+                  inQueue: false,
+                  activeConsultationId: myQueueEntry?.id || currentUserId,
+                  pagamento_consulta: true
+                });
+                navigate('/chat');
+              }}
+              className="w-full sm:w-auto px-6 py-3 bg-mecura-neon text-black font-extrabold text-sm rounded-xl hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.4)] hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
+            >
+              Entrar na Consulta →
+            </button>
+          </div>
+        )}
+
         {/* Header & Live Queue Timer */}
         <div className="text-center mt-2 mb-4 w-full">
           {/* Live Timer Pill */}

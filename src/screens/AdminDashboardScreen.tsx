@@ -30,8 +30,8 @@ import {
   X, Key, AlertTriangle
 , Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
-import { cbdGuideData } from '../data/cbdGuide';
-import { mergeProductCatalogs } from '../utils/productCatalog';
+import { cbdGuideData, CBDCategory } from '../data/cbdGuide';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { db, auth } from '../firebase';
@@ -47,102 +47,20 @@ export const AdminDashboardScreen = () => {
 
   const forceSendToQueue = async (patient: any) => {
     try {
-      const nowIso = new Date().toISOString();
       await setDoc(doc(db, 'queue', patient.id), {
-        id: patient.id,
-        patientId: patient.id,
         patientId_temp_fix: patient.id,
-        userId: patient.id,
         patientName: patient.name || 'Sem nome',
         email: patient.email || 'sem-email@mecura.com',
-        phone: patient.phone || '',
-        cpf: patient.cpf || '',
         tier: patient.tier || 'basic',
         status: 'waiting',
-        pagamento_consulta: true,
-        bypassedPayment: true,
-        isExempt: true,
-        authorizedByAdmin: true,
-        joinedAt: nowIso,
-        lastUpdated: nowIso
-      }, { merge: true });
-
-      // Crucial: Update users doc so patient screen immediately unlocks and removes payment pending block
-      await setDoc(doc(db, 'users', patient.id), {
-        id: patient.id,
-        pagamento_consulta: true,
-        bypassedPayment: true,
-        isExempt: true,
-        inQueue: true,
-        consultationStatus: 'waiting',
-        hasCompletedOnboarding: true,
-        updatedAt: nowIso
-      }, { merge: true });
-
-      // Register payment bypass in payments collection
-      await setDoc(doc(db, 'payments', `bypass_${patient.id}`), {
-        patientId: patient.id,
-        patientName: patient.name || 'Sem nome',
-        type: 'Consulta Básica',
-        status: 'approved',
-        value: 0,
-        createdAt: nowIso,
-        authorizedByAdmin: true
-      }, { merge: true });
-
-      setSupportToastMessage(`${patient.name || 'Sem nome'} liberado e enviado para a fila!`);
+        joinedAt: new Date().toISOString(),
+      });
+      setSupportToastMessage(`${patient.name || 'Sem nome'} enviado para a fila!`);
       setShowSupportToast(true);
       setTimeout(() => setShowSupportToast(false), 3000);
     } catch (e) {
       console.error(e);
       setSupportToastMessage('Erro ao enviar para a fila.');
-      setShowSupportToast(true);
-      setTimeout(() => setShowSupportToast(false), 3000);
-    }
-  };
-
-  const forceDirectConsultation = async (patient: any) => {
-    try {
-      const nowIso = new Date().toISOString();
-      await setDoc(doc(db, 'queue', patient.id), {
-        id: patient.id,
-        patientId: patient.id,
-        patientId_temp_fix: patient.id,
-        userId: patient.id,
-        patientName: patient.name || 'Sem nome',
-        email: patient.email || 'sem-email@mecura.com',
-        phone: patient.phone || '',
-        cpf: patient.cpf || '',
-        tier: patient.tier || 'basic',
-        status: 'in-consultation',
-        doctorActive: true,
-        pagamento_consulta: true,
-        bypassedPayment: true,
-        isExempt: true,
-        authorizedByAdmin: true,
-        startedAt: nowIso,
-        joinedAt: nowIso,
-        lastUpdated: nowIso
-      }, { merge: true });
-
-      await setDoc(doc(db, 'users', patient.id), {
-        id: patient.id,
-        pagamento_consulta: true,
-        bypassedPayment: true,
-        isExempt: true,
-        inQueue: false,
-        consultationStatus: 'in-consultation',
-        doctorActive: true,
-        hasCompletedOnboarding: true,
-        updatedAt: nowIso
-      }, { merge: true });
-
-      setSupportToastMessage(`Chat do médico liberado diretamente para ${patient.name || 'o paciente'}!`);
-      setShowSupportToast(true);
-      setTimeout(() => setShowSupportToast(false), 3000);
-    } catch (e) {
-      console.error(e);
-      setSupportToastMessage('Erro ao liberar chat direto.');
       setShowSupportToast(true);
       setTimeout(() => setShowSupportToast(false), 3000);
     }
@@ -214,9 +132,20 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     deleteProduct
   } = useAdminStore();
 
+  const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeToFirestoreCatalog((cats) => {
+      if (cats && cats.length > 0) {
+        setCloudCategories(cats);
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const productCategories = useMemo(() => {
-    return mergeProductCatalogs(cbdGuideData, rawProductCategories);
-  }, [rawProductCategories]);
+    return mergeProductCatalogs(cbdGuideData, rawProductCategories, cloudCategories);
+  }, [rawProductCategories, cloudCategories]);
   const { queue, subscribeToQueue, allAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
@@ -1054,9 +983,6 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   {queue.find(q => q.id === p.id && q.status === 'waiting') && (
     <span className="bg-mecura-neon/20 text-mecura-neon text-[9px] px-1.5 py-0.5 rounded-full whitespace-nowrap">Na Fila</span>
   )}
-  {queue.find(q => q.id === p.id && q.status === 'in-consultation') && (
-    <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded-full whitespace-nowrap font-bold">Em Consulta</span>
-  )}
 </div>
                     <div className="text-[#8A8A9E] text-xs break-all">{p.email || 'N/A'}</div>
                     <div>
@@ -1077,10 +1003,9 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                        )}
                     </div>
                     <div className="flex flex-col gap-1">
-                       <div className="grid grid-cols-3 gap-1">
-                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon" onClick={() => forceSendToQueue(p)} title="Mover para Fila (Libera Acesso)">Fila</Button>
-                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-emerald-500/20 hover:text-emerald-400" onClick={() => forceDirectConsultation(p)} title="Liberar Chat do Médico Imediatamente">Chat</Button>
-                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-blue-500/20 hover:text-blue-400" onClick={() => setShowAgenda(p.id)} title="Agenda"><Calendar className="w-3 h-3 mr-0.5"/> Agenda</Button>
+                       <div className="grid grid-cols-2 gap-1">
+                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon" onClick={() => forceSendToQueue(p)} title="Mover para Fila">Fila</Button>
+                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-blue-500/20 hover:text-blue-400" onClick={() => setShowAgenda(p.id)} title="Agenda"><Calendar className="w-3 h-3 mr-1"/> Agend.</Button>
                        </div>
                        <div className="grid grid-cols-3 gap-1">
                          <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-green-500/20 hover:text-green-400" onClick={() => window.open(`https://wa.me/55${(p.phone || '').replace(/\D/g, '')}`, '_blank')} title="WhatsApp"><MessageCircle className="w-3 h-3"/></Button>

@@ -25,6 +25,7 @@ interface AgronomicReportEditorModalProps {
   setAgronomicText: (val: string) => void;
   onDownloadPDF: () => void;
   onSendToChat?: () => void;
+  isSendingToChat?: boolean;
 }
 
 export function AgronomicReportEditorModal({
@@ -49,7 +50,8 @@ export function AgronomicReportEditorModal({
   agronomicText,
   setAgronomicText,
   onDownloadPDF,
-  onSendToChat
+  onSendToChat,
+  isSendingToChat = false
 }: AgronomicReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -747,10 +749,20 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                 <button
                   type="button"
                   onClick={onSendToChat}
-                  className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                  disabled={isGenerating || isSendingToChat}
+                  className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] disabled:opacity-50 cursor-pointer"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>Enviar Laudo no Chat</span>
+                  {isSendingToChat ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                      <span>Enviando Parecer...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Enviar Parecer no Chat</span>
+                    </>
+                  )}
                 </button>
               )}
 

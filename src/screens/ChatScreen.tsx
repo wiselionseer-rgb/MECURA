@@ -18,12 +18,15 @@ export function ChatScreen() {
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
   const [prevMessageCount, setPrevMessageCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const patientFileInputRef = useRef<HTMLInputElement>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   useEffect(() => {
+    const hasLocalPayment = typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true';
     // If not in active consultation, not finished, and not paid, return to dashboard
-    if (!consultationActive && !isConsultationFinished && !pagamento_consulta && messages.length === 0) {
+    if (!consultationActive && !isConsultationFinished && !pagamento_consulta && !hasLocalPayment && messages.length === 0) {
       navigate('/dashboard');
     }
   }, [consultationActive, isConsultationFinished, pagamento_consulta, messages.length, navigate]);
@@ -81,14 +84,15 @@ export function ChatScreen() {
     return () => unsubscribe();
   }, []);
 
+  const effectiveConsultationId = activeConsultationId || patientId || currentUid || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null) || undefined;
+
   useEffect(() => {
-    // If patientId is lost due to refresh, fallback to currentUid
-    const consultationId = activeConsultationId || patientId || currentUid;
-    if (consultationId) {
-      const unsubscribe = subscribeToMessages(consultationId);
+    // If patientId is lost due to refresh, fallback to currentUid or localStorage
+    if (effectiveConsultationId) {
+      const unsubscribe = subscribeToMessages(effectiveConsultationId);
       return () => unsubscribe();
     }
-  }, [activeConsultationId, patientId, currentUid, subscribeToMessages]);
+  }, [effectiveConsultationId, subscribeToMessages]);
 
   const handleGeneratePDF = async () => {
     setIsGeneratingPDF(true);
@@ -169,9 +173,53 @@ export function ChatScreen() {
     addMessage({
       text: inputText,
       sender: 'user'
-    });
+    }, effectiveConsultationId);
     
     setInputText('');
+  };
+
+  const handlePatientFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setIsUploadingFile(true);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Url = reader.result as string;
+        let finalUrl = base64Url;
+        try {
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              data: base64Url,
+              type: file.type || 'application/pdf'
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.url) finalUrl = data.url;
+          }
+        } catch (err) {
+          console.warn("Patient upload error:", err);
+        }
+
+        await addMessage({
+          sender: 'user',
+          type: 'document',
+          text: `📎 Documento anexado pelo paciente: ${file.name}`,
+          attachment: {
+            name: file.name,
+            url: finalUrl,
+            type: file.type || 'application/pdf',
+            title: 'Documento / Receita Enviada pelo Paciente'
+          }
+        }, effectiveConsultationId);
+        setIsUploadingFile(false);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
   };
 
   const handleDoctorAction = (action: 'prescribe' | 'ask_approval' | 'send_prescription') => {
@@ -758,18 +806,39 @@ export function ChatScreen() {
       ) : (
         <div className="p-4 bg-mecura-bg border-t border-mecura-elevated absolute bottom-0 left-0 right-0 z-20">
           <div className="flex items-center gap-3">
+            {/* Input de arquivo para o paciente */}
+            <input 
+              type="file" 
+              ref={patientFileInputRef} 
+              onChange={handlePatientFileAttach} 
+              className="hidden" 
+              accept=".pdf,image/*" 
+            />
+            <button
+              type="button"
+              onClick={() => patientFileInputRef.current?.click()}
+              disabled={isUploadingFile}
+              className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-mecura-neon hover:border-mecura-neon/50 flex items-center justify-center transition-all cursor-pointer shrink-0 disabled:opacity-50"
+              title="Anexar documento ou receita antiga"
+            >
+              {isUploadingFile ? (
+                <div className="w-5 h-5 border-2 border-mecura-neon border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Paperclip className="w-5 h-5" />
+              )}
+            </button>
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Escreva sua mensagem..."
+              placeholder={isUploadingFile ? "Enviando anexo..." : "Escreva sua mensagem..."}
               className="flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border border-mecura-elevated focus:border-mecura-neon/50 transition-colors"
             />
             <button 
               onClick={handleSend}
               disabled={!inputText.trim()}
-              className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)]"
+              className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)] shrink-0"
             >
               <Send className="w-5 h-5 ml-1" />
             </button>

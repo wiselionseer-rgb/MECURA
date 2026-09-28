@@ -1,7 +1,7 @@
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { mergeProductCatalogs, syncCatalogToFirestore } from '../utils/productCatalog';
+import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog } from '../utils/productCatalog';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -224,9 +224,29 @@ export const useAdminStore = create<AdminState>()(
     }),
     {
       name: 'admin-storage',
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.productCategories = mergeProductCatalogs(cbdGuideData, state.productCategories);
+        }
+      },
     }
   )
 );
+
+// Realtime Firestore synchronization for Product Catalog across all users and devices
+if (typeof window !== 'undefined') {
+  try {
+    subscribeToFirestoreCatalog((cloudCats) => {
+      if (cloudCats && Array.isArray(cloudCats) && cloudCats.length > 0) {
+        const currentLocal = useAdminStore.getState().productCategories;
+        const merged = mergeProductCatalogs(cbdGuideData, currentLocal, cloudCats);
+        useAdminStore.setState({ productCategories: merged });
+      }
+    });
+  } catch (err) {
+    console.warn("Failed to attach catalog listener:", err);
+  }
+}
 
 // Realtime Firestore synchronization for Coupons across all users and devices
 if (typeof window !== 'undefined') {

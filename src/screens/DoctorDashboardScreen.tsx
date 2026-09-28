@@ -137,9 +137,9 @@ export function DoctorDashboardScreen() {
   const { 
     userName, userCpf, userBirthDate, userPhone, answers, messages, 
     addMessage, deleteMessage, clearPrescriptionMessages, 
-    consultationActive, activeConsultationId, endConsultation, resetConsultation, setSelectedOffer, 
+    consultationActive, endConsultation, resetConsultation, setSelectedOffer, 
     allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
-    subscribeToMessages, subscribeToAppointments,
+    subscribeToMessages, subscribeToAppointments, activeConsultationId,
     consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages
   } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
@@ -376,7 +376,6 @@ export function DoctorDashboardScreen() {
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento'>('receita');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
-  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
   const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
   const [queuePlanFilter, setQueuePlanFilter] = useState<'all' | 'premium' | 'basic'>('all');
@@ -402,6 +401,18 @@ export function DoctorDashboardScreen() {
   // Medical Report (Laudo Médico) Editor & Preview States
   const [showMedicalReportEditorModal, setShowMedicalReportEditorModal] = useState(false);
   const [medicalReportTab, setMedicalReportTab] = useState<'edit' | 'preview'>('edit');
+  const [medicalReportType, setMedicalReportType] = useState<'inicial' | 'evolutivo'>('inicial');
+  const [isSendingReportToChat, setIsSendingReportToChat] = useState(false);
+  const [isSendingPsychomotorToChat, setIsSendingPsychomotorToChat] = useState(false);
+  const [isSendingAgronomicToChat, setIsSendingAgronomicToChat] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [actionToastMessage, setActionToastMessage] = useState<string | null>(null);
+
+  const showActionToast = (msg: string) => {
+    setActionToastMessage(msg);
+    setTimeout(() => setActionToastMessage(null), 4000);
+  };
+
   const [reportPatientName, setReportPatientName] = useState('');
   const [reportBirthDate, setReportBirthDate] = useState('');
   const [reportCpf, setReportCpf] = useState('');
@@ -545,32 +556,19 @@ export function DoctorDashboardScreen() {
 
     setCurrentPatient(enrichedPatient);
     setAnalysisResult(null); // Reset previous analysis to allow fresh generation
+    
+    // Explicitly update Firestore queue status to in-consultation
+    try {
+      await updateDoc(doc(db, 'queue', patient.id), {
+        status: 'in-consultation',
+        hasUnread: false
+      });
+    } catch (e) {
+      console.warn("Error updating queue status:", e);
+    }
+
     startConsultation(patient.id);
     subscribeToMessages(patient.id);
-    
-    // Ensure patient document in Firestore immediately has access to chat released
-    try {
-      const nowIso = new Date().toISOString();
-      setDoc(doc(db, 'queue', patient.id), {
-        status: 'in-consultation',
-        doctorActive: true,
-        pagamento_consulta: true,
-        bypassedPayment: true,
-        startedAt: nowIso,
-        lastUpdated: nowIso
-      }, { merge: true }).catch(err => console.warn("Error updating queue on consultation start:", err));
-
-      setDoc(doc(db, 'users', patient.id), {
-        consultationStatus: 'in-consultation',
-        pagamento_consulta: true,
-        bypassedPayment: true,
-        inQueue: false,
-        doctorActive: true,
-        updatedAt: nowIso
-      }, { merge: true }).catch(err => console.warn("Error updating users on consultation start:", err));
-    } catch (err) {
-      console.warn("Could not sync consultation release in Firestore:", err);
-    }
     
     // Auto-greeting if the patient was just waiting
     if (patient.status === 'waiting') {
@@ -585,20 +583,45 @@ export function DoctorDashboardScreen() {
           text: greetingMsg,
           sender: 'doctor',
           type: 'text'
-        });
+        }, patient.id);
       }, 1000);
     }
   };
 
   const handleNotifyNext = async (patient: any) => {
-    // In a real app, this would send a push notification or update a status in the DB
     try {
+      await updateDoc(doc(db, 'queue', patient.id), {
+        status: 'in-consultation',
+        isAlerted: Date.now(),
+        hasUnread: false
+      }).catch(async () => {
+        await setDoc(doc(db, 'queue', patient.id), { status: 'in-consultation', isAlerted: Date.now() }, { merge: true });
+      });
+
+      startConsultation(patient.id);
+      subscribeToMessages(patient.id);
+      setCurrentPatient(patient);
+
       await setDoc(doc(db, 'notifications', patient.id), {
         text: "O Dr. Guilherme já está pronto para te atender! Entre na sala de consulta.",
         timestamp: new Date().toISOString(),
         type: 'next'
       });
-      alert(`Notificação enviada para ${patient.patientName}: Sua vez chegou!`);
+
+      triggerBackgroundPush(
+        patient.id,
+        'Sua vez chegou!',
+        'O Dr. Guilherme já está te aguardando no consultório. Clique para entrar.',
+        '/chat'
+      ).catch(() => {});
+
+      await addMessage({
+        text: "🔔 SUA VEZ CHEGOU! O Dr. Guilherme já está na sala de consulta aguardando você.",
+        sender: 'doctor',
+        type: 'text'
+      }, patient.id);
+
+      alert(`Chamada enviada para ${patient.patientName}: Paciente puxado para consulta!`);
     } catch (error) {
       console.error("Error sending notification", error);
       alert("Erro ao enviar notificação.");
@@ -722,44 +745,45 @@ export function DoctorDashboardScreen() {
   const handleTriggerFileInput = (docType: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento') => {
     setSelectedUploadDocType(docType);
     setShowAttachmentMenu(false);
-    setTimeout(() => {
-      fileInputRef.current?.click();
-    }, 50);
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      const docType = selectedUploadDocType;
       setIsUploadingAttachment(true);
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const rawDataUrl = reader.result as string;
+        const dataUrl = reader.result as string;
         setPendingAttachment({
           name: file.name,
-          url: rawDataUrl,
+          url: dataUrl,
           type: file.type || 'application/pdf',
-          docType: selectedUploadDocType
+          docType: docType
         });
 
-        // Pre-upload immediately to server so permanent URL is stored
+        // Upload to server immediately so we get a clean permanent URL
         try {
           const upRes = await fetch('/api/upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               filename: file.name,
-              data: rawDataUrl,
+              data: dataUrl,
               type: file.type || 'application/pdf'
             })
           });
           if (upRes.ok) {
-            const data = await upRes.json();
-            if (data?.url) {
-              setPendingAttachment(prev => (prev && prev.name === file.name) ? { ...prev, url: data.url } : prev);
+            const upData = await upRes.json();
+            if (upData?.url) {
+              setPendingAttachment(prev => (prev && prev.name === file.name) ? { ...prev, url: upData.url } : prev);
             }
           }
         } catch (uploadErr) {
-          console.warn("Background upload error:", uploadErr);
+          console.warn("Upload error:", uploadErr);
         } finally {
           setIsUploadingAttachment(false);
         }
@@ -773,20 +797,15 @@ export function DoctorDashboardScreen() {
   const handleSendAttachment = async (customAttachment = pendingAttachment) => {
     if (!customAttachment || isSendingAttachment) return;
 
-    const targetPatientId = currentPatient?.id || activeConsultationId;
+    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
-      alert("Por favor, selecione um paciente para enviar o documento.");
+      showActionToast("Por favor, selecione um paciente na fila antes de enviar o documento.");
       return;
     }
 
     setIsSendingAttachment(true);
     try {
       let finalAttachment = { ...customAttachment };
-
-      // If background upload is still finishing, wait briefly
-      if (isUploadingAttachment) {
-        await new Promise(r => setTimeout(r, 600));
-      }
 
       // If still a base64 data URL, upload to server now to guarantee it never exceeds Firestore's 1MB limit
       if (finalAttachment.url && finalAttachment.url.startsWith('data:')) {
@@ -805,12 +824,9 @@ export function DoctorDashboardScreen() {
             if (upData.url) {
               finalAttachment.url = upData.url;
             }
-          } else {
-            throw new Error("Erro no servidor ao salvar anexo.");
           }
-        } catch (uploadErr: any) {
-          console.error("Direct upload error during send:", uploadErr);
-          throw new Error("Não foi possível enviar o arquivo ao servidor. Tente novamente.");
+        } catch (uploadErr) {
+          console.warn("Direct upload error during send:", uploadErr);
         }
       }
 
@@ -847,94 +863,23 @@ export function DoctorDashboardScreen() {
         }
       }, targetPatientId);
 
-      // Only clear attachment if message was successfully saved to Firestore
+      try {
+        await updateDoc(doc(db, 'queue', targetPatientId), {
+          status: 'in-consultation',
+          lastMessageAt: new Date().toISOString(),
+          lastMessageText: defaultTitle,
+          hasUnread: true
+        });
+      } catch (err) {
+        console.warn("Could not update queue doc:", err);
+      }
+
       setPendingAttachment(null);
       setInputText('');
-    } catch (err: any) {
+      showActionToast(`Documento "${finalAttachment.name}" enviado com sucesso ao paciente!`);
+    } catch (err) {
       console.error("Error sending attachment:", err);
-      alert(`Não foi possível enviar o anexo: ${err.message || 'Erro inesperado'}. O documento foi mantido para você tentar novamente.`);
-    } finally {
-      setIsSendingAttachment(false);
-    }
-  };
-
-  const handleEmitAndAttachPrescription = async () => {
-    const targetPatientId = currentPatient?.id || activeConsultationId;
-    if (!targetPatientId) {
-      alert("Por favor, selecione um paciente para emitir a receita.");
-      return;
-    }
-    const targetPatientName = currentPatient?.patientName || userName || 'Paciente';
-
-    setIsSendingAttachment(true);
-    try {
-      const blob = await generatePrescriptionPDF(targetPatientName, messages, {
-        returnBlob: true,
-        customPatientName: prescPatientName || targetPatientName,
-        birthDate: prescBirthDate || currentPatient?.birthDate || userBirthDate,
-        cpf: prescCpf || currentPatient?.cpf || userCpf,
-        emissionDate: prescEmissionDate,
-        customDoctorName: prescDoctorName,
-        customDoctorCrm: prescDoctorCrm,
-        customDoctorSpecialty: prescDoctorSpecialty,
-        customItems: prescItems.length > 0 ? prescItems : undefined,
-        customNotes: prescNotes || undefined
-      });
-
-      if (!blob || !(blob instanceof Blob)) {
-        throw new Error("Não foi possível gerar o arquivo PDF.");
-      }
-
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(blob);
-      const dataUrl = await base64Promise;
-
-      const safeName = `Receita_Digital_${targetPatientName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-
-      const upRes = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: safeName,
-          data: dataUrl,
-          type: 'application/pdf'
-        })
-      });
-
-      let finalUrl = '';
-      if (upRes.ok) {
-        const upData = await upRes.json();
-        if (upData?.url) {
-          finalUrl = upData.url;
-        }
-      }
-
-      if (!finalUrl) {
-        throw new Error("Não foi possível salvar o arquivo da receita no servidor. Tente novamente.");
-      }
-
-      await addMessage({
-        sender: 'doctor',
-        type: 'prescription',
-        docType: 'receita',
-        text: '📋 Receita Médica Digital Oficial emitida e assinada.',
-        attachment: {
-          name: safeName,
-          url: finalUrl,
-          type: 'application/pdf',
-          docType: 'receita',
-          title: 'Receita Digital Assinada'
-        }
-      }, targetPatientId);
-
-      alert("Receita Digital oficial anexada ao chat do paciente com sucesso!");
-    } catch (err: any) {
-      console.error("Erro ao emitir e anexar receita:", err);
-      alert(`Erro ao emitir receita: ${err.message || 'Tente novamente.'}`);
+      showActionToast("Erro ao enviar anexo. Verifique o arquivo e tente novamente.");
     } finally {
       setIsSendingAttachment(false);
     }
@@ -949,10 +894,11 @@ export function DoctorDashboardScreen() {
     }
 
     if (inputText.trim()) {
+      const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
       addMessage({
         text: inputText,
         sender: 'doctor'
-      });
+      }, targetPatientId);
       setInputText('');
     }
   };
@@ -1024,15 +970,17 @@ export function DoctorDashboardScreen() {
         sender: 'doctor'
       });
     } else if (action === 'send_prescription') {
-      const pId = currentPatient?.id || activeConsultationId;
       addMessage({
         text: "Perfeito! Aqui está a sua receita. Depois, aqui mesmo pelo aplicativo, você pode fazer a compra dos medicamentos.",
         sender: 'doctor'
-      }, pId || undefined);
+      });
       
       setTimeout(() => {
-        handleEmitAndAttachPrescription();
-      }, 300);
+        addMessage({
+          sender: 'doctor',
+          type: 'prescription'
+        });
+      }, 500);
     } else if (action === 'ask_doubt') {
       addMessage({
         text: "Teria alguma dúvida, podemos finalizar?",
@@ -1274,16 +1222,17 @@ export function DoctorDashboardScreen() {
   };
 
   const handleDownloadPrescriptionFromEditor = async () => {
+    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     // 1. Atualizar o chat (banco de dados) com a versão final editada para o paciente ver
-    if (currentPatient && currentPatient.id) {
-      await clearPrescriptionMessages(currentPatient.id);
+    if (targetPatientId) {
+      await clearPrescriptionMessages(targetPatientId);
       
       for (const item of prescItems) {
         await addMessage({
           sender: 'doctor',
           type: 'product',
           productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
-        }, currentPatient.id);
+        }, targetPatientId);
       }
       
       if (prescNotes && prescNotes.trim()) {
@@ -1291,11 +1240,11 @@ export function DoctorDashboardScreen() {
           sender: 'doctor',
           type: 'prescription_notes',
           text: prescNotes
-        }, currentPatient.id);
+        }, targetPatientId);
       }
     }
 
-    // 2. Gerar o PDF com os dados editados
+    // 2. Gerar o PDF com os dados editados para download local
     generatePrescriptionPDF(prescPatientName, messages, {
       customPatientName: prescPatientName,
       birthDate: prescBirthDate,
@@ -1309,15 +1258,17 @@ export function DoctorDashboardScreen() {
     });
   };
 
-  const handleAttachPrescriptionFromEditor = async () => {
-    const targetPatientId = currentPatient?.id || activeConsultationId;
+  const handleSendPrescriptionToChat = async () => {
+    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
-      alert("Por favor, selecione um paciente para anexar a receita.");
+      alert("Nenhum paciente selecionado para envio da receita.");
       return;
     }
 
     try {
-      // 1. Atualizar o chat com os medicamentos
+      setIsSendingAttachment(true);
+
+      // 1. Atualizar o chat com os cards de medicamentos
       await clearPrescriptionMessages(targetPatientId);
       for (const item of prescItems) {
         await addMessage({
@@ -1326,7 +1277,7 @@ export function DoctorDashboardScreen() {
           productData: { ...item, image: '', details: [], description: item.description || '', brand: item.brand || '', origin: item.origin || '' }
         }, targetPatientId);
       }
-      
+
       if (prescNotes && prescNotes.trim()) {
         await addMessage({
           sender: 'doctor',
@@ -1335,75 +1286,84 @@ export function DoctorDashboardScreen() {
         }, targetPatientId);
       }
 
-      // 2. Gerar o blob do PDF
-      const blob = await generatePrescriptionPDF(prescPatientName, messages, {
-        returnBlob: true,
-        customPatientName: prescPatientName,
-        birthDate: prescBirthDate,
-        cpf: prescCpf,
-        emissionDate: prescEmissionDate,
-        customDoctorName: prescDoctorName,
-        customDoctorCrm: prescDoctorCrm,
-        customDoctorSpecialty: prescDoctorSpecialty,
-        customItems: prescItems,
-        customNotes: prescNotes
-      });
+      // 2. Gerar o PDF oficial assinado como Blob
+      let fileUrl = '';
+      try {
+        const pdfBlob = await generatePrescriptionPDF(prescPatientName, messages, {
+          customPatientName: prescPatientName,
+          birthDate: prescBirthDate,
+          cpf: prescCpf,
+          emissionDate: prescEmissionDate,
+          customDoctorName: prescDoctorName,
+          customDoctorCrm: prescDoctorCrm,
+          customDoctorSpecialty: prescDoctorSpecialty,
+          customItems: prescItems,
+          customNotes: prescNotes,
+          returnBlob: true
+        }) as Blob;
 
-      if (!blob || !(blob instanceof Blob)) {
-        throw new Error("Falha ao gerar o arquivo PDF da receita.");
-      }
+        if (pdfBlob) {
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(pdfBlob);
+          });
+          const base64Data = await base64Promise;
 
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(blob);
-      const dataUrl = await base64Promise;
-
-      const safeName = `Receita_Digital_${(prescPatientName || 'Paciente').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-
-      const upRes = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: safeName,
-          data: dataUrl,
-          type: 'application/pdf'
-        })
-      });
-
-      let finalUrl = '';
-      if (upRes.ok) {
-        const upData = await upRes.json();
-        if (upData?.url) {
-          finalUrl = upData.url;
+          const fileName = `Receita_${(prescPatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: fileName,
+              data: base64Data,
+              type: 'application/pdf'
+            })
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            fileUrl = upData.url;
+          }
         }
+      } catch (pdfErr) {
+        console.warn("Erro ao gerar/enviar blob da receita:", pdfErr);
       }
 
-      if (!finalUrl) {
-        throw new Error("Falha ao salvar a receita no servidor. Tente novamente.");
-      }
-
+      // 3. Adicionar o anexo oficial da receita no chat do paciente
+      const fileName = `Receita_Digital_${(prescPatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
       await addMessage({
         sender: 'doctor',
         type: 'prescription',
         docType: 'receita',
-        text: '📋 Receita Médica Digital Oficial emitida e assinada.',
+        text: `📋 **Receita Médica Digital Emitida**\n\nPrescrição oficial emitida pelo ${prescDoctorName} (${prescDoctorCrm}). O documento em PDF assinado digitalmente foi disponibilizado para download.`,
         attachment: {
-          name: safeName,
-          url: finalUrl,
+          name: fileName,
+          url: fileUrl || '',
           type: 'application/pdf',
           docType: 'receita',
-          title: 'Receita Digital Assinada'
+          title: 'Receita Médica Digital Oficial'
         }
       }, targetPatientId);
 
+      // 4. Atualizar fila do paciente
+      try {
+        await updateDoc(doc(db, 'queue', targetPatientId), {
+          status: 'in-consultation',
+          lastMessageAt: new Date().toISOString(),
+          lastMessageText: 'Receita Médica Digital Emitida',
+          hasUnread: true
+        });
+      } catch (err) {
+        console.warn("Could not update queue status:", err);
+      }
+
       setShowPrescriptionEditorModal(false);
-      alert("Receita Digital emitida e anexada ao chat do paciente com sucesso!");
+      showActionToast(`Receita Médica enviada com sucesso para ${prescPatientName || 'o paciente'}!`);
     } catch (err: any) {
-      console.error("Erro ao anexar receita:", err);
-      alert(`Erro ao anexar receita: ${err.message || 'Tente novamente.'}`);
+      console.error("Erro ao enviar receita:", err);
+      showActionToast(`Erro ao enviar receita: ${err?.message || 'Tente novamente'}`);
+    } finally {
+      setIsSendingAttachment(false);
     }
   };
 
@@ -1434,6 +1394,7 @@ export function DoctorDashboardScreen() {
   };
 
   const handleOpenMedicalReportEditor = (type: 'inicial' | 'evolutivo' = 'inicial') => {
+    setMedicalReportType(type);
     const patientAnswers = currentPatient?.answers || answers;
     const pName = currentPatient?.patientName || userName || 'Paciente';
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
@@ -1599,6 +1560,90 @@ CIDs Secundários: ${cidsSecundarios}`;
     });
   };
 
+  const handleSendPsychomotorReportToChat = async () => {
+    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast("Nenhum paciente selecionado para envio do laudo psicomotor.");
+      return;
+    }
+
+    try {
+      setIsSendingPsychomotorToChat(true);
+
+      const pdfBlob = await generatePsychomotorReportPDF(reportPatientName, {
+        customPatientName: reportPatientName,
+        birthDate: reportBirthDate,
+        cpf: reportCpf,
+        emissionDate: reportEmissionDate,
+        customDoctorName: reportDoctorName,
+        customDoctorCrm: reportDoctorCrm,
+        customDoctorSpecialty: reportDoctorSpecialty,
+        customPsychomotorText: psychomotorReportText,
+        returnBlob: true
+      }) as Blob;
+
+      let fileUrl = '';
+      const cleanPatientName = (reportPatientName || 'Paciente').replace(/\s+/g, '_');
+      const fileName = `Laudo_Psicomotor_${cleanPatientName}.pdf`;
+
+      if (pdfBlob) {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(pdfBlob);
+        });
+        const base64Data = await base64Promise;
+
+        const upRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: fileName,
+            data: base64Data,
+            type: 'application/pdf'
+          })
+        });
+        if (upRes.ok) {
+          const upData = await upRes.json();
+          fileUrl = upData?.url || '';
+        }
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: 'psychomotor_report',
+        docType: 'laudo_psicomotor',
+        text: `⚖️ **Laudo Psicomotor (Aptidão / CTB) Emitido**\n\nAtestado de aptidão e capacidade psicomotora emitido pelo ${reportDoctorName} (${reportDoctorCrm}), comprovando a plena aptidão motora e segurança na condução de veículos e operação de equipamentos durante o tratamento. O PDF oficial foi disponibilizado para download.`,
+        attachment: {
+          name: fileName,
+          url: fileUrl || '',
+          type: 'application/pdf',
+          docType: 'laudo_psicomotor',
+          title: 'Laudo Psicomotor (Lei Seca / CTB)'
+        }
+      }, targetPatientId);
+
+      try {
+        await updateDoc(doc(db, 'queue', targetPatientId), {
+          status: 'in-consultation',
+          lastMessageAt: new Date().toISOString(),
+          lastMessageText: 'Laudo Psicomotor Emitido',
+          hasUnread: true
+        });
+      } catch (err) {
+        console.warn("Could not update queue status:", err);
+      }
+
+      setShowPsychomotorReportEditorModal(false);
+      showActionToast(`Laudo Psicomotor enviado com sucesso para ${reportPatientName || 'o paciente'}!`);
+    } catch (err: any) {
+      console.error("Erro ao enviar laudo psicomotor:", err);
+      showActionToast(`Erro ao enviar laudo psicomotor: ${err?.message || 'Tente novamente'}`);
+    } finally {
+      setIsSendingPsychomotorToChat(false);
+    }
+  };
+
   const handleOpenAgronomicReportEditor = () => {
     const pName = currentPatient?.patientName || userName || 'LUCAS DANIEL NERES';
     const patientAnswers = currentPatient?.answers || answers;
@@ -1634,18 +1679,95 @@ CIDs Secundários: ${cidsSecundarios}`;
     });
   };
 
-  const handleSendAgronomicReportToChat = () => {
-    const annualGrams = ((agronomicDailyDoseMg * 365) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
-    const dryFlowerMargin = (((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-    const wetFlower = (((((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038) / 0.30)).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-    const seeds = Math.round(agronomicTargetPlants * 1.3038);
-    const perCycle = Math.round(agronomicTargetPlants / 4);
+  const handleSendAgronomicReportToChat = async () => {
+    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast("Nenhum paciente selecionado para envio do parecer agronômico.");
+      return;
+    }
 
-    addMessage({
-      sender: 'doctor',
-      text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${agronomicPatientName}\n- **CPF:** ${agronomicCpf}\n- **Consultor e Eng. Agrônomo:** ${agronomicName} (${agronomicCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* com finalidade medicinal (GACP / RDC ANVISA)\n- **Patologias / CIDs:** ${agronomicDiagnosis}\n- **Demanda Farmacológica:** ${agronomicDailyDoseMg} mg/dia de extrato integral (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80%)\n- **Dimensionamento Autorizado:** ${agronomicTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades importadas\n\nEste parecer pericial oficial de 3 páginas foi emitido com fundamentação nas Boas Práticas GACP e RDC da ANVISA, sendo anexado ao seu prontuário legal para instrução de ação de Habeas Corpus Preventivo.`
-    });
-    setShowAgronomicReportEditorModal(false);
+    try {
+      setIsSendingAgronomicToChat(true);
+
+      const annualGrams = ((agronomicDailyDoseMg * 365) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+      const dryFlowerMargin = (((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const wetFlower = (((((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038) / 0.30)).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const seeds = Math.round(agronomicTargetPlants * 1.3038);
+      const perCycle = Math.round(agronomicTargetPlants / 4);
+
+      const pdfBlob = await generateAgronomicReportPDF(agronomicPatientName, {
+        customPatientName: agronomicPatientName,
+        cpf: agronomicCpf,
+        emissionDate: agronomicEmissionDate,
+        agronomistName: agronomicName,
+        agronomistCrea: agronomicCrea,
+        diagnosis: agronomicDiagnosis,
+        dailyDoseMg: agronomicDailyDoseMg,
+        targetPlants: agronomicTargetPlants,
+        customText: agronomicText,
+        returnBlob: true
+      }) as Blob;
+
+      let fileUrl = '';
+      const cleanPatientName = (agronomicPatientName || 'Paciente').replace(/\s+/g, '_');
+      const fileName = `Parecer_Agronomico_${cleanPatientName}.pdf`;
+
+      if (pdfBlob) {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(pdfBlob);
+        });
+        const base64Data = await base64Promise;
+
+        const upRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: fileName,
+            data: base64Data,
+            type: 'application/pdf'
+          })
+        });
+        if (upRes.ok) {
+          const upData = await upRes.json();
+          fileUrl = upData?.url || '';
+        }
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: 'agronomic_report',
+        docType: 'laudo_agronomico',
+        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${agronomicPatientName}\n- **CPF:** ${agronomicCpf}\n- **Consultor e Eng. Agrônomo:** ${agronomicName} (${agronomicCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* com finalidade medicinal (GACP / RDC ANVISA)\n- **Patologias / CIDs:** ${agronomicDiagnosis}\n- **Demanda Farmacológica:** ${agronomicDailyDoseMg} mg/dia de extrato integral (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80%)\n- **Dimensionamento Autorizado:** ${agronomicTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades importadas\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
+        attachment: {
+          name: fileName,
+          url: fileUrl || '',
+          type: 'application/pdf',
+          docType: 'laudo_agronomico',
+          title: 'Parecer Técnico Agronômico Oficial'
+        }
+      }, targetPatientId);
+
+      try {
+        await updateDoc(doc(db, 'queue', targetPatientId), {
+          status: 'in-consultation',
+          lastMessageAt: new Date().toISOString(),
+          lastMessageText: 'Parecer Agronômico Emitido',
+          hasUnread: true
+        });
+      } catch (err) {
+        console.warn("Could not update queue status:", err);
+      }
+
+      setShowAgronomicReportEditorModal(false);
+      showActionToast(`Parecer Agronômico enviado com sucesso para ${agronomicPatientName || 'o paciente'}!`);
+    } catch (err: any) {
+      console.error("Erro ao enviar parecer agronômico:", err);
+      showActionToast(`Erro ao enviar parecer agronômico: ${err?.message || 'Tente novamente'}`);
+    } finally {
+      setIsSendingAgronomicToChat(false);
+    }
   };
 
   const handleDownloadMedicalReportFromEditor = () => {
@@ -1664,6 +1786,97 @@ CIDs Secundários: ${cidsSecundarios}`;
       customTreatmentPlan: reportTreatmentPlan,
       customMonitoring: reportMonitoring
     });
+  };
+
+  const handleSendMedicalReportToChat = async () => {
+    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast("Nenhum paciente selecionado para envio do laudo médico.");
+      return;
+    }
+
+    try {
+      setIsSendingReportToChat(true);
+
+      const patientAnswers = currentPatient?.answers || answers;
+      const pdfBlob = await generateMedicalReportPDF(reportPatientName, messages, {
+        customPatientName: reportPatientName,
+        birthDate: reportBirthDate,
+        cpf: reportCpf,
+        emissionDate: reportEmissionDate,
+        answers: patientAnswers,
+        customDoctorName: reportDoctorName,
+        customDoctorCrm: reportDoctorCrm,
+        customDoctorSpecialty: reportDoctorSpecialty,
+        customDiagnosis: reportDiagnosis,
+        customRationale: reportRationale,
+        customTreatmentPlan: reportTreatmentPlan,
+        customMonitoring: reportMonitoring,
+        returnBlob: true
+      }) as Blob;
+
+      let fileUrl = '';
+      const isEvolutivo = medicalReportType === 'evolutivo';
+      const docType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
+      const cleanPatientName = (reportPatientName || 'Paciente').replace(/\s+/g, '_');
+      const fileName = `${isEvolutivo ? 'Laudo_Evolutivo' : 'Laudo_Inicial'}_${cleanPatientName}.pdf`;
+
+      if (pdfBlob) {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(pdfBlob);
+        });
+        const base64Data = await base64Promise;
+
+        const upRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: fileName,
+            data: base64Data,
+            type: 'application/pdf'
+          })
+        });
+        if (upRes.ok) {
+          const upData = await upRes.json();
+          fileUrl = upData?.url || '';
+        }
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: 'medical_report',
+        docType: docType,
+        text: `📑 **${isEvolutivo ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial'} Emitido**\n\nDocumento oficial assinado pelo ${reportDoctorName} (${reportDoctorCrm}) com diagnóstico, fundamentação terapêutica e plano de tratamento. O laudo clínico em PDF foi anexado para visualização e download imediato.`,
+        attachment: {
+          name: fileName,
+          url: fileUrl || '',
+          type: 'application/pdf',
+          docType: docType,
+          title: isEvolutivo ? 'Laudo Médico Evolutivo Oficial' : 'Laudo Médico Inicial Oficial'
+        }
+      }, targetPatientId);
+
+      try {
+        await updateDoc(doc(db, 'queue', targetPatientId), {
+          status: 'in-consultation',
+          lastMessageAt: new Date().toISOString(),
+          lastMessageText: isEvolutivo ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial',
+          hasUnread: true
+        });
+      } catch (err) {
+        console.warn("Could not update queue status:", err);
+      }
+
+      setShowMedicalReportEditorModal(false);
+      showActionToast(`Laudo Médico enviado com sucesso para ${reportPatientName || 'o paciente'}!`);
+    } catch (err: any) {
+      console.error("Erro ao enviar laudo médico:", err);
+      showActionToast(`Erro ao enviar laudo: ${err?.message || 'Tente novamente'}`);
+    } finally {
+      setIsSendingReportToChat(false);
+    }
   };
 
   const handleGeneratePDF = () => {
@@ -2095,10 +2308,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         </div>
         
         <nav className="flex md:flex-col gap-2 md:gap-6 flex-1 justify-center md:justify-start">
-          <button 
-            onClick={() => setActiveView('chat')}
-            className={`p-3 rounded-xl transition-colors relative group hidden md:block ${activeView === 'chat' ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-mecura-silver hover:text-white hover:bg-white/5'}`}
-          >
+          <button className="p-3 rounded-xl bg-mecura-neon/10 text-mecura-neon relative group hidden md:block">
             <Users className="w-6 h-6" />
             <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
               Fila de Pacientes
@@ -2137,15 +2347,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         </nav>
 
         <div className="flex md:flex-col gap-2 md:gap-4 items-center">
-          <button 
-            onClick={() => setActiveView('analytics')}
-            title="Configurações e Dashboard"
-            className={`p-3 rounded-xl transition-colors relative group hidden md:block ${activeView === 'analytics' ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-mecura-silver hover:text-white hover:bg-white/5'}`}
-          >
+          <button className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors hidden md:block">
             <Settings className="w-6 h-6" />
-            <div className="absolute left-full ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
-              Configurações
-            </div>
           </button>
           <button 
             onClick={() => navigate('/')}
@@ -2629,10 +2832,30 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 </button>
                 <button
                   onClick={async () => {
-                    const targetPatient = currentPatient || queue.find(p => p.status === 'waiting');
+                    const targetPatient = currentPatient || queue.find(p => p.status === 'waiting') || queue[0];
                     if (targetPatient) {
                       try {
-                        // 1. Send Background Push Notification (if they have app closed)
+                        // 1. Definitively set status to 'in-consultation' in Firestore
+                        await updateDoc(doc(db, 'queue', targetPatient.id), {
+                          status: 'in-consultation',
+                          isAlerted: Date.now(),
+                          hasUnread: false
+                        }).catch(async () => {
+                          await setDoc(doc(db, 'queue', targetPatient.id), {
+                            ...targetPatient,
+                            status: 'in-consultation',
+                            isAlerted: Date.now()
+                          }, { merge: true });
+                        });
+
+                        // 2. Start consultation locally and subscribe
+                        startConsultation(targetPatient.id);
+                        subscribeToMessages(targetPatient.id);
+                        if (!currentPatient || currentPatient.id !== targetPatient.id) {
+                          handleStartConsultation(targetPatient);
+                        }
+
+                        // 3. Send Background Push Notification (if they have app closed)
                         triggerBackgroundPush(
                           targetPatient.id,
                           'Sua vez chegou!',
@@ -2640,27 +2863,14 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           '/chat'
                         ).catch(() => {});
                         
-                        // 2. Send an automated chat message that will definitively trigger their UI
-                        // This guarantees delivery if they are already in the app/chat
-                        const msgRef = doc(collection(db, 'active_consultations', targetPatient.id, 'messages'));
-                        await setDoc(msgRef, {
-                          id: msgRef.id,
+                        // 4. Send an automated chat message that will trigger their UI
+                        await addMessage({
                           text: "🔔 SUA VEZ CHEGOU! O médico está te chamando no consultório agora.",
                           sender: 'doctor',
-                          type: 'text',
-                          timestamp: new Date().toISOString()
-                        });
-                        
-                        // Also update the queue so the patient side can react if they are on the QueueScreen
-                        const patientRef = doc(db, 'queue', targetPatient.id);
-                        await setDoc(patientRef, { isAlerted: Date.now() }, { merge: true });
+                          type: 'text'
+                        }, targetPatient.id);
 
-                        alert(`Alerta enviado para ${targetPatient.patientName || 'o paciente'} com sucesso!`);
-                        
-                        // Auto-select if it was the first waiting one
-                        if (!currentPatient && targetPatient.status === 'waiting') {
-                           handleStartConsultation(targetPatient);
-                        }
+                        alert(`Chamada enviada para ${targetPatient.patientName || 'o paciente'}! Paciente puxado para consulta com sucesso.`);
                       } catch (e) {
                         console.error(e);
                         alert('Erro ao enviar alerta.');
@@ -3344,6 +3554,17 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         </select>
                       </div>
                       <p className="text-sm font-bold text-white truncate max-w-[280px] sm:max-w-md">{pendingAttachment.name}</p>
+                      {isUploadingAttachment ? (
+                        <div className="flex items-center gap-1.5 text-xs text-mecura-neon animate-pulse mt-1">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Carregando arquivo no servidor seguro...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-400 mt-1">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>Arquivo pronto para envio</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-center">
@@ -3356,13 +3577,13 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     </button>
                     <button 
                       onClick={() => handleSendAttachment(pendingAttachment)}
-                      disabled={isSendingAttachment}
+                      disabled={isSendingAttachment || isUploadingAttachment}
                       className="px-4 py-2.5 bg-mecura-neon text-black text-xs md:text-sm font-bold rounded-xl hover:bg-[#b5ff33] transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(166,255,0,0.25)] cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                     >
-                      {isSendingAttachment ? (
+                      {isSendingAttachment || isUploadingAttachment ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Enviando...</span>
+                          <span>{isUploadingAttachment ? 'Carregando...' : 'Enviando...'}</span>
                         </>
                       ) : (
                         <>
@@ -3400,17 +3621,6 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       Anexar Documento para o Paciente
                     </div>
                     
-                    <button 
-                      onClick={() => {
-                        setShowAttachmentMenu(false);
-                        handleEmitAndAttachPrescription();
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-neon hover:bg-mecura-neon/10 transition-colors cursor-pointer text-left font-bold"
-                    >
-                      <Sparkles className="w-4 h-4 text-mecura-neon" />
-                      <span>Emitir e Anexar Receita Oficial</span>
-                    </button>
-
                     <button 
                       onClick={() => handleTriggerFileInput('receita')}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-mecura-pearl hover:bg-white/5 hover:text-mecura-neon transition-colors cursor-pointer text-left"
@@ -5930,7 +6140,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         notes={prescNotes}
         setNotes={setPrescNotes}
         onDownloadPDF={handleDownloadPrescriptionFromEditor}
-        onAttachToChat={handleAttachPrescriptionFromEditor}
+        onSendToChat={handleSendPrescriptionToChat}
       />
 
       {/* Medical Report (Laudo Médico) View & Edit Modal */}
@@ -5960,6 +6170,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         monitoring={reportMonitoring}
         setMonitoring={setReportMonitoring}
         onDownloadPDF={handleDownloadMedicalReportFromEditor}
+        onSendToChat={handleSendMedicalReportToChat}
+        isSendingToChat={isSendingReportToChat}
+        reportType={medicalReportType}
       />
 
       {/* Psychomotor Report View & Edit Modal */}
@@ -5983,6 +6196,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         psychomotorText={psychomotorReportText}
         setPsychomotorText={setPsychomotorReportText}
         onDownloadPDF={handleDownloadPsychomotorReportFromEditor}
+        onSendToChat={handleSendPsychomotorReportToChat}
+        isSendingToChat={isSendingPsychomotorToChat}
       />
 
       {/* Agronomic Report View & Edit Modal */}
@@ -6009,7 +6224,28 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         setAgronomicText={setAgronomicText}
         onDownloadPDF={handleDownloadAgronomicReportFromEditor}
         onSendToChat={handleSendAgronomicReportToChat}
+        isSendingToChat={isSendingAgronomicToChat}
       />
+
+      {/* Action Toast Feedback Banner */}
+      {actionToastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="bg-[#1A1A28] border border-mecura-neon/50 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+            <div className="w-8 h-8 rounded-full bg-mecura-neon/20 border border-mecura-neon/40 flex items-center justify-center shrink-0">
+              <CheckCircle className="w-4 h-4 text-mecura-neon" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white">{actionToastMessage}</p>
+            </div>
+            <button
+              onClick={() => setActionToastMessage(null)}
+              className="ml-2 text-mecura-silver hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
