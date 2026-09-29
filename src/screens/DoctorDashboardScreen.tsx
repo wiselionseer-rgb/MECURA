@@ -55,7 +55,9 @@ import {
   AlertCircle,
   Crown,
   PhoneCall,
-  Pill
+  Pill,
+  Plus,
+  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -436,6 +438,7 @@ export function DoctorDashboardScreen() {
 
   // Prescription (Receita Médica) Editor & Preview States
   const [showPrescriptionEditorModal, setShowPrescriptionEditorModal] = useState(false);
+  const [showDocMenu, setShowDocMenu] = useState(false);
   const [prescriptionTab, setPrescriptionTab] = useState<'edit' | 'preview'>('edit');
   const [prescPatientName, setPrescPatientName] = useState('');
   const [prescBirthDate, setPrescBirthDate] = useState('');
@@ -446,6 +449,49 @@ export function DoctorDashboardScreen() {
   const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
   const [prescItems, setPrescItems] = useState<PrescriptionItemData[]>([]);
   const [prescNotes, setPrescNotes] = useState('');
+
+  const handleToggleProductInPrescription = (product: CBDProduct) => {
+    const isNational = (product.origin || '').toLowerCase().includes('nacional') || (product.manufacturer || '').toLowerCase().includes('associação');
+    const enriched = enrichMedicationDetails(
+      product.name,
+      product.manufacturer,
+      isNational ? 'Nacional' : (product.origin || 'Importado'),
+      product.type,
+      product
+    );
+
+    const cleanName = product.name.toLowerCase().trim();
+    const exists = prescItems.some(p => p.name.toLowerCase().trim() === cleanName);
+    if (exists) {
+      setPrescItems(prev => prev.filter(p => p.name.toLowerCase().trim() !== cleanName));
+      showActionToast(`"${product.name}" removido da receita.`);
+    } else {
+      const newItem: PrescriptionItemData = {
+        name: product.name,
+        brand: product.manufacturer || enriched.brand,
+        origin: isNational ? 'Nacional' : (product.origin || 'Importado'),
+        type: product.type || enriched.type,
+        concentration: product.concentration || enriched.concentration || '',
+        activeIngredients: enriched.activeIngredients || product.concentration || '',
+        pharmaceuticalForm: enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+        quantity: enriched.quantity || '01 Frasco de 30 mL',
+        administrationRoute: enriched.administrationRoute || 'Via Sublingual / Oral',
+        dosage: product.usageInstructions 
+          ? product.usageInstructions.split('\n').map(s => s.trim()).filter(Boolean)
+          : (enriched.usageInstructions ? [enriched.usageInstructions] : [
+              'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
+              'Aumentar 01 gota a cada 05 dias conforme resposta clínica.'
+            ]),
+        description: product.description || enriched.description || '',
+        details: product.details || [enriched.activeIngredients],
+        priceUSD: isNational ? undefined : product.priceUSD,
+        priceBRL: isNational ? undefined : product.priceBRL
+      };
+
+      setPrescItems(prev => [...prev, newItem]);
+      showActionToast(`✓ "${product.name}" adicionado à receita! (${prescItems.length + 1} itens)`);
+    }
+  };
 
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1152,15 +1198,53 @@ export function DoctorDashboardScreen() {
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
-    // Extract products already in messages & enrich with full pharmacology
+    // Extract products already in prescItems, messages & enrich with full pharmacology
     const items: PrescriptionItemData[] = [];
     const seenNames = new Set<string>();
 
+    // 1. Items already selected in current session
+    prescItems.forEach(it => {
+      const clean = it.name.toLowerCase().trim();
+      if (!seenNames.has(clean)) {
+        seenNames.add(clean);
+        items.push(it);
+      }
+    });
+
+    // 2. Items from previous receita_previa messages
+    messages.forEach(m => {
+      if (m.type === 'receita_previa' && m.receitaPreviaData?.items) {
+        m.receitaPreviaData.items.forEach(it => {
+          const clean = it.name.toLowerCase().trim();
+          if (!seenNames.has(clean)) {
+            seenNames.add(clean);
+            const enriched = enrichMedicationDetails(it.name, it.brand, it.origin, it.type);
+            items.push({
+              name: it.name,
+              brand: it.brand || enriched.brand,
+              origin: it.origin || enriched.origin,
+              type: it.type || enriched.type,
+              activeIngredients: it.activeIngredients || enriched.activeIngredients,
+              concentration: it.concentration || enriched.concentration,
+              pharmaceuticalForm: it.pharmaceuticalForm || enriched.pharmaceuticalForm,
+              quantity: it.quantity || enriched.quantity,
+              administrationRoute: it.administrationRoute || enriched.administrationRoute,
+              dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')],
+              description: it.description || enriched.description || '',
+              details: it.details
+            });
+          }
+        });
+      }
+    });
+
+    // 3. Items from previous product messages
     messages.forEach(m => {
       if (m.type === 'product' && m.productData) {
         const pName = m.productData.name;
-        if (!seenNames.has(pName)) {
-          seenNames.add(pName);
+        const clean = pName.toLowerCase().trim();
+        if (!seenNames.has(clean)) {
+          seenNames.add(clean);
           const enriched = enrichMedicationDetails(
             pName,
             m.productData.brand || 'Associação Brasileira',
@@ -1223,8 +1307,8 @@ export function DoctorDashboardScreen() {
     }
     const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
     
-    let finalNotes = notes || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
-    if (notes && !notes.includes('alimentos gordurosos')) {
+    let finalNotes = prescNotes || notes || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
+    if (!finalNotes.includes('alimentos gordurosos')) {
       finalNotes += '\n\n' + defaultNotesToAdd;
     }
     // Auto-update legacy confusing phrasing if present
@@ -1237,6 +1321,70 @@ export function DoctorDashboardScreen() {
     setPrescNotes(finalNotes);
     setPrescriptionTab('edit');
     setShowPrescriptionEditorModal(true);
+  };
+
+  const handleSendReceitaPrevia = async () => {
+    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast("Nenhum paciente selecionado para envio da receita prévia.");
+      return;
+    }
+
+    const itemsToSend = prescItems.length > 0 ? prescItems : [];
+    if (itemsToSend.length === 0) {
+      showActionToast("Adicione pelo menos um medicamento à receita antes de enviar.");
+      return;
+    }
+
+    const patientAnswers = currentPatient?.answers || answers;
+    const pName = prescPatientName || currentPatient?.patientName || userName || 'Paciente';
+    const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
+    const finalNotes = prescNotes.trim() || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
+
+    try {
+      await addMessage({
+        sender: 'doctor',
+        type: 'receita_previa',
+        text: `Olá ${pName}! Preparei a sua receita médica prévia com o protocolo de tratamento individualizado. Por favor, confira os medicamentos, a composição e as posologias abaixo e clique em "Confirmar e Aceitar Receita" para validarmos seu tratamento.`,
+        receitaPreviaData: {
+          doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
+          doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
+          doctorSpecialty: prescDoctorSpecialty || 'Especialista em Medicina Canabinoide',
+          patientName: pName,
+          emissionDate: prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+          items: itemsToSend.map(item => {
+            const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
+            return {
+              name: item.name,
+              brand: item.brand || enriched.brand,
+              origin: item.origin || enriched.origin,
+              type: item.type || enriched.type,
+              activeIngredients: (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients,
+              concentration: (item.concentration !== undefined && item.concentration !== null && item.concentration !== '') ? item.concentration : enriched.concentration,
+              pharmaceuticalForm: item.pharmaceuticalForm || enriched.pharmaceuticalForm,
+              quantity: item.quantity || enriched.quantity,
+              administrationRoute: item.administrationRoute || enriched.administrationRoute,
+              dosage: Array.isArray(item.dosage) && item.dosage.length > 0 
+                ? item.dosage 
+                : typeof (item.dosage as any) === 'string'
+                ? String(item.dosage).split('\n').filter(Boolean)
+                : ['Tomar conforme orientação médica.'],
+              description: item.description || enriched.description || '',
+              details: item.details || [item.activeIngredients || enriched.activeIngredients]
+            };
+          }),
+          notes: finalNotes,
+          status: 'pending_confirmation'
+        }
+      } as any, targetPatientId);
+
+      setShowPrescriptionEditorModal(false);
+      setShowProductSearchModal(false);
+      showActionToast(`📋 Receita Prévia enviada com sucesso para ${pName}! Aguardando confirmação.`);
+    } catch (err: any) {
+      console.error("Erro ao enviar receita prévia:", err);
+      showActionToast(`Erro ao enviar receita prévia: ${err?.message || 'Tente novamente'}`);
+    }
   };
 
   const handleDownloadPrescriptionFromEditor = async () => {
@@ -2434,29 +2582,32 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       ? undefined 
       : (foundProduct?.priceUSD || (foundProduct?.priceBRL ? foundProduct.priceBRL / exchangeRate : 80.00));
 
-    await addMessage({
-      text: `Prescrição de ${med.name}`,
-      sender: 'doctor',
-      type: 'product',
-      productData: {
-        name: foundProduct ? foundProduct.name : med.name,
-        brand: isNational ? 'Associação Nacional' : (foundProduct?.manufacturer || defaultManufacturer),
-        origin: isNational ? 'Nacional' : 'Importado',
-        type: foundProduct ? foundProduct.type : enriched.type,
-        activeIngredients: enriched.activeIngredients,
-        concentration: enriched.concentration,
-        pharmaceuticalForm: enriched.pharmaceuticalForm,
-        quantity: enriched.quantity,
-        administrationRoute: enriched.administrationRoute,
-        details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients].filter(Boolean),
-        dosage: [med.dosage || 'Tomar conforme orientação médica.'],
-        description: foundProduct && foundProduct.description ? foundProduct.description : (med.instructions || enriched.description),
-        italicText: foundProduct && foundProduct.italicText ? foundProduct.italicText : (isNational ? 'Opção Nacional Autorizada' : 'Produto Autorizado Anvisa'),
-        image: foundProduct && foundProduct.image ? foundProduct.image : (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
-        priceUSD: finalPriceUSD,
-        priceBRL: finalPriceBRL
-      }
-    }, targetPatientId);
+    const newItem: PrescriptionItemData = {
+      name: foundProduct ? foundProduct.name : med.name,
+      brand: isNational ? 'Associação Nacional' : (foundProduct?.manufacturer || defaultManufacturer),
+      origin: isNational ? 'Nacional' : 'Importado',
+      type: foundProduct ? foundProduct.type : enriched.type,
+      activeIngredients: enriched.activeIngredients,
+      concentration: enriched.concentration,
+      pharmaceuticalForm: enriched.pharmaceuticalForm,
+      quantity: enriched.quantity,
+      administrationRoute: enriched.administrationRoute,
+      details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients].filter(Boolean),
+      dosage: [med.dosage || 'Tomar conforme orientação médica.'],
+      description: foundProduct && foundProduct.description ? foundProduct.description : (med.instructions || enriched.description),
+      image: foundProduct && foundProduct.image ? foundProduct.image : (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
+      priceUSD: finalPriceUSD,
+      priceBRL: finalPriceBRL
+    };
+
+    setPrescItems(prev => {
+      const clean = newItem.name.toLowerCase().trim();
+      const exists = prev.some(p => p.name.toLowerCase().trim() === clean);
+      if (exists) return prev;
+      return [...prev, newItem];
+    });
+
+    showActionToast(`✓ "${newItem.name}" adicionado à receita prévia!`);
   };
 
   return (
@@ -2845,7 +2996,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               </div>
             </button>
             <button
-              onClick={() => { setShowPrescriptionModal(true); }}
+              onClick={() => { handleOpenPrescriptionEditor(); }}
               className="w-full p-4 bg-mecura-surface border border-mecura-neon/30 rounded-2xl flex items-center gap-4 text-left hover:border-mecura-neon transition-all"
             >
               <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center text-mecura-neon flex-shrink-0">
@@ -2853,7 +3004,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               </div>
               <div>
                 <h4 className="text-white font-bold text-base">Prescrever Medicamento</h4>
-                <p className="text-xs text-mecura-silver">Buscar no guia ou criar receita personalizada</p>
+                <p className="text-xs text-mecura-silver">Abrir Editor Estruturado com Composição e Posologia</p>
               </div>
             </button>
 
@@ -3054,9 +3205,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   <FileText className="w-3 h-3 md:w-4 md:h-4 text-mecura-silver" /> <span className="hidden md:inline">Histórico</span>
                 </button>
                 <button 
-                  onClick={() => setShowPrescriptionModal(true)}
+                  onClick={() => handleOpenPrescriptionEditor()}
                   className="px-3 md:px-5 py-2 md:py-2.5 bg-mecura-neon text-black rounded-xl text-xs md:text-sm font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1 md:gap-2 shadow-[0_0_20px_rgba(166,255,0,0.15)] whitespace-nowrap"
-                  title="Prescrever Medicamentos"
+                  title="Prescrever Medicamentos (Editor Estruturado)"
                 >
                   <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
                 </button>
@@ -3144,14 +3295,14 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 </p>
               </div>
             ) : (
-              <div>
+              <div className="flex flex-col space-y-6">
                 {[...messages].sort((a, b) => {
                   const tA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
                   const tB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
                   return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
-                }).map((msg) => (
+                }).map((msg, msgIdx) => (
                 <div
-                  key={msg.id}
+                  key={msg.id || `doc-msg-${msgIdx}`}
                   className={`flex flex-col w-full ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}
                 >
                   {msg.type === 'product' && msg.productData ? (
@@ -3189,7 +3340,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           {/* Details */}
                           <div className="flex-1 flex flex-col min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-2">
-                              <h3 className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} font-bold text-base leading-tight flex-1`}>
+                              <h3 className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} font-bold text-base leading-tight flex-1 break-words`}>
                                 {msg.productData.name}
                               </h3>
                               <button
@@ -3207,10 +3358,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                               </button>
                             </div>
                             <ul className={`${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-600'} text-xs space-y-1 mb-2`}>
-                              {(msg.productData.details || []).map((detail, idx) => (
+                              {(Array.isArray(msg.productData.details) ? msg.productData.details : [msg.productData.details || '']).filter(Boolean).map((detail, idx) => (
                                 <li key={idx} className="flex items-center gap-1.5">
-                                  <span className="w-1 h-1 rounded-full bg-gray-400" />
-                                  {detail}
+                                  <span className="w-1 h-1 rounded-full bg-gray-400 shrink-0" />
+                                  <span>{detail}</span>
                                 </li>
                               ))}
                             </ul>
@@ -3226,7 +3377,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         <div className={`flex justify-between items-center border-t border-b ${msg.sender === 'doctor' ? 'border-mecura-neon/20' : 'border-gray-200'} py-3 mb-4`}>
                           <span className={`text-sm font-medium ${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-700'}`}>® {msg.productData.brand}</span>
                           <span className={`text-sm ${msg.sender === 'doctor' ? 'text-mecura-pearl' : 'text-gray-700'} flex items-center gap-1`}>
-                            🇺🇸 {msg.productData.origin}
+                            {msg.productData.origin === 'Nacional' ? '🇧🇷 Nacional' : `🇺🇸 ${msg.productData.origin || 'Importado'}`}
                           </span>
                         </div>
 
@@ -3236,15 +3387,126 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                             Iniciar tratamento com:
                           </h4>
                           <ul className={`${msg.sender === 'doctor' ? 'text-white' : 'text-black'} text-sm space-y-1 mb-4`}>
-                            {(Array.isArray(msg.productData.dosage) ? msg.productData.dosage : [msg.productData.dosage || '']).map((dose, idx) => (
-                              <li key={`${msg.id}-dose-${idx}`}>
+                            {(Array.isArray(msg.productData.dosage) 
+                              ? msg.productData.dosage 
+                              : typeof (msg.productData.dosage as any) === 'string'
+                              ? String(msg.productData.dosage).split('\n').filter(Boolean)
+                              : [msg.productData.dosage ? String(msg.productData.dosage) : '']
+                            ).map((dose, idx) => (
+                              <li key={`${msg.id}-dose-${idx}`} className="whitespace-pre-line leading-relaxed">
                                 {dose}
                               </li>
                             ))}
                           </ul>
-                          <p className={`${msg.sender === 'doctor' ? 'text-mecura-silver' : 'text-gray-500'} text-xs leading-relaxed`}>
-                            {msg.productData.description}
-                          </p>
+                          {msg.productData.description && (
+                            <p className={`${msg.sender === 'doctor' ? 'text-mecura-silver' : 'text-gray-500'} text-xs leading-relaxed whitespace-pre-line border-t border-white/5 pt-2`}>
+                              {msg.productData.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : msg.type === 'receita_previa' && msg.receitaPreviaData ? (
+                    <div className="w-[85%] max-w-2xl bg-gradient-to-br from-[#12131C] to-[#0A0B10] border border-amber-500/40 rounded-3xl p-5 sm:p-6 mb-2 shadow-xl relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemovePrescribedMedication(msg.id, 'Receita Prévia');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover receita prévia"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="relative z-10">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-white font-bold text-base sm:text-lg flex items-center gap-2">
+                                <span>Receita Médica Prévia</span>
+                              </h3>
+                              <p className="text-xs text-mecura-silver">
+                                Enviada para conferência e validação do paciente
+                              </p>
+                            </div>
+                          </div>
+                          <div className="pr-20">
+                            {msg.receitaPreviaData.status === 'confirmed' ? (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5">
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Confirmada pelo Paciente
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 animate-pulse">
+                                <Clock className="w-3.5 h-3.5" />
+                                Aguardando Confirmação
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Medications List */}
+                        <div className="space-y-3 mb-4">
+                          {msg.receitaPreviaData.items.map((item, itIdx) => (
+                            <div key={itIdx} className="p-3.5 bg-black/40 border border-white/10 rounded-2xl space-y-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className="text-white font-bold text-sm">
+                                  {itIdx + 1}. {item.name}
+                                </h4>
+                                <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-white/10 text-mecura-silver border border-white/10">
+                                  {item.brand} ({item.origin})
+                                </span>
+                              </div>
+                              {(item.concentration || item.activeIngredients) && (
+                                <p className="text-xs text-emerald-300 font-medium flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span><strong>Composição / Concentração:</strong> {item.concentration || item.activeIngredients}</span>
+                                </p>
+                              )}
+                              <p className="text-[11px] text-mecura-silver">
+                                {item.pharmaceuticalForm} • Qtd: {item.quantity} • {item.administrationRoute}
+                              </p>
+                              <div className="pt-1 text-xs text-mecura-pearl">
+                                <span className="font-semibold text-white block mb-0.5">Posologia:</span>
+                                {(Array.isArray(item.dosage) ? item.dosage : [String(item.dosage || '')]).map((d, dI) => (
+                                  <p key={dI} className="leading-relaxed">• {d}</p>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {msg.receitaPreviaData.notes && (
+                          <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs text-mecura-silver mb-4 whitespace-pre-line">
+                            <strong className="text-white block mb-1">Orientações Farmacológicas:</strong>
+                            {msg.receitaPreviaData.notes}
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-white/10">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrescriptionEditor()}
+                            className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Editar no Validador</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadPrescriptionFromEditor()}
+                            className="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Baixar PDF da Receita</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -3585,16 +3847,23 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           <span className="pointer-events-none">Remover</span>
                         </button>
                       </div>
-                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
                     </div>
                   ) : (
                     <div className="max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-sm relative group bg-mecura-surface text-mecura-pearl rounded-tl-sm border border-mecura-elevated mb-2">
-                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
                     </div>
                   )}
                   <div className="flex items-center gap-1.5 mt-2 px-1">
                     <span className="text-[11px] text-mecura-silver font-medium">
-                      {format(msg.timestamp, 'HH:mm')}
+                      {(() => {
+                        try {
+                          const d = msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp || 0);
+                          return !isNaN(d.getTime()) ? format(d, 'HH:mm') : '';
+                        } catch {
+                          return '';
+                        }
+                      })()}
                     </span>
                     {msg.sender === 'doctor' && <CheckCheck className="w-4 h-4 text-mecura-neon" />}
                   </div>
@@ -4852,12 +5121,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   </div>
                   <div>
                     <h3 className="text-base sm:text-xl font-bold text-white flex items-center gap-2">
-                      {selectedProduct ? 'Configurar Posologia & Prescrever' : 'Buscar Produto no Guia de Cannabis'}
+                      Buscar & Prescrever Medicamentos
                     </h3>
                     <p className="text-xs text-mecura-silver">
-                      {selectedProduct 
-                        ? 'Defina a dosagem, horários e orientações antes de enviar para o chat' 
-                        : `${filteredGuideProducts.length} medicamentos disponíveis para prescrição médica`}
+                      Adicione os medicamentos desejados à receita e envie a receita prévia ao final para conferência e validação do paciente.
                     </p>
                   </div>
                 </div>
@@ -5237,15 +5504,24 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           ? product.indications.split(/[,;•\n]/).map(s => s.trim()).filter(Boolean).slice(0, 3)
                           : (product.categoryIndications || []).slice(0, 3);
 
+                        const isInPresc = prescItems.some(p => p.name.toLowerCase().trim() === product.name.toLowerCase().trim());
+                        const prescIndex = prescItems.findIndex(p => p.name.toLowerCase().trim() === product.name.toLowerCase().trim());
+
                         return (
                           <div 
                             key={idx}
-                            onClick={() => selectAndConfigureProduct(product)}
-                            className="p-4 rounded-xl border border-mecura-elevated bg-[#0A0A0F] hover:border-mecura-neon/60 hover:bg-[#12121A] cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group shadow-sm hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+                            onClick={() => handleToggleProductInPrescription(product)}
+                            className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group shadow-sm hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)] cursor-pointer ${
+                              isInPresc
+                                ? 'bg-emerald-950/25 border-emerald-500/50 hover:border-emerald-400'
+                                : 'bg-[#0A0A0F] border-mecura-elevated hover:border-mecura-neon/60 hover:bg-[#12121A]'
+                            }`}
                           >
                             <div className="space-y-1.5 flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-white font-bold text-sm sm:text-base group-hover:text-mecura-neon transition-colors">
+                                <h4 className={`font-bold text-sm sm:text-base transition-colors ${
+                                  isInPresc ? 'text-emerald-300' : 'text-white group-hover:text-mecura-neon'
+                                }`}>
                                   {product.name}
                                 </h4>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${
@@ -5260,6 +5536,12 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                     R$ {product.priceBRL}
                                   </span>
                                 )}
+                                {isInPresc && (
+                                  <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3 text-emerald-400" />
+                                    Na Receita
+                                  </span>
+                                )}
                               </div>
 
                               <p className="text-xs text-mecura-silver flex items-center gap-1.5 flex-wrap">
@@ -5269,7 +5551,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                 {product.concentration && (
                                   <>
                                     <span>•</span>
-                                    <span className="text-mecura-silver/80">{product.concentration}</span>
+                                    <span className="text-emerald-400 font-medium">{product.concentration}</span>
                                   </>
                                 )}
                               </p>
@@ -5286,22 +5568,82 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                               )}
                             </div>
 
-                              <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0">
+                            <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0">
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  selectAndConfigureProduct(product);
+                                  handleToggleProductInPrescription(product);
                                 }}
-                                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-mecura-neon/10 group-hover:bg-mecura-neon group-hover:text-black text-mecura-neon text-xs font-bold border border-mecura-neon/30 transition-all flex items-center justify-center gap-1.5"
+                                className={`w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
+                                  isInPresc
+                                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                                    : 'bg-mecura-neon/15 hover:bg-mecura-neon hover:text-black text-mecura-neon border-mecura-neon/30'
+                                }`}
                               >
-                                <span>Prescrever</span>
-                                <ArrowRight className="w-3.5 h-3.5" />
+                                {isInPresc ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Adicionado ({prescIndex + 1}º)</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Adicionar à Receita</span>
+                                  </>
+                                )}
                               </button>
                             </div>
                           </div>
                         );
                       })
                     )}
+                  </div>
+
+                  {/* Sticky Prescription Preview Footer */}
+                  <div className="p-4 bg-[#12121A] border-t border-mecura-elevated flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-[0_-10px_25px_rgba(0,0,0,0.5)]">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">Receita Prévia em Elaboração:</span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/30">
+                            {prescItems.length} medicamento{prescItems.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-mecura-silver truncate max-w-xs sm:max-w-md mt-0.5">
+                          {prescItems.length > 0 
+                            ? prescItems.map(it => it.name).join(' • ')
+                            : 'Clique em "+ Adicionar à Receita" nos medicamentos acima para compor a receita médica prévia'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenPrescriptionEditor();
+                        }}
+                        className="flex-1 sm:flex-none px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Ajustar Composição & Posologia</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={prescItems.length === 0}
+                        onClick={() => {
+                          handleSendReceitaPrevia();
+                        }}
+                        className="flex-1 sm:flex-none px-5 py-2.5 bg-mecura-neon hover:bg-[#b5ff33] text-black font-extrabold rounded-xl text-xs transition-all shadow-[0_0_20px_rgba(166,255,0,0.25)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>Enviar Receita Prévia ao Paciente</span>
+                      </button>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -6330,6 +6672,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         setNotes={setPrescNotes}
         onDownloadPDF={handleDownloadPrescriptionFromEditor}
         onSendToChat={handleSendPrescriptionToChat}
+        onSendPreviewToChat={handleSendReceitaPrevia}
       />
 
       {/* Medical Report (Laudo Médico) View & Edit Modal */}

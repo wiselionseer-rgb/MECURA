@@ -82,21 +82,41 @@ export const generatePrescriptionPDF = async (
   if (patientData?.customItems && patientData.customItems.length > 0) {
     itemsToRender = patientData.customItems;
   } else {
-    messages.forEach(m => {
-      if (m.type === 'product' && m.productData) {
+    // Check if there are receita_previa messages
+    const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
+    if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
+      previaMsg.receitaPreviaData.items.forEach(it => {
         itemsToRender.push({
-          name: m.productData.name,
-          brand: m.productData.brand,
-          origin: m.productData.origin || 'Importado',
-          dosage: m.productData.dosage || [],
-          description: m.productData.description,
-          activeIngredients: m.productData.activeIngredients,
-          pharmaceuticalForm: m.productData.pharmaceuticalForm,
-          quantity: m.productData.quantity,
-          administrationRoute: m.productData.administrationRoute
+          name: it.name,
+          brand: it.brand,
+          origin: it.origin || 'Importado',
+          dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')],
+          description: it.description,
+          activeIngredients: it.activeIngredients,
+          concentration: it.concentration,
+          pharmaceuticalForm: it.pharmaceuticalForm,
+          quantity: it.quantity,
+          administrationRoute: it.administrationRoute
         });
-      }
-    });
+      });
+    } else {
+      messages.forEach(m => {
+        if (m.type === 'product' && m.productData) {
+          itemsToRender.push({
+            name: m.productData.name,
+            brand: m.productData.brand,
+            origin: m.productData.origin || 'Importado',
+            dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : typeof (m.productData.dosage as any) === 'string' ? String(m.productData.dosage).split('\n').filter(Boolean) : [m.productData.dosage ? String(m.productData.dosage) : 'Tomar conforme orientação médica.'],
+            description: m.productData.description,
+            activeIngredients: m.productData.activeIngredients,
+            concentration: m.productData.concentration,
+            pharmaceuticalForm: m.productData.pharmaceuticalForm,
+            quantity: m.productData.quantity,
+            administrationRoute: m.productData.administrationRoute
+          });
+        }
+      });
+    }
   }
 
   const customNotesText = patientData?.customNotes !== undefined
@@ -338,7 +358,8 @@ export const generatePrescriptionPDF = async (
                 <div className="space-y-4 my-3">
                   {page.items.map((item, idx) => {
                     const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
-                    const activeIng = item.activeIngredients || enriched.activeIngredients;
+                    const activeIng = (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients;
+                    const concentration = (item.concentration !== undefined && item.concentration !== null && item.concentration !== '') ? item.concentration : enriched.concentration;
                     const pharmForm = item.pharmaceuticalForm || enriched.pharmaceuticalForm;
                     const quantity = item.quantity || enriched.quantity;
                     const admRoute = item.administrationRoute || enriched.administrationRoute;
@@ -355,9 +376,12 @@ export const generatePrescriptionPDF = async (
                           </span>
                         </div>
 
-                        {/* Active Ingredient & Presentation */}
+                        {/* Active Ingredient, Composition & Presentation */}
                         <div className="pl-4 mb-2 space-y-0.5 text-xs text-[#475569]">
                           <p className="m-0"><span className="font-semibold text-[#1E293B]">Princípio Ativo:</span> {activeIng}</p>
+                          {concentration && (
+                            <p className="m-0"><span className="font-semibold text-[#1E293B]">Composição / Concentração:</span> {concentration}</p>
+                          )}
                           <p className="m-0"><span className="font-semibold text-[#1E293B]">Apresentação & Via:</span> {pharmForm} • Qtd: {quantity} • {admRoute}</p>
                         </div>
 

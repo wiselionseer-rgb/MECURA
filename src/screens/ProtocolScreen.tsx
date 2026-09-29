@@ -32,6 +32,34 @@ export function ProtocolScreen() {
 
   // Extract prescribed items from messages, falling back to default enriched products if needed
   const prescriptionItems = useMemo(() => {
+    // Check for receita_previa messages first
+    const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
+    if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
+      return previaMsg.receitaPreviaData.items.map(item => {
+        const enriched = enrichMedicationDetails(
+          item.name,
+          item.brand || 'GreenBudz',
+          item.origin || 'Importado',
+          item.type
+        );
+        const dosageNormalized: string[] = Array.isArray(item.dosage)
+          ? item.dosage
+          : typeof item.dosage === 'string'
+          ? (item.dosage as string).split('\n').filter(Boolean)
+          : [];
+
+        return {
+          ...enriched,
+          ...item,
+          dosage: dosageNormalized.length > 0 ? dosageNormalized : [
+            '☀️ Manhã: 5 gotas sob a língua após o café',
+            '🌙 Noite: 10 gotas sob a língua 30min antes de deitar'
+          ],
+          details: item.details && item.details.length > 0 ? item.details : [enriched.usageInstructions || 'Uso sublingual conforme orientação médica.']
+        };
+      });
+    }
+
     const rawItems = messages
       .filter(msg => msg.type === 'product' && msg.productData)
       .map(msg => msg.productData!);
@@ -44,10 +72,16 @@ export function ProtocolScreen() {
           item.origin || 'Importado',
           item.type
         );
+        const dosageNormalized: string[] = Array.isArray(item.dosage)
+          ? item.dosage
+          : typeof item.dosage === 'string'
+          ? (item.dosage as string).split('\n').filter(Boolean)
+          : [];
+
         return {
           ...enriched,
           ...item,
-          dosage: item.dosage && item.dosage.length > 0 ? item.dosage : [
+          dosage: dosageNormalized.length > 0 ? dosageNormalized : [
             '☀️ Manhã: 5 gotas sob a língua após o café',
             '🌙 Noite: 10 gotas sob a língua 30min antes de deitar'
           ],
@@ -511,7 +545,7 @@ export function ProtocolScreen() {
                     </div>
 
                     <div className="space-y-2">
-                      {item.dosage && item.dosage.length > 0 ? (
+                      {Array.isArray(item.dosage) && item.dosage.length > 0 ? (
                         item.dosage.map((dose, dIdx) => {
                           const isMorning = /manh[ãa]|desjejum|café/i.test(dose);
                           const isAfternoon = /tarde|almo[çc]o|14h|15h/i.test(dose);

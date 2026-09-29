@@ -34,7 +34,7 @@ export interface Message {
   text?: string;
   sender: 'user' | 'doctor';
   timestamp: Date;
-  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document';
+  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document';
   docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento';
   attachment?: {
     name: string;
@@ -42,6 +42,30 @@ export interface Message {
     type: string;
     docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento';
     title?: string;
+  };
+  receitaPreviaData?: {
+    doctorName?: string;
+    doctorCrm?: string;
+    doctorSpecialty?: string;
+    patientName?: string;
+    emissionDate?: string;
+    items: Array<{
+      name: string;
+      brand?: string;
+      origin?: string;
+      type?: string;
+      activeIngredients?: string;
+      concentration?: string;
+      pharmaceuticalForm?: string;
+      quantity?: string;
+      administrationRoute?: string;
+      dosage: string[];
+      description?: string;
+      details?: string[];
+    }>;
+    notes?: string;
+    status: 'pending_confirmation' | 'confirmed';
+    confirmedAt?: string;
   };
   productData?: {
     name: string;
@@ -180,6 +204,7 @@ interface AppState {
   addMessage: (msg: Omit<Message, 'id' | 'timestamp'>, customConsultationId?: string) => Promise<void>;
   deleteMessage: (messageId: string, customConsultationId?: string) => Promise<void>;
   clearPrescriptionMessages: (customConsultationId?: string) => Promise<void>;
+  confirmReceitaPrevia: (messageId: string, customConsultationId?: string) => Promise<void>;
   setMessages: (messages: Message[]) => void;
   subscribeToMessages: (consultationId: string) => () => void;
 
@@ -1209,11 +1234,11 @@ export const useStore = create<AppState>((set, get) => ({
   clearPrescriptionMessages: async (customConsultationId?: string) => {
     const state = get();
     const prescriptionMsgIds = state.messages
-      .filter(m => m.type === 'product' || m.type === 'prescription' || m.type === 'prescription_notes')
+      .filter(m => m.type === 'product' || m.type === 'prescription' || m.type === 'prescription_notes' || m.type === 'receita_previa')
       .map(m => m.id);
 
     set((s) => ({
-      messages: s.messages.filter(m => m.type !== 'product' && m.type !== 'prescription' && m.type !== 'prescription_notes')
+      messages: s.messages.filter(m => m.type !== 'product' && m.type !== 'prescription' && m.type !== 'prescription_notes' && m.type !== 'receita_previa')
     }));
 
     const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
@@ -1226,6 +1251,33 @@ export const useStore = create<AppState>((set, get) => ({
         console.log("Prescription messages cleared from Firestore");
       } catch (error) {
         console.error("Error clearing prescription messages from Firestore:", error);
+      }
+    }
+  },
+
+  confirmReceitaPrevia: async (messageId: string, customConsultationId?: string) => {
+    const state = get();
+    const confirmedAtStr = new Date().toISOString();
+    set((s) => ({
+      messages: s.messages.map(m => m.id === messageId ? {
+        ...m,
+        receitaPreviaData: m.receitaPreviaData ? {
+          ...m.receitaPreviaData,
+          status: 'confirmed',
+          confirmedAt: confirmedAtStr
+        } : undefined
+      } : m)
+    }));
+
+    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    if (consultationId) {
+      try {
+        await updateDoc(doc(db, 'active_consultations', consultationId, 'messages', messageId), {
+          'receitaPreviaData.status': 'confirmed',
+          'receitaPreviaData.confirmedAt': confirmedAtStr
+        });
+      } catch (error) {
+        console.error("Error confirming receita previa in Firestore:", error);
       }
     }
   },

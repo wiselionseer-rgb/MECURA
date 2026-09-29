@@ -43,6 +43,7 @@ interface PrescriptionEditorModalProps {
   setNotes: (val: string) => void;
   onDownloadPDF: () => void;
   onSendToChat?: () => Promise<void>;
+  onSendPreviewToChat?: () => Promise<void>;
 }
 
 export function PrescriptionEditorModal({
@@ -67,11 +68,13 @@ export function PrescriptionEditorModal({
   notes,
   setNotes,
   onDownloadPDF,
-  onSendToChat
+  onSendToChat,
+  onSendPreviewToChat
 }: PrescriptionEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSendingToChat, setIsSendingToChat] = useState(false);
+  const [isSendingPreview, setIsSendingPreview] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -98,9 +101,24 @@ export function PrescriptionEditorModal({
 
   if (!isOpen) return null;
 
-  const handleAddItem = (type: 'cbd' | 'balanced' | 'thc' | 'broad_cbn' | 'pomada' | 'custom') => {
+  const handleAddItem = (type: 'cbd' | 'balanced' | 'thc' | 'broad_cbn' | 'pomada' | 'custom' | 'blank') => {
     let newItem: PrescriptionItemData;
-    if (type === 'cbd') {
+    if (type === 'blank') {
+      newItem = {
+        name: '',
+        brand: 'Associação Nacional',
+        origin: 'Nacional',
+        activeIngredients: '',
+        concentration: '',
+        pharmaceuticalForm: 'Solução Oleosa Sublingual (Gotas)',
+        quantity: '01 Frasco de 30 mL',
+        administrationRoute: 'Via Sublingual / Oral',
+        dosage: [
+          'Tomar conforme orientação médica.'
+        ],
+        description: ''
+      };
+    } else if (type === 'cbd') {
       const enriched = enrichMedicationDetails('ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)', 'Associação Brasileira (Nacional)', 'Nacional');
       newItem = {
         name: 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)',
@@ -350,6 +368,16 @@ export function PrescriptionEditorModal({
     }
   };
 
+  const handleSendPreviewClick = async () => {
+    if (!onSendPreviewToChat) return;
+    setIsSendingPreview(true);
+    try {
+      await onSendPreviewToChat();
+    } finally {
+      setIsSendingPreview(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       <div 
@@ -413,6 +441,19 @@ export function PrescriptionEditorModal({
                   <span>Visualizar A4</span>
                 </button>
               </div>
+
+              {onSendPreviewToChat && (
+                <button
+                  type="button"
+                  onClick={handleSendPreviewClick}
+                  disabled={isGenerating || isSendingPreview || items.length === 0}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-mecura-neon hover:bg-[#b5ff33] text-black rounded-xl text-xs font-bold shadow-lg shadow-mecura-neon/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  title="Enviar receita prévia para conferência e confirmação do paciente"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>{isSendingPreview ? 'Enviando...' : 'Enviar Receita Prévia'}</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -541,6 +582,13 @@ export function PrescriptionEditorModal({
 
                     {/* Quick Add Buttons */}
                     <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleAddItem('blank')}
+                        className="px-3 py-1.5 bg-mecura-neon text-black rounded-lg text-xs font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1.5 shadow-[0_0_15px_rgba(166,255,0,0.25)]"
+                      >
+                        <Plus className="w-4 h-4" /> + Preenchimento Manual
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleAddItem('broad_cbn')}
@@ -724,7 +772,8 @@ export function PrescriptionEditorModal({
                     <div className="space-y-4">
                       {items.map((item, itemIdx) => {
                         const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
-                        const activeIng = item.activeIngredients || enriched.activeIngredients;
+                        const activeIng = item.activeIngredients !== undefined ? item.activeIngredients : enriched.activeIngredients;
+                        const concentration = item.concentration !== undefined ? item.concentration : enriched.concentration;
                         const pharmForm = item.pharmaceuticalForm || enriched.pharmaceuticalForm;
                         const quantity = item.quantity || enriched.quantity;
                         const admRoute = item.administrationRoute || enriched.administrationRoute;
@@ -789,22 +838,35 @@ export function PrescriptionEditorModal({
                               </button>
                             </div>
 
-                            {/* Active Ingredients & Concentration */}
+                            {/* Active Ingredients & Concentration (Composição) */}
                             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
                               <div className="sm:col-span-6">
                                 <label className="text-[10px] text-emerald-400 uppercase font-bold block mb-1 flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3" /> Princípio(s) Ativo(s) & Concentração
+                                  <Sparkles className="w-3 h-3" /> Composição / Concentração
+                                </label>
+                                <input
+                                  type="text"
+                                  value={concentration}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'concentration', e.target.value)}
+                                  placeholder="Ex: CBD 100mg/mL (10%), Delta-9-THC < 0,2%"
+                                  className="w-full bg-[#0A0A0F] border border-emerald-500/30 rounded-xl px-3 py-1.5 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
+                                />
+                              </div>
+
+                              <div className="sm:col-span-6">
+                                <label className="text-[10px] text-cyan-400 uppercase font-bold block mb-1 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3" /> Princípio(s) Ativo(s)
                                 </label>
                                 <input
                                   type="text"
                                   value={activeIng}
                                   onChange={(e) => handleUpdateItem(itemIdx, 'activeIngredients', e.target.value)}
-                                  placeholder="Ex: Canabidiol (CBD) Full Spectrum 100mg/ml, Delta-9-THC < 0,2%"
-                                  className="w-full bg-[#0A0A0F] border border-emerald-500/30 rounded-xl px-3 py-1.5 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
+                                  placeholder="Ex: Canabidiol (CBD) Broad Spectrum + Terpenos"
+                                  className="w-full bg-[#0A0A0F] border border-cyan-500/30 rounded-xl px-3 py-1.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-medium"
                                 />
                               </div>
 
-                              <div className="sm:col-span-3">
+                              <div className="sm:col-span-6">
                                 <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
                                   Forma & Apresentação
                                 </label>
@@ -817,9 +879,9 @@ export function PrescriptionEditorModal({
                                 />
                               </div>
 
-                              <div className="sm:col-span-3">
+                              <div className="sm:col-span-6">
                                 <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                                  Qtd / Frasco & Via
+                                  Qtd / Frasco & Via de Administração
                                 </label>
                                 <input
                                   type="text"
@@ -1067,6 +1129,9 @@ export function PrescriptionEditorModal({
                                   {/* Active Ingredient & Presentation */}
                                   <div className="pl-4 mb-2 space-y-0.5 text-xs text-slate-600">
                                     <p><span className="font-semibold text-slate-800">Princípio Ativo:</span> {activeIng}</p>
+                                    {(item.concentration || enriched.concentration) && (
+                                      <p><span className="font-semibold text-slate-800">Composição / Concentração:</span> {item.concentration || enriched.concentration}</p>
+                                    )}
                                     <p><span className="font-semibold text-slate-800">Apresentação & Via:</span> {pharmForm} • Qtd: {quantity} • {admRoute}</p>
                                   </div>
 
@@ -1128,18 +1193,39 @@ export function PrescriptionEditorModal({
               <button
                 type="button"
                 onClick={handleDownload}
-                disabled={isGenerating || isSendingToChat}
+                disabled={isGenerating || isSendingToChat || isSendingPreview}
                 className="w-full sm:w-auto px-5 py-2.5 bg-mecura-surface border border-mecura-elevated hover:bg-white/5 text-white font-bold text-xs md:text-sm rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 {isGenerating ? 'Baixando PDF...' : 'Baixar Cópia (PDF)'}
               </button>
 
+              {onSendPreviewToChat && (
+                <button
+                  type="button"
+                  onClick={handleSendPreviewClick}
+                  disabled={isGenerating || isSendingPreview || items.length === 0}
+                  className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs md:text-sm rounded-xl shadow-[0_0_20px_rgba(245,158,11,0.35)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSendingPreview ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      <span>Enviando Prévia...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 text-black" />
+                      <span>Enviar Receita Prévia ao Paciente</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               {onSendToChat && (
                 <button
                   type="button"
                   onClick={handleSendToChatClick}
-                  disabled={isGenerating || isSendingToChat}
+                  disabled={isGenerating || isSendingToChat || isSendingPreview}
                   className="w-full sm:w-auto px-6 py-3 bg-mecura-neon hover:bg-[#b5ff33] text-black font-extrabold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(166,255,0,0.35)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   {isSendingToChat ? (
@@ -1150,7 +1236,7 @@ export function PrescriptionEditorModal({
                   ) : (
                     <>
                       <FileText className="w-4 h-4 text-black" />
-                      <span>Enviar Receita ao Paciente</span>
+                      <span>Emitir Receita Final</span>
                     </>
                   )}
                 </button>

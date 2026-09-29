@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight, Sparkles, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF } from '../utils/pdfGenerator';
 import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
@@ -17,12 +17,14 @@ export function ChatScreen() {
     userName, userCpf, userBirthDate, answers, endConsultation, 
     messages, addMessage, setMessages, consultationActive, resetConsultation, 
     setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
-    patientId, isConsultationFinished, pagamento_consulta, queue 
+    patientId, isConsultationFinished, pagamento_consulta, queue,
+    confirmReceitaPrevia
   } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
   const [prevMessageCount, setPrevMessageCount] = useState(0);
+  const [isConfirmingPrevia, setIsConfirmingPrevia] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const patientFileInputRef = useRef<HTMLInputElement>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -104,7 +106,7 @@ export function ChatScreen() {
       const cleanName = (userName || 'Paciente').replace(/\s+/g, '_');
       
       const defaultName = 
-        msg.type === 'prescription' || msg.docType === 'receita' ? `Receita_Digital_${cleanName}.pdf` :
+        msg.type === 'prescription' || msg.type === 'receita_previa' || msg.docType === 'receita' ? `Receita_Digital_${cleanName}.pdf` :
         msg.docType === 'laudo_evolutivo' ? `Laudo_Evolutivo_${cleanName}.pdf` :
         msg.docType === 'laudo_inicial' ? `Laudo_Inicial_${cleanName}.pdf` :
         msg.type === 'medical_report' ? `Laudo_Medico_${cleanName}.pdf` :
@@ -113,7 +115,7 @@ export function ChatScreen() {
         msg.attachment?.name || 'Documento.pdf';
 
       const fallbackGen = async (): Promise<Blob | null> => {
-        const isPresc = msg.type === 'prescription' || msg.docType === 'receita' || msg.attachment?.docType === 'receita' || msg.attachment?.name?.toLowerCase().includes('receita');
+        const isPresc = msg.type === 'prescription' || msg.type === 'receita_previa' || msg.docType === 'receita' || msg.attachment?.docType === 'receita' || msg.attachment?.name?.toLowerCase().includes('receita');
         const isMed = msg.type === 'medical_report' || msg.docType === 'laudo_inicial' || msg.docType === 'laudo_evolutivo' || msg.attachment?.docType === 'laudo_inicial' || msg.attachment?.docType === 'laudo_evolutivo' || msg.attachment?.name?.toLowerCase().includes('laudo_');
         const isPsico = msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' || msg.attachment?.docType === 'laudo_psicomotor' || msg.attachment?.name?.toLowerCase().includes('psicomotor');
         const isAgro = msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' || msg.attachment?.docType === 'laudo_agronomico' || msg.attachment?.name?.toLowerCase().includes('agronomico');
@@ -122,6 +124,8 @@ export function ChatScreen() {
           const b = await generatePrescriptionPDF(userName, messages, {
             birthDate: userBirthDate || (answers && answers.birthDate),
             cpf: userCpf || (answers && answers.cpf),
+            customItems: msg.receitaPreviaData?.items,
+            customNotes: msg.receitaPreviaData?.notes,
             returnBlob: true
           });
           return b instanceof Blob ? b : null;
@@ -350,9 +354,9 @@ export function ChatScreen() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-mecura-bg relative">
+    <div className="flex flex-col h-full bg-mecura-bg relative overflow-hidden">
       {/* Header */}
-      <div className="bg-mecura-surface/90 backdrop-blur-md border-b border-mecura-elevated p-4 flex items-center gap-4 z-20 sticky top-0">
+      <div className="bg-mecura-surface/90 backdrop-blur-md border-b border-mecura-elevated p-4 flex items-center gap-4 z-20 shrink-0">
         <button 
           onClick={() => navigate(-1)}
           className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-colors"
@@ -388,15 +392,15 @@ export function ChatScreen() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 custom-scrollbar">
         <AnimatePresence>
           {[...messages].sort((a, b) => {
             const tA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
             const tB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
             return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
-          }).map((msg) => (
+          }).map((msg, msgIndex) => (
             <motion.div
-              key={msg.id}
+              key={msg.id || `chat-msg-${msgIndex}`}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.3, type: 'spring', bounce: 0.4 }}
@@ -440,12 +444,12 @@ export function ChatScreen() {
                     </div>
 
                     {/* Details */}
-                    <div className="flex-1 flex flex-col">
-                      <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-[#2D5A27] uppercase tracking-wider mb-1">
+                    <div className="flex-1 flex flex-col min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-[10px] font-bold text-[#2D5A27] uppercase tracking-wider mb-1 truncate">
                           ® {msg.productData.brand || (msg.productData.origin === 'Nacional' ? 'Associação Nacional' : 'Importado')}
                         </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
                           msg.productData.origin === 'Nacional' || (msg.productData.brand || '').toLowerCase().includes('associação')
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             : 'bg-blue-100 text-blue-800 border border-blue-300'
@@ -453,19 +457,24 @@ export function ChatScreen() {
                           {msg.productData.origin === 'Nacional' || (msg.productData.brand || '').toLowerCase().includes('associação') ? '🇧🇷 Nacional' : '🇺🇸 Importado'}
                         </span>
                       </div>
-                      <h3 className="text-black font-bold text-base leading-tight mb-2">{msg.productData.name}</h3>
+                      <h3 className="text-black font-bold text-base leading-tight mb-2 break-words">{msg.productData.name}</h3>
                       <ul className="text-gray-600 text-[11px] space-y-1 mb-2">
-                        {(msg.productData.details || []).map((detail, idx) => (
+                        {(Array.isArray(msg.productData.details) 
+                          ? msg.productData.details 
+                          : typeof msg.productData.details === 'string'
+                          ? [msg.productData.details]
+                          : []
+                        ).filter(Boolean).map((detail, idx) => (
                           <li key={idx} className="flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-[#58D68D]" />
-                            {detail}
+                            <span className="w-1 h-1 rounded-full bg-[#58D68D] shrink-0" />
+                            <span>{detail}</span>
                           </li>
                         ))}
                       </ul>
                       {msg.productData.origin !== 'Nacional' && !(msg.productData.brand || '').toLowerCase().includes('associação') && (
                         <div className="mt-1">
                           <span className="text-xs font-bold text-[#1e3a8a] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                            R$ {(((msg.productData.priceUSD || (msg.productData.priceBRL ? msg.productData.priceBRL / 5.0 : 80.00))) * exchangeRate).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            R$ {(((msg.productData.priceUSD || (msg.productData.priceBRL ? msg.productData.priceBRL / 5.0 : 80.00))) * (exchangeRate || 5.8)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       )}
@@ -473,19 +482,227 @@ export function ChatScreen() {
                   </div>
 
                   {/* Dosage Section */}
-                  <div className="bg-white/60 rounded-xl p-4 mb-4 border border-gray-100">
+                  <div className="bg-white/80 rounded-xl p-4 mb-3 border border-gray-100 shadow-sm">
                     <h4 className="text-[#2D5A27] font-bold text-xs uppercase tracking-widest mb-2 flex items-center gap-2">
-                      <Droplets className="w-3 h-3" /> Iniciar tratamento com:
+                      <Droplets className="w-3.5 h-3.5 text-[#2D5A27]" /> Iniciar tratamento com:
                     </h4>
-                    <ul className="text-black text-sm font-medium space-y-1.5">
-                      {(msg.productData.dosage || []).map((dose, idx) => (
-                        <li key={idx} className="flex items-start gap-2">
-                          <span className="text-[#58D68D] mt-1">•</span>
-                          {dose}
+                    <ul className="text-gray-900 text-sm font-medium space-y-1.5">
+                      {(Array.isArray(msg.productData.dosage) 
+                        ? msg.productData.dosage 
+                        : typeof (msg.productData.dosage as any) === 'string' 
+                        ? String(msg.productData.dosage).split('\n').filter(Boolean) 
+                        : [msg.productData.dosage ? String(msg.productData.dosage) : 'Tomar conforme orientação médica.']
+                      ).map((dose, idx) => (
+                        <li key={idx} className="flex items-start gap-2 whitespace-pre-line leading-relaxed">
+                          <span className="text-[#2D5A27] font-bold mt-0.5 shrink-0">•</span>
+                          <span>{dose}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
+
+                  {/* Description */}
+                  {msg.productData.description && (
+                    <div className="border-t border-gray-200/70 pt-2.5 mt-1">
+                      <p className="text-gray-600 text-xs leading-relaxed whitespace-pre-line">
+                        {msg.productData.description}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ) : msg.type === 'receita_previa' && msg.receitaPreviaData ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-[96%] sm:w-[90%] md:w-[85%] bg-gradient-to-br from-[#12131C] to-[#0A0B10] border border-amber-500/40 rounded-3xl p-5 sm:p-7 mb-3 shadow-2xl relative overflow-hidden group"
+              >
+                {/* Ambient glow */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] -z-10" />
+
+                <div className="relative z-10">
+                  {/* Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] shrink-0">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-white font-extrabold text-lg sm:text-xl flex items-center gap-2">
+                          <span>Receita Médica Prévia</span>
+                        </h3>
+                        <p className="text-xs text-mecura-silver">
+                          Prescrita pelo {msg.receitaPreviaData.doctorName || 'Dr. Guilherme Taveira Dias'} ({msg.receitaPreviaData.doctorCrm || 'CRM/MT 17259'})
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div>
+                      {msg.receitaPreviaData.status === 'confirmed' ? (
+                        <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
+                          <CheckCircle className="w-4 h-4" />
+                          Confirmada pelo Paciente ✓
+                        </span>
+                      ) : (
+                        <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 animate-pulse">
+                          <Clock className="w-4 h-4" />
+                          Aguardando sua Confirmação
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Intro Message */}
+                  <p className="text-xs sm:text-sm text-mecura-pearl leading-relaxed mb-4 bg-white/5 p-3.5 rounded-2xl border border-white/5">
+                    {msg.text}
+                  </p>
+
+                  {/* Prescribed Items List */}
+                  <div className="space-y-3 mb-5">
+                    <h4 className="text-xs font-bold text-mecura-silver uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      Medicamentos e Posologia Selecionados:
+                    </h4>
+                    {msg.receitaPreviaData.items.map((item, itIdx) => (
+                      <div key={itIdx} className="p-4 bg-black/40 border border-white/10 rounded-2xl space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <h5 className="text-white font-bold text-sm sm:text-base">
+                            {itIdx + 1}. {item.name}
+                          </h5>
+                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${
+                            (item.origin || '').toLowerCase().includes('nacional')
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                          }`}>
+                            {item.brand ? `${item.brand} • ` : ''}{item.origin || 'Importado'}
+                          </span>
+                        </div>
+
+                        {/* Composição / Concentração */}
+                        {(item.concentration || item.activeIngredients) && (
+                          <div className="p-2.5 bg-emerald-950/40 border border-emerald-500/30 rounded-xl">
+                            <p className="text-xs text-emerald-300 font-semibold flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+                                Composição / Concentração
+                              </span>
+                              <span>{item.concentration || item.activeIngredients}</span>
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Apresentação e Forma */}
+                        <p className="text-xs text-mecura-silver">
+                          <strong className="text-mecura-pearl">Apresentação:</strong> {item.pharmaceuticalForm || 'Solução Oleosa'} 
+                          {item.quantity ? ` • Quantidade: ${item.quantity}` : ''}
+                          {item.administrationRoute ? ` • Via: ${item.administrationRoute}` : ''}
+                        </p>
+
+                        {/* Posologia */}
+                        <div className="pt-1.5 border-t border-white/5">
+                          <span className="font-bold text-xs text-white block mb-1">Posologia Recomendada:</span>
+                          <div className="space-y-1">
+                            {(Array.isArray(item.dosage) ? item.dosage : [String(item.dosage || '')]).map((d, dI) => (
+                              <p key={dI} className="text-xs text-mecura-pearl leading-relaxed pl-2 border-l-2 border-amber-500/40">
+                                • {d}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Notes / Clinical Guidelines */}
+                  {msg.receitaPreviaData.notes && (
+                    <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-mecura-silver mb-5 space-y-1.5">
+                      <strong className="text-amber-300 font-bold block text-xs uppercase tracking-wider">
+                        Orientações Farmacológicas e Clínicas:
+                      </strong>
+                      <p className="leading-relaxed whitespace-pre-line text-mecura-pearl">
+                        {msg.receitaPreviaData.notes}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  {msg.receitaPreviaData.status !== 'confirmed' ? (
+                    <div className="space-y-2 pt-2">
+                      <button
+                        type="button"
+                        disabled={isConfirmingPrevia}
+                        onClick={async () => {
+                          try {
+                            setIsConfirmingPrevia(true);
+                            await confirmReceitaPrevia(msg.id, effectiveConsultationId);
+                            addMessage({
+                              text: "Conferi e confirmo a receita médica prévia com a composição e posologia indicadas.",
+                              sender: 'user'
+                            });
+                            setTimeout(() => {
+                              addMessage({
+                                text: "Excelente! Sua receita médica prévia foi confirmada com sucesso. Os medicamentos já estão vinculados ao seu protocolo e receituário oficial. Você já pode acessar a farmácia e seus produtos.",
+                                sender: 'doctor'
+                              });
+                            }, 600);
+                          } catch (e) {
+                            console.error("Erro ao confirmar receita prévia:", e);
+                          } finally {
+                            setIsConfirmingPrevia(false);
+                          }
+                        }}
+                        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-black font-extrabold text-sm sm:text-base rounded-2xl shadow-[0_4px_25px_rgba(16,185,129,0.35)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isConfirmingPrevia ? (
+                          <span className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                            Confirmando Receita...
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5 text-black" />
+                            Confirmar e Aceitar Receita Médica
+                          </span>
+                        )}
+                      </button>
+                      <p className="text-[11px] text-center text-mecura-silver">
+                        Ao confirmar, você valida os medicamentos e posologia combinados com o médico.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 pt-2 border-t border-white/10">
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2 text-xs text-emerald-400">
+                        <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                        <span>Receita médica confirmada e validada por você com sucesso!</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2.5">
+                        <Button
+                          onClick={() => handleDownloadAttachment(msg)}
+                          disabled={downloadingMsgId === msg.id}
+                          className="flex-1 bg-mecura-neon hover:bg-[#b5ff33] text-black font-bold rounded-xl h-12 cursor-pointer flex items-center justify-center text-xs shadow-[0_0_15px_rgba(166,255,0,0.2)]"
+                        >
+                          {downloadingMsgId === msg.id ? (
+                            <span className="flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                              Abrindo Receita...
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-2">
+                              <Download className="w-4 h-4 mr-1.5" /> Baixar Receita Oficial PDF
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate('/protocol')}
+                          className="flex-1 border-white/15 text-white hover:bg-white/5 rounded-xl h-12 cursor-pointer flex items-center justify-center text-xs"
+                        >
+                          <Droplets className="w-4 h-4 mr-1.5 text-mecura-neon" />
+                          Acessar Protocolo & Farmácia
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ) : msg.type === 'prescription_notes' ? (
@@ -793,13 +1010,13 @@ export function ChatScreen() {
               </div>
             ) : (
               <div 
-                className={`max-w-[80%] p-4 rounded-2xl shadow-sm ${
+                className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${
                   msg.sender === 'user' 
                     ? 'bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20' 
                     : 'bg-mecura-surface text-mecura-pearl rounded-tl-sm border border-mecura-elevated'
                 }`}
               >
-                <p className="text-[15px] leading-relaxed">{msg.text}</p>
+                <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
               </div>
             )}
             <div className="flex items-center gap-1 mt-1.5 px-1">
@@ -821,12 +1038,12 @@ export function ChatScreen() {
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="h-2 shrink-0" />
       </div>
 
       {/* Input Area or Finished Banner */}
       {isConsultationConcluded ? (
-        <div className="p-4 bg-[#12121A]/95 backdrop-blur-xl border-t border-white/10 absolute bottom-0 left-0 right-0 z-20 shadow-[0_-10px_25px_rgba(0,0,0,0.5)]">
+        <div className="p-4 bg-[#12121A]/95 backdrop-blur-xl border-t border-white/10 shrink-0 z-20 shadow-[0_-10px_25px_rgba(0,0,0,0.5)]">
           <div className="max-w-2xl mx-auto space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -860,7 +1077,7 @@ export function ChatScreen() {
           </div>
         </div>
       ) : (
-        <div className="p-4 bg-mecura-bg border-t border-mecura-elevated absolute bottom-0 left-0 right-0 z-20">
+        <div className="p-4 bg-mecura-bg border-t border-mecura-elevated shrink-0 z-20">
           <div className="flex items-center gap-3">
             {/* Input de arquivo para o paciente */}
             <input 

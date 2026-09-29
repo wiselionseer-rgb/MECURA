@@ -128,7 +128,7 @@ export function AppLayout() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="w-full h-full absolute inset-0 overflow-y-auto overflow-x-hidden"
+            className={`w-full h-full absolute inset-0 ${location.pathname === '/chat' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto overflow-x-hidden'}`}
           >
             <Outlet />
           </motion.div>

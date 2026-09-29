@@ -35,6 +35,22 @@ export interface CBDCategory {
 
 export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
   {
+    name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
+    manufacturer: "Associação Brasileira",
+    origin: "Nacional",
+    type: "Óleo Broad Spectrum",
+    activeIngredients: "Extrato de Cannabis sativa (Broad Spectrum)",
+    concentration: "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%",
+    pharmaceuticalForm: "Solução Oleosa Sublingual",
+    quantity: "01 (um) frasco de 30 mL",
+    administrationRoute: "Sublingual / Oral",
+    priceBRL: 230,
+    details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
+    usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`,
+    indications: "TDAH, Burnout, Foco e Concentração, Obesidade e Controle Metabólico, Diabetes e Resistência Insulínica, Melhora no Esporte, Fadiga Crônica, Parkinson, Alzheimer, Demência, Tremores e Rigidez Muscular, Qualidade de vida na Terceira Idade, Epilepsia Refratária, Crises Convulsivas, Síndrome de Dravet, Síndrome de Lennox-Gastaut, Redução de Vícios, Controle de Fissuras (Craving), Desmame de Benzodiazepínicos e Opioides, Estabilização Emocional"
+  },
+  {
     name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
     manufacturer: "Associação Nacional",
     origin: "Nacional",
@@ -1325,8 +1341,8 @@ function _enrichMedicationDetails(
     };
   }
 
-  // Check if product is from National Association catalog
-  const nationalMatch = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
+  // Check if product is from National Association catalog or full cbdGuideData
+  let guideMatch = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
     const pLower = p.name.toLowerCase();
     if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
     
@@ -1338,23 +1354,38 @@ function _enrichMedicationDetails(
     if (nameLower.includes('balanceado') && nameLower.includes('2:1') && p.name.includes('2:1')) return true;
     if (nameLower.includes('balanceado') && nameLower.includes('3:1') && p.name.includes('3:1')) return true;
     if (nameLower.includes('balanceado') && nameLower.includes('5:1') && p.name.includes('5:1')) return true;
+    if (nameLower.includes('broad spectrum') && nameLower.includes('100 mg') && p.name.includes('100 mg/mL')) return true;
     
     return false;
   });
 
-  if (nationalMatch) {
+  if (!guideMatch) {
+    for (const cat of cbdGuideData) {
+      const found = cat.products?.find(p => {
+        const pLower = p.name.toLowerCase().trim();
+        return pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower);
+      });
+      if (found) {
+        guideMatch = found;
+        break;
+      }
+    }
+  }
+
+  if (guideMatch) {
+    const isNat = guideMatch.origin === 'Nacional' || (guideMatch.manufacturer || '').toLowerCase().includes('associação');
     return {
-      name: nationalMatch.name,
-      activeIngredients: nationalMatch.activeIngredients || 'Extrato Padronizado de Cannabis Sativa',
-      concentration: nationalMatch.concentration || 'Conforme rótulo',
-      pharmaceuticalForm: nationalMatch.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
-      quantity: nationalMatch.quantity || (nationalMatch.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL'),
-      administrationRoute: nationalMatch.administrationRoute || 'Via Sublingual / Oral',
-      brand: nationalMatch.manufacturer || 'Associação Nacional',
-      origin: nationalMatch.origin || 'Nacional',
-      type: nationalMatch.type || 'Óleo Medicinal Nacional',
-      description: nationalMatch.description || 'Medicamento de Associação Brasileira autorizada.',
-      usageInstructions: nationalMatch.usageInstructions || '• Administrar por via sublingual. Reter por 60 segundos antes de engolir.'
+      name: guideMatch.name,
+      activeIngredients: guideMatch.activeIngredients || 'Extrato Padronizado de Cannabis Sativa',
+      concentration: guideMatch.concentration || (guideMatch.description?.match(/Composição:\s*([^.\n]+)/i)?.[1]?.trim()) || 'Conforme especificação clínica',
+      pharmaceuticalForm: guideMatch.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: guideMatch.quantity || (guideMatch.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL'),
+      administrationRoute: guideMatch.administrationRoute || 'Via Sublingual / Oral',
+      brand: guideMatch.manufacturer || (isNat ? 'Associação Nacional' : 'GreenBudzCBD'),
+      origin: guideMatch.origin || (isNat ? 'Nacional' : 'Importado'),
+      type: guideMatch.type || (isNat ? 'Óleo Medicinal Nacional' : 'Extrato Canabinoide'),
+      description: guideMatch.description || 'Medicamento de Associação Brasileira autorizada.',
+      usageInstructions: guideMatch.usageInstructions || '• Administrar por via sublingual. Reter por 60 segundos antes de engolir.'
     };
   }
 
