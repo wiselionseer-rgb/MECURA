@@ -434,12 +434,17 @@ export const useStore = create<AppState>((set, get) => ({
     const currentUserId = auth.currentUser?.uid || state.patientId || `anon_${Date.now()}`;
     
     // Save the generated or existing ID
-    if (typeof window !== 'undefined') { localStorage.setItem('mecura_patientId', currentUserId); localStorage.setItem('mecura_pagamento', 'true'); }
+    if (typeof window !== 'undefined') { 
+      localStorage.setItem('mecura_patientId', currentUserId); 
+      localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.removeItem('mecura_queue_display_pos');
+      localStorage.removeItem('mecura_queue_entered_at');
+      localStorage.removeItem('mecura_queue_notified_10m');
+    }
     set({ 
       patientId: currentUserId,
       inQueue: true,
       isConsultationFinished: false,
-
       consultationActive: false,
       pagamento_consulta: true,
       messages: []

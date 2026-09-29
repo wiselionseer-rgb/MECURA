@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle } from 'lucide-react';
+import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle, RefreshCw, Zap } from 'lucide-react';
 import { requestNotificationPermission, showNativeNotification } from '../utils/notifications';
 import { playNotificationSound } from '../utils/sound';
 import { auth } from '../firebase';
@@ -32,15 +33,36 @@ export function QueueScreen() {
     queue
   } = useStore();
   
-  const [displayPosition, setDisplayPosition] = useState<number | null>(null);
-
   // Find if current user has an entry in Firestore queue
   const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
   const myQueueEntry = queue.find(p => 
     (currentUserId && p.id === currentUserId) ||
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
-  
+
+  const isVip = pagamento_premium || selectedOffer === 'premium' || myQueueEntry?.isPremium || myQueueEntry?.plan === 'premium';
+
+  // Dynamic realistic queue position initialization
+  const [displayPosition, setDisplayPosition] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mecura_queue_display_pos');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        // Valid if within realistic range (1 to 15), if stuck at 49 or invalid, regenerate
+        if (!isNaN(val) && val >= 1 && val <= 15) return val;
+      }
+    }
+    // Generate organic random initial position
+    const initialPos = isVip
+      ? Math.floor(Math.random() * 3) + 2  // VIP: 2, 3, 4
+      : Math.floor(Math.random() * 5) + 5; // Standard: 5, 6, 7, 8, 9
+      
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_queue_display_pos', initialPos.toString());
+    }
+    return initialPos;
+  });
+
   // Real entrance timestamp
   const [queueEnteredAt] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -102,38 +124,32 @@ export function QueueScreen() {
     }
   }, [isExceeded, hasNotifiedExceeded]);
 
+  // Dynamic Queue Progression: steadily decreases down to 1 over time
   useEffect(() => {
-    const realPos = queuePosition + 1;
-    if (displayPosition === null) {
-      if (realPos === 1) {
-        setDisplayPosition(Math.floor(Math.random() * 4) + 3); // 3 to 6
-      } else {
-        setDisplayPosition(realPos);
-      }
-    } else if (realPos > displayPosition) {
-      setDisplayPosition(realPos);
-    }
-  }, [queuePosition, displayPosition]);
+    if (displayPosition <= 1) return;
 
-  useEffect(() => {
-    const realPos = queuePosition + 1;
-    let timer: NodeJS.Timeout;
-    
-    if (displayPosition !== null && displayPosition > Math.max(1, realPos)) {
-      const decreaseQueue = () => {
-        setDisplayPosition(prev => {
-          const target = Math.max(1, queuePosition + 1);
-          if (prev && prev > target) return prev - 1;
-          return prev;
-        });
-      };
-      
-      const nextInterval = Math.floor(Math.random() * 15000) + 10000;
-      timer = setTimeout(decreaseQueue, nextInterval);
-    }
-    
+    // Organic random interval between decreases:
+    // VIP: 8 to 14 seconds
+    // Standard: 12 to 20 seconds
+    const intervalMs = isVip
+      ? Math.floor(Math.random() * 6000) + 8000
+      : Math.floor(Math.random() * 8000) + 12000;
+
+    const timer = setTimeout(() => {
+      setDisplayPosition((prev) => {
+        const next = Math.max(1, prev - 1);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mecura_queue_display_pos', next.toString());
+        }
+        if (next === 1) {
+          playNotificationSound();
+        }
+        return next;
+      });
+    }, intervalMs);
+
     return () => clearTimeout(timer);
-  }, [displayPosition, queuePosition]);
+  }, [displayPosition, isVip]);
 
   useEffect(() => {
     const unsubscribe = subscribeToQueue();
@@ -143,6 +159,7 @@ export function QueueScreen() {
 
   useEffect(() => {
     if (consultationActive || myQueueEntry?.status === 'in-consultation') {
+      setDisplayPosition(1);
       if (!consultationActive) {
         useStore.setState({
           consultationActive: true,
@@ -170,10 +187,19 @@ export function QueueScreen() {
     setIsEditingPhone(false);
   };
 
-  const isVip = pagamento_premium || selectedOffer === 'premium' || myQueueEntry?.isPremium || myQueueEntry?.plan === 'premium';
+  const handleResetQueueRandom = () => {
+    const newRandom = isVip
+      ? Math.floor(Math.random() * 3) + 2
+      : Math.floor(Math.random() * 5) + 5;
+    setDisplayPosition(newRandom);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_queue_display_pos', newRandom.toString());
+    }
+  };
 
   // 10 minute progress percentage (0 - 100%)
   const progressPercent = Math.min(100, Math.round((effectiveSeconds / 600) * 100));
+  const estimatedMins = Math.max(1, displayPosition * 2);
 
   return (
     <div className="flex flex-col min-h-full bg-mecura-bg relative overflow-y-auto">
@@ -215,11 +241,18 @@ export function QueueScreen() {
 
         {/* Header & Live Queue Timer */}
         <div className="text-center mt-2 mb-4 w-full">
-          {/* Live Timer Pill */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-mecura-surface border border-mecura-elevated text-xs font-semibold text-mecura-silver mb-3 shadow-md">
-            <span className="w-2 h-2 rounded-full bg-mecura-neon animate-ping" />
-            <Clock className="w-3.5 h-3.5 text-mecura-neon" />
-            <span>Tempo na fila: <strong className="text-white font-mono text-sm tracking-wide">{formatTime(effectiveSeconds)}</strong></span>
+          {/* Live Timer Pill & Estimated Wait */}
+          <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-mecura-surface border border-mecura-elevated text-xs font-semibold text-mecura-silver shadow-md">
+              <span className="w-2 h-2 rounded-full bg-mecura-neon animate-ping" />
+              <Clock className="w-3.5 h-3.5 text-mecura-neon" />
+              <span>Tempo na fila: <strong className="text-white font-mono text-sm tracking-wide">{formatTime(effectiveSeconds)}</strong></span>
+            </div>
+            
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-mecura-surface/90 border border-mecura-elevated text-xs font-semibold text-mecura-silver shadow-md">
+              <Sparkles className="w-3.5 h-3.5 text-mecura-neon" />
+              <span>Previsão: <strong className="text-mecura-neon font-mono text-xs">{displayPosition === 1 ? 'Você é o próximo!' : `~${estimatedMins} min`}</strong></span>
+            </div>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white mb-1.5">
@@ -228,7 +261,9 @@ export function QueueScreen() {
           <p className="text-mecura-silver text-xs sm:text-sm max-w-sm mx-auto">
             {isExceeded 
               ? 'Fique tranquilo! O médico entrará em contato pelo seu WhatsApp quando for sua vez.' 
-              : 'Aguarde um momento, o médico já vai te chamar na sala de consulta.'}
+              : displayPosition === 1 
+                ? 'Prepare-se! O Dr. Guilherme está finalizando o atendimento anterior para iniciar a sua consulta.'
+                : 'Aguarde um momento, o médico já vai te chamar na sala de consulta.'}
           </p>
 
           {/* 10-Minute Progress Bar Indicator */}
@@ -347,20 +382,45 @@ export function QueueScreen() {
           <div className="absolute inset-4 rounded-full border-2 border-dashed border-mecura-neon/20 animate-spin-reverse" />
 
           {/* Pulsing Inner Circle */}
-          <div className="absolute inset-12 rounded-full border backdrop-blur-sm animate-pulse bg-gradient-to-tr from-mecura-green/10 to-mecura-neon/10 border-mecura-neon/30" />
+          <div className={`absolute inset-12 rounded-full border backdrop-blur-sm transition-all duration-700 ${
+            displayPosition === 1
+              ? 'bg-gradient-to-tr from-emerald-500/20 to-mecura-neon/30 border-mecura-neon shadow-[0_0_30px_rgba(166,255,0,0.4)] animate-pulse'
+              : 'bg-gradient-to-tr from-mecura-green/10 to-mecura-neon/10 border-mecura-neon/30 animate-pulse'
+          }`} />
 
           {/* Center Content (Queue Position) */}
           <div className="relative z-20 flex flex-col items-center justify-center">
             <div className="flex flex-col items-center">
-              <span className="text-5xl sm:text-6xl font-black text-mecura-neon drop-shadow-[0_0_15px_rgba(166,255,0,0.8)] tracking-tighter">
-                {displayPosition || (queuePosition + 1)}
+              <AnimatePresence mode="wait">
+                <motion.span 
+                  key={displayPosition}
+                  initial={{ scale: 0.6, opacity: 0, y: -12 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 1.25, opacity: 0, y: 12 }}
+                  transition={{ type: "spring", stiffness: 350, damping: 22 }}
+                  className={`text-5xl sm:text-6xl font-black tracking-tighter drop-shadow-[0_0_20px_rgba(166,255,0,0.9)] ${
+                    displayPosition === 1 ? 'text-[#b5ff33] scale-110' : 'text-mecura-neon'
+                  }`}
+                >
+                  {displayPosition}
+                </motion.span>
+              </AnimatePresence>
+
+              <span className="text-[11px] font-bold text-mecura-pearl uppercase tracking-widest mt-1 text-center">
+                {displayPosition === 1 ? 'Você é o próximo!' : 'Sua Posição na Fila'}
               </span>
-              <span className="text-[11px] font-bold text-mecura-pearl uppercase tracking-widest mt-1">
-                Sua Posição
-              </span>
-              {isVip ? (
+
+              {displayPosition === 1 ? (
+                <motion.span 
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/50 shadow-[0_0_15px_rgba(166,255,0,0.4)] animate-pulse flex items-center gap-1"
+                >
+                  <Zap className="w-3 h-3 fill-current" /> PREPARANDO SALA
+                </motion.span>
+              ) : isVip ? (
                 <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)] tracking-wider flex items-center gap-1">
-                  ⭐ PACIENTE VIP
+                  ⭐ PACIENTE VIP (PRIORITÁRIO)
                 </span>
               ) : (
                 <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider">
@@ -374,7 +434,7 @@ export function QueueScreen() {
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-mecura-neon/80 shadow-[0_0_15px_rgba(166,255,0,1)] z-30 animate-scan" />
         </div>
 
-        {/* Action Area / Instructions & Test Button */}
+        {/* Action Area / Instructions & Controls */}
         <div className="w-full max-w-sm mt-3 space-y-3">
           <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-4 flex items-start gap-3 shadow-md">
             <div className="w-8 h-8 rounded-full bg-mecura-neon/10 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -386,18 +446,30 @@ export function QueueScreen() {
           </div>
 
           {/* Fast Validation / Test Toggle */}
-          <div className="pt-2 flex flex-col items-center gap-1.5">
-            <button
-              onClick={() => {
-                setSimulated10Min(prev => !prev);
-              }}
-              className="px-4 py-2 rounded-xl bg-mecura-surface border border-mecura-neon/40 hover:border-mecura-neon text-mecura-neon text-xs font-bold transition-all shadow-[0_0_12px_rgba(166,255,0,0.15)] flex items-center gap-2"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>{isExceeded ? '🔄 Redefinir para tempo real' : '⚡ Testar Alerta de 10 Minutos (WhatsApp)'}</span>
-            </button>
-            <span className="text-[10px] text-mecura-silver/60">
-              {isExceeded ? 'Aviso de >10 minutos ativo na tela' : 'Clique acima para ver imediatamente o aviso de mais de 10 min'}
+          <div className="pt-2 flex flex-col items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-center">
+              <button
+                onClick={handleResetQueueRandom}
+                title="Gera uma nova posição aleatória e inicia a contagem regressiva"
+                className="px-3.5 py-2 rounded-xl bg-mecura-surface border border-mecura-elevated hover:border-mecura-neon text-white text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-mecura-neon" />
+                <span>Simular Nova Entrada</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setSimulated10Min(prev => !prev);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-mecura-surface border border-mecura-neon/40 hover:border-mecura-neon text-mecura-neon text-xs font-bold transition-all shadow-[0_0_12px_rgba(166,255,0,0.15)] flex items-center gap-1.5 active:scale-95"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>{isExceeded ? '🔄 Tempo Real' : '⚡ Testar >10 Min'}</span>
+              </button>
+            </div>
+
+            <span className="text-[10px] text-mecura-silver/60 text-center">
+              A posição diminui automaticamente a cada ~12-18 segundos até chamar a consulta.
             </span>
           </div>
         </div>
