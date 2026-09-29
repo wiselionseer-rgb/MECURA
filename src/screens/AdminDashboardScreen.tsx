@@ -30,8 +30,8 @@ import {
   X, Key, AlertTriangle
 , Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
-import { cbdGuideData, CBDCategory } from '../data/cbdGuide';
-import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
+import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, syncCatalogToFirestore } from '../utils/productCatalog';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { db, auth } from '../firebase';
@@ -174,6 +174,12 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const productCategories = useMemo(() => {
     return mergeProductCatalogs(cbdGuideData, rawProductCategories, cloudCategories);
   }, [rawProductCategories, cloudCategories]);
+
+  useEffect(() => {
+    if (productCategories && productCategories.length > 0) {
+      syncCatalogToFirestore(productCategories).catch(err => console.warn("Sync error:", err));
+    }
+  }, [productCategories]);
   const { queue, subscribeToQueue, allAppointments, subscribeToAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
@@ -313,11 +319,94 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   // Catalog State
   const [showAddMedicineModal, setShowAddMedicineModal] = useState(false);
   const [showEditMedicineModal, setShowEditMedicineModal] = useState(false);
-  const [medicineToEdit, setMedicineToEdit] = useState<any>(null);
+  const [medicineToEdit, setMedicineToEdit] = useState<{ catId: string; originalName: string } | null>(null);
   const [showImportMedicineModal, setShowImportMedicineModal] = useState(false);
   const [medicineSearchTerm, setMedicineSearchTerm] = useState('');
-  const [newMedicine, setNewMedicine] = useState({ name: '', manufacturer: '', origin: '', type: '', description: '', categoryId: '1', priceBRL: '', indications: '' });
+  const [newMedicine, setNewMedicine] = useState({
+    name: 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml',
+    manufacturer: 'Associação Nacional',
+    origin: 'Nacional',
+    type: 'Óleo Broad Spectrum CBD + CBN (0% THC)',
+    concentration: 'CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL',
+    pharmaceuticalForm: 'Solução Oleosa Sublingual (Gotas)',
+    quantity: '01 Frasco de 15 mL',
+    administrationRoute: 'Via Sublingual / Oral',
+    priceBRL: '210',
+    usageInstructions: 'Pingar 2 gotas pela manhã e 4 a noite.\n- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.\n- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.',
+    indications: 'Insônia, Distúrbios do Sono, Ansiedade, Estresse Crônico, Agitação Noturna, Síndrome das Pernas Inquietas',
+    description: 'Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg em frasco de 15ml, com zero THC (0,0%). O Canabinol (CBN) atua sinergicamente com o CBD na indução do sono, relaxamento profundo e desaceleração mental sem efeitos psicoativos.',
+    categoryId: 'associacoes_nacionais'
+  });
   const [diseaseFilter, setDiseaseFilter] = useState('');
+
+  const handleOpenAddMedicine = (defaultCatId: string = 'associacoes_nacionais') => {
+    setNewMedicine({
+      name: '',
+      manufacturer: defaultCatId === 'associacoes_nacionais' ? 'Associação Nacional' : 'Flowermed (EUA)',
+      origin: defaultCatId === 'associacoes_nacionais' ? 'Nacional' : 'Importado',
+      type: 'Óleo Broad Spectrum CBD + CBN (0% THC)',
+      concentration: 'CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL',
+      pharmaceuticalForm: 'Solução Oleosa Sublingual (Gotas)',
+      quantity: '01 Frasco de 15 mL',
+      administrationRoute: 'Via Sublingual / Oral',
+      priceBRL: '210',
+      usageInstructions: 'Pingar 2 gotas pela manhã e 4 a noite.\n- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.\n- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.',
+      indications: 'Insônia, Distúrbios do Sono, Ansiedade, Estresse Crônico, Agitação Noturna, Síndrome das Pernas Inquietas',
+      description: '',
+      categoryId: defaultCatId
+    });
+    setMedicineToEdit(null);
+    setShowAddMedicineModal(true);
+  };
+
+  const handleOpenEditMedicine = (catId: string, prod: CBDProduct) => {
+    setMedicineToEdit({ catId, originalName: prod.name });
+    setNewMedicine({
+      name: prod.name,
+      manufacturer: prod.manufacturer || 'Associação Nacional',
+      origin: prod.origin || 'Nacional',
+      type: prod.type || 'Óleo Medicinal',
+      concentration: prod.concentration || '',
+      pharmaceuticalForm: prod.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: prod.quantity || (prod.details?.find(d => d.includes('Frasco') || d.includes('mL') || d.includes('ml')) || '01 Frasco'),
+      administrationRoute: prod.administrationRoute || 'Via Sublingual / Oral',
+      priceBRL: String(prod.priceBRL || (prod.priceUSD ? (prod.priceUSD * exchangeRate).toFixed(0) : '')),
+      usageInstructions: prod.usageInstructions || '',
+      indications: prod.indications || '',
+      description: prod.description || '',
+      categoryId: catId
+    });
+    setShowEditMedicineModal(true);
+  };
+
+  const handleSaveMedicine = () => {
+    if (!newMedicine.name.trim()) return;
+    const prodObj: CBDProduct = {
+      name: newMedicine.name.trim(),
+      manufacturer: newMedicine.manufacturer.trim() || 'Associação Nacional',
+      origin: newMedicine.origin || 'Nacional',
+      type: newMedicine.type.trim() || 'Óleo Medicinal',
+      concentration: newMedicine.concentration.trim() || 'CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL',
+      pharmaceuticalForm: newMedicine.pharmaceuticalForm.trim() || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: newMedicine.quantity.trim() || '01 Frasco de 15 mL',
+      administrationRoute: newMedicine.administrationRoute.trim() || 'Via Sublingual / Oral',
+      priceBRL: Number(newMedicine.priceBRL) || 0,
+      usageInstructions: newMedicine.usageInstructions.trim(),
+      indications: newMedicine.indications.trim(),
+      description: newMedicine.description.trim() || newMedicine.usageInstructions.trim(),
+      details: [newMedicine.quantity, newMedicine.type, newMedicine.origin].filter(Boolean),
+      activeIngredients: newMedicine.name.includes('CBN') ? 'Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg' : 'Canabidiol (CBD)'
+    };
+
+    if (showEditMedicineModal && medicineToEdit) {
+      updateProduct(medicineToEdit.catId, medicineToEdit.originalName, prodObj);
+      setShowEditMedicineModal(false);
+      setMedicineToEdit(null);
+    } else {
+      addProduct(newMedicine.categoryId || 'associacoes_nacionais', prodObj);
+      setShowAddMedicineModal(false);
+    }
+  };
   
   // AI Chat States
   const [aiChatHistory, setAiChatHistory] = useState<Array<{role: 'user'|'ai', text: string, file?: any}>>([
@@ -1116,9 +1205,15 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
 
         {activeTab === 'catalog' && (
           <div className="max-w-5xl mx-auto space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Catálogo de Produtos</h2>
-              <div className="flex gap-2">
+            <div className="flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h2 className="text-2xl font-bold">Catálogo de Produtos & Medicamentos</h2>
+                <p className="text-xs text-[#8A8A9E] mt-0.5">Gerencie os medicamentos e posologias oficiais disponíveis para a área médica e pacientes</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => handleOpenAddMedicine()} className="bg-mecura-neon text-black font-bold hover:bg-[#b5ff33] shadow-[0_0_15px_rgba(166,255,0,0.15)]">
+                  <Plus className="w-4 h-4 mr-2" /> + Adicionar Medicamento
+                </Button>
                 <Button variant="outline" onClick={() => {
                   if(window.confirm('Tem certeza? Isso irá restaurar o catálogo do banco de dados oficial (PDF atualizado).')) {
                     setProductCategories(cbdGuideData);
@@ -1135,17 +1230,87 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
             <div className="space-y-8">
               {productCategories.map(cat => (
                 <div key={cat.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl">
-                  <h3 className="text-xl font-bold text-mecura-neon mb-4">{cat.title}</h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-mecura-neon">{cat.title}</h3>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleOpenAddMedicine(cat.id)}
+                      className="text-xs border-mecura-neon/30 text-mecura-neon hover:bg-mecura-neon/10"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Novo nesta categoria
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {cat.products.map(prod => (
-                      <div key={prod.name} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex flex-col justify-between">
+                      <div key={prod.name} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex flex-col justify-between hover:border-white/20 transition-all">
                         <div>
-                          <div className="font-bold text-white mb-1">{prod.name}</div>
-                          <div className="text-xs text-[#8A8A9E] mb-2">{prod.manufacturer} • {prod.type}</div>
-                          {prod.priceBRL && <div className="text-mecura-neon text-sm font-bold mt-2">R$ {prod.priceBRL}</div>}
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h4 className="font-bold text-white text-base leading-snug">{prod.name}</h4>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider shrink-0 ${
+                              (prod.origin || '').toLowerCase().includes('importado')
+                                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            }`}>
+                              {prod.origin || 'Nacional'}
+                            </span>
+                          </div>
+                          
+                          <div className="text-xs text-[#8A8A9E] mb-2 flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-white/90">{prod.manufacturer}</span>
+                            <span>•</span>
+                            <span>{prod.type}</span>
+                          </div>
+
+                          {prod.concentration && (
+                            <div className="text-xs text-mecura-neon font-mono mb-1">{prod.concentration}</div>
+                          )}
+
+                          {prod.pharmaceuticalForm && (
+                            <div className="text-[11px] text-[#8A8A9E]">
+                              {prod.pharmaceuticalForm} {prod.quantity ? `• ${prod.quantity}` : ''}
+                            </div>
+                          )}
+
+                          {prod.priceBRL ? (
+                            <div className="text-emerald-400 text-sm font-bold mt-2">R$ {prod.priceBRL.toFixed(2)}</div>
+                          ) : prod.priceUSD ? (
+                            <div className="text-cyan-400 text-sm font-bold mt-2">US$ {prod.priceUSD.toFixed(2)} (R$ {(prod.priceUSD * exchangeRate).toFixed(2)})</div>
+                          ) : null}
+
+                          {prod.usageInstructions && (
+                            <div className="mt-3 p-3 rounded-xl bg-[#12121A] border border-white/5 text-xs">
+                              <span className="text-[10px] text-mecura-neon uppercase font-bold tracking-wider block mb-1">
+                                Posologia Padrão:
+                              </span>
+                              <p className="text-white/80 whitespace-pre-wrap leading-relaxed">{prod.usageInstructions}</p>
+                            </div>
+                          )}
+
+                          {prod.indications && (
+                            <div className="mt-2 text-[11px] text-[#8A8A9E] line-clamp-2">
+                              <strong className="text-white/70">Indicações:</strong> {prod.indications}
+                            </div>
+                          )}
                         </div>
-                        <div className="flex justify-end gap-2 mt-4">
-                          <button onClick={() => deleteProduct(cat.id, prod.name)} className="text-[#8A8A9E] hover:text-red-400"><Trash2 className="w-4 h-4"/></button>
+
+                        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#262636]">
+                          <button 
+                            onClick={() => handleOpenEditMedicine(cat.id, prod)} 
+                            className="p-1.5 text-xs font-semibold text-white/70 hover:text-mecura-neon flex items-center gap-1 bg-[#161622] border border-white/5 rounded-lg px-2.5 transition-colors"
+                          >
+                            <Edit2 className="w-3.5 h-3.5"/> Editar
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (window.confirm(`Tem certeza que deseja remover ${prod.name}?`)) {
+                                deleteProduct(cat.id, prod.name);
+                              }
+                            }} 
+                            className="p-1.5 text-xs font-semibold text-[#8A8A9E] hover:text-red-400 flex items-center gap-1 bg-[#161622] border border-white/5 rounded-lg px-2.5 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5"/> Excluir
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1652,6 +1817,233 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           </div>
         )}
       </div>
+
+      {/* Add / Edit Medicine Modal */}
+      {(showAddMedicineModal || showEditMedicineModal) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm" 
+            onClick={() => {
+              setShowAddMedicineModal(false);
+              setShowEditMedicineModal(false);
+              setMedicineToEdit(null);
+            }} 
+          />
+          <div className="relative w-full max-w-2xl bg-[#12121A] border border-white/10 rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-white/10 bg-[#161622]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon">
+                  <Pill className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-lg">
+                    {showEditMedicineModal ? 'Editar Medicamento' : 'Novo Medicamento no Catálogo'}
+                  </h3>
+                  <p className="text-xs text-[#8A8A9E]">
+                    Disponibilize para o médico prescrever e configure a posologia padrão
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAddMedicineModal(false);
+                  setShowEditMedicineModal(false);
+                  setMedicineToEdit(null);
+                }} 
+                className="text-[#8A8A9E] hover:text-white p-1.5 rounded-lg hover:bg-white/5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-[#0A0A0F]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Nome Completo do Medicamento *
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.name}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Ex: Broad SPECTRUM CBD, CBN 1065mg —————- 15ml"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Categoria no Sistema
+                  </label>
+                  <select
+                    value={newMedicine.categoryId}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, categoryId: e.target.value }))}
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon cursor-pointer"
+                  >
+                    {productCategories.map(cat => (
+                      <option key={cat.id} value={cat.id} className="bg-[#12121A] text-white">
+                        {cat.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Fabricante / Associação *
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.manufacturer}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, manufacturer: e.target.value }))}
+                    placeholder="Ex: Associação Nacional ou Flowermed"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Origem
+                  </label>
+                  <select
+                    value={newMedicine.origin}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, origin: e.target.value }))}
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon cursor-pointer"
+                  >
+                    <option value="Nacional" className="bg-[#12121A]">Nacional (Associação Brasileira)</option>
+                    <option value="Importado" className="bg-[#12121A]">Importado (EUA / RDC 660)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Preço de Referência (R$)
+                  </label>
+                  <input
+                    type="number"
+                    value={newMedicine.priceBRL}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, priceBRL: e.target.value }))}
+                    placeholder="210"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Tipo de Formulação
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.type}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, type: e.target.value }))}
+                    placeholder="Ex: Óleo Broad Spectrum CBD + CBN (0% THC)"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Concentração & Volume
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.concentration}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, concentration: e.target.value }))}
+                    placeholder="Ex: CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Forma Farmacêutica
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.pharmaceuticalForm}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, pharmaceuticalForm: e.target.value }))}
+                    placeholder="Ex: Solução Oleosa Sublingual (Gotas)"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Quantidade / Frasco
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.quantity}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, quantity: e.target.value }))}
+                    placeholder="Ex: 01 Frasco de 15 mL"
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-bold text-mecura-neon uppercase block mb-1.5 flex items-center justify-between">
+                    <span>Posologia Padrão Recomendada (Orientações de Uso) *</span>
+                    <span className="text-[10px] text-mecura-silver lowercase">auto-preenchida para o médico</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={newMedicine.usageInstructions}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, usageInstructions: e.target.value }))}
+                    placeholder="Pingar 2 gotas pela manhã e 4 a noite.&#10;- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.&#10;- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima."
+                    className="w-full bg-[#161622] border border-mecura-neon/30 focus:border-mecura-neon rounded-xl p-3 text-white text-sm focus:outline-none leading-relaxed font-sans"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Indicações Clínicas
+                  </label>
+                  <input
+                    type="text"
+                    value={newMedicine.indications}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, indications: e.target.value }))}
+                    placeholder="Insônia, Distúrbios do Sono, Ansiedade, Estresse Crônico, Agitação Noturna..."
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-xs font-bold text-mecura-pearl uppercase block mb-1.5">
+                    Descrição Detalhada / Princípio Ativo
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newMedicine.description}
+                    onChange={(e) => setNewMedicine(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg em frasco de 15ml, 0% THC..."
+                    className="w-full bg-[#161622] border border-white/10 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-mecura-neon leading-relaxed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-[#161622] flex justify-end gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowAddMedicineModal(false);
+                  setShowEditMedicineModal(false);
+                  setMedicineToEdit(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleSaveMedicine} 
+                disabled={!newMedicine.name.trim()}
+                className="bg-mecura-neon text-black font-bold hover:bg-[#b5ff33] disabled:opacity-50"
+              >
+                <Check className="w-4 h-4 mr-1.5" /> {showEditMedicineModal ? 'Salvar Alterações' : 'Salvar no Catálogo'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI Chat Modal */}
       {showImportMedicineModal && (

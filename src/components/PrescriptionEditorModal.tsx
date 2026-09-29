@@ -98,7 +98,7 @@ export function PrescriptionEditorModal({
 
   if (!isOpen) return null;
 
-  const handleAddItem = (type: 'cbd' | 'balanced' | 'thc' | 'pomada' | 'custom') => {
+  const handleAddItem = (type: 'cbd' | 'balanced' | 'thc' | 'broad_cbn' | 'pomada' | 'custom') => {
     let newItem: PrescriptionItemData;
     if (type === 'cbd') {
       const enriched = enrichMedicationDetails('ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)', 'Associação Brasileira (Nacional)', 'Nacional');
@@ -116,6 +116,24 @@ export function PrescriptionEditorModal({
           'Aumentar 01 gota a cada 05 dias até atingir a dose de controle homeostático.'
         ],
         description: 'Extrato integral rico em CBD com alto rendimento terapêutico.'
+      };
+    } else if (type === 'broad_cbn') {
+      const enriched = enrichMedicationDetails('Broad SPECTRUM CBD, CBN 1065mg —————- 15ml', 'Associação Nacional', 'Nacional');
+      newItem = {
+        name: 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml',
+        brand: 'Associação Nacional (Brasil)',
+        origin: 'Nacional',
+        activeIngredients: enriched.activeIngredients || 'Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg',
+        concentration: enriched.concentration || 'CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL',
+        pharmaceuticalForm: enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+        quantity: enriched.quantity || '01 Frasco de 15 mL',
+        administrationRoute: enriched.administrationRoute || 'Via Sublingual / Oral',
+        dosage: [
+          'Pingar 2 gotas pela manhã e 4 a noite.',
+          '- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.',
+          '- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.'
+        ],
+        description: 'Extrato Broad Spectrum rico em CBD e CBN (1065mg em 15ml), 0% THC, para sono e controle de estresse.'
       };
     } else if (type === 'balanced') {
       const enriched = enrichMedicationDetails('ÓLEO INTEGRAL THC/CBD 100mg/ml (30ml)', 'Associação Brasileira (Nacional)', 'Nacional');
@@ -234,6 +252,20 @@ export function PrescriptionEditorModal({
   const handleAddNationalItem = (productName: string) => {
     const prod = NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
     const enriched = enrichMedicationDetails(productName, 'Associação Nacional', 'Nacional', prod?.type, prod);
+    
+    let dosageLines: string[];
+    if (prod?.usageInstructions) {
+      dosageLines = prod.usageInstructions
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    } else {
+      dosageLines = [
+        'Tomar 03 gotas de 12/12 horas por via sublingual.',
+        'Aumentar 01 gota a cada 05 dias até atingir a dose terapêutica de controle.'
+      ];
+    }
+
     const newItem: PrescriptionItemData = {
       name: prod?.name || productName,
       brand: 'Associação Nacional (Brasil)',
@@ -243,12 +275,7 @@ export function PrescriptionEditorModal({
       pharmaceuticalForm: enriched.pharmaceuticalForm,
       quantity: enriched.quantity,
       administrationRoute: enriched.administrationRoute,
-      dosage: prod?.usageInstructions 
-        ? [prod.usageInstructions, 'Aumentar gradualmente conforme resposta clínica e tolerabilidade individual.']
-        : [
-            'Tomar 03 gotas de 12/12 horas por via sublingual.',
-            'Aumentar 01 gota a cada 05 dias até atingir a dose terapêutica de controle.'
-          ],
+      dosage: dosageLines,
       description: prod?.description || enriched.description || 'Medicamento nacional autorizado de associação brasileira.'
     };
     setItems(prev => [...prev, newItem]);
@@ -516,6 +543,13 @@ export function PrescriptionEditorModal({
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
+                        onClick={() => handleAddItem('broad_cbn')}
+                        className="px-2.5 py-1.5 bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-500/30 transition-colors flex items-center gap-1 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> + Broad SPECTRUM CBD/CBN (15ml)
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleAddItem('cbd')}
                         className="px-2.5 py-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-lg text-xs font-semibold hover:bg-emerald-500/25 transition-colors flex items-center gap-1"
                       >
@@ -566,6 +600,9 @@ export function PrescriptionEditorModal({
                           <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
                             + Prescrever Associação Nacional...
                           </option>
+                          <optgroup label="Linha Broad Spectrum & CBN (Sono & Estresse)" className="bg-[#0A0A0F] text-white">
+                            <option value="Broad SPECTRUM CBD, CBN 1065mg —————- 15ml">Broad SPECTRUM CBD, CBN 1065mg (15ml) - R$ 210</option>
+                          </optgroup>
                           <optgroup label="Óleos CBD Isolado (0% THC)" className="bg-[#0A0A0F] text-white">
                             <option value="Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional">CBD Isolado 100mg/ml (30ml) - R$ 180</option>
                             <option value="Óleo Rico em CBD ISOLADO 200mg/ml - Associação Nacional">CBD Isolado 200mg/ml (30ml) - R$ 280</option>

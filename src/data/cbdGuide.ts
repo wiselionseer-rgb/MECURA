@@ -35,6 +35,22 @@ export interface CBDCategory {
 
 export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
   {
+    name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Broad Spectrum CBD + CBN (0% THC)",
+    activeIngredients: "Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg",
+    concentration: "CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 15 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 210,
+    details: ["Frasco 15mL", "CBD + CBN 1065mg", "Broad Spectrum (0% THC)", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+    description: "Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg em frasco de 15ml, com zero THC (0,0%). O Canabinol (CBN) atua sinergicamente com o CBD na indução do sono, relaxamento profundo e desaceleração mental sem efeitos psicoativos.",
+    usageInstructions: "Pingar 2 gotas pela manhã e 4 a noite.\n- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.\n- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.",
+    indications: "Insônia, Distúrbios do Sono, Ansiedade, Estresse Crônico, Agitação Noturna, Síndrome das Pernas Inquietas"
+  },
+  {
     name: "Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional",
     manufacturer: "Associação Nacional",
     origin: "Nacional",
@@ -250,7 +266,23 @@ export const cbdGuideData: CBDCategory[] = [
     indicationsList: ["Ansiedade", "Depressão", "Estresse Crônico", "Burnout", "TDAH", "Transtornos do Humor"],
     dosageGuidance: "Iniciar com doses baixas (ex: 10-15 mg/dia de CBD ou 1/2 goma). Aumentar gradualmente conforme a resposta do paciente.",
     products: [
-            {
+      {
+        name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
+        manufacturer: "Associação Nacional",
+        origin: "Nacional",
+        type: "Óleo Broad Spectrum CBD + CBN (0% THC)",
+        activeIngredients: "Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg",
+        concentration: "CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL",
+        pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+        quantity: "01 Frasco de 15 mL",
+        administrationRoute: "Via Sublingual / Oral",
+        priceBRL: 210,
+        details: ["Frasco 15mL", "CBD + CBN 1065mg", "Broad Spectrum (0% THC)", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+        description: "Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg em frasco de 15ml, com zero THC (0,0%). O Canabinol (CBN) atua sinergicamente com o CBD na indução do sono, relaxamento profundo e desaceleração mental sem efeitos psicoativos.",
+        usageInstructions: "Pingar 2 gotas pela manhã e 4 a noite.\n- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.\n- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.",
+        indications: "Insônia, Distúrbios do Sono, Ansiedade, Estresse Crônico, Agitação Noturna, Síndrome das Pernas Inquietas"
+      },
+      {
         name: "Cápsulas Gelatinosas CBD Isolado 25mg",
         manufacturer: "PharmaHemp",
         origin: "Nacional",
@@ -487,7 +519,23 @@ export const cbdGuideData: CBDCategory[] = [
     indicationsList: ["Insônia", "Distúrbios do Sono", "Bruxismo", "Síndrome das Pernas Inquietas", "Agitação Noturna"],
     dosageGuidance: "Uso noturno. Administrar a dose de 30 a 45 minutos antes do horário de dormir.",
     products: [
-            {
+      {
+        name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
+        manufacturer: "Associação Nacional",
+        origin: "Nacional",
+        type: "Óleo Broad Spectrum CBD + CBN (0% THC)",
+        activeIngredients: "Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg",
+        concentration: "CBD + CBN 1065mg (71 mg/mL) • Frasco de 15 mL",
+        pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+        quantity: "01 Frasco de 15 mL",
+        administrationRoute: "Via Sublingual / Oral",
+        priceBRL: 210,
+        details: ["Frasco 15mL", "CBD + CBN 1065mg", "Broad Spectrum (0% THC)", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
+        description: "Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg em frasco de 15ml, com zero THC (0,0%). O Canabinol (CBN) atua sinergicamente com o CBD na indução do sono, relaxamento profundo e desaceleração mental sem efeitos psicoativos.",
+        usageInstructions: "Pingar 2 gotas pela manhã e 4 a noite.\n- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.\n- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.",
+        indications: "Insônia, Distúrbios do Sono, Ansiedade, Estresse Crônico, Agitação Noturna, Síndrome das Pernas Inquietas"
+      },
+      {
         name: "Cápsulas CBD + CBN 30mg Sleep Formula",
         manufacturer: "ZzzCBD",
         origin: "Nacional",
@@ -1283,6 +1331,7 @@ function _enrichMedicationDetails(
     if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
     
     // Check specific formulations
+    if ((nameLower.includes('1065') || (nameLower.includes('broad') && nameLower.includes('cbn'))) && p.name.includes('1065')) return true;
     if (nameLower.includes('isolado') && (nameLower.includes('100mg') || nameLower.includes('100 mg')) && p.name.includes('100mg/ml')) return true;
     if (nameLower.includes('isolado') && (nameLower.includes('200mg') || nameLower.includes('200 mg')) && p.name.includes('200mg/ml')) return true;
     if (nameLower.includes('balanceado') && nameLower.includes('1:1') && p.name.includes('1:1')) return true;
@@ -1299,10 +1348,10 @@ function _enrichMedicationDetails(
       activeIngredients: nationalMatch.activeIngredients || 'Extrato Padronizado de Cannabis Sativa',
       concentration: nationalMatch.concentration || 'Conforme rótulo',
       pharmaceuticalForm: nationalMatch.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
-      quantity: nationalMatch.quantity || '01 Frasco de 30 mL',
+      quantity: nationalMatch.quantity || (nationalMatch.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL'),
       administrationRoute: nationalMatch.administrationRoute || 'Via Sublingual / Oral',
-      brand: 'Associação Nacional',
-      origin: 'Nacional',
+      brand: nationalMatch.manufacturer || 'Associação Nacional',
+      origin: nationalMatch.origin || 'Nacional',
       type: nationalMatch.type || 'Óleo Medicinal Nacional',
       description: nationalMatch.description || 'Medicamento de Associação Brasileira autorizada.',
       usageInstructions: nationalMatch.usageInstructions || '• Administrar por via sublingual. Reter por 60 segundos antes de engolir.'

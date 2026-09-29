@@ -163,7 +163,7 @@ export function DoctorDashboardScreen() {
   const [showAccessibleImportModal, setShowAccessibleImportModal] = useState(false);
   const [accessibleImportType, setAccessibleImportType] = useState<'cbd' | 'balanced' | 'thc'>('cbd');
   const [accessibleImportCustomMessage, setAccessibleImportCustomMessage] = useState('');
-  const [accessibleType, setAccessibleType] = useState<'cbd' | 'balanced' | 'thc'>('cbd');
+  const [accessibleType, setAccessibleType] = useState<'cbd' | 'balanced' | 'thc' | 'broad_cbn'>('broad_cbn');
   const [accessibleCustomMessage, setAccessibleCustomMessage] = useState('');
   const [prescriptionInput, setPrescriptionInput] = useState('');
   const [productSearchTerm, setProductSearchTerm] = useState('');
@@ -375,6 +375,12 @@ export function DoctorDashboardScreen() {
   }, [allGuideProducts, productSearchTerm, productBrandFilter, productOriginFilter, productDiseaseFilter, productDiseaseSearchInput]);
   const [selectedProduct, setSelectedProduct] = useState<CBDProduct | null>(null);
   const [dosageInput, setDosageInput] = useState('');
+
+  const selectAndConfigureProduct = (product: CBDProduct) => {
+    setSelectedProduct(product);
+    const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
+    setDosageInput(product.usageInstructions || enriched.usageInstructions || 'Tomar 03 a 05 gotas sublingual de 12/12 horas');
+  };
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento'>('receita');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
@@ -1017,7 +1023,8 @@ export function DoctorDashboardScreen() {
       .map((el: any) => el.parentElement?.textContent?.trim());
     
     // Get administration instructions
-    const adminInstructions = (document.getElementById('admin-instructions') as HTMLDivElement)?.textContent || "";
+    const adminInstructionsRaw = (document.getElementById('admin-instructions') as HTMLDivElement)?.textContent || "";
+    const adminInstructions = adminInstructionsRaw.includes('Selecione uma via') ? '' : adminInstructionsRaw.trim();
     
     const dosageString = `${dosageInput} ${periods.length > 0 ? `(${periods.join(', ')})` : ''}`;
     
@@ -1999,7 +2006,7 @@ CIDs Secundários: ${cidsSecundarios}`;
   };
 
   const handleApplyAccessiblePlan = (
-    type: 'cbd' | 'balanced' | 'thc' = accessibleType,
+    type: 'cbd' | 'balanced' | 'thc' | 'broad_cbn' = accessibleType,
     customMsg?: string
   ) => {
     const patientName = currentPatient?.patientName || userName || 'Paciente';
@@ -2012,7 +2019,15 @@ CIDs Secundários: ${cidsSecundarios}`;
       '01 Frasco de 30ml rende de 45 a 60 dias de tratamento contínuo.'
     ];
 
-    if (type === 'balanced') {
+    if (type === 'broad_cbn') {
+      prodName = 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml';
+      prodDesc = 'Extrato Broad Spectrum rico em CBD e CBN (1065mg em 15ml), 0% THC. Indicado para insônia, distúrbios do sono, ansiedade e desaceleração noturna.';
+      dosage = [
+        'Pingar 2 gotas pela manhã e 4 a noite.',
+        '- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.',
+        '- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.'
+      ];
+    } else if (type === 'balanced') {
       prodName = 'ÓLEO INTEGRAL THC/CBD 100mg/ml';
       prodDesc = 'Óleo integral balanceado de Associação Brasileira com proporção 1:1. Indicado para dores crônicas, fibromialgia, espasticidade e rigidez.';
       dosage = [
@@ -5225,7 +5240,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         return (
                           <div 
                             key={idx}
-                            onClick={() => setSelectedProduct(product)}
+                            onClick={() => selectAndConfigureProduct(product)}
                             className="p-4 rounded-xl border border-mecura-elevated bg-[#0A0A0F] hover:border-mecura-neon/60 hover:bg-[#12121A] cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group shadow-sm hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
                           >
                             <div className="space-y-1.5 flex-1 min-w-0">
@@ -5271,11 +5286,11 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                               )}
                             </div>
 
-                            <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0">
+                              <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedProduct(product);
+                                  selectAndConfigureProduct(product);
                                 }}
                                 className="w-full sm:w-auto px-4 py-2 rounded-xl bg-mecura-neon/10 group-hover:bg-mecura-neon group-hover:text-black text-mecura-neon text-xs font-bold border border-mecura-neon/30 transition-all flex items-center justify-center gap-1.5"
                               >
@@ -5294,19 +5309,22 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   <div className="p-4 rounded-xl border border-mecura-elevated bg-[#0A0A0F]">
                     <h4 className="text-white font-bold text-lg">{selectedProduct.name}</h4>
                     <p className="text-sm text-mecura-silver mt-1">{selectedProduct.manufacturer} • {selectedProduct.type}</p>
+                    {selectedProduct.concentration && (
+                      <p className="text-xs text-mecura-neon mt-1 font-mono">{selectedProduct.concentration}</p>
+                    )}
                   </div>
                   
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-mecura-silver mb-2">
-                        Dosagem / Modo de usar
+                        Dosagem / Posologia & Modo de Usar
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={4}
                         value={dosageInput}
                         onChange={(e) => setDosageInput(e.target.value)}
-                        placeholder="Ex: 10 gotas sublingual"
-                        className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-4 text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors"
+                        placeholder="Ex: Pingar 2 gotas pela manhã e 4 a noite..."
+                        className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3 text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors text-sm leading-relaxed"
                       />
                     </div>
                     
@@ -6078,10 +6096,41 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 <div>
                   <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider block mb-3 flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[10px] font-bold border border-emerald-500/30">1</span>
-                    Selecione a Formulação de Entrada (Frasco Único de 30ml)
+                    Selecione a Formulação de Entrada
                   </label>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    {/* Option Broad Spectrum CBD/CBN */}
+                    <div 
+                      onClick={() => setAccessibleType('broad_cbn')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                        accessibleType === 'broad_cbn'
+                          ? 'bg-indigo-950/40 border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.25)] ring-1 ring-indigo-400'
+                          : 'bg-mecura-surface/40 border-mecura-elevated hover:border-indigo-500/40 hover:bg-mecura-surface/70'
+                      }`}
+                    >
+                      {accessibleType === 'broad_cbn' && (
+                        <div className="absolute top-2 right-2 text-indigo-400">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30 inline-block mb-2">
+                          Sono / Relaxamento / 0% THC
+                        </span>
+                        <h4 className="text-white font-bold text-sm leading-snug mb-1">
+                          Broad SPECTRUM CBD, CBN 1065mg (15ml)
+                        </h4>
+                        <p className="text-[11px] text-mecura-silver leading-relaxed mb-3">
+                          Sinergia de CBD e CBN para indução do sono, relaxamento fisiológico e desaceleração mental.
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-mecura-elevated/50 text-[10px] text-indigo-400 font-semibold flex items-center justify-between">
+                        <span>15ml • R$ 210</span>
+                        <span className="text-white/80">2 gotas manhã / 4 noite</span>
+                      </div>
+                    </div>
+
                     {/* Option CBD */}
                     <div 
                       onClick={() => setAccessibleType('cbd')}

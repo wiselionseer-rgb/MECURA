@@ -242,6 +242,12 @@ export function generateClinicalAnalysisFallback(
     });
 
     nationalList.push({
+      name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
+      indication: "Sinergia de CBD + CBN para Indução Rápida do Sono, Desaceleração Mental e Repouso Profundo (0% THC)",
+      usage: "Pingar 2 gotas pela manhã e 4 a noite. - Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose. - Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.",
+      notes: "01 Frasco de 15mL - Associação Nacional. Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg, livre de THC."
+    });
+    nationalList.push({
       name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml - Associação Nacional",
       indication: "Indução do Sono Reparador e Desligamento Mental Noturno",
       usage: "Tomar **04 a 06 gotas** sublinguais 30 a 45 minutos antes de dormir.",
@@ -371,6 +377,12 @@ export function generateClinicalAnalysisFallback(
       });
     }
 
+    nationalList.push({
+      name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
+      indication: "Modulação de Ansiedade Noturna, Agitação e Indução de Relaxamento (0% THC)",
+      usage: "Pingar 2 gotas pela manhã e 4 a noite. - Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose. - Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.",
+      notes: "01 Frasco de 15mL - Associação Nacional. Canabidiol Broad Spectrum + Canabinol (CBN) 1065mg sem efeitos psicoativos."
+    });
     nationalList.push({
       name: "Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional",
       indication: "Controle da Ansiedade, Estresse e Equilíbrio Neuroquímico (0% THC)",

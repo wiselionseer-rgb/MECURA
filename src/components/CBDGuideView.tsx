@@ -15,7 +15,7 @@ import {
   Layers,
   ShieldCheck,
   Globe
-, Users, Activity, Stethoscope, TrendingUp, BookOpen } from 'lucide-react';
+, Users, Activity, Stethoscope, TrendingUp, BookOpen, Pill } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
@@ -1402,6 +1402,150 @@ export function CBDGuideView() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Product Detail Modal */}
+      <AnimatePresence>
+        {selectedProduct && (() => {
+          const enriched = enrichMedicationDetails(
+            selectedProduct.name,
+            selectedProduct.manufacturer,
+            selectedProduct.origin,
+            selectedProduct.type,
+            selectedProduct
+          );
+          const isImported = (selectedProduct.origin || '').toLowerCase().includes('importado');
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+              onClick={() => setSelectedProduct(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-[#12121A] border border-mecura-elevated rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="p-6 border-b border-mecura-elevated bg-[#161622] flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                        isImported
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      }`}>
+                        {selectedProduct.origin || 'Nacional'}
+                      </span>
+                      <span className="text-xs text-mecura-silver">
+                        {selectedProduct.manufacturer}
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-bold text-white leading-snug">
+                      {selectedProduct.name}
+                    </h2>
+                  </div>
+                  <button
+                    onClick={() => setSelectedProduct(null)}
+                    className="p-2 hover:bg-white/5 rounded-full text-mecura-silver transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar text-sm">
+                  {/* Grid details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
+                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Princípio Ativo
+                      </span>
+                      <p className="text-white font-medium">{enriched.activeIngredients}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
+                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Concentração & Volume
+                      </span>
+                      <p className="text-mecura-neon font-mono font-medium">
+                        {selectedProduct.concentration || enriched.concentration}
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
+                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Apresentação / Forma
+                      </span>
+                      <p className="text-white">
+                        {enriched.pharmaceuticalForm} {enriched.quantity ? `• ${enriched.quantity}` : ''}
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
+                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Via de Administração
+                      </span>
+                      <p className="text-white">{enriched.administrationRoute || 'Via Sublingual / Oral'}</p>
+                    </div>
+                  </div>
+
+                  {/* Posologia Recomendada */}
+                  {(selectedProduct.usageInstructions || enriched.usageInstructions) && (
+                    <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.15)]">
+                      <div className="flex items-center gap-2 mb-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
+                        <Pill className="w-4 h-4 text-indigo-400" />
+                        <span>Posologia Padrão & Titulação Recomendada</span>
+                      </div>
+                      <p className="text-white text-xs leading-relaxed whitespace-pre-wrap font-sans">
+                        {selectedProduct.usageInstructions || enriched.usageInstructions}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Indicações */}
+                  {(selectedProduct.indications || selectedProduct.categoryIndications) && (
+                    <div className="p-3.5 rounded-xl bg-[#0A0A0F] border border-white/5">
+                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1.5">
+                        Indicações Clínicas Sugeridas
+                      </span>
+                      <p className="text-mecura-silver text-xs leading-relaxed">
+                        {selectedProduct.indications || (selectedProduct.categoryIndications || []).join(', ')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Descrição */}
+                  {(selectedProduct.description || enriched.description) && (
+                    <div className="p-3.5 rounded-xl bg-[#0A0A0F] border border-white/5">
+                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1.5">
+                        Descrição Farmacológica
+                      </span>
+                      <p className="text-mecura-silver text-xs leading-relaxed">
+                        {selectedProduct.description || enriched.description}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t border-mecura-elevated bg-[#0A0A0F] flex justify-end">
+                  <button
+                    onClick={() => setSelectedProduct(null)}
+                    className="px-6 py-2 bg-mecura-neon text-black font-bold rounded-xl hover:bg-mecura-neon/90 transition-colors text-sm"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
