@@ -54,6 +54,37 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
   );
 };
 
+export const safeHtml2Canvas = async (element: HTMLElement): Promise<HTMLCanvasElement> => {
+  return await html2canvas(element, {
+    scale: 1.5,
+    useCORS: true,
+    logging: false,
+    windowWidth: 794,
+    onclone: (_clonedDoc, clonedElement) => {
+      // Traverse all elements in clonedElement and sanitize any computed colors containing modern oklab/oklch/color-mix
+      const allElements = clonedElement.querySelectorAll<HTMLElement>('*');
+      allElements.forEach((el) => {
+        try {
+          const bg = el.style?.backgroundColor || '';
+          if (bg.includes('oklab') || bg.includes('oklch') || bg.includes('color-mix')) {
+            el.style.backgroundColor = '#FFFFFF';
+          }
+          const col = el.style?.color || '';
+          if (col.includes('oklab') || col.includes('oklch') || col.includes('color-mix')) {
+            el.style.color = '#111827';
+          }
+          const bc = el.style?.borderColor || '';
+          if (bc.includes('oklab') || bc.includes('oklch') || bc.includes('color-mix')) {
+            el.style.borderColor = '#E2E8F0';
+          }
+        } catch {
+          // ignore
+        }
+      });
+    }
+  });
+};
+
 export const generatePrescriptionPDF = async (
   userName: string, 
   messages: Message[],
@@ -119,9 +150,14 @@ export const generatePrescriptionPDF = async (
     }
   }
 
+  const defaultClinicalNotes = `• Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.
+• Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.
+• Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.
+• Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.`;
+
   const customNotesText = patientData?.customNotes !== undefined
     ? patientData.customNotes
-    : messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n');
+    : (messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n') || defaultClinicalNotes);
 
   const nationalItems = itemsToRender.filter(isNationalProduct);
   const importedItems = itemsToRender.filter(item => !isNationalProduct(item));
@@ -149,14 +185,14 @@ export const generatePrescriptionPDF = async (
       title: "RECEITA MÉDICA",
       subtitle: "PRODUTOS NACIONAIS / ASSOCIAÇÃO BRASILEIRA",
       items: nationalItems,
-      badge: "Guia Única - Nacional"
+      badge: "Guia 1 - Nacional"
     });
   } else if (hasImported) {
     guidesToRender.push({
       title: "RECEITA MÉDICA",
       subtitle: "PRODUTOS IMPORTADOS / ANVISA (RDC 660)",
       items: importedItems,
-      badge: "Guia Única - Importado"
+      badge: "Guia 2 - Importado"
     });
   } else {
     guidesToRender.push({
@@ -184,7 +220,8 @@ export const generatePrescriptionPDF = async (
     const items = guide.items;
     const hasNotes = Boolean(customNotesText && customNotesText.trim());
 
-    if (items.length <= 1) {
+    // Up to 4 items + notes fit perfectly on 1 single page!
+    if (items.length <= 4) {
       allPagesToRender.push({
         guideTitle: guide.title,
         guideSubtitle: guide.subtitle,
@@ -193,96 +230,38 @@ export const generatePrescriptionPDF = async (
         totalPages: 1,
         items: items,
         itemStartIndex: 0,
-        notesText: hasNotes ? customNotesText : undefined
-      });
-    } else if (items.length === 2 && (!hasNotes || customNotesText.length < 250)) {
-      allPagesToRender.push({
-        guideTitle: guide.title,
-        guideSubtitle: guide.subtitle,
-        badge: guide.badge,
-        pageNumber: 1,
-        totalPages: 1,
-        items: items,
-        itemStartIndex: 0,
-        notesText: hasNotes ? customNotesText : undefined
-      });
-    } else if (items.length === 2) {
-      allPagesToRender.push({
-        guideTitle: guide.title,
-        guideSubtitle: guide.subtitle,
-        badge: guide.badge,
-        pageNumber: 1,
-        totalPages: 2,
-        items: items,
-        itemStartIndex: 0,
-        notesText: undefined
-      });
-      allPagesToRender.push({
-        guideTitle: guide.title,
-        guideSubtitle: guide.subtitle,
-        badge: guide.badge,
-        pageNumber: 2,
-        totalPages: 2,
-        items: [],
-        itemStartIndex: 2,
-        notesText: customNotesText
-      });
-    } else if (items.length === 3) {
-      allPagesToRender.push({
-        guideTitle: guide.title,
-        guideSubtitle: guide.subtitle,
-        badge: guide.badge,
-        pageNumber: 1,
-        totalPages: 2,
-        items: items.slice(0, 2),
-        itemStartIndex: 0,
-        notesText: undefined
-      });
-      allPagesToRender.push({
-        guideTitle: guide.title,
-        guideSubtitle: guide.subtitle,
-        badge: guide.badge,
-        pageNumber: 2,
-        totalPages: 2,
-        items: items.slice(2),
-        itemStartIndex: 2,
         notesText: hasNotes ? customNotesText : undefined
       });
     } else {
+      // 5 or more items in the same guide
+      const chunkSize = 4;
       const chunks: PrescriptionItemData[][] = [];
-      for (let i = 0; i < items.length; i += 2) {
-        chunks.push(items.slice(i, i + 2));
+      for (let i = 0; i < items.length; i += chunkSize) {
+        chunks.push(items.slice(i, i + chunkSize));
       }
-      const totalP = hasNotes ? chunks.length + 1 : chunks.length;
-      let curP = 1;
       let startIdx = 0;
-      chunks.forEach((chunk) => {
+      chunks.forEach((chunk, chunkIdx) => {
+        const isLast = chunkIdx === chunks.length - 1;
         allPagesToRender.push({
           guideTitle: guide.title,
-          guideSubtitle: guide.subtitle,
+          guideSubtitle: guide.subtitle + (chunks.length > 1 ? ` (PARTE ${chunkIdx + 1})` : ''),
           badge: guide.badge,
-          pageNumber: curP,
-          totalPages: totalP,
+          pageNumber: chunkIdx + 1,
+          totalPages: chunks.length,
           items: chunk,
           itemStartIndex: startIdx,
-          notesText: undefined
+          notesText: isLast && hasNotes ? customNotesText : undefined
         });
         startIdx += chunk.length;
-        curP++;
       });
-      if (hasNotes) {
-        allPagesToRender.push({
-          guideTitle: guide.title,
-          guideSubtitle: guide.subtitle,
-          badge: guide.badge,
-          pageNumber: curP,
-          totalPages: totalP,
-          items: [],
-          itemStartIndex: startIdx,
-          notesText: customNotesText
-        });
-      }
     }
+  });
+
+  // Calculate global page numbering across the whole document (e.g. Page 1 of 2, Page 2 of 2)
+  const totalDocPages = allPagesToRender.length;
+  allPagesToRender.forEach((page, idx) => {
+    page.pageNumber = idx + 1;
+    page.totalPages = totalDocPages;
   });
 
   const PdfComponent = () => {
@@ -297,7 +276,7 @@ export const generatePrescriptionPDF = async (
               height: "1123px", 
               minHeight: "1123px", 
               maxHeight: "1123px", 
-              padding: "36px 44px", 
+              padding: "26px 36px 20px 36px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
               boxSizing: "border-box",
@@ -305,57 +284,57 @@ export const generatePrescriptionPDF = async (
             }}
           >
             {/* Guide Badge and Page Indicator */}
-            <div className="absolute top-5 right-11 flex items-center gap-2">
+            <div className="absolute top-4 right-9 flex items-center gap-2">
               <span className="text-[10px] text-[#64748B] font-bold">
                 Página {page.pageNumber} de {page.totalPages}
               </span>
-              <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9.5px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                 {page.badge}
               </span>
             </div>
 
             <div>
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-3 mb-4 pt-1">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-2.5 pt-0.5">
                 <div>
                   <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[10px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                  <p className="text-[9.5px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
                     CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                   </p>
                 </div>
                 <div className="text-right">
-                  <h3 className="text-sm font-bold text-[#1E1B4B] m-0">{docName}</h3>
-                  <p className="text-xs text-[#475569] font-semibold m-0">{docCrm}</p>
-                  <p className="text-[10px] text-[#64748B] m-0">{docSpec}</p>
+                  <h3 className="text-[13px] font-bold text-[#1E1B4B] m-0 leading-tight">{docName}</h3>
+                  <p className="text-[11px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
+                  <p className="text-[9.5px] text-[#64748B] m-0 leading-tight">{docSpec}</p>
                 </div>
               </div>
 
               {/* Title & Subtitle */}
-              <div className="text-center my-3">
-                <h1 className="text-lg font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
+              <div className="text-center my-2">
+                <h1 className="text-base font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
                   {page.guideTitle}
                 </h1>
-                <p className="text-xs font-semibold text-[#059669] tracking-wider uppercase mt-1 m-0">
+                <p className="text-[11px] font-bold text-[#059669] tracking-wider uppercase mt-0.5 m-0">
                   {page.guideSubtitle}
                 </p>
-                <div className="w-16 h-0.5 bg-[#059669] mx-auto mt-1.5" />
+                <div className="w-14 h-0.5 bg-[#059669] mx-auto mt-1 mb-1.5" />
               </div>
 
               {/* Patient Info Box */}
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-4 py-2.5 mb-4 flex justify-between items-center">
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3.5 py-1.5 mb-2.5 flex justify-between items-center">
                 <div>
-                  <span className="text-[#64748B] block text-[9px] uppercase font-bold mb-0.5">Paciente</span>
-                  <span className="font-bold text-[#0F172A] text-sm">{sanitizedUserName}</span>
+                  <span className="text-[#64748B] block text-[8.5px] uppercase font-bold leading-none mb-0.5">Paciente</span>
+                  <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[#64748B] block text-[9px] uppercase font-bold mb-0.5">CPF / Nasc.</span>
-                  <span className="font-semibold text-[#334155] text-xs">{cpfText} • {birthDateText}</span>
+                  <span className="text-[#64748B] block text-[8.5px] uppercase font-bold leading-none mb-0.5">CPF / Nasc.</span>
+                  <span className="font-semibold text-[#334155] text-[11px] leading-none">{cpfText} • {birthDateText}</span>
                 </div>
               </div>
 
               {/* Items List for this page */}
               {page.items.length > 0 && (
-                <div className="space-y-4 my-3">
+                <div className="space-y-2.5 my-2">
                   {page.items.map((item, idx) => {
                     const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
                     const activeIng = (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients;
@@ -366,18 +345,18 @@ export const generatePrescriptionPDF = async (
                     const displayIndex = page.itemStartIndex + idx + 1;
 
                     return (
-                      <div key={idx} className="border-b border-[#F1F5F9] pb-3">
-                        <div className="flex items-baseline justify-between mb-1.5">
-                          <span className="text-sm font-bold text-[#0F172A] m-0">
+                      <div key={idx} className="border-b border-[#F1F5F9] pb-2">
+                        <div className="flex items-baseline justify-between mb-1">
+                          <span className="text-[12.5px] font-bold text-[#0F172A] m-0">
                             {displayIndex}. {item.name}
                           </span>
-                          <span className="text-[10px] bg-[#F1F5F9] text-[#334155] font-bold px-2 py-0.5 rounded border border-[#E2E8F0] m-0">
+                          <span className="text-[9px] bg-[#F1F5F9] text-[#334155] font-bold px-2 py-0.5 rounded border border-[#E2E8F0] m-0 shrink-0">
                             {item.brand || enriched.brand} ({item.origin || enriched.origin})
                           </span>
                         </div>
 
                         {/* Active Ingredient, Composition & Presentation */}
-                        <div className="pl-4 mb-2 space-y-0.5 text-xs text-[#475569]">
+                        <div className="pl-3 mb-1 space-y-0.5 text-[10px] text-[#475569] leading-tight">
                           <p className="m-0"><span className="font-semibold text-[#1E293B]">Princípio Ativo:</span> {activeIng}</p>
                           {concentration && (
                             <p className="m-0"><span className="font-semibold text-[#1E293B]">Composição / Concentração:</span> {concentration}</p>
@@ -386,10 +365,10 @@ export const generatePrescriptionPDF = async (
                         </div>
 
                         {/* Dosage */}
-                        <div className="pl-4 space-y-0.5 text-xs text-[#334155]">
-                          <span className="font-semibold text-[#1E293B] block text-[11px] mb-0.5">Posologia e Modo de Uso:</span>
+                        <div className="pl-3 space-y-0.5 text-[10px] text-[#334155]">
+                          <span className="font-semibold text-[#1E293B] block text-[10.5px] mb-0.5">Posologia e Modo de Uso:</span>
                           {item.dosage.map((d, dIdx) => (
-                            <p key={dIdx} className="m-0 leading-relaxed text-[11px]">• {d}</p>
+                            <p key={dIdx} className="m-0 leading-snug text-[10px]">• {d}</p>
                           ))}
                         </div>
                       </div>
@@ -400,11 +379,11 @@ export const generatePrescriptionPDF = async (
 
               {/* Notes block if present on this page */}
               {page.notesText && (
-                <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-3.5 text-xs text-[#334155] mt-3 rounded-r">
-                  <span className="font-bold block text-[11px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
-                  <div className="flex flex-col gap-1">
+                <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-2.5 text-[9.5px] text-[#334155] mt-2 rounded-r">
+                  <span className="font-bold block text-[10px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
+                  <div className="flex flex-col gap-0.5">
                     {page.notesText.split('\n').map((p, i) => p.trim() ? (
-                      <p key={i} className="text-[10.5px] leading-relaxed m-0" dangerouslySetInnerHTML={{ __html: p }} />
+                      <p key={i} className="text-[9.5px] leading-tight m-0" dangerouslySetInnerHTML={{ __html: p }} />
                     ) : null)}
                   </div>
                 </div>
@@ -412,18 +391,33 @@ export const generatePrescriptionPDF = async (
             </div>
 
             {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="pt-4 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
-              <div className="text-[10px] text-[#64748B] space-y-0.5">
+            <div className="pt-2.5 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
+              <div className="text-[9.5px] text-[#64748B] space-y-0.5">
                 <p className="m-0 font-medium">Data de Emissão: {emissionDateStr}</p>
                 <p className="m-0">Validade: 30 dias a partir da data de emissão</p>
-                <p className="text-[9px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
+                <p className="text-[8.5px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
               </div>
 
-              <div className="text-center w-56">
-                <div className="border-b border-[#94A3B8] pb-1 mb-1.5" />
-                <p className="text-xs font-bold text-[#0F172A] m-0">{docName}</p>
-                <p className="text-[10px] text-[#475569] font-semibold m-0">{docCrm}</p>
-                <p className="text-[9px] text-[#64748B] m-0">Assinatura Digital / Prescritor</p>
+              {/* ICP Brasil Badge & Signature */}
+              <div className="flex items-end gap-4">
+                <div style={{ border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', borderRadius: '4px', padding: '4px 8px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: '#059669', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '8px', flexShrink: 0 }}>
+                      ICP
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '8px', fontWeight: 'bold', color: '#065F46', lineHeight: 1, margin: 0 }}>Documento Assinado Digitalmente</p>
+                      <p style={{ fontSize: '7.5px', color: '#047857', fontFamily: 'monospace', lineHeight: 1, margin: '2px 0 0 0' }}>Padrão ICP-Brasil • Validade Jurídica</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-center w-52">
+                  <div className="border-b border-[#94A3B8] pb-1 mb-1" />
+                  <p className="text-[11.5px] font-bold text-[#0F172A] m-0 leading-tight">{docName}</p>
+                  <p className="text-[9.5px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
+                  <p className="text-[8.5px] text-[#64748B] m-0 leading-tight">Assinatura Digital / Prescritor</p>
+                </div>
               </div>
             </div>
           </div>
@@ -456,12 +450,7 @@ export const generatePrescriptionPDF = async (
     if (pageElements.length > 0) {
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
-        const canvas = await html2canvas(pageEl, {
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-          windowWidth: 794
-        });
+        const canvas = await safeHtml2Canvas(pageEl);
         const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
@@ -677,12 +666,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     if (pageElements.length > 0) {
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
-        const canvas = await html2canvas(pageEl, {
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-          windowWidth: 794
-        });
+        const canvas = await safeHtml2Canvas(pageEl);
         const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
@@ -840,12 +824,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
     if (pageElements.length > 0) {
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
-        const canvas = await html2canvas(pageEl, {
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-          windowWidth: 794
-        });
+        const canvas = await safeHtml2Canvas(pageEl);
         const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
@@ -1401,12 +1380,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
     if (pageElements.length > 0) {
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
-        const canvas = await html2canvas(pageEl, {
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-          windowWidth: 794
-        });
+        const canvas = await safeHtml2Canvas(pageEl);
         const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
@@ -1415,12 +1389,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
       }
     } else {
       const contentEl = (container.firstElementChild || container) as HTMLElement;
-      const canvas = await html2canvas(contentEl, {
-        scale: 1.5,
-        useCORS: true,
-        logging: false,
-        windowWidth: 794
-      });
+      const canvas = await safeHtml2Canvas(contentEl);
       const imgData = canvas.toDataURL('image/jpeg', 0.82);
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
