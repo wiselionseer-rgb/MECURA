@@ -1161,7 +1161,6 @@ export function PrescriptionEditorModal({
                       <div className="pt-8 border-t border-slate-200 mt-8 flex justify-between items-end">
                         <div className="text-[10px] text-slate-500">
                           <p>Data de Emissão: {emissionDate}</p>
-                          <p>Validade: 30 dias a partir da data de emissão</p>
                           <p className="text-[9px] text-slate-400 mt-1">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
                         </div>
 

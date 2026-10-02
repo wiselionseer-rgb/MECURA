@@ -394,7 +394,6 @@ export const generatePrescriptionPDF = async (
             <div className="pt-2.5 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
               <div className="text-[9.5px] text-[#64748B] space-y-0.5">
                 <p className="m-0 font-medium">Data de Emissão: {emissionDateStr}</p>
-                <p className="m-0">Validade: 30 dias a partir da data de emissão</p>
                 <p className="text-[8.5px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
               </div>
 
