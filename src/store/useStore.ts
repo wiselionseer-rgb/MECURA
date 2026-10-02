@@ -450,41 +450,53 @@ export const useStore = create<AppState>((set, get) => ({
       messages: []
     });
     
-    const isPremium = !!(state.pagamento_premium || state.selectedOffer === 'premium' || (patient as any)?.isPremium);
+    const isPremium = !!(state.pagamento_premium || state.selectedOffer === 'premium' || (patient as any)?.isPremium || (patient as any)?.plan === 'premium');
     
-    let newPatient = patient || { 
+    let newPatient = { 
       id: currentUserId, 
-      patientName: state.userName || 'Paciente Anônimo', 
-      email: state.userEmail || 'sem-email@mecura.com',
-      phone: state.userPhone || '',
-      cpf: state.userCpf || '',
-      birthDate: state.userBirthDate || state.answers?.birthDate || '',
+      patientName: patient?.patientName || state.userName || 'Paciente', 
+      name: patient?.patientName || state.userName || 'Paciente', 
+      email: patient?.email || state.userEmail || auth.currentUser?.email || 'sem-email@mecura.com',
+      phone: (patient as any)?.phone || state.userPhone || state.answers?.phone || '',
+      cpf: (patient as any)?.cpf || state.userCpf || state.answers?.cpf || '',
+      birthDate: (patient as any)?.birthDate || state.userBirthDate || state.answers?.birthDate || '',
       isPremium: isPremium,
       plan: isPremium ? 'premium' : 'basic',
       answers: {
         ...state.answers,
-        birthDate: state.userBirthDate || state.answers?.birthDate || '',
-        cpf: state.userCpf || state.answers?.cpf || '',
-      }
+        ...((patient as any)?.answers || {}),
+        birthDate: (patient as any)?.birthDate || state.userBirthDate || state.answers?.birthDate || '',
+        cpf: (patient as any)?.cpf || state.userCpf || state.answers?.cpf || '',
+        phone: (patient as any)?.phone || state.userPhone || state.answers?.phone || ''
+      },
+      ...(patient || {})
     };
     
-    if (!patient && auth.currentUser) {
+    if (auth.currentUser) {
       try {
         const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
         if (userDoc.exists()) {
           const data = userDoc.data();
-          newPatient.patientName = data.name || newPatient.patientName;
-          newPatient.email = data.email || newPatient.email;
-          newPatient.phone = data.phone || newPatient.phone;
-          newPatient.cpf = data.cpf || newPatient.cpf;
-          newPatient.birthDate = data.birthDate || newPatient.birthDate;
-          newPatient.answers = { ...newPatient.answers, ...(data.answers || {}) };
-          
-          if (data.name) get().setUserName(data.name);
-          if (data.phone) get().setUserPhone(data.phone);
-          if (data.cpf) get().setUserCpf(data.cpf);
-          if (data.birthDate) get().setUserBirthDate(data.birthDate);
+          if (data.name) {
+            newPatient.patientName = data.name;
+            newPatient.name = data.name;
+            get().setUserName(data.name);
+          }
+          if (data.email) newPatient.email = data.email;
+          if (data.phone) {
+            newPatient.phone = data.phone;
+            get().setUserPhone(data.phone);
+          }
+          if (data.cpf) {
+            newPatient.cpf = data.cpf;
+            get().setUserCpf(data.cpf);
+          }
+          if (data.birthDate) {
+            newPatient.birthDate = data.birthDate;
+            get().setUserBirthDate(data.birthDate);
+          }
           if (data.answers) {
+            newPatient.answers = { ...newPatient.answers, ...data.answers };
             Object.entries(data.answers).forEach(([k, v]) => get().setAnswer(k, v));
           }
         }
