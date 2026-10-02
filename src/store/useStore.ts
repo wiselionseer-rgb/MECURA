@@ -691,6 +691,22 @@ export const useStore = create<AppState>((set, get) => ({
         };
       }) as any[];
 
+      // Merge Firestore snapshot with current store queue to preserve server-cached patients (e.g. when Firestore write quota is reached)
+      const currentStoreQueue = get().queue || [];
+      const mergedMap = new Map<string, any>();
+      currentStoreQueue.forEach(p => {
+        if (p && p.id && !p.id.startsWith('sample_patient_')) {
+          mergedMap.set(p.id, p);
+        }
+      });
+      queueData.forEach(p => {
+        if (p && p.id) {
+          const prev = mergedMap.get(p.id) || {};
+          mergedMap.set(p.id, { ...prev, ...p });
+        }
+      });
+      queueData = Array.from(mergedMap.values());
+
       // Sort by joinedAt ascending safely in JavaScript
       queueData.sort((a, b) => {
         const timeA = a.joinedAt instanceof Date && !isNaN(a.joinedAt.getTime()) ? a.joinedAt.getTime() : 0;
