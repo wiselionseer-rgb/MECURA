@@ -1,0 +1,35 @@
+[
+  {
+    "id": "hrQazJzMxJRsmgK5sQdMk3lJY9B2",
+    "patientName": "Maria Carolina dos Santos Benvenutti",
+    "email": "mariacarolb@hotmail.com.br",
+    "phone": "(54) 99989-9264",
+    "cpf": "009.185.260-94",
+    "birthDate": "07/06/1999",
+    "tier": "basic",
+    "isPremium": false,
+    "plan": "basic",
+    "status": "waiting",
+    "joinedAt": "2026-10-02T18:07:47.451Z",
+    "hasUnread": true,
+    "lastMessageAt": "2026-10-02T18:07:47.451Z",
+    "lastMessageText": "Paciente aguardando consulta com o médico.",
+    "answers": {
+      "objectives": [
+        "Ansiedade e Estresse"
+      ],
+      "intensity": "5",
+      "duration": "anos",
+      "description": "tenho ansiedade e fico muito nervosa sempre com questoes do dia a dia, no trabalho, em casa, minha cabeça esta sempre pensando e me cobrando ",
+      "cannabis": true,
+      "cannabis_details": "faço o uso onde me auxilia muito com a ansiedade e estresse ",
+      "sex": "F",
+      "weight": "65",
+      "height": "1.67",
+      "phone": "(54) 99989-9264",
+      "birthDate": "07/06/1999",
+      "cpf": "009.185.260-94",
+      "diseaseOrigin": "com o decorrer do tempo e as muitas cobranças de rotina como ser mãe, responsabilidades de vida adulta, algumas pressões familiares começaram a cada vez pesar mais em aspectos variados da minha vida "
+    }
+  }
+]

@@ -95,6 +95,7 @@ import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEdi
 import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
+import { generatePersonalizedClinicalReport } from '../utils/clinicalReportGenerator';
 import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
 const calculateAge = (birthDateStr?: string) => {
@@ -613,13 +614,18 @@ export function DoctorDashboardScreen() {
     
     // Explicitly update Firestore queue status to in-consultation
     try {
-      await updateDoc(doc(db, 'queue', patient.id), {
+      await setDoc(doc(db, 'queue', patient.id), {
         status: 'in-consultation',
         hasUnread: false
-      });
+      }, { merge: true });
     } catch (e) {
       console.warn("Error updating queue status:", e);
     }
+    fetch('/api/queue/update-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patientId: patient.id, status: 'in-consultation', hasUnread: false })
+    }).catch(() => {});
 
     startConsultation(patient.id);
     subscribeToMessages(patient.id);
@@ -1652,69 +1658,36 @@ export function DoctorDashboardScreen() {
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
     const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
-    const objectives = objectivesArray.join(', ');
     
-    const matchedCids = getCidsFromObjectives(objectivesArray);
-    let cidPrincipal = '[INSERIR CID PRINCIPAL]';
-    let cidsSecundarios = '[INSERIR SE HOUVER]';
-
-    if (matchedCids.length > 0) {
-      cidPrincipal = matchedCids[0];
-      if (matchedCids.length > 1) {
-        cidsSecundarios = matchedCids.slice(1).join(', ');
-      } else {
-        cidsSecundarios = 'Nenhum reportado adicionalmente';
-      }
-    }
-    const intensity = patientAnswers?.intensity ? `${patientAnswers.intensity}/10` : 'Moderada a intensa';
-    const duration = patientAnswers?.duration || 'Quadro de evolução crônica';
-    
-    let descriptionText = '';
-    if (patientAnswers?.diseaseOrigin) {
-      descriptionText += `Origem / Relato do Paciente: ${patientAnswers.diseaseOrigin}\n\n`;
-    }
-    if (patientAnswers?.description) {
-      descriptionText += `Outros detalhes: ${patientAnswers.description}`;
-    }
-    if (!descriptionText.trim()) {
-      descriptionText = 'Paciente relata persistência e refratariedade de sintomas clínicos aos tratamentos convencionais de primeira linha, com impacto relevante na qualidade de vida, repouso noturno e funcionalidade global.';
-    }
-    const description = descriptionText.trim();
+    // Generate clinically personalized report contents tailored to this patient's exact condition, symptoms, and medications
+    const personalized = generatePersonalizedClinicalReport({
+      patientName: pName,
+      birthDate: pBirthDate,
+      cpf: pCpf,
+      objectives: objectivesArray,
+      intensity: patientAnswers?.intensity,
+      duration: patientAnswers?.duration,
+      description: patientAnswers?.description,
+      diseaseOrigin: patientAnswers?.diseaseOrigin,
+      remedios: patientAnswers?.remedios,
+      remedios_details: patientAnswers?.remedios_details,
+      doenca_cronica: patientAnswers?.doenca_cronica,
+      doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+      digestivo: patientAnswers?.digestivo,
+      digestivo_details: patientAnswers?.digestivo_details,
+      mainSymptoms: patientAnswers?.mainSymptoms,
+      pathology: patientAnswers?.pathology
+    }, type);
 
     let defaultClinicalSummary = '';
     let defaultTherapeuticRationale = '';
 
     if (type === 'inicial') {
-      defaultClinicalSummary = `O(A) paciente encontra-se sob meus cuidados médicos, apresentando quadro clínico compatível com ${objectives.toLowerCase()}, demonstrando considerável refratariedade aos tratamentos convencionais de primeira linha. A sintomatologia atual é classificada com intensidade referida de ${intensity} e tempo de evolução caracterizado por ${duration.toLowerCase()}.
-
-Histórico da Moléstia Atual (HMA):
-${description}
-
-Histórico Terapêutico e Refratariedade:
-O(a) paciente já foi submetido(a) a múltiplos esquemas farmacológicos, abrangendo diversas classes medicamentosas ao longo do tratamento. No entanto, não obteve resposta terapêutica satisfatória ou sustentada, além de relatar expressiva intolerância e eventos adversos indesejáveis inerentes ao uso crônico destas substâncias. O quadro clínico atual impõe prejuízo substancial à qualidade de vida do(a) paciente, interferindo negativamente em suas atividades funcionais, rotina diária e bem-estar global.`;
-
-      defaultTherapeuticRationale = `Considerando a fisiopatologia do Sistema Endocanabinoide (SEC) e sua capacidade intrínseca de modular processos álgicos, inflamatórios e neurológicos, a terapêutica fitocanabinoide surge como alternativa embasada e segura.
-
-Indicação Clínica:
-Devido à insuficiência das respostas terapêuticas com as medicações alopáticas convencionais disponíveis, indico formalmente o início do tratamento com Cannabis Medicinal (Fitocanabinoides). O objetivo central desta conduta é promover a neuromodulação, redução do quadro sintomático, e consequentemente, a restituição da qualidade de vida e dignidade do(a) paciente.
-
-CID-10 Principal: ${cidPrincipal}
-CIDs Secundários: ${cidsSecundarios}`;
+      defaultClinicalSummary = personalized.clinicalSummary;
+      defaultTherapeuticRationale = personalized.therapeuticRationale;
     } else {
-      defaultClinicalSummary = `O(A) paciente encontra-se em acompanhamento médico regular sob meus cuidados desde [INSERIR MÊS/ANO], apresentando quadro crônico de ${objectives.toLowerCase()}, com intensidade referida em ${intensity} e tempo de evolução caracterizado por ${duration.toLowerCase()}.
-
-Fez diversos tratamentos medicamentosos prévios com diferentes classes de drogas (incluindo Analgésicos, Anti-inflamatórios, Opioides e Benzodiazepínicos), porém sem resposta terapêutica efetiva e com diversos efeitos colaterais adversos (como náuseas, vômitos, cefaleia, letargia, distúrbios gastrointestinais e prejuízo cognitivo).
-
-${evolutionNotes ? evolutionNotes + '\n\n' : ''}Atualmente, o(a) paciente faz uso da terapêutica com Cannabis sativa L. (na forma de óleos de espectro completo e flor in natura), referindo alívio diário e substancial dos sintomas, relatando sono duradouro e reparador, fazendo com que acorde mais disposto(a) para as atividades do dia a dia.
-
-Devido ao alto custo financeiro das medicações à base de cannabis (importadas ou via associações), o(a) paciente iniciou o cultivo artesanal e doméstico da planta para produção de sua própria medicação, obtendo excelentes resultados. Além de permitir o acesso ininterrupto ao remédio e acompanhar todo o processo de produção, o cultivo da planta tornou-se uma atividade ocupacional terapêutica essencial e mais um recurso fundamental para o sucesso do tratamento.`;
-
-      defaultTherapeuticRationale = `As medicações à base de Cannabis provaram ser o recurso terapêutico mais eficaz na promoção de qualidade de vida e estabilização do quadro clínico deste(a) paciente, com o objetivo claro de controlar e diminuir os sintomas refratários relacionados às suas patologias.
-
-Em virtude da grave insuficiência das respostas terapêuticas com as medicações convencionais disponíveis e da nítida melhora clínica alcançada, indico formalmente a CONTINUIDADE do uso da Cannabis medicinal pela via artesanal. Oriento expressamente a não interrupção do tratamento e a manutenção do cultivo próprio, visto que a suspensão do uso poderá acarretar retrocesso imediato do quadro e perdas substanciais na qualidade de vida e saúde do(a) paciente.
-
-CID-10 Principal: ${cidPrincipal}
-CIDs Secundários: ${cidsSecundarios}`;
+      defaultClinicalSummary = `${personalized.clinicalSummary}\n\n${evolutionNotes ? evolutionNotes + '\n\n' : ''}${personalized.evolutionSummary}`;
+      defaultTherapeuticRationale = personalized.therapeuticRationale;
     }
 
     const items: PrescriptionItemData[] = [];
@@ -1754,13 +1727,9 @@ CIDs Secundários: ${cidsSecundarios}`;
           const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
           return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   Posologia: ${item.dosage.join(' ')}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
         }).join('\n\n')
-      : `1. ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (Associação Brasileira / Nacional)
-   Princípio Ativo: Canabidiol (CBD) Full Spectrum 100mg/ml, Delta-9-THC < 0,2%, Terpenos
-   Apresentação / Via: Solução Oleosa Gotas • 01 Frasco 30ml • Via Sublingual
-   Posologia: Tomar 03 gotas de 12/12 horas, aumentando 01 gota a cada 05 dias até controle dos sintomas.
-   Finalidade: Modulação ansiolítica, regulação do ciclo circadiano e analgesia inflamatória.`;
+      : personalized.treatmentPlan;
 
-    const defaultMonitoringText = `- Titulação Lenta e Progressiva ("Start Low, Go Slow"): Ajustar a dosagem gradualmente a cada 4 a 5 dias até atingir a janela terapêutica ideal com controle pleno de sintomas e ausência de efeitos adversos.\n- Monitoramento de Segurança: Acompanhar potenciais interações no citocromo hepático CYP3A4 / CYP2C19 caso haja uso concomitante de outros fármacos.\n- Retorno Médico: Reavaliação clínica agendada em 30 (trinta) dias para ajuste posológico e consolidação do desfecho clínico.`;
+    const defaultMonitoringText = personalized.monitoringText;
 
     setReportPatientName(pName);
     setReportBirthDate(pBirthDate);
@@ -1792,9 +1761,27 @@ CIDs Secundários: ${cidsSecundarios}`;
     setReportDoctorCrm('CRM/MT 17259');
     setReportDoctorSpecialty('Especialista em Medicina Canabinoide');
 
-    const defaultPsychomotorText = `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${pName}</strong>, inscrito(a) no CPF <strong>${pCpf}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.\n\nO(a) paciente faz uso terapêutico de produtos derivados de Cannabis, estritamente conforme prescrição médica, sob supervisão e com acompanhamento clínico contínuo.\n\nAtesto, baseado em exames clínicos e testes de rastreio de capacidade psicomotora realizados durante as consultas de monitoramento, que o uso das medicações prescritas, nas doses estipuladas, <strong> NÃO RESULTA </strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou comprometimento dos reflexos e estado de alerta do paciente.\n\nO tratamento prescrito não interfere em sua capacidade de operar máquinas complexas, conduzir veículos automotores ou exercer atividades laborais que exijam atenção e precisão, não configurando infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).\n\nRessalto que os canabinoides prescritos têm finalidade exclusivamente terapêutica, sendo legalmente importados (RDC 660/2022 ANVISA) e/ou adquiridos via Associações de Pacientes, e não se enquadram como substâncias psicoativas entorpecentes de uso recreativo capazes de causar dependência ou prejuízo sensório-motor nas doses tituladas.`;
+    const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
+    const personalized = generatePersonalizedClinicalReport({
+      patientName: pName,
+      birthDate: pBirthDate,
+      cpf: pCpf,
+      objectives: objectivesArray,
+      intensity: patientAnswers?.intensity,
+      duration: patientAnswers?.duration,
+      description: patientAnswers?.description,
+      diseaseOrigin: patientAnswers?.diseaseOrigin,
+      remedios: patientAnswers?.remedios,
+      remedios_details: patientAnswers?.remedios_details,
+      doenca_cronica: patientAnswers?.doenca_cronica,
+      doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+      digestivo: patientAnswers?.digestivo,
+      digestivo_details: patientAnswers?.digestivo_details,
+      mainSymptoms: patientAnswers?.mainSymptoms,
+      pathology: patientAnswers?.pathology
+    }, 'evolutivo');
 
-    setPsychomotorReportText(defaultPsychomotorText);
+    setPsychomotorReportText(personalized.psychomotor.text);
     setShowPsychomotorReportEditorModal(true);
   };
 
@@ -1901,23 +1888,41 @@ CIDs Secundários: ${cidsSecundarios}`;
   };
 
   const handleOpenAgronomicReportEditor = () => {
-    const pName = currentPatient?.patientName || userName || 'LUCAS DANIEL NERES';
+    const pName = currentPatient?.patientName || userName || 'Paciente';
     const patientAnswers = currentPatient?.answers || answers;
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || '057.436.591-50';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     
     setAgronomicPatientName(pName);
     setAgronomicCpf(pCpf);
     setAgronomicEmissionDate(new Date().toLocaleDateString('pt-BR'));
     setAgronomicName('Wilian Dalenogare Pereira');
     setAgronomicCrea('CREA-PR 172.458/D');
-    
-    const condition = patientAnswers?.mainSymptoms || patientAnswers?.queixaPrincipal || patientAnswers?.pathology || 'Transtorno de Distúrbios no Sono (CID 10 G47) e Lombalgia (CID 10 R54.5 / M54.5)';
-    setAgronomicDiagnosis(condition);
-    setAgronomicDailyDoseMg(5900);
-    setAgronomicTargetPlants(158);
 
-    const defaultAgronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa e o planejamento operacional para o cultivo pessoal de espécimes de Cannabis sativa L., estritamente voltado à produção de extratos terapêuticos integrais de uso contínuo, seguro e exclusivo do(a) paciente ${pName}, em conformidade com as Boas Práticas Agrícolas e de Coleta (GACP), a RDC ANVISA nº 335/2020 e a prescrição médica que instrui a ação de Habeas Corpus Preventivo para salvo-conduto.`;
-    setAgronomicText(defaultAgronomicText);
+    const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
+    const personalized = generatePersonalizedClinicalReport({
+      patientName: pName,
+      birthDate: pBirthDate,
+      cpf: pCpf,
+      objectives: objectivesArray,
+      intensity: patientAnswers?.intensity,
+      duration: patientAnswers?.duration,
+      description: patientAnswers?.description,
+      diseaseOrigin: patientAnswers?.diseaseOrigin,
+      remedios: patientAnswers?.remedios,
+      remedios_details: patientAnswers?.remedios_details,
+      doenca_cronica: patientAnswers?.doenca_cronica,
+      doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+      digestivo: patientAnswers?.digestivo,
+      digestivo_details: patientAnswers?.digestivo_details,
+      mainSymptoms: patientAnswers?.mainSymptoms,
+      pathology: patientAnswers?.pathology
+    }, 'evolutivo');
+    
+    setAgronomicDiagnosis(personalized.agronomic.diagnosis);
+    setAgronomicDailyDoseMg(personalized.agronomic.dailyDoseMg);
+    setAgronomicTargetPlants(personalized.agronomic.targetPlants);
+    setAgronomicText(personalized.agronomic.text);
     setShowAgronomicReportEditorModal(true);
   };
 
@@ -2688,8 +2693,23 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             <div className={`w-full md:w-80 bg-[#0A0A0F] border-r border-mecura-elevated flex flex-col z-0 shadow-lg h-full min-h-0 flex-1 md:flex-none ${currentPatient ? 'hidden md:flex' : 'flex'}`}>
               <div className="p-4 md:p-6 border-b border-mecura-elevated bg-mecura-surface/20 flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-white tracking-tight">Fila de Atendimento</h2>
-
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-white tracking-tight">Fila de Atendimento</h2>
+                    <span className="text-[11px] bg-mecura-neon/15 border border-mecura-neon/30 text-mecura-neon font-bold px-2 py-0.5 rounded-full">
+                      {queue.filter(p => p.status === 'waiting').length} aguardando
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      subscribeToQueue();
+                      showActionToast("Fila sincronizada com sucesso!");
+                    }}
+                    className="p-1.5 rounded-lg bg-mecura-surface border border-mecura-elevated hover:bg-mecura-surface-light text-mecura-silver hover:text-white transition-colors flex items-center gap-1 text-xs"
+                    title="Atualizar e Sincronizar Fila"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-mecura-neon" />
+                    <span className="hidden sm:inline text-[11px]">Sincronizar</span>
+                  </button>
                 </div>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
@@ -2763,14 +2783,16 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 custom-scrollbar">
           {queue.filter(p => {
             const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
-            const matchesSearch = (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase());
+            const pName = (p.patientName || (p as any).name || '').toLowerCase();
+            const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
             const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
             const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
             return matchesStatus && matchesSearch && matchesPlan;
           }).length > 0 ? (
             [...queue].filter(p => {
               const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
-              const matchesSearch = (p.patientName || '').toLowerCase().includes((queueSearchTerm || '').toLowerCase());
+              const pName = (p.patientName || (p as any).name || '').toLowerCase();
+              const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
               const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
               const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
               return matchesStatus && matchesSearch && matchesPlan;
@@ -2817,7 +2839,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className={`font-semibold text-base ${patient.hasUnread ? 'text-white' : 'text-mecura-pearl'}`}>{patient.patientName}</h3>
+                    <h3 className={`font-semibold text-base ${patient.hasUnread ? 'text-white' : 'text-mecura-pearl'}`}>{patient.patientName || (patient as any).name || 'Paciente'}</h3>
                     {(() => {
                       const bDate = patient.birthDate || patient.answers?.birthDate;
                       const age = calculateAge(bDate);

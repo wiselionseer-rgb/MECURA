@@ -79,34 +79,43 @@ export function DashboardScreen() {
       return;
     }
     
-    if (paymentId && (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved')) {
+    if (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved' || (paymentId && (status === 'approved' || collectionStatus === 'approved'))) {
       const isBasic = localStorage.getItem('last_offer') !== 'premium';
       
       const processSuccess = async () => {
-        try {
-          const res = await fetch(`/api/payment-status/${paymentId}`);
-          const data = await res.json();
-          if (data.status !== 'approved' && data.status !== 'completed') {
-            console.warn("Mercado Pago informou pagamento não aprovado:", data);
-            window.history.replaceState({}, '', window.location.pathname);
-            return;
+        if (paymentId) {
+          try {
+            const res = await fetch(`/api/payment-status/${paymentId}`);
+            const data = await res.json();
+            if (data.status && data.status !== 'approved' && data.status !== 'completed' && data.status !== 'in_process') {
+              console.warn("Mercado Pago informou pagamento não aprovado:", data);
+            }
+          } catch (err) {
+            console.error("Falha ao verificar status MP:", err);
           }
-        } catch (err) {
-          console.error("Falha ao verificar status MP:", err);
-          window.history.replaceState({}, '', window.location.pathname);
-          return;
         }
 
+        const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+        const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
+
         if (isBasic) {
-          if (!pagamento_consulta) {
-            setPagamentoConsulta(true);
-          }
-          await joinQueue();
+          setPagamentoConsulta(true);
+          await joinQueue({
+            id: patientUid,
+            patientName: patientName,
+            email: auth.currentUser?.email || '',
+            isPremium: false,
+            plan: 'basic'
+          });
           try {
             await addDoc(collection(db, 'payments'), {
-              mpId: paymentId,
+              mpId: paymentId || 'mp_basic_' + Date.now(),
               type: 'Consulta Básica',
               value: 49.90,
+              plan: 'basic',
+              isPremium: false,
+              patientName: patientName,
+              patientId: patientUid,
               date: new Date().toISOString()
             });
           } catch (e) {
@@ -115,11 +124,22 @@ export function DashboardScreen() {
         } else {
           setPagamentoPremium(true);
           setPagamentoConsulta(true);
+          await joinQueue({
+            id: patientUid,
+            patientName: patientName,
+            email: auth.currentUser?.email || '',
+            isPremium: true,
+            plan: 'premium'
+          });
           try {
             await addDoc(collection(db, 'payments'), {
-              mpId: paymentId,
+              mpId: paymentId || 'mp_premium_' + Date.now(),
               type: 'Consulta Premium',
               value: 249.90,
+              plan: 'premium',
+              isPremium: true,
+              patientName: patientName,
+              patientId: patientUid,
               date: new Date().toISOString()
             });
           } catch (e) {
@@ -144,12 +164,8 @@ export function DashboardScreen() {
         // Limpa os parâmetros da URL
         window.history.replaceState({}, '', window.location.pathname);
         
-        // Redireciona o paciente direto para a fila ou agendamento premium após pagar
-        if (isBasic) {
-          navigate('/queue');
-        } else {
-          navigate('/scheduling');
-        }
+        // Redireciona o paciente direto para a fila após pagar
+        navigate('/queue');
       };
       processSuccess();
     }

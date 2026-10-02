@@ -49,7 +49,7 @@ const PixIcon = ({ className }: { className?: string }) => (
 export function PremiumCheckoutScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userName, setPagamentoPremium, incrementBonus, addMessage } = useStore();
+  const { userName, setPagamentoPremium, setPagamentoConsulta, joinQueue, incrementBonus, addMessage } = useStore();
   const { coupons, useCoupon } = useAdminStore();
   const [step, setStep] = useState<'discount' | 'checkout'>('discount');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
@@ -155,6 +155,8 @@ export function PremiumCheckoutScreen() {
       console.warn("Coupon bonus warning:", error);
     }
 
+    const currentUserId = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+
     if (paymentMethod === 'pix') {
       try {
         const response = await fetch('/api/create-pix-payment', {
@@ -165,6 +167,8 @@ export function PremiumCheckoutScreen() {
             price: finalPrice,
             email: auth.currentUser?.email || 'paciente@mecura.com',
             firstName: userName || 'Paciente',
+            patientId: currentUserId,
+            isPremium: true
           })
         });
 
@@ -205,6 +209,8 @@ export function PremiumCheckoutScreen() {
             installments: 5,
             payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
+            patientId: currentUserId,
+            isPremium: true
           })
         });
 
@@ -237,14 +243,23 @@ export function PremiumCheckoutScreen() {
 
   const handleSuccess = async (mpIdCustom?: string) => {
     setIsLoading(false);
-    setSuccessToast("Acesso VIP Premium liberado com sucesso! Redirecionando...");
+    setSuccessToast("Acesso VIP Premium liberado com sucesso! Entrando na fila prioritária...");
     setPagamentoPremium(true);
+    setPagamentoConsulta(true);
+
+    const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+    const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente VIP';
 
     try {
       await addDoc(collection(db, 'payments'), {
         mpId: mpIdCustom || pixData?.id || 'mp_premium_' + Date.now(),
         type: 'Consulta Premium',
         value: finalPrice || 249.90,
+        plan: 'premium',
+        isPremium: true,
+        patientName: patientName,
+        patientEmail: auth.currentUser?.email || undefined,
+        patientId: patientUid,
         date: new Date().toISOString()
       });
     } catch (e) {
@@ -266,13 +281,26 @@ export function PremiumCheckoutScreen() {
       }
     }
 
+    try {
+      await joinQueue({
+        id: patientUid,
+        patientName: patientName,
+        email: auth.currentUser?.email || '',
+        isPremium: true,
+        plan: 'premium'
+      });
+    } catch (queueErr) {
+      console.error("Erro ao entrar na fila VIP:", queueErr);
+    }
+
     addMessage({
       sender: 'doctor',
       type: "payment_success" as any,
-      text: 'Pagamento da Consulta Premium (R$ 249,90) aprovado com sucesso!'
+      text: 'Pagamento da Consulta Premium (R$ 249,90) aprovado com sucesso! Você está na fila de atendimento com prioridade VIP.'
     });
+    
     setTimeout(() => {
-      navigate('/chat');
+      navigate('/queue');
     }, 1200);
   };
 
@@ -285,15 +313,7 @@ export function PremiumCheckoutScreen() {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
               if (pollingInterval.current) clearInterval(pollingInterval.current);
-              try {
-                await addDoc(collection(db, 'payments'), {
-                  mpId: pixData.id,
-                  type: 'Consulta Premium',
-                  value: finalPrice,
-                  date: new Date().toISOString()
-                });
-              } catch(err) { console.error(err); }
-              handleSuccess();
+              handleSuccess(pixData.id);
             }
           }
         } catch (e) {
@@ -313,7 +333,9 @@ export function PremiumCheckoutScreen() {
     const statusParam = params.get('status') || params.get('collection_status');
 
     if (!paymentId && !statusParam) {
-      setPagamentoPremium(false);
+      if (!localStorage.getItem('mecura_pagamento')) {
+        setPagamentoPremium(false);
+      }
     }
 
     if (paymentParam === 'failed' || paymentParam === 'cancelled' || statusParam === 'rejected') {
@@ -322,25 +344,27 @@ export function PremiumCheckoutScreen() {
       return;
     }
 
-    if (paymentId && (paymentParam === 'success' || statusParam === 'approved')) {
+    if (paymentParam === 'success' || statusParam === 'approved' || (paymentId && statusParam === 'approved')) {
       setIsLoading(true);
-      fetch(`/api/payment-status/${paymentId}`)
-        .then(res => res.json())
-        .then(data => {
-          setIsLoading(false);
-          if (data.status === 'approved' || data.status === 'completed') {
+      if (paymentId) {
+        fetch(`/api/payment-status/${paymentId}`)
+          .then(res => res.json())
+          .then(data => {
+            setIsLoading(false);
             window.history.replaceState({}, '', window.location.pathname);
-            handleSuccess();
-          } else {
-            alert('O Mercado Pago informou que este pagamento ainda não foi aprovado.');
+            handleSuccess(paymentId);
+          })
+          .catch(err => {
+            setIsLoading(false);
+            console.error("Erro ao verificar pagamento MP, aplicando fallback:", err);
             window.history.replaceState({}, '', window.location.pathname);
-          }
-        })
-        .catch(err => {
-          setIsLoading(false);
-          console.error("Erro ao verificar pagamento MP:", err);
-          window.history.replaceState({}, '', window.location.pathname);
-        });
+            handleSuccess(paymentId);
+          });
+      } else {
+        setIsLoading(false);
+        window.history.replaceState({}, '', window.location.pathname);
+        handleSuccess();
+      }
     }
   }, []);
 

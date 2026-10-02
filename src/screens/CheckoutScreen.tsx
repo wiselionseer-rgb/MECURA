@@ -152,6 +152,8 @@ export function CheckoutScreen() {
       console.warn("Coupon bonus warning:", error);
     }
     
+    const currentUserId = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+
     if (paymentMethod === 'pix') {
       try {
         const response = await fetch('/api/create-pix-payment', {
@@ -162,6 +164,8 @@ export function CheckoutScreen() {
             price: finalPrice,
             email: auth.currentUser?.email || 'paciente@mecura.com',
             firstName: userName || 'Paciente',
+            patientId: currentUserId,
+            isPremium: selectedOffer === 'premium'
           })
         });
         
@@ -202,6 +206,8 @@ export function CheckoutScreen() {
             installments: selectedOffer === 'basic' ? 3 : 5,
             payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
+            patientId: currentUserId,
+            isPremium: selectedOffer === 'premium'
           })
         });
 
@@ -236,19 +242,25 @@ export function CheckoutScreen() {
   const handleSuccess = async (mpIdCustom?: string) => {
     setIsLoading(false);
     setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
+    const isPrem = selectedOffer === 'premium';
+    if (isPrem) {
+      setPagamentoPremium(true);
+    }
     setPagamentoConsulta(true);
 
+    const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+    const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
+
     try {
-      const isPrem = selectedOffer === 'premium';
       await addDoc(collection(db, 'payments'), {
         mpId: mpIdCustom || pixData?.id || 'mp_' + (isPrem ? 'premium_' : 'basic_') + Date.now(),
         type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
         value: finalPrice || (isPrem ? 249.90 : 49.90),
         plan: isPrem ? 'premium' : 'basic',
         isPremium: isPrem,
-        patientName: auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || 'Paciente',
+        patientName: patientName,
         patientEmail: auth.currentUser?.email || undefined,
-        patientId: auth.currentUser?.uid || localStorage.getItem('patient_id') || undefined,
+        patientId: patientUid,
         date: new Date().toISOString()
       });
     } catch (e) {
@@ -270,19 +282,20 @@ export function CheckoutScreen() {
       }
     }
 
-    setTimeout(async () => {
-      try {
-        if (selectedOffer === 'basic') {
-          await joinQueue();
-          navigate('/queue');
-        } else {
-          setPagamentoPremium(true);
-          navigate('/scheduling');
-        }
-      } catch (err) {
-        console.error("Erro pós-pagamento:", err);
-        navigate(selectedOffer === 'basic' ? '/queue' : '/scheduling');
-      }
+    try {
+      await joinQueue({
+        id: patientUid,
+        patientName: patientName,
+        email: auth.currentUser?.email || '',
+        isPremium: isPrem,
+        plan: isPrem ? 'premium' : 'basic'
+      });
+    } catch (err) {
+      console.error("Erro ao ingressar na fila pós-pagamento:", err);
+    }
+
+    setTimeout(() => {
+      navigate('/queue');
     }, 1200);
   };
 
@@ -315,9 +328,10 @@ export function CheckoutScreen() {
     const statusParam = params.get('status') || params.get('collection_status');
 
     if (!paymentId && !statusParam) {
-      // Entrando no checkout para comprar: limpar qualquer estado falso residual
-      setPagamentoConsulta(false);
-      localStorage.removeItem('mecura_pagamento');
+      // Entrando no checkout para comprar: limpar qualquer estado falso residual se ainda não pago
+      if (!localStorage.getItem('mecura_pagamento')) {
+        setPagamentoConsulta(false);
+      }
     }
     
     if (paymentParam === 'failed' || paymentParam === 'cancelled' || statusParam === 'rejected') {
@@ -330,25 +344,27 @@ export function CheckoutScreen() {
       return;
     }
 
-    if (paymentId && (paymentParam === 'success' || statusParam === 'approved')) {
+    if (paymentParam === 'success' || statusParam === 'approved' || (paymentId && statusParam === 'approved')) {
       setIsLoading(true);
-      fetch(`/api/payment-status/${paymentId}`)
-        .then(res => res.json())
-        .then(data => {
-          setIsLoading(false);
-          if (data.status === 'approved' || data.status === 'completed') {
+      if (paymentId) {
+        fetch(`/api/payment-status/${paymentId}`)
+          .then(res => res.json())
+          .then(data => {
+            setIsLoading(false);
             window.history.replaceState({}, '', window.location.pathname);
             handleSuccess(paymentId);
-          } else {
-            alert('O Mercado Pago informou que este pagamento ainda não foi aprovado.');
+          })
+          .catch(err => {
+            setIsLoading(false);
+            console.error("Erro ao verificar pagamento MP:", err);
             window.history.replaceState({}, '', window.location.pathname);
-          }
-        })
-        .catch(err => {
-          setIsLoading(false);
-          console.error("Erro ao verificar pagamento MP:", err);
-          window.history.replaceState({}, '', window.location.pathname);
-        });
+            handleSuccess(paymentId);
+          });
+      } else {
+        setIsLoading(false);
+        window.history.replaceState({}, '', window.location.pathname);
+        handleSuccess();
+      }
       return;
     }
 

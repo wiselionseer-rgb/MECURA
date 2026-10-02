@@ -507,43 +507,171 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     sections: { title: string; content: string }[];
   }
 
+  const isEvolutivo = Boolean(
+    patientData?.reportType === 'evolutivo' ||
+    patientData?.docType === 'laudo_evolutivo' ||
+    (diag && diag.toLowerCase().includes('cultivo')) ||
+    (diag && diag.toLowerCase().includes('quesito')) ||
+    (rat && rat.toLowerCase().includes('continuidade')) ||
+    (rat && rat.toLowerCase().includes('interrupção'))
+  );
+  const baseReportTitle = isEvolutivo ? 'LAUDO MÉDICO EVOLUTIVO' : 'LAUDO MÉDICO';
+
+  // Split diagnosis cleanly if it contains evolution section (Quesitos 4, 5 e 6)
+  const evolucaoRegex = /(Evolu[çc][ãa]o\s+Cl[íi]nica|Quesitos?\s*4|4\.\s*Quanto\s+[àa]\s+evolu[çc][ãa]o)/i;
+  const evolucaoMatch = diag.match(evolucaoRegex);
+  let diagPart1 = diag;
+  let diagPart2 = '';
+
+  if (evolucaoMatch && evolucaoMatch.index !== undefined && evolucaoMatch.index > 50) {
+    diagPart1 = diag.substring(0, evolucaoMatch.index).trim();
+    diagPart2 = diag.substring(evolucaoMatch.index).trim();
+  } else if (isEvolutivo && diag.length > 1200) {
+    // Find paragraph boundary near middle to avoid cutting mid-sentence
+    const splitIndex = diag.indexOf('\n\n', Math.floor(diag.length * 0.45));
+    if (splitIndex !== -1) {
+      diagPart1 = diag.substring(0, splitIndex).trim();
+      diagPart2 = diag.substring(splitIndex).trim();
+    }
+  }
+
   const reportPages: ReportPageData[] = [];
+  const planItems = plan ? plan.split(/\n\n+/).filter(itemBlock => itemBlock.trim()) : [];
 
-  if (!needsTwoPages) {
-    const sections: { title: string; content: string }[] = [];
-    if (diag) sections.push({ title: 'Diagnóstico e Resumo Clínico', content: diag });
-    if (rat) sections.push({ title: 'Raciocínio Terapêutico', content: rat });
-    if (plan) sections.push({ title: 'Plano de Tratamento Canabinoide', content: plan });
-    if (mon) sections.push({ title: 'Acompanhamento e Monitoramento', content: mon });
-
+  if (isEvolutivo || diagPart2) {
+    // High-depth multi-page layout for Laudo Evolutivo:
+    // Page 1: Diagnóstico e Histórico Clínico Convencional (Quesitos 1, 2 e 3)
     reportPages.push({
       pageNumber: 1,
       totalPages: 1,
-      title: 'LAUDO MÉDICO',
-      sections
+      title: baseReportTitle,
+      sections: [
+        { title: 'Diagnóstico Clínico & Histórico de Tratamentos Convencionais', content: diagPart1 || diag }
+      ]
     });
+
+    // Page 2: Evolução Clínica com Canabinoides e Autocultivo Artesanal (Quesitos 4, 5 e 6)
+    if (diagPart2) {
+      reportPages.push({
+        pageNumber: 2,
+        totalPages: 2,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — EVOLUÇÃO CLÍNICA`,
+        sections: [
+          { title: 'Evolução Clínica e Resposta com Derivados Artesanais (Quesitos 4, 5 e 6)', content: diagPart2 }
+        ]
+      });
+    }
+
+    // Page 3: Raciocínio Fisiopatológico, Sistema Endocanabinoide e Riscos de Interrupção (Quesito 7 + CIDs)
+    if (rat) {
+      reportPages.push({
+        pageNumber: 3,
+        totalPages: 3,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & RISCOS`,
+        sections: [
+          { title: 'Raciocínio Terapêutico e Riscos de Interrupção do Tratamento (Quesito 7)', content: rat }
+        ]
+      });
+    }
+
+    // Plan & Monitoring pagination:
+    // If >= 3 products OR long monitoring text, separate onto dedicated pages so product cards are never cut
+    if (planItems.length >= 3 || (mon && mon.length > 350 && planItems.length >= 2)) {
+      if (plan) {
+        reportPages.push({
+          pageNumber: 4,
+          totalPages: 4,
+          title: 'PLANO TERAPÊUTICO CANABINOIDE INDIVIDUALIZADO',
+          sections: [
+            { title: 'Plano de Tratamento Canabinoide Individualizado', content: plan }
+          ]
+        });
+      }
+      if (mon) {
+        reportPages.push({
+          pageNumber: 5,
+          totalPages: 5,
+          title: 'DIRETRIZES DE ACOMPANHAMENTO CLÍNICO & SEGURANÇA',
+          sections: [
+            { title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança', content: mon }
+          ]
+        });
+      }
+    } else {
+      const finalSections: { title: string; content: string }[] = [];
+      if (plan) finalSections.push({ title: 'Plano de Tratamento Canabinoide Individualizado', content: plan });
+      if (mon) finalSections.push({ title: 'Diretrizes de Acompanhamento e Segurança', content: mon });
+      if (finalSections.length > 0) {
+        reportPages.push({
+          pageNumber: 4,
+          totalPages: 4,
+          title: 'PLANO TERAPÊUTICO & MONITORAMENTO CLÍNICO',
+          sections: finalSections
+        });
+      }
+    }
   } else {
-    const page1Sections: { title: string; content: string }[] = [];
-    if (diag) page1Sections.push({ title: 'Diagnóstico e Resumo Clínico', content: diag });
-    if (rat) page1Sections.push({ title: 'Raciocínio Terapêutico', content: rat });
-
-    const page2Sections: { title: string; content: string }[] = [];
-    if (plan) page2Sections.push({ title: 'Plano de Tratamento Canabinoide', content: plan });
-    if (mon) page2Sections.push({ title: 'Acompanhamento e Monitoramento', content: mon });
-
+    // Non-evolutivo (Laudo Inicial)
+    // Page 1: Diagnóstico e Resumo Clínico
     reportPages.push({
       pageNumber: 1,
-      totalPages: 2,
-      title: 'LAUDO MÉDICO',
-      sections: page1Sections
+      totalPages: 1,
+      title: baseReportTitle,
+      sections: [
+        ...(diag ? [{ title: 'Diagnóstico e Resumo Clínico do Paciente', content: diag }] : [])
+      ]
     });
-    reportPages.push({
-      pageNumber: 2,
-      totalPages: 2,
-      title: 'LAUDO MÉDICO (CONTINUAÇÃO)',
-      sections: page2Sections
-    });
+
+    // Page 2: Raciocínio Terapêutico e Continuidade
+    if (rat) {
+      reportPages.push({
+        pageNumber: 2,
+        totalPages: 2,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO`,
+        sections: [
+          { title: 'Raciocínio Terapêutico e Continuidade do Tratamento', content: rat }
+        ]
+      });
+    }
+
+    // Plan & Monitoring for initial report
+    if (planItems.length >= 3) {
+      if (plan) {
+        reportPages.push({
+          pageNumber: 3,
+          totalPages: 3,
+          title: 'PLANO TERAPÊUTICO CANABINOIDE INDIVIDUALIZADO',
+          sections: [{ title: 'Plano de Tratamento Canabinoide Individualizado', content: plan }]
+        });
+      }
+      if (mon) {
+        reportPages.push({
+          pageNumber: 4,
+          totalPages: 4,
+          title: 'DIRETRIZES DE ACOMPANHAMENTO CLÍNICO & SEGURANÇA',
+          sections: [{ title: 'Diretrizes de Acompanhamento e Segurança', content: mon }]
+        });
+      }
+    } else {
+      const finalSections: { title: string; content: string }[] = [];
+      if (plan) finalSections.push({ title: 'Plano de Tratamento Canabinoide', content: plan });
+      if (mon) finalSections.push({ title: 'Acompanhamento e Monitoramento', content: mon });
+      if (finalSections.length > 0) {
+        reportPages.push({
+          pageNumber: 3,
+          totalPages: 3,
+          title: 'PLANO TERAPÊUTICO & MONITORAMENTO CLÍNICO',
+          sections: finalSections
+        });
+      }
+    }
   }
+
+  // Ensure totalPages and pageNumber are exact across all pages
+  reportPages.forEach((p, idx) => {
+    p.pageNumber = idx + 1;
+    p.totalPages = reportPages.length;
+  });
 
   const PdfComponent = () => {
     return (
@@ -554,86 +682,136 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
             className="medical-report-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
             style={{ 
               width: "794px", 
-              height: "1123px", 
               minHeight: "1123px", 
-              maxHeight: "1123px", 
-              padding: "36px 44px", 
+              height: "1123px", 
+              padding: "24px 38px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
               boxSizing: "border-box",
-              overflow: "hidden"
+              overflow: "visible"
             }}
           >
             {/* Page number */}
-            <div className="absolute top-5 right-11 text-[10px] text-[#64748B] font-bold">
+            <div className="absolute top-4 right-10 text-[9.5px] text-[#64748B] font-bold">
               Página {page.pageNumber} de {page.totalPages}
             </div>
 
             <div>
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-3 mb-4 pt-1">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2.5 mb-3.5 pt-0.5">
                 <div>
-                  <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[10px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                  <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
+                  <p className="text-[9.5px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
                     CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                   </p>
                 </div>
                 <div className="text-right">
-                  <h3 className="text-sm font-bold text-[#1E1B4B] m-0">{docName}</h3>
-                  <p className="text-xs text-[#475569] font-semibold m-0">{docCrm}</p>
-                  <p className="text-[10px] text-[#64748B] m-0">{docSpec}</p>
+                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</h3>
+                  <p className="text-[10px] text-[#475569] font-semibold m-0">{docCrm}</p>
+                  <p className="text-[9px] text-[#64748B] m-0">{docSpec}</p>
                 </div>
               </div>
 
-              {/* Title */}
-              <div className="text-center mb-5">
-                <h1 className="text-lg font-black text-[#1E1B4B] tracking-widest uppercase mb-2">{page.title}</h1>
-                <div className="flex flex-col items-center gap-0.5">
-                  <div className="flex items-center gap-2 text-sm text-[#475569]">
-                    <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
-                    <span className="font-semibold">{sanitizedUserName}</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-6 text-xs text-[#64748B]">
-                    {birthDateText !== 'Não informada' && (
+              {/* Title & Patient Identification */}
+              {page.pageNumber === 1 ? (
+                <div className="text-center mb-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5">
+                  <h1 className="text-sm font-black text-[#1E1B4B] tracking-widest uppercase mb-1">{page.title}</h1>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className="flex items-center gap-2 text-xs text-[#475569]">
+                      <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
+                      <span className="font-semibold text-[#0F172A]">{sanitizedUserName}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-4 text-[10px] text-[#64748B]">
+                      {birthDateText !== 'Não informada' && (
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold text-[#475569]">NASCIMENTO:</span> {birthDateText}
+                        </span>
+                      )}
+                      {cpfText !== 'Não informado' && (
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold text-[#475569]">CPF:</span> {cpfText}
+                        </span>
+                      )}
                       <span className="flex items-center gap-1">
-                        <span className="font-bold text-[#475569]">NASCIMENTO:</span> {birthDateText}
+                        <span className="font-bold text-[#475569]">EMISSÃO:</span> {emissionDateStr}
                       </span>
-                    )}
-                    {cpfText !== 'Não informado' && (
-                      <span className="flex items-center gap-1">
-                        <span className="font-bold text-[#475569]">CPF:</span> {cpfText}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Sections for this page */}
-              <div className="space-y-5">
-                {page.sections.map((sec, sIdx) => (
-                  <div key={sIdx}>
-                    <h4 className="text-xs font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2">
-                      {sec.title}
-                    </h4>
-                    <div className="text-xs text-[#334155] leading-relaxed flex flex-col gap-1.5 text-justify">
-                      {sec.content.split('\n').map((p, i) => p.trim() ? (
-                        <p key={i} className="m-0">{p}</p>
-                      ) : <div key={i} className="h-1" />)}
                     </div>
                   </div>
-                ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between mb-3 px-3 py-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md">
+                  <span className="text-[10px] font-black text-[#1E1B4B] tracking-wider uppercase">{page.title}</span>
+                  <span className="text-[9.5px] font-bold text-[#475569]">PACIENTE: <strong className="text-[#0F172A]">{sanitizedUserName}</strong></span>
+                </div>
+              )}
+
+              {/* Sections for this page */}
+              <div className="space-y-3">
+                {page.sections.map((sec, sIdx) => {
+                  const isPlanSection = sec.title.toLowerCase().includes('plano de tratamento');
+
+                  return (
+                    <div key={sIdx}>
+                      <h4 className="text-[10.5px] font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2 flex items-center justify-between">
+                        <span>{sec.title}</span>
+                      </h4>
+
+                      {isPlanSection ? (
+                        <div className="space-y-2">
+                          {sec.content.split(/\n\n+/).filter(itemBlock => itemBlock.trim()).map((itemBlock, iIdx) => {
+                            const lines = itemBlock.split('\n').map(l => l.trim()).filter(Boolean);
+                            const titleLine = lines[0] || '';
+                            const detailLines = lines.slice(1);
+
+                            return (
+                              <div key={iIdx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2.5 text-[9.5px] text-[#334155] leading-snug">
+                                <p className="font-bold text-[#0F172A] text-[10px] mb-1 m-0">{titleLine}</p>
+                                <div className="space-y-0.5 pl-2 text-[9px] text-[#475569]">
+                                  {detailLines.map((line, lIdx) => (
+                                    <p key={lIdx} className="m-0 leading-tight">{line}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-[#334155] leading-relaxed flex flex-col gap-1.5 text-justify">
+                          {sec.content.split('\n').map((p, i) => {
+                            const trimmed = p.trim();
+                            if (!trimmed) return <div key={i} className="h-0.5" />;
+                            
+                            const isSubheader = /^(Hist[óo]rico|Evolu[çc][ãa]o|Indica[çc][ãa]o|CID|Quesito|\d+\.\s*Quanto|Racioc[íi]nio|Diretrizes|Seguran[çc]a|Retorno)/i.test(trimmed);
+                            if (isSubheader) {
+                              return (
+                                <p key={i} className="font-bold text-[#1E1B4B] text-[10px] mt-1 mb-0.5">
+                                  {trimmed}
+                                </p>
+                              );
+                            }
+                            return (
+                              <p key={i} className="m-0 leading-relaxed text-justify">
+                                {trimmed}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="mt-auto pt-4 border-t border-[#E2E8F0]">
+            <div className="mt-auto pt-2.5 border-t border-[#E2E8F0]">
               <div className="flex flex-col items-center">
-                <div className="w-56 h-0 border-b border-[#CBD5E1] mb-1.5"></div>
-                <p className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</p>
-                <p className="text-[10px] text-[#64748B] m-0 mb-2">{docCrm} • Assinatura Digital / Prescritor</p>
-                <div className="flex justify-between w-full text-[9px] text-[#94A3B8] font-semibold">
+                <div className="w-52 h-0 border-b border-[#CBD5E1] mb-1"></div>
+                <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0">{docName}</p>
+                <p className="text-[9px] text-[#64748B] m-0 mb-1">{docCrm} • Assinatura Digital / Prescritor</p>
+                <div className="flex justify-between w-full text-[8px] text-[#94A3B8] font-semibold">
                   <span>Data de Emissão: {emissionDateStr}</span>
-                  <span>Válido em todo o território nacional</span>
+                  <span>Documento Médico Oficial • Válido em todo o território nacional</span>
                 </div>
               </div>
             </div>

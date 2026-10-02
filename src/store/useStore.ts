@@ -506,13 +506,54 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       // Always try to write to Firestore, even if anonymous (using the generated ID)
-      await setDoc(doc(db, 'queue', currentUserId), {
+      setDoc(doc(db, 'queue', currentUserId), {
         ...newPatient,
+        id: currentUserId,
         isPremium,
         plan: isPremium ? 'premium' : 'basic',
         joinedAt: new Date().toISOString(),
-        status: 'waiting'
-      });
+        status: 'waiting',
+        pagamento_consulta: true,
+        pagamento_premium: isPremium
+      }, { merge: true }).catch(e => console.warn("[FIRESTORE QUEUE] setDoc caught:", e));
+
+      // Also sync to persistent server queue API so doctor receives patient even when Firestore daily free quota is exceeded
+      fetch('/api/queue/force-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newPatient,
+          id: currentUserId,
+          isPremium,
+          plan: isPremium ? 'premium' : 'basic',
+          joinedAt: new Date().toISOString(),
+          status: 'waiting',
+          pagamento_consulta: true,
+          pagamento_premium: isPremium
+        })
+      }).catch(e => console.warn('[SERVER QUEUE SYNC] Error:', e));
+
+      // Also ensure user document reflects active payment and waiting queue status
+      try {
+        await setDoc(doc(db, 'users', currentUserId), {
+          id: currentUserId,
+          name: newPatient.patientName,
+          email: newPatient.email,
+          phone: newPatient.phone,
+          cpf: newPatient.cpf,
+          birthDate: newPatient.birthDate,
+          answers: newPatient.answers,
+          pagamento_consulta: true,
+          pagamento_premium: isPremium,
+          inQueue: true,
+          consultationStatus: 'waiting',
+          isPremium,
+          plan: isPremium ? 'premium' : 'basic',
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+      } catch (userErr) {
+        console.warn("Could not update user doc during joinQueue:", userErr);
+      }
       
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
          import('../utils/notifications').then(({ subscribeToBackgroundNotifications }) => {
@@ -521,7 +562,7 @@ export const useStore = create<AppState>((set, get) => ({
       }
       
       triggerAdminBackgroundPush(
-        'Novo Paciente na Fila',
+        isPremium ? '👑 Novo Paciente VIP na Fila' : 'Novo Paciente na Fila',
         `${newPatient.patientName} acabou de entrar na fila de espera.`,
         '/doctor'
       );
@@ -559,8 +600,55 @@ export const useStore = create<AppState>((set, get) => ({
     const knownWaitingIds = new Set<string>();
     const prevUnreadStates: Record<string, boolean> = {};
 
-    const q = query(collection(db, 'queue'), orderBy('joinedAt', 'asc'));
-    return onSnapshot(q, (snapshot) => {
+    // Helper to fetch server fallback queue
+    const syncWithServerQueue = async () => {
+      try {
+        const res = await fetch('/api/queue');
+        if (!res.ok) return;
+        const resData = await res.json();
+        if (resData.success && Array.isArray(resData.queue) && resData.queue.length > 0) {
+          set(state => {
+            const currentQueue = state.queue || [];
+            const map = new Map<string, any>();
+            // Keep current items
+            currentQueue.forEach(item => map.set(item.id, item));
+            // Merge server items
+            resData.queue.forEach((item: any) => {
+              if (!item || !item.id) return;
+              const prev = map.get(item.id) || {};
+              const isPrem = !!(item.isPremium || item.plan === 'premium' || item.tier === 'Premium' || item.answers?.isPremium || prev.isPremium);
+              let parsedDate = item.joinedAt ? new Date(item.joinedAt) : (prev.joinedAt || new Date());
+              if (isNaN(parsedDate.getTime())) parsedDate = new Date();
+              const pName = (item.patientName || item.name || prev.patientName || prev.name || 'Paciente').trim();
+              map.set(item.id, {
+                ...prev,
+                ...item,
+                patientName: pName,
+                name: pName,
+                isPremium: isPrem,
+                plan: isPrem ? 'premium' : 'basic',
+                joinedAt: parsedDate
+              });
+            });
+            const merged = Array.from(map.values()).sort((a, b) => {
+              const timeA = a.joinedAt instanceof Date && !isNaN(a.joinedAt.getTime()) ? a.joinedAt.getTime() : 0;
+              const timeB = b.joinedAt instanceof Date && !isNaN(b.joinedAt.getTime()) ? b.joinedAt.getTime() : 0;
+              return timeA - timeB;
+            });
+            return { queue: merged };
+          });
+        }
+      } catch (err) {
+        // Non-critical background fallback
+      }
+    };
+
+    // Initial server queue fetch and polling interval
+    syncWithServerQueue();
+    const serverPollInterval = setInterval(syncWithServerQueue, 8000);
+
+    const q = collection(db, 'queue');
+    const unsubFirestore = onSnapshot(q, (snapshot) => {
       const isDoctorRoute = typeof window !== 'undefined' && (
         window.location.pathname.includes('/doctor') || 
         window.location.pathname.includes('/admin') ||
@@ -571,44 +659,70 @@ export const useStore = create<AppState>((set, get) => ({
       let queueData = snapshot.docs.map(doc => {
         const data = doc.data();
         const isPrem = !!(data.isPremium || data.plan === 'premium' || data.selectedOffer === 'premium' || data.answers?.isPremium || data.pagamento_premium);
+        let parsedJoinedAt = new Date();
+        if (data.joinedAt?.toDate) {
+          parsedJoinedAt = data.joinedAt.toDate();
+        } else if (data.joinedAt) {
+          const parsed = new Date(data.joinedAt);
+          if (!isNaN(parsed.getTime())) parsedJoinedAt = parsed;
+        }
+        const pName = (data.patientName || data.name || 'Paciente').trim();
         return {
           id: doc.id,
+          patientId: doc.id,
           ...data,
+          patientName: pName,
+          name: pName,
           isPremium: isPrem,
-          joinedAt: data.joinedAt?.toDate ? data.joinedAt.toDate() : (data.joinedAt ? new Date(data.joinedAt) : new Date())
+          plan: isPrem ? 'premium' : 'basic',
+          joinedAt: parsedJoinedAt
         };
       }) as any[];
 
-      // If Firestore queue is currently empty, furnish demo patients so doctor area can be tested
+      // Sort by joinedAt ascending safely in JavaScript
+      queueData.sort((a, b) => {
+        const timeA = a.joinedAt instanceof Date && !isNaN(a.joinedAt.getTime()) ? a.joinedAt.getTime() : 0;
+        const timeB = b.joinedAt instanceof Date && !isNaN(b.joinedAt.getTime()) ? b.joinedAt.getTime() : 0;
+        return timeA - timeB;
+      });
+
+      // If Firestore queue is currently empty, check existing store queue before furnishing demo patients
       if (queueData.length === 0) {
-        queueData = [
-          {
-            id: 'sample_patient_vip_1',
-            patientName: 'Fernanda Lima Rocha',
-            email: 'fernanda.rocha@email.com',
-            phone: '11987654321',
-            cpf: '123.456.789-00',
-            birthDate: '15/04/1988',
-            joinedAt: new Date(Date.now() - 14 * 60 * 1000), // na fila há 14 minutos!
-            status: 'waiting',
-            isPremium: true,
-            plan: 'premium',
-            answers: { objectives: ['Ansiedade e Insônia Severa', 'Dores Crônicas'] }
-          },
-          {
-            id: 'sample_patient_basic_2',
-            patientName: 'Carlos Roberto Mendes',
-            email: 'carlos.mendes@email.com',
-            phone: '11976543210',
-            cpf: '987.654.321-99',
-            birthDate: '22/09/1975',
-            joinedAt: new Date(Date.now() - 4 * 60 * 1000),
-            status: 'waiting',
-            isPremium: false,
-            plan: 'basic',
-            answers: { objectives: ['Dores Articulares'] }
-          }
-        ];
+        const currentQueue = get().queue;
+        if (currentQueue && currentQueue.length > 0) {
+          queueData = currentQueue;
+        } else {
+          queueData = [
+            {
+              id: 'sample_patient_vip_1',
+              patientName: 'Fernanda Lima Rocha',
+              name: 'Fernanda Lima Rocha',
+              email: 'fernanda.rocha@email.com',
+              phone: '11987654321',
+              cpf: '123.456.789-00',
+              birthDate: '15/04/1988',
+              joinedAt: new Date(Date.now() - 14 * 60 * 1000), // na fila há 14 minutos!
+              status: 'waiting',
+              isPremium: true,
+              plan: 'premium',
+              answers: { objectives: ['Ansiedade e Insônia Severa', 'Dores Crônicas'] }
+            },
+            {
+              id: 'sample_patient_basic_2',
+              patientName: 'Carlos Roberto Mendes',
+              name: 'Carlos Roberto Mendes',
+              email: 'carlos.mendes@email.com',
+              phone: '11976543210',
+              cpf: '987.654.321-99',
+              birthDate: '22/09/1975',
+              joinedAt: new Date(Date.now() - 4 * 60 * 1000),
+              status: 'waiting',
+              isPremium: false,
+              plan: 'basic',
+              answers: { objectives: ['Dores Articulares'] }
+            }
+          ];
+        }
       }
 
       // GLOBAL LISTENER FOR PATIENT (Runs on all screens)
@@ -754,7 +868,15 @@ export const useStore = create<AppState>((set, get) => ({
           }
         }
       }
+    }, (err) => {
+      console.warn('[FIRESTORE QUEUE] Erro de conexão/cota:', err);
+      syncWithServerQueue();
     });
+
+    return () => {
+      unsubFirestore();
+      clearInterval(serverPollInterval);
+    };
   },
   
   subscribeToAppointments: () => {

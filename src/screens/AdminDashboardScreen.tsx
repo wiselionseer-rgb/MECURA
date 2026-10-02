@@ -38,24 +38,86 @@ import { db, auth } from '../firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 import { INSTITUTIONAL_INFO, LEGAL_OPINION_DATA, PRIVACY_POLICY_LGPD_DATA, TERMS_OF_USE_DATA } from '../data/legalAndPrivacy';
+import { triggerAdminBackgroundPush } from '../utils/notifications';
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda' | 'password_requests' | 'legal'>('overview');
   
-  
 
   const forceSendToQueue = async (patient: any) => {
     try {
-      await setDoc(doc(db, 'queue', patient.id), {
-        patientId_temp_fix: patient.id,
-        patientName: patient.name || 'Sem nome',
+      const pId = patient.id;
+      if (!pId) {
+        throw new Error('ID do paciente não encontrado');
+      }
+
+      const isPrem = !!(patient.isPremium || patient.tier === 'Premium' || patient.plan === 'premium' || patient.answers?.isPremium || patient.pagamento_premium);
+      const pName = (patient.name || patient.patientName || 'Paciente').trim();
+
+      const queuePayload = {
+        id: pId,
+        patientId: pId,
+        patientName: pName,
+        name: pName,
         email: patient.email || 'sem-email@mecura.com',
-        tier: patient.tier || 'basic',
+        phone: patient.phone || patient.whatsapp || patient.answers?.phone || patient.answers?.whatsapp || '',
+        cpf: patient.cpf || patient.answers?.cpf || '',
+        birthDate: patient.birthDate || patient.answers?.birthDate || '',
+        tier: isPrem ? 'Premium' : (patient.tier || 'basic'),
+        isPremium: isPrem,
+        plan: isPrem ? 'premium' : 'basic',
         status: 'waiting',
         joinedAt: new Date().toISOString(),
-      });
-      setSupportToastMessage(`${patient.name || 'Sem nome'} enviado para a fila!`);
+        hasUnread: true,
+        lastMessageAt: new Date().toISOString(),
+        lastMessageText: 'Paciente adicionado à fila pelo Administrador',
+        answers: patient.answers || {},
+        pagamento_consulta: true,
+        pagamento_premium: isPrem
+      };
+
+      // 1. Gravar na coleção queue do Firestore com merge
+      await setDoc(doc(db, 'queue', pId), queuePayload, { merge: true });
+
+      // 2. Atualizar o documento do usuário
+      await setDoc(doc(db, 'users', pId), {
+        inQueue: true,
+        consultationStatus: 'waiting',
+        pagamento_consulta: true,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+
+      // 3. Sincronizar com o endpoint do servidor (/api/queue/force-join)
+      try {
+        await fetch('/api/queue/force-join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(queuePayload)
+        });
+      } catch (srvErr) {
+        console.warn('[SERVER QUEUE SYNC] Erro ao sincronizar com servidor:', srvErr);
+      }
+
+      // 4. Atualizar o estado global da fila no Zustand imediatamente
+      const currentQueue = useStore.getState().queue || [];
+      const existsIdx = currentQueue.findIndex(q => q.id === pId);
+      let updatedQueue;
+      if (existsIdx >= 0) {
+        updatedQueue = currentQueue.map((item, idx) => idx === existsIdx ? { ...item, ...queuePayload, joinedAt: new Date() } : item);
+      } else {
+        updatedQueue = [{ ...queuePayload, joinedAt: new Date() }, ...currentQueue];
+      }
+      useStore.setState({ queue: updatedQueue });
+
+      // 5. Disparar notificação para o painel do médico
+      triggerAdminBackgroundPush(
+        isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila',
+        `${pName} foi enviado para a fila pelo Administrador.`,
+        '/doctor'
+      );
+
+      setSupportToastMessage(`${pName} enviado para a fila do médico com sucesso!`);
       setShowSupportToast(true);
       setTimeout(() => setShowSupportToast(false), 3000);
     } catch (e) {

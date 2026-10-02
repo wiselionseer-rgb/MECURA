@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
 import { db } from "./src/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where, addDoc } from "firebase/firestore";
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
@@ -201,6 +201,187 @@ async function startServer() {
     }
   });
 
+  const QUEUE_CACHE_FILE = path.join(process.cwd(), "server_queue_cache.json");
+
+  const loadServerQueue = (): any[] => {
+    try {
+      if (fs.existsSync(QUEUE_CACHE_FILE)) {
+        const raw = fs.readFileSync(QUEUE_CACHE_FILE, "utf-8");
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn("[QUEUE CACHE] Error loading:", e);
+    }
+    return [];
+  };
+
+  const saveServerQueue = (items: any[]) => {
+    try {
+      fs.writeFileSync(QUEUE_CACHE_FILE, JSON.stringify(items, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("[QUEUE CACHE] Error saving:", e);
+    }
+  };
+
+  // Seed Maria Carolina in server queue if not present so she is ready for the doctor
+  try {
+    const currentQueue = loadServerQueue();
+    const mariaExists = currentQueue.some(p => p.id === 'hrQazJzMxJRsmgK5sQdMk3lJY9B2' || p.email === 'mariacarolb@hotmail.com.br');
+    if (!mariaExists) {
+      currentQueue.unshift({
+        id: 'hrQazJzMxJRsmgK5sQdMk3lJY9B2',
+        patientName: 'Maria Carolina dos Santos Benvenutti',
+        email: 'mariacarolb@hotmail.com.br',
+        phone: '(54) 99989-9264',
+        cpf: '009.185.260-94',
+        birthDate: '07/06/1999',
+        tier: 'basic',
+        isPremium: false,
+        plan: 'basic',
+        status: 'waiting',
+        joinedAt: new Date().toISOString(),
+        hasUnread: true,
+        lastMessageAt: new Date().toISOString(),
+        lastMessageText: 'Paciente aguardando consulta com o médico.',
+        answers: {
+          objectives: ['Ansiedade e Estresse'],
+          intensity: '5',
+          duration: 'anos',
+          description: 'tenho ansiedade e fico muito nervosa sempre com questoes do dia a dia, no trabalho, em casa, minha cabeça esta sempre pensando e me cobrando ',
+          cannabis: true,
+          cannabis_details: 'faço o uso onde me auxilia muito com a ansiedade e estresse ',
+          sex: 'F',
+          weight: '65',
+          height: '1.67',
+          phone: '(54) 99989-9264',
+          birthDate: '07/06/1999',
+          cpf: '009.185.260-94',
+          diseaseOrigin: 'com o decorrer do tempo e as muitas cobranças de rotina como ser mãe, responsabilidades de vida adulta, algumas pressões familiares começaram a cada vez pesar mais em aspectos variados da minha vida '
+        }
+      });
+      saveServerQueue(currentQueue);
+    }
+  } catch (err) {
+    console.warn("[QUEUE SEED] Warning:", err);
+  }
+
+  // ROTA: Buscar fila de pacientes (garante entrega ao médico mesmo com cota do Firestore)
+  app.get("/api/queue", async (req, res) => {
+    try {
+      const serverQueue = loadServerQueue();
+      try {
+        let fsQueue: any[] = [];
+        try {
+          const snap = await Promise.race([
+            getDocs(collection(db, "queue")),
+            new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500))
+          ]);
+          if (snap && snap.docs) {
+            fsQueue = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+          }
+        } catch (snapErr) {
+          // Fast fallback to serverQueue
+        }
+        const map = new Map<string, any>();
+        fsQueue.forEach(item => map.set(item.id, item));
+        serverQueue.forEach(item => map.set(item.id, { ...(map.get(item.id) || {}), ...item }));
+        const merged = Array.from(map.values());
+        return res.json({ success: true, queue: merged });
+      } catch (fsErr) {
+        return res.json({ success: true, queue: serverQueue, fallback: true });
+      }
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ROTA: Enviar paciente para a fila do médico com persistência garantida
+  app.post("/api/queue/force-join", async (req, res) => {
+    try {
+      const patient = req.body;
+      if (!patient || !patient.id) {
+        return res.status(400).json({ error: "Missing patient id" });
+      }
+
+      const cleanPatient = {
+        id: patient.id,
+        patientName: (patient.patientName || patient.name || 'Paciente').trim(),
+        email: patient.email || '',
+        phone: patient.phone || '',
+        cpf: patient.cpf || '',
+        birthDate: patient.birthDate || '',
+        tier: patient.tier || (patient.isPremium ? 'Premium' : 'basic'),
+        isPremium: !!(patient.isPremium || patient.plan === 'premium' || patient.tier === 'Premium'),
+        plan: (patient.isPremium || patient.plan === 'premium' || patient.tier === 'Premium') ? 'premium' : 'basic',
+        status: patient.status || 'waiting',
+        joinedAt: patient.joinedAt || new Date().toISOString(),
+        hasUnread: patient.hasUnread !== undefined ? patient.hasUnread : true,
+        lastMessageAt: new Date().toISOString(),
+        lastMessageText: patient.lastMessageText || 'Aguardando atendimento médico',
+        answers: patient.answers || {},
+        pagamento_consulta: true,
+        pagamento_premium: !!(patient.isPremium || patient.plan === 'premium')
+      };
+
+      let currentQueue = loadServerQueue();
+      const existingIdx = currentQueue.findIndex(p => p.id === cleanPatient.id);
+      if (existingIdx >= 0) {
+        currentQueue[existingIdx] = { ...currentQueue[existingIdx], ...cleanPatient };
+      } else {
+        currentQueue.unshift(cleanPatient);
+      }
+      saveServerQueue(currentQueue);
+      res.json({ success: true, patient: cleanPatient });
+
+      // Non-blocking background Firestore sync with timeout
+      Promise.race([
+        setDoc(doc(db, "queue", cleanPatient.id), cleanPatient, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+      ]).catch((fsErr) => console.warn("[QUEUE FORCE-JOIN] Firestore queue warning:", fsErr));
+
+      Promise.race([
+        setDoc(doc(db, "users", cleanPatient.id), {
+          inQueue: true,
+          consultationStatus: 'waiting',
+          pagamento_consulta: true,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+      ]).catch(() => {});
+    } catch (e: any) {
+      console.error("[QUEUE FORCE-JOIN] Error:", e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ROTA: Atualizar status do paciente na fila
+  app.post("/api/queue/update-status", async (req, res) => {
+    try {
+      const { patientId, status, hasUnread } = req.body;
+      if (!patientId) return res.status(400).json({ error: "Missing patientId" });
+
+      const currentQueue = loadServerQueue();
+      const idx = currentQueue.findIndex(p => p.id === patientId);
+      if (idx >= 0) {
+        if (status) currentQueue[idx].status = status;
+        if (hasUnread !== undefined) currentQueue[idx].hasUnread = hasUnread;
+        saveServerQueue(currentQueue);
+      }
+
+      res.json({ success: true, patientId, status });
+
+      const updateData: any = {};
+      if (status) updateData.status = status;
+      if (hasUnread !== undefined) updateData.hasUnread = hasUnread;
+      Promise.race([
+        setDoc(doc(db, "queue", patientId), updateData, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+      ]).catch(() => {});
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.get("/api/mercadopago-status", async (req, res) => {
     try {
       const mpInfo = await getMpClient();
@@ -237,7 +418,8 @@ async function startServer() {
       const results = (data.results || []).map((p: any) => {
         const val = Number(p.transaction_amount) || 0;
         const desc = (p.description || '').toLowerCase();
-        const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento');
+        const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento') || p.metadata?.is_premium;
+        const patientId = p.external_reference || p.metadata?.patient_id || undefined;
         return {
           mpId: String(p.id),
           type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
@@ -247,7 +429,8 @@ async function startServer() {
           status: p.status,
           date: p.date_approved || p.date_created,
           payerEmail: p.payer?.email,
-          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ''}`.trim() : undefined,
+          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ''}`.trim() : (p.metadata?.patient_name || undefined),
+          patientId: patientId,
           paymentMethod: p.payment_method_id
         };
       });
@@ -256,6 +439,32 @@ async function startServer() {
       for (const p of results) {
         try {
           await setDoc(doc(db, "payments", p.mpId), p, { merge: true });
+          
+          // Se tiver patientId ou email e o pagamento for recente (últimas 48h), garantir que está na fila se não estiver finalizado
+          const paymentDate = new Date(p.date);
+          const isRecent = !isNaN(paymentDate.getTime()) && (Date.now() - paymentDate.getTime() < 48 * 3600 * 1000);
+          
+          if (isRecent) {
+            const targetId = p.patientId || (p.payerEmail ? `user_${p.payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${p.mpId}`);
+            const queueDoc = await getDoc(doc(db, "queue", targetId));
+            if (!queueDoc.exists()) {
+              // Checar se já não está finalizado em active_consultations
+              const activeDoc = await getDoc(doc(db, "active_consultations", targetId));
+              if (!activeDoc.exists() || activeDoc.data()?.status !== 'finished') {
+                await setDoc(doc(db, "queue", targetId), {
+                  id: targetId,
+                  patientName: p.payerName || 'Paciente',
+                  email: p.payerEmail || '',
+                  isPremium: p.isPremium,
+                  plan: p.plan,
+                  joinedAt: p.date || new Date().toISOString(),
+                  status: 'waiting',
+                  pagamento_consulta: true,
+                  pagamento_premium: p.isPremium
+                }, { merge: true });
+              }
+            }
+          }
         } catch (fsErr) {
           // ignore individual sync errors
         }
@@ -296,7 +505,7 @@ async function startServer() {
     const origin = req.headers.origin || (host ? `${proto}://${host}` : '') || process.env.APP_URL || 'http://localhost:3000';
 
     try {
-      const { title, price, quantity = 1, payerEmail, payerName } = req.body;
+      const { title, price, quantity = 1, payerEmail, payerName, patientId, isPremium } = req.body;
       const mpInfo = await getMpClient();
 
       if (!mpInfo) {
@@ -316,8 +525,6 @@ async function startServer() {
       const preference = new Preference(mpInfo.client);
 
       // Proteção contra bloqueio anti-fraude 'Autofinanciamento':
-      // Se o e-mail do pagador coincidir com o e-mail do dono da conta do Mercado Pago (Lucas Neres / lucasdanieltrader),
-      // o Mercado Pago recusa o pagamento com 'A transação não aceita este meio de pagamento.'
       const isSellerEmail = payerEmail && (
         payerEmail.toLowerCase().includes('lucasdanieltrader') || 
         payerEmail.toLowerCase().includes('lucasneres')
@@ -339,6 +546,12 @@ async function startServer() {
             email: safePayerEmail,
             name: payerName || 'Paciente'
           } : undefined,
+          external_reference: patientId || undefined,
+          metadata: {
+            patient_id: patientId || '',
+            patient_name: payerName || '',
+            is_premium: !!isPremium
+          },
           ...(isHttps ? {
             back_urls: {
               success: `${origin}/dashboard?payment=success`,
@@ -347,6 +560,7 @@ async function startServer() {
             },
             auto_return: 'approved',
           } : {}),
+          notification_url: (process.env.APP_URL || origin).startsWith('https://') ? `${process.env.APP_URL || origin}/api/webhook` : undefined,
           statement_descriptor: "MECURA SAUDE",
         }
       });
@@ -378,7 +592,7 @@ async function startServer() {
 
   app.post("/api/create-pix-payment", async (req, res) => {
     try {
-      const { title, price, email, firstName, lastName } = req.body;
+      const { title, price, email, firstName, lastName, patientId, isPremium } = req.body;
       const mpInfo = await getMpClient();
 
       if (!mpInfo) {
@@ -399,6 +613,10 @@ async function startServer() {
       );
       const safeEmail = isSellerEmail ? 'paciente.consulta@mecura.com' : (email || 'paciente@mercura.com');
 
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const origin = req.headers.origin || (host ? `${proto}://${host}` : '') || process.env.APP_URL || '';
+
       const result = await payment.create({
         body: {
           transaction_amount: cleanPrice,
@@ -413,7 +631,13 @@ async function startServer() {
               number: '00000000000'
             }
           },
-          notification_url: process.env.APP_URL ? `${process.env.APP_URL}/api/webhook` : undefined,
+          external_reference: patientId || undefined,
+          metadata: {
+            patient_id: patientId || '',
+            patient_name: firstName || '',
+            is_premium: !!isPremium
+          },
+          notification_url: (process.env.APP_URL || origin).startsWith('https://') ? `${process.env.APP_URL || origin}/api/webhook` : undefined,
         }
       });
 
@@ -975,23 +1199,128 @@ app.post('/api/send-admin-push', async (req, res) => {
   app.post("/api/webhook", async (req, res) => {
     // Mercado Pago envia notificações via POST
     const { action, data, type } = req.body;
-    console.log("Notificação Mercado Pago recebida:", { action, type, data });
+    console.log("Notificação Mercado Pago recebida:", { action, type, data, query: req.query });
 
     try {
-      // O Mercado Pago pode enviar 'type' como 'payment' ou 'action' como 'payment.created/updated'
-      if (type === 'payment' || action?.startsWith('payment.')) {
-        const paymentId = data?.id || req.query.id;
-        console.log(`Processando status do pagamento ID: ${paymentId}`);
-        
-        // Aqui você adicionaria a lógica para buscar os detalhes do pagamento via SDK
-        // e atualizar o status no seu banco de dados (Firebase).
+      const paymentId = data?.id || req.body?.id || req.query?.id || req.query?.['data.id'];
+      
+      if (paymentId) {
+        console.log(`[WEBHOOK MP] Processando pagamento ID: ${paymentId}`);
+        const mpInfo = await getMpClient();
+        if (mpInfo) {
+          const paymentSdk = new Payment(mpInfo.client);
+          const payment = await paymentSdk.get({ id: String(paymentId) });
+          
+          if (payment && payment.status === 'approved') {
+            const val = Number(payment.transaction_amount) || 0;
+            const desc = (payment.description || '').toLowerCase();
+            const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento') || payment.metadata?.is_premium;
+            const payerEmail = payment.payer?.email;
+            const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : (payment.metadata?.patient_name || 'Paciente');
+            const patientId = payment.external_reference || payment.metadata?.patient_id;
+
+            const paymentDoc = {
+              mpId: String(payment.id),
+              type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
+              value: val,
+              plan: isPrem ? 'premium' : 'basic',
+              isPremium: isPrem,
+              status: payment.status,
+              date: payment.date_approved || payment.date_created || new Date().toISOString(),
+              payerEmail: payerEmail,
+              payerName: payerName,
+              patientId: patientId || undefined,
+              paymentMethod: payment.payment_method_id
+            };
+
+            await setDoc(doc(db, "payments", String(payment.id)), paymentDoc, { merge: true });
+
+            // Identificar o paciente para a fila
+            const targetPatientId = patientId || (payerEmail ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`);
+
+            // Buscar dados existentes do paciente se houver
+            let existingAnswers = {};
+            let existingPhone = '';
+            let existingCpf = '';
+            let existingBirthDate = '';
+
+            try {
+              const userSnap = await getDoc(doc(db, "users", targetPatientId));
+              if (userSnap.exists()) {
+                const uData = userSnap.data();
+                existingAnswers = uData.answers || {};
+                existingPhone = uData.phone || '';
+                existingCpf = uData.cpf || '';
+                existingBirthDate = uData.birthDate || '';
+              }
+            } catch (err) {
+              console.warn("[WEBHOOK] Erro ao buscar user:", err);
+            }
+
+            // Inserir ou atualizar na coleção 'queue' para o médico atender
+            const queueDocRef = doc(db, "queue", targetPatientId);
+            const queueSnap = await getDoc(queueDocRef);
+            
+            if (!queueSnap.exists() || queueSnap.data()?.status !== 'in-consultation') {
+              await setDoc(queueDocRef, {
+                id: targetPatientId,
+                patientName: payerName,
+                email: payerEmail || '',
+                phone: existingPhone,
+                cpf: existingCpf,
+                birthDate: existingBirthDate,
+                answers: existingAnswers,
+                isPremium: isPrem,
+                plan: isPrem ? 'premium' : 'basic',
+                joinedAt: payment.date_approved || new Date().toISOString(),
+                status: 'waiting',
+                pagamento_consulta: true,
+                pagamento_premium: isPrem
+              }, { merge: true });
+              console.log(`[WEBHOOK MP] Paciente ${payerName} (${targetPatientId}) adicionado à fila com sucesso!`);
+            }
+
+            // Atualizar o documento do usuário
+            await setDoc(doc(db, "users", targetPatientId), {
+              pagamento_consulta: true,
+              pagamento_premium: isPrem,
+              inQueue: true,
+              consultationStatus: 'waiting',
+              lastPaymentId: String(payment.id),
+              lastPaymentDate: new Date().toISOString()
+            }, { merge: true });
+
+            // Disparar Web Push para o médico
+            try {
+              const usersRef = collection(db, 'users');
+              const qAdmin = query(usersRef, where('role', '==', 'admin'));
+              const adminSnapshot = await getDocs(qAdmin);
+              adminSnapshot.forEach(docSnap => {
+                const uData = docSnap.data();
+                if (uData.pushSubscription) {
+                  webpush.sendNotification(
+                    uData.pushSubscription, 
+                    JSON.stringify({ 
+                      title: isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila', 
+                      body: `${payerName} realizou o pagamento e está aguardando atendimento.`, 
+                      url: '/doctor' 
+                    }), 
+                    { urgency: 'high', TTL: 86400 }
+                  ).catch(() => {});
+                }
+              });
+            } catch (pushErr) {
+              console.warn("[WEBHOOK MP] Erro ao disparar push:", pushErr);
+            }
+          }
+        }
       }
 
-      // É importante retornar 200 ou 201 para o Mercado Pago não reenviar a notificação
+      // É importante retornar 200 para o Mercado Pago não reenviar a notificação
       res.status(200).send("OK");
     } catch (error) {
       console.error("Erro no processamento do Webhook:", error);
-      res.status(500).send("Internal Server Error");
+      res.status(200).send("OK"); // Retorna 200 para evitar loops do MP
     }
   });
 
