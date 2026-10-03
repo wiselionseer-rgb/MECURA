@@ -337,12 +337,23 @@ export const generatePrescriptionPDF = async (
                 <div className="space-y-2.5 my-2">
                   {page.items.map((item, idx) => {
                     const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
+                    const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(item.name || item.type || '');
                     const activeIng = (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients;
                     const concentration = (item.concentration !== undefined && item.concentration !== null && item.concentration !== '') ? item.concentration : enriched.concentration;
-                    const pharmForm = item.pharmaceuticalForm || enriched.pharmaceuticalForm;
-                    const quantity = item.quantity || enriched.quantity;
-                    const admRoute = item.administrationRoute || enriched.administrationRoute;
+                    const pharmForm = isGummy ? (item.pharmaceuticalForm && !/solução/i.test(item.pharmaceuticalForm) ? item.pharmaceuticalForm : 'Gomas Mastigáveis Veganas') : (item.pharmaceuticalForm || enriched.pharmaceuticalForm);
+                    const quantity = isGummy ? (item.quantity && !/frasco/i.test(item.quantity) ? item.quantity : '01 Pote com 20 a 30 gomas') : (item.quantity || enriched.quantity);
+                    const admRoute = isGummy ? 'Via Oral' : (item.administrationRoute || enriched.administrationRoute);
                     const displayIndex = page.itemStartIndex + idx + 1;
+
+                    let dosageLines = item.dosage;
+                    if (isGummy) {
+                      dosageLines = dosageLines.map(d => {
+                        if (/sublingual|gota|pingar/i.test(d)) {
+                          return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+                        }
+                        return d;
+                      });
+                    }
 
                     return (
                       <div key={idx} className="border-b border-[#F1F5F9] pb-2">
@@ -367,7 +378,7 @@ export const generatePrescriptionPDF = async (
                         {/* Dosage */}
                         <div className="pl-3 space-y-0.5 text-[10px] text-[#334155]">
                           <span className="font-semibold text-[#1E293B] block text-[10.5px] mb-0.5">Posologia e Modo de Uso:</span>
-                          {item.dosage.map((d, dIdx) => (
+                          {dosageLines.map((d, dIdx) => (
                             <p key={dIdx} className="m-0 leading-snug text-[10px]">• {d}</p>
                           ))}
                         </div>

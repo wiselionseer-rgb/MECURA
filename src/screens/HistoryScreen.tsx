@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export function HistoryScreen() {
   const navigate = useNavigate();
-  const { userName, userCpf, userBirthDate, answers, messages, isConsultationFinished, inQueue } = useStore();
+  const { userName, userCpf, userBirthDate, answers, messages, isConsultationFinished, inQueue, pagamento_consulta } = useStore();
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -75,7 +75,7 @@ export function HistoryScreen() {
               O seu histórico médico, receitas oficiais e orientações estarão disponíveis aqui assim que a sua consulta com o Dr. Guilherme for concluída.
             </p>
             <div className="flex flex-col gap-3 w-full max-w-xs">
-              {inQueue && (
+              {inQueue && pagamento_consulta && (
                 <button
                   onClick={() => navigate('/queue')}
                   className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] text-black font-extrabold text-sm hover:brightness-110 transition-all shadow-[0_0_20px_rgba(255,138,0,0.3)] cursor-pointer"

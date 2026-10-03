@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -13,12 +13,21 @@ import {
   Calendar, 
   ShieldCheck,
   Building2,
-  Globe
+  Globe,
+  BookOpen,
+  Search,
+  RefreshCw,
+  Check,
+  Pill,
+  AlertTriangle,
+  ChevronRight,
+  Layers
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS } from '../data/cbdGuide';
+import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
+import { useAdminStore } from '../store/useAdminStore';
 
 interface PrescriptionEditorModalProps {
   isOpen: boolean;
@@ -75,6 +84,287 @@ export function PrescriptionEditorModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSendingToChat, setIsSendingToChat] = useState(false);
   const [isSendingPreview, setIsSendingPreview] = useState(false);
+
+  const { productCategories } = useAdminStore();
+  const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
+  const [librarySearchTerm, setLibrarySearchTerm] = useState('');
+  const [librarySelectedCategory, setLibrarySelectedCategory] = useState<string>('all');
+  const [libraryOriginFilter, setLibraryOriginFilter] = useState<'all' | 'Nacional' | 'Importado'>('all');
+  const [replaceTargetIndex, setReplaceTargetIndex] = useState<number | null>(null);
+
+  // All catalog products merged from ALL categories of cbdGuideData, useAdminStore, Flowermed, Flores/Extrações e Associações
+  const allLibraryProducts = useMemo(() => {
+    const list: (CBDProduct & { categoryName?: string; sourceCatalog?: string })[] = [];
+    const seenNames = new Set<string>();
+
+    const addProd = (prod: any, catName?: string, source?: string) => {
+      if (!prod || !prod.name) return;
+      const key = prod.name.toLowerCase().trim();
+      if (!seenNames.has(key)) {
+        seenNames.add(key);
+        list.push({ ...prod, categoryName: catName || 'Outros', sourceCatalog: source || 'Geral' });
+      }
+    };
+
+    // 1. From all categories in cbdGuideData (all 15 categories)
+    if (cbdGuideData && Array.isArray(cbdGuideData)) {
+      for (const cat of cbdGuideData) {
+        const cTitle = cat.title || cat.description?.split('.')[0] || 'Geral';
+        if (cat.products && Array.isArray(cat.products)) {
+          for (const p of cat.products) {
+            addProd(p, cTitle, 'Biblioteca Mecura');
+          }
+        }
+      }
+    }
+
+    // 2. From useAdminStore productCategories (if customized or synced)
+    if (productCategories && Array.isArray(productCategories)) {
+      for (const cat of productCategories) {
+        const cTitle = (cat as any).title || (cat as any).name || 'Painel Clínico';
+        if (cat.products && Array.isArray(cat.products)) {
+          for (const p of cat.products) {
+            addProd(p, cTitle, 'Catálogo Admin');
+          }
+        }
+      }
+    }
+
+    // 3. From Flowermed Catalog (EUA)
+    for (const p of FLOWERMED_PRODUCTS) {
+      addProd(p, 'Linha Flowermed (EUA)', 'Flowermed');
+    }
+
+    // 4. From Flower Extractions Catalog (14g)
+    for (const p of FLOWER_EXTRACTIONS_PRODUCTS) {
+      addProd(p, 'Flores & Extrações (14g)', 'Flores/Extrações');
+    }
+
+    // 5. From National Association Catalog (Brasil)
+    for (const p of NATIONAL_ASSOCIATION_PRODUCTS) {
+      addProd(p, 'Associações Nacionais (Brasil)', 'Associação');
+    }
+
+    // 6. From ABECMED Official National Catalog (Brasil)
+    for (const p of ABECMED_PRODUCTS) {
+      addProd(p, 'ABECMED (Associação Nacional)', 'ABECMED');
+    }
+
+    return list;
+  }, [productCategories]);
+
+  // Dynamic filter for Library modal
+  const filteredLibraryProducts = useMemo(() => {
+    let result = allLibraryProducts;
+
+    if (librarySelectedCategory !== 'all') {
+      if (librarySelectedCategory === 'abecmed') {
+        result = result.filter(p => 
+          (p.manufacturer || '').toLowerCase().includes('abec') || 
+          (p.sourceCatalog || '').toLowerCase().includes('abec') || 
+          (p.name || '').toLowerCase().includes('abec')
+        );
+      } else if (librarySelectedCategory === 'gomas') {
+        result = result.filter(p => /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
+      } else if (librarySelectedCategory === 'nacionais') {
+        result = result.filter(p => 
+          p.origin === 'Nacional' || 
+          (p.manufacturer || '').toLowerCase().includes('associação') ||
+          (p.manufacturer || '').toLowerCase().includes('abec')
+        );
+      } else if (librarySelectedCategory === 'flowermed') {
+        result = result.filter(p => (p.manufacturer || '').toLowerCase().includes('flowermed') || p.sourceCatalog === 'Flowermed');
+      } else if (librarySelectedCategory === 'flores') {
+        result = result.filter(p => /flor|in natura|extraç|budder|syringe/i.test(p.name || p.type || ''));
+      } else if (librarySelectedCategory === 'oleos') {
+        result = result.filter(p => /óleo|oil|gotas|sublingual/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
+      } else if (librarySelectedCategory === 'topicos') {
+        result = result.filter(p => /pomada|creme|tópico|pele/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
+      } else {
+        result = result.filter(p => p.categoryName === librarySelectedCategory);
+      }
+    }
+
+    if (libraryOriginFilter !== 'all') {
+      if (libraryOriginFilter === 'Nacional') {
+        result = result.filter(p => 
+          p.origin === 'Nacional' || 
+          (p.manufacturer || '').toLowerCase().includes('associação') ||
+          (p.manufacturer || '').toLowerCase().includes('abec')
+        );
+      } else {
+        result = result.filter(p => 
+          p.origin !== 'Nacional' && 
+          !(p.manufacturer || '').toLowerCase().includes('associação') &&
+          !(p.manufacturer || '').toLowerCase().includes('abec')
+        );
+      }
+    }
+
+    if (librarySearchTerm.trim()) {
+      const q = librarySearchTerm.toLowerCase().trim();
+      result = result.filter(p => 
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.manufacturer && p.manufacturer.toLowerCase().includes(q)) ||
+        (p.activeIngredients && p.activeIngredients.toLowerCase().includes(q)) ||
+        (p.concentration && p.concentration.toLowerCase().includes(q)) ||
+        (p.pharmaceuticalForm && p.pharmaceuticalForm.toLowerCase().includes(q)) ||
+        (p.indications && p.indications.toLowerCase().includes(q)) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        (p.type && p.type.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [allLibraryProducts, librarySelectedCategory, libraryOriginFilter, librarySearchTerm]);
+
+  // Auto-correct any Goma that might have been accidentally saved with sublingual or drops
+  useEffect(() => {
+    if (!isOpen) return;
+    setItems(prev => {
+      let changed = false;
+      const updated = prev.map(item => {
+        const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.type || '') ||
+                        /goma/i.test(item.pharmaceuticalForm || '');
+        if (isGummy) {
+          let newRoute = item.administrationRoute;
+          let newDosage = item.dosage;
+          let newForm = item.pharmaceuticalForm;
+
+          if (!newRoute || /sublingual|inalat[óo]ria/i.test(newRoute)) {
+            newRoute = 'Via Oral';
+            changed = true;
+          }
+          if (!newForm || /solução oleosa/i.test(newForm)) {
+            newForm = 'Gomas Mastigáveis Veganas';
+            changed = true;
+          }
+          // Sanitize dosage lines
+          if (Array.isArray(newDosage)) {
+            const sanitizedDosage = newDosage.map(line => {
+              if (/sublingual|gota/i.test(line)) {
+                changed = true;
+                return 'Mastigar 01 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+              }
+              return line;
+            });
+            newDosage = sanitizedDosage;
+          }
+
+          if (changed) {
+            return {
+              ...item,
+              administrationRoute: newRoute,
+              pharmaceuticalForm: newForm,
+              dosage: newDosage
+            };
+          }
+        }
+        return item;
+      });
+      return changed ? updated : prev;
+    });
+  }, [isOpen, setItems]);
+
+  const handleSelectLibraryProduct = (product: any, replaceIndex?: number | null) => {
+    const isGummy = /goma|gumm|comest[íi]vel/i.test(product.name || product.type || '');
+    const isFlower = /flor|in natura/i.test(product.name || product.type || '');
+    const isTopical = /pomada|t[óo]pico/i.test(product.name || product.type || '');
+    const isSyrup = /syrup|xarope/i.test(product.name || product.type || '');
+
+    const isNat = product.origin === 'Nacional' || (product.manufacturer || '').toLowerCase().includes('associação');
+
+    const enriched = enrichMedicationDetails(
+      product.name,
+      product.manufacturer || (isNat ? 'Associação Brasileira (Nacional)' : 'GreenBudzCBD'),
+      product.origin || (isNat ? 'Nacional' : 'Importado'),
+      product.type,
+      product
+    );
+
+    let form = product.pharmaceuticalForm || enriched.pharmaceuticalForm;
+    let qty = product.quantity || product.volumeOrQuantity || enriched.quantity;
+    let route = product.administrationRoute || enriched.administrationRoute;
+    let dosageLines: string[] = [];
+
+    if (isGummy) {
+      form = form && !form.toLowerCase().includes('solução') ? form : 'Gomas Mastigáveis Veganas';
+      qty = qty && !qty.toLowerCase().includes('frasco de 30') ? qty : (product.details?.find((d: string) => d.includes('gomas')) || '01 Pote com 20 a 30 gomas');
+      route = 'Via Oral';
+      dosageLines = [
+        'Mastigar 01 goma ao final da tarde ou 1 hora antes de dormir (via oral).',
+        'Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas).'
+      ];
+    } else if (isFlower) {
+      form = form || 'Flores Secas In Natura (14g)';
+      qty = qty || '01 Embalagem Selada (14g)';
+      route = 'Via Inalatória (Vaporização Medicinal)';
+      dosageLines = [
+        'Utilizar em vaporizador térmico medicinal a 170°C a 195°C para resgate agudo. Não fumar.',
+        'Inalação sob demanda para alívio imediato sem combustão.'
+      ];
+    } else if (isTopical) {
+      form = form || 'Pomada Canábica Terapêutica (50g)';
+      qty = qty || '01 Pote de 50g';
+      route = 'Uso Tópico';
+      dosageLines = [
+        'Aplicar quantidade suficiente sobre a área dolorida/afetada 2 a 3 vezes ao dia.',
+        'Massagear suavemente até completa absorção dérmica.'
+      ];
+    } else if (isSyrup) {
+      form = form || 'Xarope Hidrossolúvel Nano-emulsão';
+      qty = qty || '01 Frasco de 177 mL';
+      route = 'Via Oral';
+      dosageLines = [
+        'Ingerir 1 a 2 mL diluído em água ou puro sob demanda.'
+      ];
+    } else {
+      form = form || 'Solução Oleosa Sublingual (Gotas)';
+      qty = qty || (product.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL');
+      route = route && !route.toLowerCase().includes('inalatória') ? route : 'Via Sublingual / Oral';
+      if (product.usageInstructions && !product.usageInstructions.toLowerCase().includes('vaporizador')) {
+        dosageLines = product.usageInstructions
+          .split('\n')
+          .map((l: string) => l.trim())
+          .filter(Boolean);
+      } else {
+        dosageLines = [
+          'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.',
+          'Reter sob a língua por 60 segundos antes de engolir para rápida absorção.'
+        ];
+      }
+    }
+
+    const newItem: PrescriptionItemData = {
+      name: product.name,
+      brand: product.manufacturer || (isNat ? 'Associação Brasileira (Nacional)' : 'GreenBudzCBD'),
+      origin: isNat ? 'Nacional' : 'Importado',
+      type: product.type || enriched.type,
+      activeIngredients: product.activeIngredients || enriched.activeIngredients,
+      concentration: product.concentration || enriched.concentration,
+      pharmaceuticalForm: form,
+      quantity: qty,
+      administrationRoute: route,
+      dosage: dosageLines,
+      description: product.description || enriched.description || '',
+      priceUSD: product.priceUSD,
+      priceBRL: product.priceBRL,
+      image: product.image
+    };
+
+    if (typeof replaceIndex === 'number' && replaceIndex >= 0) {
+      setItems(prev => {
+        const copy = [...prev];
+        copy[replaceIndex] = newItem;
+        return copy;
+      });
+    } else {
+      setItems(prev => [...prev, newItem]);
+    }
+
+    setIsLibraryModalOpen(false);
+    setReplaceTargetIndex(null);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -295,6 +585,41 @@ export function PrescriptionEditorModal({
       administrationRoute: enriched.administrationRoute,
       dosage: dosageLines,
       description: prod?.description || enriched.description || 'Medicamento nacional autorizado de associação brasileira.'
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddAbecmedItem = (productName: string) => {
+    const prod = ABECMED_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
+    if (!prod) return;
+    const enriched = enrichMedicationDetails(prod.name, 'ABECMED', 'Nacional', prod.type, prod);
+
+    let dosageLines: string[];
+    if (prod.usageInstructions) {
+      dosageLines = prod.usageInstructions
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    } else {
+      dosageLines = [
+        'Conforme determinação individual do prescritor habilitado.',
+        'Administrar por via sublingual/oral conforme orientação médica.'
+      ];
+    }
+
+    const newItem: PrescriptionItemData = {
+      name: prod.name,
+      brand: 'ABECMED (Associação Nacional)',
+      origin: 'Nacional',
+      type: prod.type || enriched.type,
+      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
+      concentration: prod.concentration || enriched.concentration,
+      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
+      quantity: prod.quantity || enriched.quantity,
+      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
+      dosage: dosageLines,
+      description: prod.description || enriched.description || 'Produto oficial da Associação Brasileira de Cannabis Medicinal (ABECMED).',
+      priceBRL: prod.priceBRL
     };
     setItems(prev => [...prev, newItem]);
   };
@@ -584,8 +909,18 @@ export function PrescriptionEditorModal({
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
+                        onClick={() => {
+                          setReplaceTargetIndex(null);
+                          setIsLibraryModalOpen(true);
+                        }}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-mecura-neon via-[#c7ff42] to-mecura-neon text-black rounded-lg text-xs font-black hover:opacity-90 transition-all flex items-center gap-1.5 shadow-[0_0_18px_rgba(166,255,0,0.35)] ring-1 ring-mecura-neon/50 cursor-pointer"
+                      >
+                        <BookOpen className="w-4 h-4" /> 📚 Biblioteca Completa ({allLibraryProducts.length})
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleAddItem('blank')}
-                        className="px-3 py-1.5 bg-mecura-neon text-black rounded-lg text-xs font-bold hover:bg-[#b5ff33] transition-colors flex items-center gap-1.5 shadow-[0_0_15px_rgba(166,255,0,0.25)]"
+                        className="px-3 py-1.5 bg-mecura-surface border border-mecura-elevated text-white rounded-lg text-xs font-bold hover:bg-white/10 transition-colors flex items-center gap-1.5"
                       >
                         <Plus className="w-4 h-4" /> + Preenchimento Manual
                       </button>
@@ -666,6 +1001,58 @@ export function PrescriptionEditorModal({
                             <option value="Óleo Integral PREDOMINANTE THC 100mg/ml - Associação Nacional">Óleo Integral THC 100mg/ml (Noturno) - R$ 240</option>
                             <option value="Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional">Pomada Canábica 500mg (50g) - R$ 140</option>
                             <option value="Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional">Flor in natura THC 15g (Vaporização) - R$ 450</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* ABECMED Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-abecmed"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddAbecmedItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 rounded-lg text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
+                            🟠 + Linha ABECMED Nacional...
+                          </option>
+                          <optgroup label="🟠 Óleo Rico em CBD (Laranja)" className="bg-[#0A0A0F] text-orange-400 font-bold">
+                            <option value="Óleo ABEC CBD Full Spectrum 2% (20 mg/mL — 600 mg)">Laranja 2% (20 mg/mL — 600 mg / 30 mL)</option>
+                            <option value="Óleo ABEC CBD Full Spectrum 5% (50 mg/mL — 1.500 mg)">Laranja 5% (50 mg/mL — 1.500 mg / 30 mL)</option>
+                            <option value="Óleo ABEC CBD Full Spectrum 10% (100 mg/mL — 3.000 mg)">Laranja 10% (100 mg/mL — 3.000 mg / 30 mL)</option>
+                          </optgroup>
+                          <optgroup label="🔵 Óleo Rico em CBD + THC (Azul)" className="bg-[#0A0A0F] text-sky-400 font-bold">
+                            <option value="Óleo ABEC CBD + THC Full Spectrum 2% (20 mg/mL — 600 mg)">Azul 2% (20 mg/mL — 600 mg / 30 mL)</option>
+                            <option value="Óleo ABEC CBD + THC Full Spectrum 5% (50 mg/mL — 1.500 mg)">Azul 5% (50 mg/mL — 1.500 mg / 30 mL)</option>
+                            <option value="Óleo ABEC CBD + THC Full Spectrum 10% (100 mg/mL — 3.000 mg)">Azul 10% (100 mg/mL — 3.000 mg / 30 mL)</option>
+                          </optgroup>
+                          <optgroup label="🟢 Óleo Rico em THC (Verde)" className="bg-[#0A0A0F] text-emerald-400 font-bold">
+                            <option value="Óleo ABEC Rico em THC Verde 2% (20 mg/mL — 600 mg)">Verde 2% (20 mg/mL — 600 mg / 30 mL)</option>
+                            <option value="Óleo ABEC Rico em THC Verde 5% (50 mg/mL — 1.500 mg)">Verde 5% (50 mg/mL — 1.500 mg / 30 mL)</option>
+                            <option value="Óleo ABEC Rico em THC Verde 10% (100 mg/mL — 3.000 mg)">Verde 10% (100 mg/mL — 3.000 mg / 30 mL)</option>
+                          </optgroup>
+                          <optgroup label="🔴 Óleo Rico em CBG (Vermelho)" className="bg-[#0A0A0F] text-rose-400 font-bold">
+                            <option value="Óleo ABEC Rico em CBG Vermelho 5% (50 mg/mL — 1.500 mg)">Vermelho 5% (50 mg/mL — 1.500 mg / 30 mL)</option>
+                            <option value="Óleo ABEC Rico em CBG Vermelho 10% (100 mg/mL — 3.000 mg)">Vermelho 10% (100 mg/mL — 3.000 mg / 30 mL)</option>
+                          </optgroup>
+                          <optgroup label="🟡 Óleo CBD + CBN (Limão)" className="bg-[#0A0A0F] text-yellow-400 font-bold">
+                            <option value="Óleo ABEC CBD + CBN Limão 5% (50 mg/mL — 1.500 mg)">Limão 5% (50 mg/mL — 1.500 mg / 30 mL - Sono)</option>
+                          </optgroup>
+                          <optgroup label="🟣 Óleo CBD + CBG (Lilás)" className="bg-[#0A0A0F] text-purple-400 font-bold">
+                            <option value="Óleo ABEC CBD + CBG Lilás 5% (50 mg/mL — 1.500 mg)">Lilás 5% (50 mg/mL — 1.500 mg / 30 mL - Foco)</option>
+                          </optgroup>
+                          <optgroup label="🌿 Inflorescências In Natura ABECMED" className="bg-[#0A0A0F] text-green-400 font-bold">
+                            <option value="Inflorescências ABEC ricas em THC (15% a 30% THC)">Flores ABEC ricas em THC (~15-30% THC - 5g a 25g)</option>
+                            <option value="Inflorescências ABEC ricas em CBD (8% a 18% CBD)">Flores ABEC ricas em CBD (~8-18% CBD - 5g a 25g)</option>
+                          </optgroup>
+                          <optgroup label="⚗️ Extrações Sem Solvente ABECMED" className="bg-[#0A0A0F] text-violet-400 font-bold">
+                            <option value="Extração Sem Solvente ABEC rica em THC (30% a 50% THC)">Extração Sem Solvente THC (30-50% - 2g/5g)</option>
+                            <option value="Extrato Peneirado Full Spectrum ABEC">Extrato Peneirado Dry Sift Full Spectrum (2g/5g)</option>
                           </optgroup>
                         </select>
                       </div>
@@ -754,6 +1141,33 @@ export function PrescriptionEditorModal({
                           </optgroup>
                         </select>
                       </div>
+
+                      {/* Toda a Biblioteca Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-all-library"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const prod = allLibraryProducts.find(p => p.name === e.target.value);
+                              if (prod) {
+                                handleSelectLibraryProduct(prod, null);
+                              }
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-purple-500/20 border border-purple-400/40 text-purple-200 rounded-lg text-xs font-bold hover:bg-purple-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-purple-300 font-bold">
+                            + 📚 Toda a Biblioteca ({allLibraryProducts.length} produtos)...
+                          </option>
+                          {allLibraryProducts.map((p, pIdx) => (
+                            <option key={pIdx} value={p.name} className="bg-[#0A0A0F] text-white">
+                              {p.name} {p.origin ? `[${p.origin}]` : ''} {p.priceBRL ? `- R$ ${p.priceBRL}` : p.priceUSD ? `- US$ ${p.priceUSD}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -774,71 +1188,273 @@ export function PrescriptionEditorModal({
                         const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
                         const activeIng = item.activeIngredients !== undefined ? item.activeIngredients : enriched.activeIngredients;
                         const concentration = item.concentration !== undefined ? item.concentration : enriched.concentration;
-                        const pharmForm = item.pharmaceuticalForm || enriched.pharmaceuticalForm;
-                        const quantity = item.quantity || enriched.quantity;
-                        const admRoute = item.administrationRoute || enriched.administrationRoute;
+                        const pharmForm = item.pharmaceuticalForm !== undefined ? item.pharmaceuticalForm : enriched.pharmaceuticalForm;
+                        const quantity = item.quantity !== undefined ? item.quantity : enriched.quantity;
+                        const admRoute = item.administrationRoute !== undefined ? item.administrationRoute : enriched.administrationRoute;
+
+                        const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.type || '') || /goma/i.test(pharmForm || '');
+                        const isFlower = /flor|in natura/i.test(item.name || item.type || '');
+                        const isTopical = /pomada|t[óo]pico/i.test(item.name || item.type || '');
+                        const hasWrongGummyDosage = isGummy && Array.isArray(item.dosage) && item.dosage.some(d => /sublingual|gota/i.test(d));
 
                         return (
                           <div
                             key={itemIdx}
-                            className="p-4 bg-mecura-surface/30 border border-mecura-elevated rounded-2xl space-y-3 relative group"
+                            className="p-4 bg-mecura-surface/30 border border-mecura-elevated rounded-2xl space-y-3.5 relative group"
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                                {/* Product Name */}
-                                <div className="sm:col-span-6">
-                                  <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                                    Nome Comercial / Formulação
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={item.name}
-                                    onChange={(e) => handleUpdateItem(itemIdx, 'name', e.target.value)}
-                                    className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-bold"
-                                  />
-                                </div>
+                            {/* Top Card Bar: Number, Type Badge & Actions */}
+                            <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 text-[11px] font-bold flex items-center justify-center font-mono">
+                                  {itemIdx + 1}
+                                </span>
+                                {isGummy ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                                    🍬 GOMA COMESTÍVEL (VIA ORAL)
+                                  </span>
+                                ) : isFlower ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                    🌿 FLOR IN NATURA (VAPORIZAÇÃO)
+                                  </span>
+                                ) : isTopical ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 flex items-center gap-1">
+                                    🧴 USO TÓPICO (POMADA)
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 flex items-center gap-1">
+                                    💧 ÓLEO SUBLINGUAL (GOTAS)
+                                  </span>
+                                )}
+                              </div>
 
-                                {/* Brand */}
-                                <div className="sm:col-span-3">
-                                  <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                                    Fabricante / Associação
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={item.brand || enriched.brand}
-                                    onChange={(e) => handleUpdateItem(itemIdx, 'brand', e.target.value)}
-                                    className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
-                                  />
-                                </div>
-
-                                {/* Origin */}
-                                <div className="sm:col-span-3">
-                                  <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                                    Origem
-                                  </label>
-                                  <select
-                                    value={item.origin || enriched.origin}
-                                    onChange={(e) => handleUpdateItem(itemIdx, 'origin', e.target.value)}
-                                    className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {/* Quick Format Switch Chips */}
+                                <div className="hidden sm:flex items-center gap-1 bg-[#050508]/80 p-0.5 rounded-lg border border-mecura-elevated/40">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateItem(itemIdx, 'pharmaceuticalForm', 'Gomas Mastigáveis Veganas');
+                                      handleUpdateItem(itemIdx, 'administrationRoute', 'Via Oral');
+                                      handleUpdateItem(itemIdx, 'quantity', '01 Pote com 20 a 30 gomas');
+                                      setItems(prev => {
+                                        const c = [...prev];
+                                        c[itemIdx] = {
+                                          ...c[itemIdx],
+                                          pharmaceuticalForm: 'Gomas Mastigáveis Veganas',
+                                          administrationRoute: 'Via Oral',
+                                          quantity: '01 Pote com 20 a 30 gomas',
+                                          dosage: [
+                                            'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral).',
+                                            'Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas). Não engolir inteira.'
+                                          ]
+                                        };
+                                        return c;
+                                      });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                      isGummy 
+                                        ? 'bg-amber-500/30 text-amber-200 border border-amber-400/50' 
+                                        : 'text-mecura-silver hover:text-amber-300 hover:bg-white/5'
+                                    }`}
+                                    title="Converter este item para formato Goma Mastigável (Via Oral)"
                                   >
-                                    <option value="Nacional">Associação Nacional (Brasil)</option>
-                                    <option value="Importado">Importado (EUA/Europa)</option>
-                                  </select>
+                                    🍬 Goma
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateItem(itemIdx, 'pharmaceuticalForm', 'Solução Oleosa Sublingual (Gotas)');
+                                      handleUpdateItem(itemIdx, 'administrationRoute', 'Via Sublingual / Oral');
+                                      handleUpdateItem(itemIdx, 'quantity', '01 Frasco de 30 mL');
+                                      setItems(prev => {
+                                        const c = [...prev];
+                                        c[itemIdx] = {
+                                          ...c[itemIdx],
+                                          pharmaceuticalForm: 'Solução Oleosa Sublingual (Gotas)',
+                                          administrationRoute: 'Via Sublingual / Oral',
+                                          quantity: '01 Frasco de 30 mL',
+                                          dosage: [
+                                            'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.',
+                                            'Reter sob a língua por 60 segundos antes de engolir para rápida absorção.'
+                                          ]
+                                        };
+                                        return c;
+                                      });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                      !isGummy && !isFlower && !isTopical
+                                        ? 'bg-blue-500/30 text-blue-200 border border-blue-400/50' 
+                                        : 'text-mecura-silver hover:text-blue-300 hover:bg-white/5'
+                                    }`}
+                                    title="Converter este item para formato Óleo Sublingual (Gotas)"
+                                  >
+                                    💧 Gotas
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateItem(itemIdx, 'pharmaceuticalForm', 'Flores Secas In Natura (14g)');
+                                      handleUpdateItem(itemIdx, 'administrationRoute', 'Via Inalatória (Vaporização Medicinal)');
+                                      handleUpdateItem(itemIdx, 'quantity', '01 Embalagem Selada de 14g');
+                                      setItems(prev => {
+                                        const c = [...prev];
+                                        c[itemIdx] = {
+                                          ...c[itemIdx],
+                                          pharmaceuticalForm: 'Flores Secas In Natura (14g)',
+                                          administrationRoute: 'Via Inalatória (Vaporização Medicinal)',
+                                          quantity: '01 Embalagem Selada de 14g',
+                                          dosage: [
+                                            'Utilizar em vaporizador térmico medicinal a 170°C a 195°C para resgate agudo. Não fumar.',
+                                            'Inalação sob demanda para alívio imediato sem combustão.'
+                                          ]
+                                        };
+                                        return c;
+                                      });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                      isFlower
+                                        ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/50' 
+                                        : 'text-mecura-silver hover:text-emerald-300 hover:bg-white/5'
+                                    }`}
+                                    title="Converter este item para formato Flor Seca In Natura (Vaporização)"
+                                  >
+                                    🌿 Flor
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateItem(itemIdx, 'pharmaceuticalForm', 'Pomada Canábica Terapêutica (50g)');
+                                      handleUpdateItem(itemIdx, 'administrationRoute', 'Uso Tópico');
+                                      handleUpdateItem(itemIdx, 'quantity', '01 Pote de 50g');
+                                      setItems(prev => {
+                                        const c = [...prev];
+                                        c[itemIdx] = {
+                                          ...c[itemIdx],
+                                          pharmaceuticalForm: 'Pomada Canábica Terapêutica (50g)',
+                                          administrationRoute: 'Uso Tópico',
+                                          quantity: '01 Pote de 50g',
+                                          dosage: [
+                                            'Aplicar quantidade suficiente sobre a área dolorida/afetada 2 a 3 vezes ao dia.',
+                                            'Massagear suavemente até completa absorção dérmica.'
+                                          ]
+                                        };
+                                        return c;
+                                      });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                      isTopical
+                                        ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/50' 
+                                        : 'text-mecura-silver hover:text-cyan-300 hover:bg-white/5'
+                                    }`}
+                                    title="Converter este item para formato Pomada Tópica"
+                                  >
+                                    🧴 Pomada
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReplaceTargetIndex(itemIdx);
+                                    setIsLibraryModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-mecura-neon bg-mecura-neon/10 hover:bg-mecura-neon/20 border border-mecura-neon/30 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title="Substituir este medicamento por outro da Biblioteca"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  <span>Trocar da Biblioteca</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(itemIdx)}
+                                  className="p-1.5 text-mecura-silver hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                  title="Remover Medicamento"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Row 1: Name, Brand, Origin */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                              {/* Product Name */}
+                              <div className="sm:col-span-6">
+                                <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                                  Nome Comercial / Formulação
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'name', e.target.value)}
+                                  placeholder="Nome do produto ou formulação"
+                                  className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-bold"
+                                />
+                              </div>
+
+                              {/* Brand / Association - Circle from Image 2 */}
+                              <div className="sm:col-span-3">
+                                <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                                  Fabricante / Associação
+                                </label>
+                                <input
+                                  type="text"
+                                  list={`brand-suggestions-${itemIdx}`}
+                                  value={item.brand !== undefined ? item.brand : (enriched.brand || '')}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'brand', e.target.value)}
+                                  placeholder="Digite ou escolha a associação"
+                                  className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-semibold"
+                                />
+                                <datalist id={`brand-suggestions-${itemIdx}`}>
+                                  <option value="Associação Brasileira (Nacional)" />
+                                  <option value="Santa Cannabis" />
+                                  <option value="Abrace Esperança" />
+                                  <option value="Flor da Vida" />
+                                  <option value="Apepi" />
+                                  <option value="Cultive" />
+                                  <option value="Associação Nacional (Brasil)" />
+                                  <option value="Flowermed (EUA)" />
+                                  <option value="GreenBudzCBD" />
+                                  <option value="Importado (Folheto Especial)" />
+                                </datalist>
+                                {/* Quick Brand Chips */}
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {['Associação Brasileira', 'Abrace', 'Santa Cannabis', 'Flor da Vida', 'Flowermed', 'GreenBudz'].map(b => (
+                                    <button
+                                      key={b}
+                                      type="button"
+                                      onClick={() => {
+                                        handleUpdateItem(itemIdx, 'brand', b);
+                                        if (['Flowermed', 'GreenBudz'].includes(b)) {
+                                          handleUpdateItem(itemIdx, 'origin', 'Importado');
+                                        } else {
+                                          handleUpdateItem(itemIdx, 'origin', 'Nacional');
+                                        }
+                                      }}
+                                      className="text-[9px] px-1.5 py-0.5 rounded bg-mecura-elevated/40 hover:bg-mecura-neon/20 hover:text-mecura-neon text-mecura-silver transition-colors cursor-pointer"
+                                    >
+                                      {b}
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
 
-                              {/* Delete Item */}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(itemIdx)}
-                                className="p-1.5 text-mecura-silver hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                title="Remover Medicamento"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {/* Origin */}
+                              <div className="sm:col-span-3">
+                                <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                                  Origem
+                                </label>
+                                <select
+                                  value={item.origin !== undefined ? item.origin : (enriched.origin || 'Nacional')}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'origin', e.target.value)}
+                                  className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                >
+                                  <option value="Nacional">Associação Nacional (Brasil)</option>
+                                  <option value="Importado">Importado (EUA/Europa)</option>
+                                </select>
+                              </div>
                             </div>
 
-                            {/* Active Ingredients & Concentration (Composição) */}
+                            {/* Row 2: Concentration & Active Ingredients */}
                             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-1">
                               <div className="sm:col-span-6">
                                 <label className="text-[10px] text-emerald-400 uppercase font-bold block mb-1 flex items-center gap-1">
@@ -846,7 +1462,7 @@ export function PrescriptionEditorModal({
                                 </label>
                                 <input
                                   type="text"
-                                  value={concentration}
+                                  value={concentration || ''}
                                   onChange={(e) => handleUpdateItem(itemIdx, 'concentration', e.target.value)}
                                   placeholder="Ex: CBD 100mg/mL (10%), Delta-9-THC < 0,2%"
                                   className="w-full bg-[#0A0A0F] border border-emerald-500/30 rounded-xl px-3 py-1.5 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
@@ -859,54 +1475,121 @@ export function PrescriptionEditorModal({
                                 </label>
                                 <input
                                   type="text"
-                                  value={activeIng}
+                                  value={activeIng || ''}
                                   onChange={(e) => handleUpdateItem(itemIdx, 'activeIngredients', e.target.value)}
                                   placeholder="Ex: Canabidiol (CBD) Broad Spectrum + Terpenos"
                                   className="w-full bg-[#0A0A0F] border border-cyan-500/30 rounded-xl px-3 py-1.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500 font-medium"
                                 />
                               </div>
 
-                              <div className="sm:col-span-6">
+                              {/* Forma Farmacêutica */}
+                              <div className="sm:col-span-4">
                                 <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
                                   Forma & Apresentação
                                 </label>
                                 <input
                                   type="text"
-                                  value={pharmForm}
+                                  list={`form-suggestions-${itemIdx}`}
+                                  value={pharmForm || ''}
                                   onChange={(e) => handleUpdateItem(itemIdx, 'pharmaceuticalForm', e.target.value)}
                                   placeholder="Ex: Solução Oleosa Sublingual"
                                   className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
                                 />
+                                <datalist id={`form-suggestions-${itemIdx}`}>
+                                  <option value="Solução Oleosa Sublingual (Gotas)" />
+                                  <option value="Gomas Mastigáveis Veganas" />
+                                  <option value="Flores Secas In Natura (14g)" />
+                                  <option value="Pomada Canábica Terapêutica" />
+                                  <option value="Xarope Hidrossolúvel Nano-emulsão" />
+                                </datalist>
                               </div>
 
-                              <div className="sm:col-span-6">
+                              {/* Quantidade / Embalagem (Separated) */}
+                              <div className="sm:col-span-4">
                                 <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                                  Qtd / Frasco & Via de Administração
+                                  Qtd / Embalagem
                                 </label>
                                 <input
                                   type="text"
-                                  value={`${quantity} | ${admRoute}`}
-                                  onChange={(e) => {
-                                    const parts = e.target.value.split('|');
-                                    handleUpdateItem(itemIdx, 'quantity', parts[0]?.trim() || quantity);
-                                    if (parts[1]) handleUpdateItem(itemIdx, 'administrationRoute', parts[1]?.trim());
-                                  }}
-                                  placeholder="01 Frasco 30ml | Via Sublingual"
+                                  list={`qty-suggestions-${itemIdx}`}
+                                  value={quantity || ''}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'quantity', e.target.value)}
+                                  placeholder={isGummy ? "01 Pote com 20 gomas" : isFlower ? "01 Embalagem de 14g" : isTopical ? "01 Pote de 50g" : "01 Frasco de 30 mL"}
                                   className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
                                 />
+                                <datalist id={`qty-suggestions-${itemIdx}`}>
+                                  <option value="01 Frasco de 30 mL" />
+                                  <option value="01 Frasco de 15 mL" />
+                                  <option value="01 Pote com 20 gomas" />
+                                  <option value="01 Pote com 30 gomas" />
+                                  <option value="01 Embalagem Selada de 14g" />
+                                  <option value="01 Pote de 50g" />
+                                </datalist>
+                              </div>
+
+                              {/* Via de Administração (Separated) */}
+                              <div className="sm:col-span-4">
+                                <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                                  Via de Administração
+                                </label>
+                                <select
+                                  value={admRoute || (isGummy ? 'Via Oral' : isFlower ? 'Via Inalatória (Vaporização)' : isTopical ? 'Uso Tópico' : 'Via Sublingual / Oral')}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'administrationRoute', e.target.value)}
+                                  className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-semibold"
+                                >
+                                  <option value="Via Oral">Via Oral (Mastigável / Ingestão)</option>
+                                  <option value="Via Sublingual / Oral">Via Sublingual / Oral (Gotas)</option>
+                                  <option value="Via Inalatória (Vaporização)">Via Inalatória (Vaporização Medicinal)</option>
+                                  <option value="Uso Tópico">Uso Tópico (Cutâneo)</option>
+                                </select>
                               </div>
                             </div>
+
+                            {/* Gummy Posology Warning Safeguard */}
+                            {hasWrongGummyDosage && (
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                                  <span>
+                                    <strong>Atenção:</strong> Este medicamento é uma <strong>goma</strong> e está com orientação sublingual ou gotas.
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateItem(itemIdx, 'administrationRoute', 'Via Oral');
+                                    handleUpdateItem(itemIdx, 'pharmaceuticalForm', 'Gomas Mastigáveis Veganas');
+                                    setItems(prev => {
+                                      const copy = [...prev];
+                                      copy[itemIdx] = {
+                                        ...copy[itemIdx],
+                                        administrationRoute: 'Via Oral',
+                                        pharmaceuticalForm: 'Gomas Mastigáveis Veganas',
+                                        dosage: [
+                                          'Mastigar 01 goma ao final da tarde ou 1 hora antes de dormir (via oral).',
+                                          'Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas).'
+                                        ]
+                                      };
+                                      return copy;
+                                    });
+                                  }}
+                                  className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-black font-extrabold rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer self-start sm:self-auto"
+                                >
+                                  ✓ Corrigir para Mastigar (Via Oral)
+                                </button>
+                              </div>
+                            )}
 
                             {/* Posology / Dosage Lines */}
                             <div className="pt-2 border-t border-mecura-elevated/40 space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <label className="text-[10px] text-purple-400 uppercase font-bold tracking-wider">
-                                  Posologia & Modo de Uso
+                                  Posologia & Modo de Uso {isGummy && '(Via Oral - Mastigável)'}
                                 </label>
                                 <button
                                   type="button"
                                   onClick={() => handleAddDosageLine(itemIdx)}
-                                  className="text-[10px] text-mecura-silver hover:text-white flex items-center gap-1"
+                                  className="text-[10px] text-mecura-silver hover:text-white flex items-center gap-1 cursor-pointer"
                                 >
                                   <Plus className="w-3 h-3" /> + Linha de dosagem
                                 </button>
@@ -919,14 +1602,14 @@ export function PrescriptionEditorModal({
                                     type="text"
                                     value={line}
                                     onChange={(e) => handleUpdateDosageLine(itemIdx, lineIdx, e.target.value)}
-                                    placeholder="Ex: Tomar 05 gotas sublinguais pela manhã..."
+                                    placeholder={isGummy ? "Ex: Mastigar 01 goma ao final da tarde..." : "Ex: Tomar 05 gotas sublinguais pela manhã..."}
                                     className="flex-1 bg-[#0A0A0F] border border-mecura-elevated rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50"
                                   />
                                   {item.dosage.length > 1 && (
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveDosageLine(itemIdx, lineIdx)}
-                                      className="text-mecura-silver hover:text-red-400 p-1"
+                                      className="text-mecura-silver hover:text-red-400 p-1 cursor-pointer"
                                     >
                                       <X className="w-3 h-3" />
                                     </button>
@@ -1109,11 +1792,22 @@ export function PrescriptionEditorModal({
                             <p className="text-xs text-slate-400 italic">Nenhum produto cadastrado para esta guia.</p>
                           ) : (
                             guide.items.map((item, idx) => {
+                              const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(item.name || item.type || '');
                               const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
                               const activeIng = item.activeIngredients || enriched.activeIngredients;
-                              const pharmForm = item.pharmaceuticalForm || enriched.pharmaceuticalForm;
-                              const quantity = item.quantity || enriched.quantity;
-                              const admRoute = item.administrationRoute || enriched.administrationRoute;
+                              const pharmForm = isGummy ? (item.pharmaceuticalForm && !/solução/i.test(item.pharmaceuticalForm) ? item.pharmaceuticalForm : 'Gomas Mastigáveis Veganas') : (item.pharmaceuticalForm || enriched.pharmaceuticalForm);
+                              const quantity = isGummy ? (item.quantity && !/frasco/i.test(item.quantity) ? item.quantity : '01 Pote com 20 a 30 gomas') : (item.quantity || enriched.quantity);
+                              const admRoute = isGummy ? 'Via Oral' : (item.administrationRoute || enriched.administrationRoute);
+
+                              let dosageList = item.dosage;
+                              if (isGummy) {
+                                dosageList = dosageList.map(d => {
+                                  if (/sublingual|gota|pingar/i.test(d)) {
+                                    return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+                                  }
+                                  return d;
+                                });
+                              }
 
                               return (
                                 <div key={idx} className="border-b border-slate-100 pb-4">
@@ -1138,7 +1832,7 @@ export function PrescriptionEditorModal({
                                   {/* Dosage */}
                                   <div className="pl-4 space-y-0.5 text-xs text-slate-700">
                                     <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">Posologia:</span>
-                                    {item.dosage.map((d, dIdx) => (
+                                    {dosageList.map((d, dIdx) => (
                                       <p key={dIdx} className="leading-relaxed">• {d}</p>
                                     ))}
                                   </div>
@@ -1244,6 +1938,259 @@ export function PrescriptionEditorModal({
           </div>
         </motion.div>
       </div>
+
+      {/* Visual Full Library Search & Selection Modal */}
+      {isLibraryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full max-w-4xl max-h-[90vh] bg-[#0A0A0F] border border-mecura-elevated rounded-2xl flex flex-col shadow-2xl overflow-hidden ring-1 ring-white/10"
+          >
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-mecura-elevated bg-mecura-surface/60 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-mecura-neon/15 border border-mecura-neon/40 flex items-center justify-center text-mecura-neon flex-shrink-0">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Biblioteca Completa de Medicamentos</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-mecura-neon/20 text-mecura-neon font-mono font-bold">
+                      {allLibraryProducts.length} produtos
+                    </span>
+                  </h3>
+                  <p className="text-xs text-mecura-silver">
+                    {typeof replaceTargetIndex === 'number' && replaceTargetIndex >= 0
+                      ? `Substituindo Medicamento #${replaceTargetIndex + 1}: "${items[replaceTargetIndex]?.name || 'Item selecionado'}"`
+                      : 'Selecione qualquer produto para adicionar à receita médica'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLibraryModalOpen(false);
+                  setReplaceTargetIndex(null);
+                }}
+                className="p-2 text-mecura-silver hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search & Filter Bar */}
+            <div className="p-4 border-b border-mecura-elevated bg-[#0D0D12] space-y-3">
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-mecura-silver" />
+                <input
+                  type="text"
+                  value={librarySearchTerm}
+                  onChange={(e) => setLibrarySearchTerm(e.target.value)}
+                  placeholder="Buscar medicamento por nome, princípio ativo, indicação (ex: ansiedade, sono, dor, goma, thc, cbn)..."
+                  className="w-full bg-[#050508] border border-mecura-elevated rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon/50 placeholder:text-zinc-500"
+                  autoFocus
+                />
+                {librarySearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setLibrarySearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-mecura-silver hover:text-white p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Category & Origin Pills */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto py-1">
+                  {[
+                    { id: 'all', label: `Todos (${allLibraryProducts.length})` },
+                    { id: 'abecmed', label: '🟠 ABECMED Oficial (Nacional)' },
+                    { id: 'gomas', label: '🍬 Gomas & Comestíveis' },
+                    { id: 'nacionais', label: '🇧🇷 Associações Nacionais' },
+                    { id: 'flowermed', label: '🇺🇸 Linha Flowermed' },
+                    { id: 'flores', label: '🌿 Flores & Extrações' },
+                    { id: 'oleos', label: '💧 Óleos Sublinguais' },
+                    { id: 'topicos', label: '🧴 Pomadas & Tópicos' }
+                  ].map(cat => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setLibrarySelectedCategory(cat.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        librarySelectedCategory === cat.id
+                          ? 'bg-mecura-neon text-black font-bold shadow-sm shadow-mecura-neon/30'
+                          : 'bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white border border-white/5'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Origin Filter */}
+                <div className="flex items-center gap-1 bg-[#050508] p-0.5 rounded-lg border border-mecura-elevated">
+                  {(['all', 'Nacional', 'Importado'] as const).map(orig => (
+                    <button
+                      key={orig}
+                      type="button"
+                      onClick={() => setLibraryOriginFilter(orig)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${
+                        libraryOriginFilter === orig
+                          ? 'bg-purple-500 text-white font-bold'
+                          : 'text-mecura-silver hover:text-white'
+                      }`}
+                    >
+                      {orig === 'all' ? 'Todas Origens' : orig === 'Nacional' ? '🇧🇷 Nacionais' : '🇺🇸 Importados'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Products List / Grid */}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-[#08080C] space-y-3">
+              {filteredLibraryProducts.length === 0 ? (
+                <div className="py-12 text-center text-mecura-silver space-y-2">
+                  <p className="text-sm font-semibold text-white">Nenhum medicamento encontrado para essa busca.</p>
+                  <p className="text-xs">Tente outros termos ou limpe o filtro de categoria.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLibrarySearchTerm('');
+                      setLibrarySelectedCategory('all');
+                      setLibraryOriginFilter('all');
+                    }}
+                    className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer mt-2"
+                  >
+                    Limpar Filtros
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredLibraryProducts.map((prod, pIdx) => {
+                    const isGummyProd = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(prod.name || prod.type || prod.pharmaceuticalForm || '');
+                    const isFlowerProd = /flor|in natura/i.test(prod.name || prod.type || '');
+                    const isTopicalProd = /pomada|t[óo]pico/i.test(prod.name || prod.type || '');
+                    const isNat = prod.origin === 'Nacional' || (prod.manufacturer || '').toLowerCase().includes('associação');
+
+                    return (
+                      <div
+                        key={pIdx}
+                        className="p-3.5 rounded-xl bg-mecura-surface/40 hover:bg-mecura-surface/70 border border-mecura-elevated hover:border-mecura-neon/40 transition-all flex flex-col justify-between gap-3 group relative"
+                      >
+                        <div className="space-y-1.5">
+                          {/* Badges Bar */}
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                              isNat 
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                                : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                            }`}>
+                              {isNat ? '🇧🇷 NACIONAL' : '🇺🇸 IMPORTADO'}
+                            </span>
+
+                            {isGummyProd ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/25 text-amber-200 border border-amber-400/40">
+                                🍬 GOMA MASTIGÁVEL (VIA ORAL)
+                              </span>
+                            ) : isFlowerProd ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                🌿 FLOR (VAPORIZAÇÃO)
+                              </span>
+                            ) : isTopicalProd ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                🧴 TÓPICO
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                💧 GOTAS SUBLINGUAIS
+                              </span>
+                            )}
+
+                            {prod.priceBRL ? (
+                              <span className="text-[11px] font-extrabold text-emerald-400">
+                                R$ {prod.priceBRL}
+                              </span>
+                            ) : prod.priceUSD ? (
+                              <span className="text-[11px] font-extrabold text-emerald-400">
+                                US$ {prod.priceUSD}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {/* Product Name */}
+                          <h4 className="text-xs sm:text-sm font-bold text-white group-hover:text-mecura-neon transition-colors">
+                            {prod.name}
+                          </h4>
+
+                          {/* Manufacturer / Origin */}
+                          <p className="text-[11px] text-zinc-400 font-medium">
+                            <span className="text-mecura-silver">Fabricante:</span> {prod.manufacturer || (isNat ? 'Associação Brasileira' : 'GreenBudzCBD')}
+                          </p>
+
+                          {/* Formulation details */}
+                          <div className="space-y-0.5 text-[11px] text-zinc-400">
+                            {prod.activeIngredients && (
+                              <p className="line-clamp-1"><strong className="text-zinc-300">Princípio Ativo:</strong> {prod.activeIngredients}</p>
+                            )}
+                            {prod.concentration && (
+                              <p className="line-clamp-1"><strong className="text-zinc-300">Concentração:</strong> {prod.concentration}</p>
+                            )}
+                            <p className="text-[10px] text-zinc-400">
+                              <span className="text-zinc-300 font-semibold">Apresentação:</span> {isGummyProd ? 'Gomas Mastigáveis Veganas' : (prod.pharmaceuticalForm || 'Solução Oleosa')} • <span className="text-zinc-300 font-semibold">Via:</span> {isGummyProd ? 'Via Oral' : (prod.administrationRoute || 'Via Sublingual / Oral')}
+                            </p>
+                          </div>
+
+                          {/* Description / Indications snippet */}
+                          {prod.description && (
+                            <p className="text-[10px] text-zinc-500 line-clamp-2 italic pt-1 border-t border-white/5">
+                              {prod.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Prescribe Action Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectLibraryProduct(prod, replaceTargetIndex)}
+                          className="w-full mt-2 py-2 px-3 bg-gradient-to-r from-mecura-neon to-[#c7ff42] hover:opacity-95 text-black font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>
+                            {typeof replaceTargetIndex === 'number' && replaceTargetIndex >= 0
+                              ? `Substituir Medicamento #${replaceTargetIndex + 1}`
+                              : 'Prescrever este Medicamento'}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 sm:p-4 border-t border-mecura-elevated bg-[#0A0A0F] flex items-center justify-between text-xs text-mecura-silver">
+              <span>{filteredLibraryProducts.length} de {allLibraryProducts.length} medicamentos exibidos</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLibraryModalOpen(false);
+                  setReplaceTargetIndex(null);
+                }}
+                className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-bold transition-colors cursor-pointer"
+              >
+                Fechar Biblioteca
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </AnimatePresence>
   );
 }

@@ -42,7 +42,13 @@ export function QueueScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const isVip = pagamento_premium || selectedOffer === 'premium' || myQueueEntry?.isPremium || myQueueEntry?.plan === 'premium';
+  const isVip = !!(
+    pagamento_premium || 
+    selectedOffer === 'premium' || 
+    myQueueEntry?.isPremium || 
+    myQueueEntry?.plan === 'premium' || 
+    (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium'))
+  );
 
   // Dynamic realistic queue position initialization
   const [displayPosition, setDisplayPosition] = useState<number>(() => {
@@ -174,6 +180,14 @@ export function QueueScreen() {
     return () => unsubscribe();
   }, [subscribeToQueue]);
 
+  // Payment guard: Unpaid users cannot wait in queue and must be redirected to checkout
+  useEffect(() => {
+    const hasPaid = pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true');
+    if (!hasPaid) {
+      navigate('/checkout');
+    }
+  }, [pagamento_consulta, navigate]);
+
   // Direct listener to the user's specific queue & user document for instant real-time response
   useEffect(() => {
     if (!currentUserId) return;
@@ -231,7 +245,11 @@ export function QueueScreen() {
     if (!isCurrentlyWaitingOrActive) {
       const pUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
       const pName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
-      const isPrem = !!(pagamento_premium || selectedOffer === 'premium' || (typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'));
+      const isPrem = !!(
+        pagamento_premium || 
+        selectedOffer === 'premium' || 
+        (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium'))
+      );
 
       joinQueue({
         id: pUid,

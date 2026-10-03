@@ -431,6 +431,19 @@ export const useStore = create<AppState>((set, get) => ({
   queue: [],
   joinQueue: async (patient) => {
     const state = get();
+    const hasPaid = !!(
+      state.pagamento_consulta || 
+      (patient as any)?.pagamento_consulta || 
+      (patient as any)?.hasPaid || 
+      (patient as any)?.isPaid ||
+      (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+    );
+
+    if (!hasPaid) {
+      console.warn('[JOIN QUEUE] Bloqueado: Paciente tentou entrar na fila sem pagamento confirmado.');
+      return;
+    }
+
     const currentUserId = auth.currentUser?.uid || state.patientId || `anon_${Date.now()}`;
     
     // Save the generated or existing ID

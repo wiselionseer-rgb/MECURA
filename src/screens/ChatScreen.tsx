@@ -61,6 +61,18 @@ export function ChatScreen() {
     }
   }, [effectiveConsultationId, subscribeToMessages]);
 
+  const hasPaidConsultation = !!(
+    pagamento_consulta || 
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+  );
+
+  useEffect(() => {
+    // If patient has not paid and consultation is not concluded, redirect to checkout immediately
+    if (!hasPaidConsultation && !isConsultationFinished) {
+      navigate('/checkout');
+    }
+  }, [hasPaidConsultation, isConsultationFinished, navigate]);
+
   // Find if current patient has an active entry in the queue
   const myQueueEntry = queue.find(p => 
     (effectiveConsultationId && p.id === effectiveConsultationId) ||
@@ -69,7 +81,7 @@ export function ChatScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const isWaitingInQueue = (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive && myQueueEntry?.status !== 'in-consultation')) && !isConsultationFinished;
+  const isWaitingInQueue = hasPaidConsultation && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive && myQueueEntry?.status !== 'in-consultation')) && !isConsultationFinished;
 
   const isConsultationConcluded = useMemo(() => {
     if (isConsultationFinished) return true;

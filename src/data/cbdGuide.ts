@@ -1,7 +1,32 @@
 import { FLOWERMED_PRODUCTS, FLOWERMED_COMPANY_INFO, FlowermedProduct } from './flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FLOWER_EXTRACTIONS_INFO, FlowerExtractionProduct } from './flowerExtractionsCatalog';
-export { FLOWERMED_PRODUCTS, FLOWERMED_COMPANY_INFO, FLOWER_EXTRACTIONS_PRODUCTS, FLOWER_EXTRACTIONS_INFO };
-export type { FlowermedProduct, FlowerExtractionProduct };
+import { 
+  ABECMED_PRODUCTS, 
+  ABECMED_COMPANY_INFO, 
+  ABECMED_AGENT_SYSTEM_PROMPT, 
+  ABECMED_CULTIVATION_TYPES, 
+  ABECMED_PRICING_TABLE, 
+  ABECMED_PRESCRIPTION_RULES, 
+  ABECMED_USAGE_GUIDELINES, 
+  formatAbecmedStandardOutput, 
+  AbecmedProduct 
+} from './abecmedCatalog';
+
+export { 
+  FLOWERMED_PRODUCTS, 
+  FLOWERMED_COMPANY_INFO, 
+  FLOWER_EXTRACTIONS_PRODUCTS, 
+  FLOWER_EXTRACTIONS_INFO,
+  ABECMED_PRODUCTS,
+  ABECMED_COMPANY_INFO,
+  ABECMED_AGENT_SYSTEM_PROMPT,
+  ABECMED_CULTIVATION_TYPES,
+  ABECMED_PRICING_TABLE,
+  ABECMED_PRESCRIPTION_RULES,
+  ABECMED_USAGE_GUIDELINES,
+  formatAbecmedStandardOutput
+};
+export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct };
 
 export interface CBDProduct {
   name: string;
@@ -238,6 +263,22 @@ export const cbdGuideData: CBDCategory[] = [
     products: NATIONAL_ASSOCIATION_PRODUCTS
   },
   {
+    id: "abecmed_oficial",
+    title: "ABECMED — BASE OFICIAL DE PRODUTOS (ASSOCIAÇÃO NACIONAL)",
+    description: "Base Oficial de Produtos da ABECMED (Associação Brasileira de Cannabis Medicinal). Óleos Full Spectrum RSO veiculados em MCT (30 mL), Inflorescências in natura (Indoor, Outdoor e Estufa em embalagens de 5g, 10g, 15g e 25g) e Extrações concentradas sem solvente (2g e 5g). Receitas válidas por até 6 meses.",
+    indicationsList: [
+      "Ansiedade & Estresse (Linha Laranja - CBD)",
+      "Dor Crônica & Fibromialgia (Linha Azul - CBD:THC)",
+      "Insônia Severa & Relaxamento Noturno (Linha Verde - THC)",
+      "Distúrbios Gastrointestinais & Foco (Linha Vermelha - CBG)",
+      "Arquitetura do Sono Reparador (Linha Limão - CBD:CBN)",
+      "Estabilização de Humor & Burnout (Linha Lilás - CBD:CBG)",
+      "Resgate de Crises Álgicas Agudas (Flores e Extrações sem Solvente)"
+    ],
+    dosageGuidance: "Posologia conforme determinação do prescritor individual. Não há quantidade universal de gotas; aguardar posologia médica.",
+    products: ABECMED_PRODUCTS
+  },
+  {
     id: "flowermed_oficial",
     title: "LINHA FLOWERMED (EUA • FDA & ANVISA)",
     description: "Laboratório americano com mais de 3 anos no Brasil. Normas FDA e ANVISA RDC 660/2022. COA lote a lote ISO/IEC 17025:2017. Linhas Hemp Oil, Canabinoides Direcionados, Sphera Premium, Syrup Nano e Gummies.",
@@ -346,7 +387,8 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "3mg THC∆9, 3mg CBC, 3mg CBD, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: `O Drops By GreenBudz Looking Glass combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, THC, CBC e CBG, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
+        description: `O Drops By GreenBudz Looking Glass combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, THC, CBC e CBG, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`,
+        usageInstructions: "• Mastigar 1/2 a 1 goma mastigável ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas). Não engolir inteira."
       },
       {
         name: "Drops By GreenBudz Goma River Float THC",
@@ -360,7 +402,8 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Linalool e Caryophyllene"],
-        description: `O Drops By GreenBudz River Float combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de melancia, sua formulação foi desenhada para promover leveza física, relaxamento e equilíbrio, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
+        description: `O Drops By GreenBudz River Float combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de melancia, sua formulação foi desenhada para promover leveza física, relaxamento e equilíbrio, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`,
+        usageInstructions: "• Mastigar 1/2 a 1 goma mastigável ao entardecer ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir. Ação prolongada de 4 a 6 horas. Não engolir inteira."
       },
       {
         name: "GreenBudz Stirred Hemp Formula rico em THCa",
@@ -1043,7 +1086,8 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "3mg THC∆9, 3mg CBC, 3mg CBD, 3mg CBG por goma", "2.2g de Carboidratos", "Efeito Longo 4 a 6 horas"],
-        description: `O Drops By GreenBudz Looking Glass combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, THC, CBC e CBG, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
+        description: `O Drops By GreenBudz Looking Glass combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica dos canabinoides CBD, THC, CBC e CBG, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de framboesa, sua formulação foi desenhada para promover relaxamento, equilíbrio sistêmico e regulação funcional, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`,
+        usageInstructions: "• Mastigar 1/2 a 1 goma mastigável ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas). Não engolir inteira."
       },
       {
         name: "Extrato de Cannabis sativa (Full Spectrum) — CBD 50 mg/mL + THC < 0,2%",
@@ -1223,7 +1267,8 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Myrcene, Linalool e Limonene"],
-        description: `O Drops By GreenBudz Beethoven combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de laranja, sua formulação foi desenhada para promover conforto físico, alívio e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
+        description: `O Drops By GreenBudz Beethoven combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de laranja, sua formulação foi desenhada para promover conforto físico, alívio e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`,
+        usageInstructions: "• Mastigar 1/2 a 1 goma mastigável ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas). Não engolir inteira."
       },
       {
         name: "Drops By GreenBudz Goma Evergreen THC",
@@ -1237,7 +1282,8 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Goma comestível",
         priceUSD: 29.00,
         details: ["20 gomas por frasco", "5mg THC∆9 por goma", "Terpenos Limonene, Humulene e Caryophyllene"],
-        description: `O Drops By GreenBudz Evergreen combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de limão, sua formulação foi desenhada para promover conforto físico, vitalidade e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`
+        description: `O Drops By GreenBudz Evergreen combina a pureza de um extrato Live Rosin livre de solventes com a sinergia terapêutica do THC e de terpenos selecionados, desenvolvido para potencializar o efeito entourage. Apresentado em gomas veganas de pectina com açúcar e sabor natural de limão, sua formulação foi desenhada para promover conforto físico, vitalidade e equilíbrio sistêmico, proporcionando uma experiência terapêutica limpa e de alto bem-estar.`,
+        usageInstructions: "• Mastigar 1/2 a 1 goma mastigável ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir. Ação terapêutica prolongada (4 a 6 horas). Não engolir inteira."
       }
     ]
   }
@@ -1341,6 +1387,40 @@ function _enrichMedicationDetails(
     };
   }
 
+  // Check if product is from ABECMED official catalog (Nacional)
+  const abecMatch = ABECMED_PRODUCTS.find(p => {
+    const pLower = p.name.toLowerCase().trim();
+    if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
+    if (nameLower.includes('abec') || nameLower.includes('abecmed')) {
+      if (nameLower.includes('laranja') && p.name.includes('Laranja')) return true;
+      if (nameLower.includes('azul') && p.name.includes('Azul')) return true;
+      if (nameLower.includes('verde') && p.name.includes('Verde')) return true;
+      if (nameLower.includes('vermelho') && p.name.includes('Vermelho')) return true;
+      if (nameLower.includes('limão') && p.name.includes('Limão')) return true;
+      if (nameLower.includes('lilás') && p.name.includes('Lilás')) return true;
+      if ((nameLower.includes('inflorescência') || nameLower.includes('flor')) && p.name.includes('Inflorescências')) return true;
+      if (nameLower.includes('extração') && p.name.includes('Extração')) return true;
+      if (nameLower.includes('peneirado') && p.name.includes('Peneirado')) return true;
+    }
+    return false;
+  });
+
+  if (abecMatch) {
+    return {
+      name: abecMatch.name,
+      activeIngredients: abecMatch.activeIngredients || 'Fitocanabinoides Integrais Full Spectrum (Extração RSO em MCT)',
+      concentration: abecMatch.concentration || 'Concentração padronizada',
+      pharmaceuticalForm: abecMatch.pharmaceuticalForm || 'Solução Oleosa Sublingual / Oral (Frasco 30 mL)',
+      quantity: abecMatch.quantity || '01 Frasco de 30 mL (2 frascos/mês se uso contínuo)',
+      administrationRoute: abecMatch.administrationRoute || 'Via Sublingual / Oral',
+      brand: 'ABECMED',
+      origin: 'Nacional',
+      type: abecMatch.type || 'Óleo Full Spectrum Nacional',
+      description: abecMatch.description || 'Produto oficial da associação nacional ABECMED.',
+      usageInstructions: abecMatch.usageInstructions || '• Administrar conforme posologia estabelecida pelo médico assistente.'
+    };
+  }
+
   // Check if product is from National Association catalog or full cbdGuideData
   let guideMatch = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
     const pLower = p.name.toLowerCase();
@@ -1374,18 +1454,57 @@ function _enrichMedicationDetails(
 
   if (guideMatch) {
     const isNat = guideMatch.origin === 'Nacional' || (guideMatch.manufacturer || '').toLowerCase().includes('associação');
+    const matchNameLower = (guideMatch.name || '').toLowerCase();
+    const matchTypeLower = (guideMatch.type || '').toLowerCase();
+    const matchFormLower = (guideMatch.pharmaceuticalForm || '').toLowerCase();
+
+    const isGummy = matchTypeLower.includes('goma') || matchTypeLower.includes('gumm') || matchTypeLower.includes('comestível') ||
+                    matchNameLower.includes('goma') || matchNameLower.includes('gumm') || matchFormLower.includes('goma');
+    const isFlower = matchTypeLower.includes('flor') || matchNameLower.includes('flor') || matchFormLower.includes('flor');
+    const isTopical = matchTypeLower.includes('pomada') || matchNameLower.includes('pomada') || matchTypeLower.includes('tópico') || matchFormLower.includes('pomada');
+    const isSyrup = matchTypeLower.includes('syrup') || matchNameLower.includes('syrup') || matchTypeLower.includes('xarope');
+
+    let defaultForm = 'Solução Oleosa Sublingual (Gotas)';
+    let defaultQty = guideMatch.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL';
+    let defaultRoute = 'Via Sublingual / Oral';
+    let defaultUsage = '• Tomar 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.';
+
+    if (isGummy) {
+      defaultForm = 'Gomas Mastigáveis Veganas';
+      defaultQty = guideMatch.quantity || '01 Pote com 20 a 30 gomas';
+      defaultRoute = 'Via Oral';
+      defaultUsage = '• Mastigar 01 goma ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir.';
+    } else if (isFlower) {
+      defaultForm = 'Flores Secas In Natura (14g)';
+      defaultQty = guideMatch.quantity || '01 Embalagem Selada (14g)';
+      defaultRoute = 'Via Inalatória (Vaporização Medicinal)';
+      defaultUsage = '• Utilizar em vaporizador térmico medicinal a 170°C-195°C para resgate agudo. Não fumar.';
+    } else if (isTopical) {
+      defaultForm = 'Pomada Canábica Terapêutica';
+      defaultQty = guideMatch.quantity || '01 Pote de 50g';
+      defaultRoute = 'Uso Tópico';
+      defaultUsage = '• Aplicar quantidade suficiente sobre a área afetada 2 a 3 vezes ao dia, massageando suavemente até completa absorção.';
+    } else if (isSyrup) {
+      defaultForm = 'Xarope Hidrossolúvel Nano-emulsão';
+      defaultQty = guideMatch.quantity || '01 Frasco de 177 mL';
+      defaultRoute = 'Via Oral';
+      defaultUsage = '• Ingerir 1 a 2 mL diluído em água ou puro sob demanda.';
+    }
+
     return {
       name: guideMatch.name,
-      activeIngredients: guideMatch.activeIngredients || 'Extrato Padronizado de Cannabis Sativa',
-      concentration: guideMatch.concentration || (guideMatch.description?.match(/Composição:\s*([^.\n]+)/i)?.[1]?.trim()) || 'Conforme especificação clínica',
-      pharmaceuticalForm: guideMatch.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
-      quantity: guideMatch.quantity || (guideMatch.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL'),
-      administrationRoute: guideMatch.administrationRoute || 'Via Sublingual / Oral',
+      activeIngredients: guideMatch.activeIngredients || (isGummy ? 'Fitocanabinoides Padronizados (Live Rosin / Broad Spectrum)' : 'Extrato Padronizado de Cannabis Sativa'),
+      concentration: guideMatch.concentration || (guideMatch.description?.match(/Composição:\s*([^.\n]+)/i)?.[1]?.trim()) || (isGummy ? 'Conforme rotulagem da embalagem' : 'Conforme especificação clínica'),
+      pharmaceuticalForm: isGummy ? (guideMatch.pharmaceuticalForm && !/solução oleosa/i.test(guideMatch.pharmaceuticalForm) ? guideMatch.pharmaceuticalForm : defaultForm) : (guideMatch.pharmaceuticalForm || defaultForm),
+      quantity: guideMatch.quantity || defaultQty,
+      administrationRoute: isGummy ? 'Via Oral' : (guideMatch.administrationRoute || defaultRoute),
       brand: guideMatch.manufacturer || (isNat ? 'Associação Nacional' : 'GreenBudzCBD'),
       origin: guideMatch.origin || (isNat ? 'Nacional' : 'Importado'),
-      type: guideMatch.type || (isNat ? 'Óleo Medicinal Nacional' : 'Extrato Canabinoide'),
-      description: guideMatch.description || 'Medicamento de Associação Brasileira autorizada.',
-      usageInstructions: guideMatch.usageInstructions || '• Administrar por via sublingual. Reter por 60 segundos antes de engolir.'
+      type: guideMatch.type || (isNat ? 'Óleo Medicinal Nacional' : (isGummy ? 'Goma comestível' : 'Extrato Canabinoide')),
+      description: guideMatch.description || (isGummy ? 'Goma comestível com fitocanabinoides sinérgicos.' : 'Medicamento autorizado.'),
+      usageInstructions: isGummy 
+        ? ((guideMatch.usageInstructions && !/sublingual|gota/i.test(guideMatch.usageInstructions)) ? guideMatch.usageInstructions : defaultUsage)
+        : (guideMatch.usageInstructions || defaultUsage)
     };
   }
 
@@ -1506,13 +1625,13 @@ function _enrichMedicationDetails(
       name: pName,
       activeIngredients: nameLower.includes('thc') ? 'Fitocanabinoides Padronizados: Canabidiol (CBD) + Delta-9-THC' : 'Canabidiol (CBD) Broad Spectrum (0% THC)',
       concentration: '10mg a 20mg por goma (Verificar rótulo)',
-      pharmaceuticalForm: 'Gomas Mastigáveis (Forma Farmacêutica Comestível)',
-      quantity: '01 Frasco',
-      administrationRoute: 'Via Oral (Comestível)',
+      pharmaceuticalForm: 'Gomas Mastigáveis Veganas',
+      quantity: '01 Pote com 20 a 30 gomas',
+      administrationRoute: 'Via Oral',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Sinergia terapêutica e fácil administração.',
-      usageInstructions: '• Ingerir 1/2 a 1 goma mastigável, 1 vez ao dia. Não ultrapassar 2 gomas ao dia sem orientação médica. Efeito pode demorar até 2h para iniciar.'
+      usageInstructions: '• Mastigar 1/2 a 1 goma mastigável ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir. Ação prolongada de 4 a 6 horas. Não engolir inteira.'
     };
   }
   

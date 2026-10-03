@@ -83,7 +83,7 @@ import {
 } from 'recharts';
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
-import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory } from '../data/cbdGuide';
+import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases } from '../utils/productCatalog';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
@@ -1300,6 +1300,20 @@ export function DoctorDashboardScreen() {
           if (!seenNames.has(clean)) {
             seenNames.add(clean);
             const enriched = enrichMedicationDetails(it.name, it.brand, it.origin, it.type);
+            const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(it.name || it.type || '') ||
+                            /goma/i.test(it.pharmaceuticalForm || enriched.pharmaceuticalForm || '');
+            let dosageArr = Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')];
+            if (isGummy) {
+              dosageArr = dosageArr.map(line => {
+                if (/sublingual|gota|pingar/i.test(line)) {
+                  return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+                }
+                return line;
+              });
+              if (dosageArr.length === 0 || !dosageArr[0]) {
+                dosageArr = ['Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Mastigar bem antes de engolir.'];
+              }
+            }
             items.push({
               name: it.name,
               brand: it.brand || enriched.brand,
@@ -1307,10 +1321,10 @@ export function DoctorDashboardScreen() {
               type: it.type || enriched.type,
               activeIngredients: it.activeIngredients || enriched.activeIngredients,
               concentration: it.concentration || enriched.concentration,
-              pharmaceuticalForm: it.pharmaceuticalForm || enriched.pharmaceuticalForm,
-              quantity: it.quantity || enriched.quantity,
-              administrationRoute: it.administrationRoute || enriched.administrationRoute,
-              dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')],
+              pharmaceuticalForm: isGummy ? 'Gomas Mastigáveis Veganas' : (it.pharmaceuticalForm || enriched.pharmaceuticalForm),
+              quantity: isGummy ? (it.quantity || '01 Pote com 20 a 30 gomas') : (it.quantity || enriched.quantity),
+              administrationRoute: isGummy ? 'Via Oral' : (it.administrationRoute || enriched.administrationRoute),
+              dosage: dosageArr,
               description: it.description || enriched.description || '',
               details: it.details
             });
@@ -1332,6 +1346,20 @@ export function DoctorDashboardScreen() {
             m.productData.origin || 'Nacional',
             m.productData.type
           );
+          const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(pName || m.productData.type || '') ||
+                          /goma/i.test(m.productData.pharmaceuticalForm || enriched.pharmaceuticalForm || '');
+          let dosageArr = Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')];
+          if (isGummy) {
+            dosageArr = dosageArr.map(line => {
+              if (/sublingual|gota|pingar/i.test(line)) {
+                return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+              }
+              return line;
+            });
+            if (dosageArr.length === 0 || !dosageArr[0]) {
+              dosageArr = ['Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Mastigar bem antes de engolir.'];
+            }
+          }
 
           items.push({
             name: pName,
@@ -1340,10 +1368,10 @@ export function DoctorDashboardScreen() {
             type: m.productData.type || enriched.type,
             activeIngredients: m.productData.activeIngredients || enriched.activeIngredients,
             concentration: m.productData.concentration || enriched.concentration,
-            pharmaceuticalForm: m.productData.pharmaceuticalForm || enriched.pharmaceuticalForm,
-            quantity: m.productData.quantity || enriched.quantity,
-            administrationRoute: m.productData.administrationRoute || enriched.administrationRoute,
-            dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : [String(m.productData.dosage || '')],
+            pharmaceuticalForm: isGummy ? 'Gomas Mastigáveis Veganas' : (m.productData.pharmaceuticalForm || enriched.pharmaceuticalForm),
+            quantity: isGummy ? (m.productData.quantity || '01 Pote com 20 a 30 gomas') : (m.productData.quantity || enriched.quantity),
+            administrationRoute: isGummy ? 'Via Oral' : (m.productData.administrationRoute || enriched.administrationRoute),
+            dosage: dosageArr,
             description: m.productData.description || enriched.description || '',
             image: m.productData.image,
             details: m.productData.details,
@@ -2383,9 +2411,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
         REGRA OBRIGATÓRIA E INEGOCIÁVEL PARA MEDICAMENTOS NACIONAIS:
         INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS (FLOWERMED, GREENBUDZCBD OU AMBOS), A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE E OBRIGATORIAMENTE A TRÍADE COMPLETA:
-        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
-        - 2. EXTRAÇÃO (Pomada Canábica Terapêutica 500mg, Extrato Concentrado RSO ou Resina Concentrada - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
-        - 3. FLORES (Flores in natura de cannabis sp 15g ricas em CBD ou THC - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
+        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Linha ABECMED Full Spectrum RSO em MCT [Laranja CBD 2%/5%/10%, Azul CBD:THC 2%/5%/10%, Verde THC 2%/5%/10%, Vermelho CBG 5%/10%, Limão CBD:CBN 5%, Lilás CBD:CBG 5%], ou Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
+        - 2. EXTRAÇÃO (Extração Sem Solvente ABEC rica em THC 30%-50%, Extrato Peneirado Dry Sift Full Spectrum ABEC, ou Pomada Canábica Terapêutica 500mg - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
+        - 3. FLORES (Inflorescências ABEC ricas em THC 15%-30% ou ricas em CBD 8%-18% em embalagens de 5g a 25g [cultivo Indoor, Outdoor ou Estufa] ou Flores in natura de cannabis sp 15g - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
         Desta forma, fica estritamente a critério e autonomia do paciente escolher se prefere seguir com o tratamento completo de medicamentos nacionais ou com os importados.
 
         CRITÉRIOS CLÍNICOS CRÍTICOS DE SEGURANÇA E PERSONALIZAÇÃO CASO A CASO:
@@ -2591,6 +2619,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
     // Check if explicitly an association product
     const isExplicitlyNational = 
       med.origin === 'Nacional' ||
+      cleanMedName.includes('abec') ||
+      cleanMedName.includes('abecmed') ||
       cleanMedName.includes('associação') || 
       cleanMedName.includes('associacao') || 
       cleanMedName.includes('associação nacional') ||
@@ -2601,8 +2631,20 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
     // Find product across catalogs
     let foundProduct: any = null;
 
+    // Check ABECMED first if explicitly national or ABEC
+    if (cleanMedName.includes('abec') || isExplicitlyNational) {
+      const abec = ABECMED_PRODUCTS.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
+      if (abec) {
+        foundProduct = { ...abec, manufacturer: 'ABECMED', origin: 'Nacional' };
+      }
+    }
+
     // Check Flowermed and Extractions first for imported products
-    if (!isExplicitlyNational) {
+    if (!foundProduct && !isExplicitlyNational) {
       const fm = FLOWERMED_PRODUCTS.find(p => 
         p.name.toLowerCase() === cleanMedName ||
         p.name.toLowerCase().includes(cleanMedName) ||
@@ -2640,7 +2682,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
     const isNational = isExplicitlyNational || (foundProduct ? foundProduct.origin === 'Nacional' : med.origin === 'Nacional');
 
-    const defaultManufacturer = isNational 
+    const defaultManufacturer = (cleanMedName.includes('abec') || cleanMedName.includes('abecmed'))
+      ? 'ABECMED'
+      : isNational 
       ? 'Associação Brasileira' 
       : (/flowermed|sphera|gummies d9|nano syrup|broad spectrum|cbg|cbn/i.test(med.name) ? 'Flowermed (EUA)' : (/sour lifter|lemon octane|forbidden|gellato|gelato|glitter|astro|strawpicana|superglue|zoap|trop|girl cookies|syringe|budder/i.test(med.name) ? 'Importado (Folheto Especial)' : 'GreenBudzCBD'));
 
@@ -2679,6 +2723,46 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       priceUSD: finalPriceUSD,
       priceBRL: finalPriceBRL
     };
+
+    const isGummyMed = /goma|gumm|comest[íi]vel/i.test(newItem.name) || /goma|gumm/i.test(newItem.type || '') || /goma/i.test(enriched.pharmaceuticalForm || '');
+    const isFlowerMed = /flor|in natura/i.test(newItem.name) || /flor/i.test(newItem.type || '');
+    const isTopicalMed = /pomada|t[óo]pico/i.test(newItem.name) || /pomada/i.test(newItem.type || '');
+
+    let itemDosage: string[] = Array.isArray(med.dosage) 
+      ? med.dosage.filter(Boolean) 
+      : (med.dosage ? [med.dosage] : []);
+
+    if (itemDosage.length === 0) {
+      if (isGummyMed) {
+        itemDosage = ['Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Mastigar bem antes de engolir.'];
+      } else if (isFlowerMed) {
+        itemDosage = ['Utilizar em vaporizador térmico medicinal a 170°C a 195°C para resgate agudo. Não fumar.'];
+      } else if (isTopicalMed) {
+        itemDosage = ['Aplicar quantidade suficiente na região afetada 2 a 3 vezes ao dia, massageando suavemente.'];
+      } else {
+        itemDosage = [enriched.usageInstructions || 'Tomar conforme orientação médica.'];
+      }
+    } else {
+      if (isGummyMed) {
+        itemDosage = itemDosage.map(line => {
+          if (/sublingual|gota|pingar/i.test(line)) {
+            return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+          }
+          return line;
+        });
+      }
+    }
+
+    newItem.dosage = itemDosage;
+    if (isGummyMed) {
+      newItem.administrationRoute = 'Via Oral';
+      newItem.pharmaceuticalForm = 'Gomas Mastigáveis Veganas';
+      newItem.quantity = newItem.quantity && !/frasco/i.test(newItem.quantity) ? newItem.quantity : '01 Pote com 20 a 30 gomas';
+    } else if (isFlowerMed) {
+      newItem.administrationRoute = 'Via Inalatória (Vaporização Medicinal)';
+    } else if (isTopicalMed) {
+      newItem.administrationRoute = 'Uso Tópico';
+    }
 
     setPrescItems(prev => {
       const clean = newItem.name.toLowerCase().trim();
@@ -2910,6 +2994,15 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               const weightA = statusWeight[a.status as keyof typeof statusWeight] ?? 3;
               const weightB = statusWeight[b.status as keyof typeof statusWeight] ?? 3;
               if (weightA !== weightB) return weightA - weightB;
+
+              // 2.5 Priority for VIP / Premium patients in waiting queue
+              if (a.status === 'waiting' && b.status === 'waiting') {
+                const isPremA = !!(a.isPremium || a.plan === 'premium' || (a as any).selectedOffer === 'premium' || a.answers?.isPremium || (a as any).pagamento_premium);
+                const isPremB = !!(b.isPremium || b.plan === 'premium' || (b as any).selectedOffer === 'premium' || b.answers?.isPremium || (b as any).pagamento_premium);
+                if (isPremA !== isPremB) {
+                  return isPremA ? -1 : 1; // VIP comes first!
+                }
+              }
 
               // 3. Within same status
               if (a.status === 'finished') {

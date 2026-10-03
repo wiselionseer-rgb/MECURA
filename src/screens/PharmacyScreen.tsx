@@ -105,9 +105,12 @@ export function PharmacyScreen() {
           originLower.includes('nacional') ||
           originLower.includes('associação') ||
           originLower.includes('associacao') ||
+          originLower.includes('abec') ||
+          brandLower.includes('abec') ||
           brandLower.includes('associação') ||
           brandLower.includes('associacao') ||
           brandLower.includes('nacional') ||
+          nameLower.includes('abec') ||
           nameLower.includes('associação') ||
           nameLower.includes('associacao') ||
           nameLower.includes('nacional')

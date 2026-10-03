@@ -9,12 +9,11 @@ export function DiagnosisScreen() {
   const { userName, answers, setSelectedOffer, pagamento_consulta, inQueue, consultationActive } = useStore();
 
   const handleNext = () => {
-    const hasLocalPayment = typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true';
-    if (pagamento_consulta || hasLocalPayment) {
-      if (inQueue) {
-        navigate('/queue');
-      } else if (consultationActive) {
+    if (pagamento_consulta) {
+      if (consultationActive) {
         navigate('/chat');
+      } else if (inQueue) {
+        navigate('/queue');
       } else {
         navigate('/dashboard');
       }

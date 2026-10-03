@@ -66,7 +66,7 @@ export function DashboardScreen() {
   const location = useLocation();
   const [videoFailed, setVideoFailed] = useState(false);
   const { 
-    userName, setSelectedOffer, scheduledConsultation, consultationStatus, 
+    userName, selectedOffer, setSelectedOffer, scheduledConsultation, consultationStatus, 
     pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, 
     inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue, 
     messages, subscribeToMessages, patientId, userPhone, userEmail, userCpf, userBirthDate, queue, subscribeToQueue 
@@ -81,8 +81,13 @@ export function DashboardScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const isDoctorCalling = (myQueueEntry?.status === 'in-consultation' || consultationActive) && !isConsultationFinished;
-  const isWaitingInQueue = !isDoctorCalling && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive)) && !isConsultationFinished;
+  const hasPaidConsultation = !!(
+    pagamento_consulta || 
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+  );
+
+  const isDoctorCalling = hasPaidConsultation && (myQueueEntry?.status === 'in-consultation' || consultationActive) && !isConsultationFinished;
+  const isWaitingInQueue = hasPaidConsultation && !isDoctorCalling && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive)) && !isConsultationFinished;
 
   // Handle entering queue directly
   const handleEnterQueue = async () => {
@@ -155,7 +160,11 @@ export function DashboardScreen() {
     }
     
     if (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved' || (paymentId && (status === 'approved' || collectionStatus === 'approved'))) {
-      const isBasic = localStorage.getItem('last_offer') !== 'premium';
+      const isPremium = localStorage.getItem('last_offer') === 'premium' || 
+        localStorage.getItem('mecura_premium') === 'true' || 
+        selectedOffer === 'premium' || 
+        pagamento_premium;
+      const isBasic = !isPremium;
       
       const processSuccess = async () => {
         if (paymentId) {
@@ -655,14 +664,17 @@ export function DashboardScreen() {
             {/* Chat / Consultation */}
             <button 
               onClick={() => {
+                if (!hasPaidConsultation && !isConsultationFinished) {
+                  setSelectedOffer('basic');
+                  navigate('/checkout');
+                  return;
+                }
                 if (isDoctorCalling || isConsultationFinished) {
                   navigate('/chat');
                 } else if (isWaitingInQueue) {
                   navigate('/queue');
-                } else if (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) {
-                  handleEnterQueue();
                 } else {
-                  navigate('/checkout');
+                  handleEnterQueue();
                 }
               }} 
               className="flex flex-col items-center gap-2.5 group outline-none"

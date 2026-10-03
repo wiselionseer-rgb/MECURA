@@ -61,20 +61,33 @@ export default function App() {
           }
         }
 
-        // Real-time synchronization of user doc to immediately detect payment bypass & consultation release
+        // Real-time synchronization of user doc to detect payment status & consultation release
         try {
           unsubscribeUserDoc = onSnapshot(doc(db, 'users', user.uid), (snap) => {
             if (snap.exists()) {
               const uData = snap.data();
-              if (uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.consultationStatus === 'finished' || uData.consultationStatus === 'in-consultation') {
+              const hasActualPayment = !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true);
+
+              if (hasActualPayment) {
                 useStore.getState().setPagamentoConsulta(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+              } else {
+                useStore.getState().setPagamentoConsulta(false);
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('mecura_pagamento');
+                  localStorage.removeItem('mecura_consultation_active');
+                }
               }
+
               if (uData.pagamento_premium === true || uData.isPremium === true || uData.plan === 'premium') {
                 useStore.getState().setPagamentoPremium(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+              } else {
+                useStore.getState().setPagamentoPremium(false);
+                if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
               }
-              if (uData.consultationStatus === 'in-consultation' || uData.doctorActive === true) {
+
+              if (hasActualPayment && (uData.consultationStatus === 'in-consultation' || uData.doctorActive === true)) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.setItem('mecura_consultation_active', 'true');
@@ -86,7 +99,7 @@ export default function App() {
                   activeConsultationId: user.uid, 
                   pagamento_consulta: true 
                 });
-              } else if (uData.consultationStatus === 'waiting' || uData.inQueue) {
+              } else if (hasActualPayment && (uData.consultationStatus === 'waiting' || uData.inQueue)) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.removeItem('mecura_consultation_active');
@@ -98,7 +111,7 @@ export default function App() {
                   activeConsultationId: user.uid,
                   pagamento_consulta: true 
                 });
-              } else if (uData.consultationStatus === 'finished') {
+              } else if (hasActualPayment && uData.consultationStatus === 'finished') {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.removeItem('mecura_consultation_active');
@@ -107,8 +120,14 @@ export default function App() {
                   isConsultationFinished: true, 
                   consultationActive: false, 
                   inQueue: false, 
-                  activeConsultationId: user.uid,
+                  activeConsultationId: user.uid, 
                   pagamento_consulta: true 
+                });
+              } else if (!hasActualPayment) {
+                useStore.setState({
+                  inQueue: false,
+                  consultationActive: false,
+                  pagamento_consulta: false
                 });
               }
             }

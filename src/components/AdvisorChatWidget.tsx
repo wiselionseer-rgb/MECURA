@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useStore } from '../store/useStore';
+import { ABECMED_PRODUCTS, formatAbecmedStandardOutput, ABECMED_COMPANY_INFO, ABECMED_PRICING_TABLE, ABECMED_PRESCRIPTION_RULES } from '../data/cbdGuide';
 
 type Message = {
   id: number;
@@ -111,6 +112,7 @@ export function AdvisorChatWidget() {
 
       const startOptions = [
         "Quem somos nós?",
+        "Medicamentos Nacionais (ABECMED)",
         "Quais doenças são tratadas?",
         "Como funciona a compra e envio?",
         "Da onde vêm os medicamentos?",
@@ -121,7 +123,57 @@ export function AdvisorChatWidget() {
         "Falar com suporte humano"
       ];
 
-      if (lowerText.includes("funciona a compra") || text === "Como funciona a compra e envio?") {
+      // 1. Dúvidas sobre dosagem, gotas ou posologia (Regra estrita ABECMED)
+      if (lowerText.includes("quantas gotas") || lowerText.includes("quantas gota") || (lowerText.includes("gotas") && (lowerText.includes("tomar") || lowerText.includes("devo"))) || lowerText.includes("qual a dose") || lowerText.includes("minha dose")) {
+        botResponse.text = "⚠️ **Orientação de Segurança e Dosagem:**\n\nO catálogo oficial da ABECMED **não especifica uma quantidade universal de gotas ou tomadas por dia** — a dosagem é obrigatoriamente individualizada e determinada pelo médico prescritor.\n\n• **Se você já possui receita médica:** O cálculo matemático segue a concentração do rótulo (ex: em um óleo de 50 mg/mL, cada 1 mL contém 50 mg do composto ativo). Contudo, a conversão exata em gotas depende da calibração do conta-gotas específico de cada frasco.\n• **Nunca inicie ou altere doses sem a prévia orientação do seu médico assistente.** Se tiver dúvidas sobre a sua posologia, recomendamos consultar seu prescritor habilitado ou nossa equipe de acolhimento.";
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Falar com suporte humano", "Voltar ao início"];
+      } else if (lowerText.includes("abecmed") || lowerText.includes("abec") || text === "Medicamentos Nacionais (ABECMED)") {
+        // Checar se o usuário pediu um produto específico da ABECMED
+        const matchedProd = ABECMED_PRODUCTS.find(p => {
+          const pNameLower = p.name.toLowerCase();
+          return lowerText.includes("laranja") && pNameLower.includes("laranja")
+            || lowerText.includes("azul") && pNameLower.includes("azul")
+            || lowerText.includes("verde") && pNameLower.includes("verde")
+            || lowerText.includes("vermelho") && pNameLower.includes("vermelho")
+            || lowerText.includes("limão") && pNameLower.includes("limão")
+            || lowerText.includes("lilás") && pNameLower.includes("lilás")
+            || lowerText.includes("infloresc") && pNameLower.includes("inflorescência")
+            || lowerText.includes("peneirado") && pNameLower.includes("peneirado")
+            || (lowerText.includes("extração") || lowerText.includes("extrato")) && pNameLower.includes("extração");
+        });
+
+        if (matchedProd) {
+          botResponse.text = `📋 **Catálogo Oficial ABECMED — Ficha do Produto:**\n\n${formatAbecmedStandardOutput(matchedProd)}`;
+          botResponse.options = ["Ver outros produtos ABECMED", "Falar com suporte humano", "Voltar ao início"];
+        } else {
+          botResponse.text = `🇧🇷 **BASE OFICIAL DE PRODUTOS — ABECMED (Associação Nacional)**\n\nTodos os óleos da ABECMED são **Full Spectrum** (extração RSO em veículo MCT, frasco 30 mL), preservando canabinoides e terpenos naturais:\n\n🟠 **ÓLEOS FULL SPECTRUM (30 mL):**\n• **Linha Laranja (Rico em CBD):** 2% (20 mg/mL), 5% (50 mg/mL) e 10% (100 mg/mL)\n• **Linha Azul (CBD + THC):** 2% (20 mg/mL), 5% (50 mg/mL) e 10% (100 mg/mL)\n• **Linha Verde (Rico em THC):** 2% (20 mg/mL), 5% (50 mg/mL) e 10% (100 mg/mL)\n• **Linha Vermelha (Rico em CBG):** 5% (50 mg/mL) e 10% (100 mg/mL)\n• **Linha Limão (CBD + CBN):** 5% (50 mg/mL — Sono reparador)\n• **Linha Lilás (CBD + CBG):** 5% (50 mg/mL — Foco & Equilíbrio)\n\n🌿 **INFLORESCÊNCIAS IN NATURA (5g, 10g, 15g e 25g):**\n• Ricas em THC (15% a 30% THC) — R$ 35,00 a R$ 120,00/g\n• Ricas em CBD (8% a 18% CBD, THC < 0,3%) — R$ 35,00 a R$ 85,00/g\n• Cultivos: Indoor, Outdoor e Estufa\n\n⚗️ **EXTRAÇÕES SEM SOLVENTES (2g e 5g):**\n• Extração rica em THC (30% a 50%) e Extrato Peneirado Dry Sift — R$ 70,00 a R$ 380,00/g\n\n*Nota: Receitas aceitas com validade interna de até 6 meses. Valores dos óleos não informados no catálogo público.*`;
+          botResponse.options = ["Óleo Laranja (CBD)", "Óleo Azul (CBD+THC)", "Óleo Verde (THC)", "Óleo Limão (Sono)", "Flores In Natura ABEC", "Extrações ABEC", "Voltar ao início"];
+        }
+      } else if (lowerText.includes("laranja") && (lowerText.includes("óleo") || lowerText.includes("oleo") || text === "Óleo Laranja (CBD)")) {
+        const prod = ABECMED_PRODUCTS.find(p => p.colorLine === 'Laranja' && p.concentration?.includes('50 mg/mL')) || ABECMED_PRODUCTS[0];
+        botResponse.text = `📋 **ABECMED — Linha Laranja (Rico em CBD):**\n\n${formatAbecmedStandardOutput(prod)}`;
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+      } else if (lowerText.includes("azul") && (lowerText.includes("óleo") || lowerText.includes("oleo") || text === "Óleo Azul (CBD+THC)")) {
+        const prod = ABECMED_PRODUCTS.find(p => p.colorLine === 'Azul' && p.concentration?.includes('50 mg/mL')) || ABECMED_PRODUCTS[3];
+        botResponse.text = `📋 **ABECMED — Linha Azul (CBD + THC):**\n\n${formatAbecmedStandardOutput(prod)}`;
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+      } else if (lowerText.includes("verde") && (lowerText.includes("óleo") || lowerText.includes("oleo") || text === "Óleo Verde (THC)")) {
+        const prod = ABECMED_PRODUCTS.find(p => p.colorLine === 'Verde' && p.concentration?.includes('50 mg/mL')) || ABECMED_PRODUCTS[6];
+        botResponse.text = `📋 **ABECMED — Linha Verde (Rico em THC):**\n\n${formatAbecmedStandardOutput(prod)}`;
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+      } else if (lowerText.includes("limão") || lowerText.includes("limao") || text === "Óleo Limão (Sono)") {
+        const prod = ABECMED_PRODUCTS.find(p => p.colorLine === 'Limão')!;
+        botResponse.text = `📋 **ABECMED — Linha Limão (CBD + CBN — Sono):**\n\n${formatAbecmedStandardOutput(prod)}`;
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+      } else if (lowerText.includes("flores in natura") || text === "Flores In Natura ABEC") {
+        const prod = ABECMED_PRODUCTS.find(p => p.colorLine === 'Flores')!;
+        botResponse.text = `📋 **ABECMED — Inflorescências In Natura:**\n\n${formatAbecmedStandardOutput(prod)}`;
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+      } else if (lowerText.includes("extrações abec") || text === "Extrações ABEC") {
+        const prod = ABECMED_PRODUCTS.find(p => p.colorLine === 'Extrações')!;
+        botResponse.text = `📋 **ABECMED — Extrações Sem Solvente:**\n\n${formatAbecmedStandardOutput(prod)}`;
+        botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+      } else if (lowerText.includes("funciona a compra") || text === "Como funciona a compra e envio?") {
         botResponse.text = "Tudo é feito dentro do nosso ecossistema. Após a receita, você escolhe o produto na nossa Farmácia, paga em Reais (Pix ou Cartão) e nós cuidamos de toda a logística internacional até a sua porta.";
       } else if (lowerText.includes("doenças") || text === "Quais doenças são tratadas?") {
         botResponse.text = "A Cannabis auxilia em mais de 50 condições, incluindo: Ansiedade, Insônia, Dor Crônica, Parkinson, Epilepsia, Autismo (TEA), TDAH e Fibromialgia. Nossos especialistas avaliam seu caso individualmente.";

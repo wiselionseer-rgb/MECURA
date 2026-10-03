@@ -24,7 +24,7 @@ export function ProtocolScreen() {
   const navigate = useNavigate();
   const { 
     userName, userCpf, userBirthDate, answers, messages, 
-    consultationHistory, isConsultationFinished 
+    consultationHistory, isConsultationFinished, pagamento_consulta 
   } = useStore();
 
   const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
@@ -354,8 +354,10 @@ export function ProtocolScreen() {
             onClick={() => {
               if (hasDoctorPrescription || isConsultationFinished) {
                 navigate('/chat');
-              } else {
+              } else if (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) {
                 navigate('/queue');
+              } else {
+                navigate('/checkout');
               }
             }}
             className="w-9 h-9 rounded-full bg-[#161622] border border-white/10 flex items-center justify-center text-mecura-silver hover:text-white transition-colors"
@@ -391,14 +393,26 @@ export function ProtocolScreen() {
 
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={() => navigate('/queue')}
+                    onClick={() => {
+                      if (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) {
+                        navigate('/queue');
+                      } else {
+                        navigate('/checkout');
+                      }
+                    }}
                     className="px-4 py-2 rounded-xl bg-amber-500 text-black font-extrabold text-xs hover:bg-amber-400 transition-all shadow-md cursor-pointer flex items-center gap-1.5"
                   >
                     <Clock className="w-3.5 h-3.5" />
                     Ir para Fila de Espera
                   </button>
                   <button
-                    onClick={() => navigate('/chat')}
+                    onClick={() => {
+                      if (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) {
+                        navigate('/chat');
+                      } else {
+                        navigate('/checkout');
+                      }
+                    }}
                     className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-all border border-white/10 cursor-pointer flex items-center gap-1.5"
                   >
                     <MessageCircle className="w-3.5 h-3.5 text-mecura-neon" />
