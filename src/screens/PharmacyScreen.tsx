@@ -23,7 +23,8 @@ import {
   Sparkles,
   Gift,
   Building2,
-  Download
+  Download,
+  User
 } from 'lucide-react';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
@@ -838,7 +839,13 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
               {hasImportedItems ? 'Vendido e entregue por GreenBudz' : 'Dispensação & Acompanhamento'}
             </span>
           </div>
-          <div className="w-10" />
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-10 h-10 rounded-full bg-[#161622] border border-mecura-neon/30 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors"
+            title="Acessar Área do Paciente"
+          >
+            <User className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

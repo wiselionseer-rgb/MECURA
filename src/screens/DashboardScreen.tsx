@@ -3,7 +3,7 @@ import {  useState, useEffect } from 'react';
 import {  useStore } from '../store/useStore';
 import {  useAdminStore } from '../store/useAdminStore';
 import {  auth, db } from '../firebase';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, setDoc, doc, getDoc } from 'firebase/firestore';
 import {  motion } from 'motion/react';
 import {  AdvisorChatWidget } from '../components/AdvisorChatWidget';
 import {  ReferralModal } from '../components/ReferralModal';
@@ -65,7 +65,82 @@ export function DashboardScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const [videoFailed, setVideoFailed] = useState(false);
-  const { userName, setSelectedOffer, scheduledConsultation, consultationStatus, pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue } = useStore();
+  const { 
+    userName, setSelectedOffer, scheduledConsultation, consultationStatus, 
+    pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, 
+    inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue, 
+    messages, subscribeToMessages, patientId, userPhone, userEmail, userCpf, userBirthDate, queue, subscribeToQueue 
+  } = useStore();
+  
+  // Find current user's queue entry in Firestore
+  const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
+  const myQueueEntry = queue.find(p => 
+    (currentUserId && p.id === currentUserId) ||
+    (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase()) ||
+    (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase()) ||
+    (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
+  );
+
+  const isWaitingInQueue = (myQueueEntry?.status === 'waiting' || inQueue) && myQueueEntry?.status !== 'in-consultation' && !isConsultationFinished;
+  const isDoctorCalling = (myQueueEntry?.status === 'in-consultation' || consultationActive) && !isConsultationFinished;
+
+  // Handle entering queue directly
+  const handleEnterQueue = async () => {
+    const currentUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
+    const pName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
+    const isPrem = !!(pagamento_premium || (typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'));
+    
+    await joinQueue({
+      id: currentUid,
+      patientName: pName,
+      email: auth.currentUser?.email || userEmail || '',
+      phone: userPhone || '',
+      cpf: userCpf || '',
+      birthDate: userBirthDate || '',
+      isPremium: isPrem,
+      plan: isPrem ? 'premium' : 'basic'
+    });
+    
+    navigate('/queue');
+  };
+
+  // Subscribe to live queue changes on dashboard
+  useEffect(() => {
+    const unsubQueue = subscribeToQueue();
+    return () => unsubQueue();
+  }, [subscribeToQueue]);
+
+  // Patient only has actual prescription if consultation is finished and documents/items were sent
+  const hasActualPrescription = isConsultationFinished && messages.some(m => 
+    m.type === 'prescription' || 
+    m.type === 'receita_previa' || 
+    (m.type === 'product' && m.productData) ||
+    (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+  );
+
+  // Sync messages and user payment status if user is logged in
+  useEffect(() => {
+    const currentUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId');
+    if (currentUid) {
+      const unsub = subscribeToMessages(currentUid);
+      // Also check Firestore user document directly for payment persistence
+      getDoc(doc(db, 'users', currentUid)).then((snap) => {
+        if (snap.exists()) {
+          const u = snap.data();
+          if (u.pagamento_consulta === true || u.hasPaid === true || u.isPaid === true) {
+            setPagamentoConsulta(true);
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+          }
+          if (u.pagamento_premium === true || u.isPremium === true || u.plan === 'premium') {
+            setPagamentoPremium(true);
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+          }
+        }
+      }).catch(e => console.warn('Could not check user doc in dashboard:', e));
+
+      return () => unsub();
+    }
+  }, [subscribeToMessages, setPagamentoConsulta, setPagamentoPremium]);
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -100,6 +175,7 @@ export function DashboardScreen() {
 
         if (isBasic) {
           setPagamentoConsulta(true);
+          if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
           await joinQueue({
             id: patientUid,
             patientName: patientName,
@@ -118,12 +194,28 @@ export function DashboardScreen() {
               patientId: patientUid,
               date: new Date().toISOString()
             });
+            if (patientUid) {
+              await setDoc(doc(db, 'users', patientUid), {
+                pagamento_consulta: true,
+                hasPaid: true,
+                isPaid: true,
+                plan: 'basic',
+                isPremium: false,
+                consultationStatus: 'waiting',
+                inQueue: true,
+                lastPaymentDate: new Date().toISOString()
+              }, { merge: true });
+            }
           } catch (e) {
             console.error("Erro ao registrar pagamento em payments:", e);
           }
         } else {
           setPagamentoPremium(true);
           setPagamentoConsulta(true);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('mecura_pagamento', 'true');
+            localStorage.setItem('mecura_premium', 'true');
+          }
           await joinQueue({
             id: patientUid,
             patientName: patientName,
@@ -142,6 +234,19 @@ export function DashboardScreen() {
               patientId: patientUid,
               date: new Date().toISOString()
             });
+            if (patientUid) {
+              await setDoc(doc(db, 'users', patientUid), {
+                pagamento_consulta: true,
+                pagamento_premium: true,
+                hasPaid: true,
+                isPaid: true,
+                plan: 'premium',
+                isPremium: true,
+                consultationStatus: 'waiting',
+                inQueue: true,
+                lastPaymentDate: new Date().toISOString()
+              }, { merge: true });
+            }
           } catch (e) {
             console.error("Erro ao registrar pagamento premium em payments:", e);
           }
@@ -270,11 +375,25 @@ export function DashboardScreen() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={async () => {
-            await auth.signOut();
-            resetConsultation();
+            try {
+              await auth.signOut();
+            } catch (e) {
+              console.error("Erro ao deslogar:", e);
+            }
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('mecura_patientId');
+              localStorage.removeItem('patient_id');
+              localStorage.removeItem('mecura_pagamento');
+              localStorage.removeItem('mecura_premium');
+              localStorage.removeItem('mecura_consultation_active');
+              localStorage.removeItem('mecura_queue_display_pos');
+              localStorage.removeItem('mecura_queue_entered_at');
+              localStorage.removeItem('mecura_queue_notified_10m');
+            }
+            useStore.getState().reset();
             navigate('/');
           }}
-          className="w-10 h-10 rounded-full bg-[#12121A] border border-white/5 flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A24] transition-colors"
+          className="w-10 h-10 rounded-full bg-[#12121A] border border-white/5 flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A24] transition-colors cursor-pointer"
         >
           <LogOut className="w-4 h-4 ml-0.5" />
         </motion.button>
@@ -288,7 +407,7 @@ export function DashboardScreen() {
       >
         {/* Hero Section (Status Card) */}
         <section>
-          {isConsultationFinished ? (
+          {hasActualPrescription ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -344,7 +463,7 @@ export function DashboardScreen() {
                 </button>
               </div>
             </motion.div>
-          ) : inQueue ? (
+          ) : isWaitingInQueue ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -354,7 +473,6 @@ export function DashboardScreen() {
             >
               {/* Background Video */}
               <div className="absolute inset-0 z-0 bg-black">
-                
                 <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
                 {!videoFailed && (
                   <video
@@ -381,8 +499,6 @@ export function DashboardScreen() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
               </div>
-
-              
               
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-[#FF8A00]/20 border border-[#FF8A00]/30 backdrop-blur-md px-3 py-1.5 rounded-full mb-6">
@@ -394,69 +510,73 @@ export function DashboardScreen() {
                   Aguardando<br/>Atendimento
                 </h2>
                 <p className="text-[13px] text-white/80 mb-8 leading-relaxed max-w-[200px]">
-                  O médico te chamará em instantes para iniciar a avaliação.
+                  O Dr. Guilherme te chamará em instantes para iniciar a consulta.
                 </p>
                 
                 <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(255,138,0,0.2)] transition-all">
                   Acompanhar Fila <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
-              
-              
             </motion.div>
-          ) : (consultationActive || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_active') === 'true')) && !isConsultationFinished ? (
+          ) : isDoctorCalling ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer"
+              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-mecura-neon/40 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(166,255,0,0.2)] group cursor-pointer"
               onClick={() => navigate('/chat')}
             >
               <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
               <div className="relative z-10 flex flex-col items-start">
-                <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
+                <div className="inline-flex items-center gap-2 bg-mecura-neon/15 border border-mecura-neon/30 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
                   <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">EM ANDAMENTO</span>
                 </div>
                 
                 <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
-                  O médico está<br/>aguardando
+                  O Dr. Guilherme<br/>está aguardando
                 </h2>
                 <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
-                  Sua consulta está ativa e o médico está na sala de chat.
+                  Sua consulta está ativa e o médico está na sala de chat pronto para te atender.
                 </p>
                 
-                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all">
-                  Retomar Consulta <ChevronRight className="w-4 h-4 ml-1" />
+                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.3)] transition-all">
+                  Entrar na Consulta <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
             </motion.div>
-          ) : (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) && !isConsultationFinished ? (
+          ) : (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-mecura-neon/30 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer"
-              onClick={() => {
-                navigate('/chat');
-              }}
+              onClick={handleEnterQueue}
             >
               <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
               <div className="relative z-10 flex flex-col items-start">
                 <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
                   <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
-                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">CONSULTA DISPONÍVEL</span>
+                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">
+                    CONSULTA CONFIRMADA
+                  </span>
                 </div>
                 
                 <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
-                  Acessar<br/>Consultório
+                  Entrar na Fila<br/>de Atendimento
                 </h2>
                 <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
-                  Sua consulta está liberada. Entre na sala de atendimento para falar com o médico.
+                  Seu pagamento está confirmado. Entre na fila de atendimento para ser chamado pelo médico.
                 </p>
                 
-                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all">
-                  Abrir Consulta <ChevronRight className="w-4 h-4 ml-1" />
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEnterQueue();
+                  }}
+                  className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all cursor-pointer"
+                >
+                  Ir para a Fila <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
             </motion.div>
@@ -535,12 +655,12 @@ export function DashboardScreen() {
             {/* Chat / Consultation */}
             <button 
               onClick={() => {
-                const hasLocalPayment = typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true';
-                const hasLocalActive = typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_active') === 'true';
-                if (consultationActive || isConsultationFinished || hasLocalActive || hasLocalPayment || pagamento_consulta) {
+                if (isDoctorCalling || isConsultationFinished) {
                   navigate('/chat');
-                } else if (inQueue) {
+                } else if (isWaitingInQueue) {
                   navigate('/queue');
+                } else if (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) {
+                  handleEnterQueue();
                 } else {
                   navigate('/checkout');
                 }

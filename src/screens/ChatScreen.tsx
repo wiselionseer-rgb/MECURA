@@ -17,8 +17,8 @@ export function ChatScreen() {
     userName, userCpf, userBirthDate, answers, endConsultation, 
     messages, addMessage, setMessages, consultationActive, resetConsultation, 
     setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
-    patientId, isConsultationFinished, pagamento_consulta, queue,
-    confirmReceitaPrevia
+    patientId, isConsultationFinished, pagamento_consulta, queue, inQueue,
+    userPhone, userEmail, confirmReceitaPrevia
   } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -40,20 +40,36 @@ export function ChatScreen() {
     return () => unsubscribe();
   }, []);
 
+  // CRITICAL PRIVACY & SECURITY FIX:
+  // The consultation ID for a patient in /chat MUST strictly be the patient's own ID.
+  // It must NEVER use another patient's activeConsultationId!
+  const authenticatedUid = auth.currentUser?.uid || currentUid;
   const effectiveConsultationId = 
-    activeConsultationId || 
-    patientId || 
-    currentUid || 
+    authenticatedUid || 
+    (patientId && patientId !== 'doctor' ? patientId : null) || 
     (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null) || 
     undefined;
 
   useEffect(() => {
-    // Subscribe to messages in Firestore
+    // If effectiveConsultationId is set, ensure store only holds messages for this specific patient
     if (effectiveConsultationId) {
+      if (useStore.getState().activeConsultationId !== effectiveConsultationId) {
+        useStore.setState({ activeConsultationId: effectiveConsultationId, messages: [] });
+      }
       const unsubscribe = subscribeToMessages(effectiveConsultationId);
       return () => unsubscribe();
     }
   }, [effectiveConsultationId, subscribeToMessages]);
+
+  // Find if current patient has an active entry in the queue
+  const myQueueEntry = queue.find(p => 
+    (effectiveConsultationId && p.id === effectiveConsultationId) ||
+    (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase()) ||
+    (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase()) ||
+    (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
+  );
+
+  const isWaitingInQueue = (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive && myQueueEntry?.status !== 'in-consultation')) && !isConsultationFinished;
 
   const isConsultationConcluded = useMemo(() => {
     if (isConsultationFinished) return true;
@@ -175,8 +191,8 @@ export function ChatScreen() {
   };
 
   useEffect(() => {
-    // Initial doctor message only if chat is empty
-    if (messages.length === 0) {
+    // Initial doctor message only if chat is empty AND patient is actually in active consultation
+    if (!isWaitingInQueue && (consultationActive || myQueueEntry?.status === 'in-consultation' || isConsultationFinished) && messages.length === 0) {
       const timeoutId = setTimeout(() => {
         // Double check if messages are still empty before adding
         if (useStore.getState().messages.length > 0) return;
@@ -194,12 +210,12 @@ export function ChatScreen() {
         addMessage({
           text: `Olá ${userName || 'paciente'}, sou o Dr. Guilherme. Analisei sua ${problemText}${obsText}. Como você está se sentindo hoje?`,
           sender: 'doctor'
-        });
+        }, effectiveConsultationId);
       }, 1000);
       
       return () => clearTimeout(timeoutId);
     }
-  }, [userName, answers, messages.length, addMessage]);
+  }, [userName, answers, messages.length, addMessage, isWaitingInQueue, consultationActive, myQueueEntry?.status, isConsultationFinished, effectiveConsultationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -383,13 +399,46 @@ export function ChatScreen() {
           </button>
           <button 
             onClick={handleFinish}
-            className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-mecura-surface-light hover:bg-mecura-surface border border-mecura-elevated text-xs font-bold text-mecura-silver hover:text-white transition-all shadow-sm cursor-pointer"
             title="Acessar Área do Paciente"
           >
-            <User className="w-5 h-5" />
+            <User className="w-3.5 h-3.5 text-mecura-neon" />
+            <span className="hidden sm:inline">Meu Painel</span>
           </button>
         </div>
       </div>
+
+      {/* Waiting Guard Overlay: Prevents entering chat prematurely when waiting in queue */}
+      {isWaitingInQueue && (
+        <div className="absolute inset-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-20 h-20 rounded-full bg-[#FF8A00]/15 border-2 border-[#FF8A00] flex items-center justify-center text-4xl mb-4 shadow-[0_0_30px_rgba(255,138,0,0.3)] animate-pulse">
+            ⏳
+          </div>
+          <span className="px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-[#FF8A00]/20 text-[#FF8A00] border border-[#FF8A00]/40 mb-3">
+            Atendimento Pendente
+          </span>
+          <h2 className="text-2xl font-serif font-bold text-white mb-2">
+            Aguarde o Dr. Guilherme te chamar
+          </h2>
+          <p className="text-sm text-mecura-silver max-w-xs mb-8 leading-relaxed">
+            Você está na fila de espera. O médico te chamará pelo aplicativo e pelo WhatsApp assim que for a sua vez!
+          </p>
+          <div className="flex flex-col gap-3 w-full max-w-xs">
+            <button
+              onClick={() => navigate('/queue')}
+              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] text-black font-extrabold text-sm hover:brightness-110 transition-all shadow-[0_0_20px_rgba(255,138,0,0.3)] cursor-pointer"
+            >
+              Acompanhar Minha Fila →
+            </button>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-full py-3.5 px-6 rounded-xl bg-[#161622] border border-mecura-elevated text-white font-bold text-sm hover:bg-[#1C1C2B] transition-all cursor-pointer"
+            >
+              Ir para Área do Paciente
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Chat Area */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 custom-scrollbar">

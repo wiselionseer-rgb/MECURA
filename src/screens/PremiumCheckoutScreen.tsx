@@ -1,5 +1,5 @@
 import { db, auth } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
@@ -246,6 +246,10 @@ export function PremiumCheckoutScreen() {
     setSuccessToast("Acesso VIP Premium liberado com sucesso! Entrando na fila prioritária...");
     setPagamentoPremium(true);
     setPagamentoConsulta(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.setItem('mecura_premium', 'true');
+    }
 
     const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
     const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente VIP';
@@ -262,6 +266,20 @@ export function PremiumCheckoutScreen() {
         patientId: patientUid,
         date: new Date().toISOString()
       });
+
+      if (patientUid) {
+        await setDoc(doc(db, 'users', patientUid), {
+          pagamento_consulta: true,
+          pagamento_premium: true,
+          hasPaid: true,
+          isPaid: true,
+          plan: 'premium',
+          isPremium: true,
+          consultationStatus: 'waiting',
+          inQueue: true,
+          lastPaymentDate: new Date().toISOString()
+        }, { merge: true });
+      }
     } catch (e) {
       console.error("Erro ao registrar pagamento premium:", e);
     }

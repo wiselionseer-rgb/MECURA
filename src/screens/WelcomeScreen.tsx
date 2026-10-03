@@ -23,8 +23,14 @@ export function WelcomeScreen() {
   const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
-    // Auto redirect to dashboard if user is already logged in
+    // Auto redirect to dashboard only if user is logged in and did not explicitly log out
     const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (typeof window !== 'undefined' && localStorage.getItem('mecura_logged_out') === 'true') {
+        if (!user) {
+          localStorage.removeItem('mecura_logged_out');
+        }
+        return;
+      }
       if (user) {
         navigate('/dashboard');
       }

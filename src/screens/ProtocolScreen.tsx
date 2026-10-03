@@ -4,7 +4,7 @@ import {
   ChevronLeft, Droplets, Clock, AlertCircle, FileText, Download, 
   CheckCircle2, ShieldCheck, Calendar, User, Stethoscope, Sparkles, 
   ShoppingCart, MessageCircle, ExternalLink, QrCode, FileCheck, ArrowRight,
-  Sun, Moon, Sunset, Info
+  Sun, Moon, Sunset, Info, Lock
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
@@ -30,8 +30,22 @@ export function ProtocolScreen() {
   const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
   const [downloadAllProgress, setDownloadAllProgress] = useState(false);
 
-  // Extract prescribed items from messages, falling back to default enriched products if needed
+  // Verified if doctor actually conducted consultation and issued documents
+  const hasDoctorPrescription = useMemo(() => {
+    return messages.some(m => 
+      m.type === 'prescription' || 
+      m.type === 'receita_previa' || 
+      (m.type === 'product' && m.productData) ||
+      (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+    );
+  }, [messages]);
+
+  // Extract prescribed items from messages, falling back to empty if consultation not done yet
   const prescriptionItems = useMemo(() => {
+    if (!hasDoctorPrescription) {
+      return [];
+    }
+
     // Check for receita_previa messages first
     const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
     if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
@@ -90,30 +104,35 @@ export function ProtocolScreen() {
       });
     }
 
-    // Default high-grade protocol fallback if consultation finished without explicit items
-    return [
-      {
-        name: 'GreenBudz Calm Vibe CBD 6000mg',
-        brand: 'GreenBudz',
-        origin: 'Importado',
-        type: 'Óleo Sublingual',
-        activeIngredients: 'CBD Full Spectrum 6000mg (200mg/ml) + Terpenos',
-        concentration: '200mg/ml (6000mg total)',
-        pharmaceuticalForm: 'Frasco Conta-gotas 30ml',
-        quantity: '1 frasco',
-        administrationRoute: 'Sublingual',
-        dosage: [
-          '☀️ Manhã: 5 gotas (25mg CBD) sob a língua após o café',
-          '🌙 Noite: 10 gotas (50mg CBD) sob a língua 30min antes de deitar'
-        ],
-        details: [
-          'Pingar diretamente sob a língua e aguardar 60 segundos antes de engolir.',
-          'Uso contínuo para controle de ansiedade, regulação do sono e bem-estar geral.'
-        ],
-        image: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60'
-      }
-    ];
-  }, [messages]);
+    const docMsg = messages.find(m => m.type === 'prescription');
+    if (docMsg) {
+      return [
+        {
+          name: 'GreenBudz Calm Vibe CBD 6000mg',
+          brand: 'GreenBudz',
+          origin: 'Importado',
+          type: 'Óleo Sublingual',
+          activeIngredients: 'CBD Full Spectrum 6000mg (200mg/ml) + Terpenos',
+          concentration: '200mg/ml (6000mg total)',
+          pharmaceuticalForm: 'Frasco Conta-gotas 30ml',
+          quantity: '1 frasco',
+          administrationRoute: 'Sublingual',
+          dosage: [
+            '☀️ Manhã: 5 gotas (25mg CBD) sob a língua após o café',
+            '🌙 Noite: 10 gotas (50mg CBD) sob a língua 30min antes de deitar'
+          ],
+          details: [
+            'Pingar diretamente sob a língua e aguardar 60 segundos antes de engolir.',
+            'Uso contínuo para controle de ansiedade, regulação do sono e bem-estar geral.'
+          ],
+          image: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60'
+        }
+      ];
+    }
+
+    // Patient has not been prescribed yet
+    return [];
+  }, [messages, hasDoctorPrescription]);
 
   // Find prescription/medical report messages with attachments
   const prescriptionMsg = useMemo(() => {
@@ -157,6 +176,10 @@ export function ProtocolScreen() {
 
   // Handler for downloading Prescription
   const handleDownloadPrescription = async () => {
+    if (!hasDoctorPrescription) {
+      alert("A receita médica oficial estará disponível para download assim que o Dr. Guilherme finalizar a sua consulta médica.");
+      return;
+    }
     setDownloadingDoc('prescription');
     try {
       if (prescriptionMsg?.attachment) {
@@ -191,6 +214,10 @@ export function ProtocolScreen() {
 
   // Handler for downloading Medical Report
   const handleDownloadMedicalReport = async () => {
+    if (!hasDoctorPrescription) {
+      alert("O laudo médico oficial estará disponível para download após o Dr. Guilherme realizar o seu atendimento.");
+      return;
+    }
     setDownloadingDoc('medical_report');
     try {
       if (medicalReportMsg?.attachment) {
@@ -225,6 +252,10 @@ export function ProtocolScreen() {
 
   // Handler for downloading Psychomotor Report
   const handleDownloadPsychomotorReport = async () => {
+    if (!hasDoctorPrescription) {
+      alert("O laudo de aptidão estará disponível após a sua consulta médica.");
+      return;
+    }
     setDownloadingDoc('psychomotor');
     try {
       const blob = await generatePsychomotorReportPDF(displayName, {
@@ -244,6 +275,10 @@ export function ProtocolScreen() {
 
   // Handler for downloading Agronomic Report
   const handleDownloadAgronomicReport = async () => {
+    if (!hasDoctorPrescription) {
+      alert("O parecer agronômico estará disponível após a sua consulta médica.");
+      return;
+    }
     setDownloadingDoc('agronomic');
     try {
       const blob = await generateAgronomicReportPDF(displayName, {
@@ -263,6 +298,10 @@ export function ProtocolScreen() {
 
   // Download all official documents in batch
   const handleDownloadAll = async () => {
+    if (!hasDoctorPrescription) {
+      alert("Os documentos médicos oficiais só podem ser baixados após o médico realizar o atendimento.");
+      return;
+    }
     setDownloadAllProgress(true);
     try {
       await handleDownloadPrescription();
@@ -286,27 +325,91 @@ export function ProtocolScreen() {
   return (
     <div className="flex flex-col min-h-screen bg-[#0A0A0F] text-[#E8E8EE] relative overflow-y-auto pb-36 font-sans">
       {/* Top Header */}
-      <header className="flex items-center justify-between p-5 pt-7 border-b border-white/5 bg-[#0A0A0F]/90 backdrop-blur-xl sticky top-0 z-30">
+      <header className="flex items-center justify-between p-4 sm:p-5 pt-6 border-b border-white/5 bg-[#0A0A0F]/90 backdrop-blur-xl sticky top-0 z-30">
         <button 
           onClick={() => navigate('/dashboard')}
-          className="w-10 h-10 rounded-full bg-[#161622] border border-white/10 flex items-center justify-center text-white hover:bg-[#1F1F30] transition-colors"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#161622] border border-white/10 text-xs font-bold text-white hover:bg-[#1F1F30] transition-colors"
+          title="Voltar ao Painel"
         >
-          <ChevronLeft className="w-6 h-6 pr-0.5" />
+          <ChevronLeft className="w-4 h-4 pr-0.5 text-mecura-neon" />
+          <span>Meu Painel</span>
         </button>
+
         <div className="text-center">
-          <h1 className="text-base font-bold text-white tracking-tight">Protocolo Terapêutico</h1>
-          <p className="text-[11px] text-mecura-neon font-medium">Prescrição Médica Validada</p>
+          <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">Protocolo Terapêutico</h1>
+          <p className="text-[10px] sm:text-[11px] text-mecura-neon font-medium">
+            {hasDoctorPrescription ? 'Prescrição Médica Validada' : 'Aguardando Avaliação Médica'}
+          </p>
         </div>
-        <button 
-          onClick={() => navigate('/chat')}
-          className="w-10 h-10 rounded-full bg-[#161622] border border-white/10 flex items-center justify-center text-mecura-neon hover:bg-[#1F1F30] transition-colors"
-          title="Ver Conversa da Consulta"
-        >
-          <MessageCircle className="w-5 h-5" />
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="w-9 h-9 rounded-full bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/20 transition-colors"
+            title="Acessar Área do Paciente"
+          >
+            <User className="w-4 h-4" />
+          </button>
+          <button 
+            onClick={() => {
+              if (hasDoctorPrescription || isConsultationFinished) {
+                navigate('/chat');
+              } else {
+                navigate('/queue');
+              }
+            }}
+            className="w-9 h-9 rounded-full bg-[#161622] border border-white/10 flex items-center justify-center text-mecura-silver hover:text-white transition-colors"
+            title={hasDoctorPrescription ? "Ver Conversa da Consulta" : "Acompanhar Fila"}
+          >
+            {hasDoctorPrescription ? <MessageCircle className="w-4 h-4" /> : <Clock className="w-4 h-4 text-mecura-neon" />}
+          </button>
+        </div>
       </header>
 
-      <main className="p-5 space-y-6 max-w-2xl mx-auto w-full">
+      <main className="p-4 sm:p-5 space-y-6 max-w-2xl mx-auto w-full">
+        {/* Banner de Aviso caso o paciente AINDA NÃO TENHA SIDO ATENDIDO */}
+        {!hasDoctorPrescription && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-5 rounded-[28px] bg-gradient-to-br from-amber-500/15 via-[#1E170A] to-[#121008] border-2 border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-block mb-1.5">
+                  Consulta Médica Pendente
+                </span>
+                <h3 className="text-white font-bold text-base leading-snug mb-1">
+                  Seus documentos estão sendo preparados
+                </h3>
+                <p className="text-amber-100/80 text-xs leading-relaxed mb-4">
+                  A receita médica digital e o laudo oficial com assinatura eletrônica ICP-Brasil são emitidos pelo <strong>Dr. Guilherme</strong> durante ou após a sua consulta médica. Assim que o atendimento for concluído, os arquivos serão liberados para download nesta página.
+                </p>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => navigate('/queue')}
+                    className="px-4 py-2 rounded-xl bg-amber-500 text-black font-extrabold text-xs hover:bg-amber-400 transition-all shadow-md cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Ir para Fila de Espera
+                  </button>
+                  <button
+                    onClick={() => navigate('/chat')}
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-all border border-white/10 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-mecura-neon" />
+                    Sala de Atendimento
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Treatment Overview Hero Card */}
         <motion.div 
           initial={{ opacity: 0, y: 12 }}
@@ -318,11 +421,13 @@ export function ProtocolScreen() {
           <div className="relative z-10 space-y-4">
             <div className="flex items-center justify-between">
               <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1 rounded-full">
-                <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
-                <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider">TRATAMENTO EM CURSO</span>
+                <div className={`w-2 h-2 rounded-full ${hasDoctorPrescription ? 'bg-mecura-neon animate-pulse' : 'bg-amber-400 animate-ping'}`} />
+                <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider">
+                  {hasDoctorPrescription ? 'TRATAMENTO EM CURSO' : 'EM PREPARAÇÃO MÉDICA'}
+                </span>
               </div>
               <span className="text-[11px] font-semibold text-[#8A8A9E] bg-white/5 px-2.5 py-1 rounded-lg border border-white/5">
-                Renovação em 90 dias
+                {hasDoctorPrescription ? 'Renovação em 90 dias' : 'Aguardando Consulta'}
               </span>
             </div>
 
@@ -331,7 +436,9 @@ export function ProtocolScreen() {
                 Protocolo de {displayName.split(' ')[0]}
               </h2>
               <p className="text-[13px] text-[#8A8A9E] mt-1 leading-relaxed">
-                Plano clínico individualizado para modulação do sistema endocanabinoide.
+                {hasDoctorPrescription 
+                  ? 'Plano clínico individualizado para modulação do sistema endocanabinoide.'
+                  : 'Seu plano personalizado será prescrito individualmente pelo Dr. Guilherme durante a consulta.'}
               </p>
             </div>
 
@@ -380,56 +487,96 @@ export function ProtocolScreen() {
               <FileCheck className="w-4 h-4 text-mecura-neon" />
               Documentos Médicos Oficiais (PDF)
             </h3>
-            <button
-              onClick={handleDownloadAll}
-              disabled={downloadAllProgress}
-              className="text-[11px] font-bold text-mecura-neon hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {downloadAllProgress ? 'Baixando...' : 'Baixar Todos'}
-            </button>
+            {hasDoctorPrescription ? (
+              <button
+                onClick={handleDownloadAll}
+                disabled={downloadAllProgress}
+                className="text-[11px] font-bold text-mecura-neon hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {downloadAllProgress ? 'Baixando...' : 'Baixar Todos'}
+              </button>
+            ) : (
+              <span className="text-[10px] text-amber-400/80 font-semibold flex items-center gap-1">
+                <Lock className="w-3 h-3" /> Bloqueado até consulta
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Prescription PDF Card */}
-            <div className="bg-[#12121A] border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:border-mecura-neon/30 transition-colors">
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-colors ${
+              hasDoctorPrescription 
+                ? 'bg-[#12121A] border-white/5 hover:border-mecura-neon/30' 
+                : 'bg-[#0E0E14] border-white/5 opacity-80'
+            }`}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 border border-mecura-neon/20 flex items-center justify-center text-mecura-neon shrink-0">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasDoctorPrescription 
+                    ? 'bg-mecura-neon/10 border-mecura-neon/20 text-mecura-neon' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-[13px] font-bold text-white">Receita Médica Digital</h4>
-                  <p className="text-[11px] text-[#8A8A9E]">Assinatura ICP-Brasil & QR Code</p>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Receita Médica Digital
+                    {!hasDoctorPrescription && <Lock className="w-3 h-3 text-amber-400" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasDoctorPrescription ? 'Assinatura ICP-Brasil & QR Code' : 'Emitida pelo Dr. Guilherme'}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={handleDownloadPrescription}
-                disabled={downloadingDoc === 'prescription'}
-                className="w-9 h-9 rounded-full bg-[#1A1A28] hover:bg-mecura-neon hover:text-[#0A0A0F] text-white flex items-center justify-center border border-white/10 transition-all shrink-0 cursor-pointer"
-                title="Baixar Receita Médica"
+                disabled={downloadingDoc === 'prescription' || !hasDoctorPrescription}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasDoctorPrescription 
+                    ? 'bg-[#1A1A28] hover:bg-mecura-neon hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer' 
+                    : 'bg-white/5 text-[#8A8A9E] border-white/5 cursor-not-allowed'
+                }`}
+                title={hasDoctorPrescription ? "Baixar Receita Médica" : "Disponível após o atendimento médico"}
               >
-                <Download className="w-4 h-4" />
+                {hasDoctorPrescription ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
               </button>
             </div>
 
             {/* Medical Report PDF Card */}
-            <div className="bg-[#12121A] border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:border-mecura-neon/30 transition-colors">
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-colors ${
+              hasDoctorPrescription 
+                ? 'bg-[#12121A] border-white/5 hover:border-blue-500/30' 
+                : 'bg-[#0E0E14] border-white/5 opacity-80'
+            }`}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasDoctorPrescription 
+                    ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-[13px] font-bold text-white">Laudo Médico Oficial</h4>
-                  <p className="text-[11px] text-[#8A8A9E]">ANVISA, Planos & Jurídico</p>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Laudo Médico Oficial
+                    {!hasDoctorPrescription && <Lock className="w-3 h-3 text-amber-400" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasDoctorPrescription ? 'ANVISA, Planos & Jurídico' : 'Emitido após a consulta'}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={handleDownloadMedicalReport}
-                disabled={downloadingDoc === 'medical_report'}
-                className="w-9 h-9 rounded-full bg-[#1A1A28] hover:bg-blue-400 hover:text-[#0A0A0F] text-white flex items-center justify-center border border-white/10 transition-all shrink-0 cursor-pointer"
-                title="Baixar Laudo Médico"
+                disabled={downloadingDoc === 'medical_report' || !hasDoctorPrescription}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasDoctorPrescription 
+                    ? 'bg-[#1A1A28] hover:bg-blue-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer' 
+                    : 'bg-white/5 text-[#8A8A9E] border-white/5 cursor-not-allowed'
+                }`}
+                title={hasDoctorPrescription ? "Baixar Laudo Médico" : "Disponível após o atendimento médico"}
               >
-                <Download className="w-4 h-4" />
+                {hasDoctorPrescription ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
               </button>
             </div>
 
@@ -493,7 +640,18 @@ export function ProtocolScreen() {
             </span>
           </div>
 
-          <div className="space-y-4">
+          {prescriptionItems.length === 0 ? (
+            <div className="bg-[#12121A] border border-white/5 rounded-[24px] p-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-[#8A8A9E]">
+                <Droplets className="w-6 h-6" />
+              </div>
+              <h4 className="text-white font-bold text-sm">Medicamentos aguardando prescrição médica</h4>
+              <p className="text-xs text-[#8A8A9E] max-w-sm mx-auto leading-relaxed">
+                As formulações fitocanabinoides, concentrações e posologia diária serão definidas pelo médico durante a sua consulta.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
             {prescriptionItems.map((item, index) => {
               const isImported = item.origin === 'Importado' || (item.brand || '').toLowerCase().includes('greenbudz') || (item.brand || '').toLowerCase().includes('flowermed');
 
@@ -584,7 +742,8 @@ export function ProtocolScreen() {
                 </motion.div>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Titration & Best Practices Guide */}

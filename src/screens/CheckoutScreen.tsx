@@ -1,5 +1,5 @@
 import { db, auth } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
@@ -245,8 +245,10 @@ export function CheckoutScreen() {
     const isPrem = selectedOffer === 'premium';
     if (isPrem) {
       setPagamentoPremium(true);
+      if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
     }
     setPagamentoConsulta(true);
+    if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
 
     const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
     const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
@@ -263,6 +265,20 @@ export function CheckoutScreen() {
         patientId: patientUid,
         date: new Date().toISOString()
       });
+
+      if (patientUid) {
+        await setDoc(doc(db, 'users', patientUid), {
+          pagamento_consulta: true,
+          pagamento_premium: isPrem,
+          hasPaid: true,
+          isPaid: true,
+          plan: isPrem ? 'premium' : 'basic',
+          isPremium: isPrem,
+          consultationStatus: 'waiting',
+          inQueue: true,
+          lastPaymentDate: new Date().toISOString()
+        }, { merge: true });
+      }
     } catch (e) {
       console.error("Erro ao registrar pagamento em payments:", e);
     }

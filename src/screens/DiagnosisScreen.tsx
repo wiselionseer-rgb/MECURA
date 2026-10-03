@@ -1,14 +1,25 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { CheckCircle2, MessageSquare, ShieldCheck, ChevronRight, HelpCircle, Activity } from 'lucide-react';
+import { CheckCircle2, MessageSquare, ShieldCheck, ChevronRight, HelpCircle, Activity, LayoutDashboard, User } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
 
 export function DiagnosisScreen() {
   const navigate = useNavigate();
-  const { userName, answers, setSelectedOffer } = useStore();
+  const { userName, answers, setSelectedOffer, pagamento_consulta, inQueue, consultationActive } = useStore();
 
   const handleNext = () => {
+    const hasLocalPayment = typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true';
+    if (pagamento_consulta || hasLocalPayment) {
+      if (inQueue) {
+        navigate('/queue');
+      } else if (consultationActive) {
+        navigate('/chat');
+      } else {
+        navigate('/dashboard');
+      }
+      return;
+    }
     setSelectedOffer('basic');
     navigate('/checkout');
   };
@@ -55,16 +66,26 @@ export function DiagnosisScreen() {
     <div className="flex flex-col min-h-full bg-[#050508] text-mecura-pearl font-sans relative overflow-y-auto pb-12">
       {/* Header */}
       <header className="flex items-center justify-between p-6 pt-8">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white">
+        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white" title="Voltar">
           <ChevronRight className="w-6 h-6 rotate-180" />
         </button>
         <span className="text-mecura-neon font-bold tracking-widest text-sm uppercase">Mecura</span>
-        <button 
-          onClick={() => window.open('https://wa.me/5566996280883?text=' + encodeURIComponent('Olá! Gostaria de tirar uma dúvida sobre o meu resultado de compatibilidade e a consulta na Mecura.'), '_blank')}
-          className="text-mecura-silver hover:text-mecura-neon text-sm font-medium flex items-center gap-1 transition-colors cursor-pointer"
-        >
-          Ajuda <HelpCircle className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="text-xs font-bold text-mecura-neon bg-mecura-neon/10 hover:bg-mecura-neon/20 border border-mecura-neon/30 px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Ir para Área do Paciente"
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Meu Painel</span>
+          </button>
+          <button 
+            onClick={() => window.open('https://wa.me/5566996280883?text=' + encodeURIComponent('Olá! Gostaria de tirar uma dúvida sobre o meu resultado de compatibilidade e a consulta na Mecura.'), '_blank')}
+            className="text-mecura-silver hover:text-mecura-neon text-sm font-medium flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
       </header>
 
       <div className="px-6 flex flex-col items-center">

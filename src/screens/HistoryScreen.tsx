@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, FileText, MessageCircle, Receipt, X, ChevronDown } from 'lucide-react';
+import { ChevronLeft, FileText, MessageCircle, Receipt, X, ChevronDown, User } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 import { deliverPdfBlob } from '../utils/downloadHelper';
@@ -8,10 +8,17 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export function HistoryScreen() {
   const navigate = useNavigate();
-  const { userName, userCpf, userBirthDate, answers, messages } = useStore();
+  const { userName, userCpf, userBirthDate, answers, messages, isConsultationFinished, inQueue } = useStore();
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  const hasActualHistory = isConsultationFinished && messages.some(m => 
+    m.type === 'prescription' || 
+    m.type === 'receita_previa' || 
+    (m.type === 'product' && m.productData) ||
+    (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+  );
 
   const faqs = [
     {
@@ -39,96 +46,132 @@ export function HistoryScreen() {
   return (
     <div className="flex flex-col min-h-full bg-[#0A0A0F] text-mecura-pearl relative overflow-y-auto pb-12 font-sans">
       {/* Header */}
-      <header className="flex items-center p-6 pt-8 border-b border-[#1A1A26] bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-20">
+      <header className="flex items-center justify-between p-5 pt-7 border-b border-[#1A1A26] bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-20">
         <button 
           onClick={() => navigate(-1)}
           className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white hover:bg-[#1A1A26] transition-colors"
+          title="Voltar"
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />
         </button>
-        <h1 className="flex-1 text-center text-lg font-bold text-white mr-10">Histórico de Consultas</h1>
+        <h1 className="text-center text-base sm:text-lg font-bold text-white">Histórico de Consultas</h1>
+        <button 
+          onClick={() => navigate('/dashboard')}
+          className="w-10 h-10 rounded-full bg-[#161622] border border-mecura-neon/30 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors"
+          title="Acessar Área do Paciente"
+        >
+          <User className="w-4 h-4" />
+        </button>
       </header>
 
       <div className="p-6">
-        <div 
-          className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[32px] p-8 flex flex-col items-center shadow-2xl relative overflow-hidden"
-        >
-          {/* Glow effect */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-mecura-neon/10 blur-[50px] rounded-full pointer-events-none" />
-
-          {/* Doctor Image */}
-          <div className="relative mb-6">
-            <div className="w-24 h-24 rounded-full bg-[#1F1F2E] overflow-hidden border-4 border-[#262636] shadow-xl relative z-10">
-              <img 
-                src="/doctor-avatar.png" 
-                alt="Dr. Guilherme" 
-                className="w-full h-full object-cover"
-              />
+        {!hasActualHistory ? (
+          <div className="bg-[#161622] border border-[#262636] rounded-[32px] p-8 flex flex-col items-center text-center shadow-2xl relative overflow-hidden">
+            <div className="w-16 h-16 rounded-full bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center text-3xl mb-4">
+              📋
             </div>
-            <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-mecura-neon rounded-full border-4 border-[#161622] flex items-center justify-center z-20">
-              <div className="w-2.5 h-2.5 bg-[#0A0A0F] rounded-full" />
-            </div>
-          </div>
-
-          {/* Doctor Info */}
-          <h2 className="text-2xl font-bold text-white text-center leading-tight mb-2">
-            Dr. Guilherme<br/>Taveira Dias
-          </h2>
-          <p className="text-[#8A8A9E] text-sm font-medium mb-8">CRM 12345/SP</p>
-
-          <div className="w-full h-px bg-gradient-to-r from-transparent via-[#262636] to-transparent mb-8" />
-
-          {/* Consultation Info */}
-          <div className="text-center mb-10">
-            <h3 className="text-white font-bold text-lg mb-2">1 de Abril de 2026</h3>
-            <div className="inline-flex items-center gap-2 bg-[#1A2E1A] border border-[#2A4A2A] px-4 py-2 rounded-full">
-              <div className="w-2 h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.8)]" />
-              <span className="text-xs font-bold text-mecura-neon uppercase tracking-wider">Consulta finalizada com sucesso</span>
+            <h2 className="text-xl font-bold text-white mb-2">Nenhuma consulta finalizada</h2>
+            <p className="text-sm text-mecura-silver max-w-xs mb-8 leading-relaxed">
+              O seu histórico médico, receitas oficiais e orientações estarão disponíveis aqui assim que a sua consulta com o Dr. Guilherme for concluída.
+            </p>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              {inQueue && (
+                <button
+                  onClick={() => navigate('/queue')}
+                  className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] text-black font-extrabold text-sm hover:brightness-110 transition-all shadow-[0_0_20px_rgba(255,138,0,0.3)] cursor-pointer"
+                >
+                  Acompanhar Minha Fila →
+                </button>
+              )}
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="w-full py-3.5 px-6 rounded-xl bg-mecura-neon text-black font-extrabold text-sm hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.3)] cursor-pointer"
+              >
+                Voltar à Área do Paciente
+              </button>
             </div>
           </div>
+        ) : (
+          <div 
+            className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[32px] p-8 flex flex-col items-center shadow-2xl relative overflow-hidden"
+          >
+            {/* Glow effect */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-mecura-neon/10 blur-[50px] rounded-full pointer-events-none" />
 
-          {/* Action Buttons */}
-          <div className="w-full space-y-4">
-            <motion.button 
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={async () => {
-                const blob = await generatePrescriptionPDF(userName, messages, {
-                  birthDate: userBirthDate || answers?.birthDate,
-                  cpf: userCpf || answers?.cpf,
-                  returnBlob: true
-                });
-                if (blob instanceof Blob) {
-                  await deliverPdfBlob(blob, `Receita_${(userName || 'Paciente').replace(/\s+/g, '_')}.pdf`);
-                }
-              }}
-              className="w-full bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] cursor-pointer"
-            >
-              <FileText className="w-5 h-5" />
-              Abrir Receita
-            </motion.button>
-            
-            <motion.button 
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setShowFaqModal(true)}
-              className="w-full bg-[#8A8AFF]/10 hover:bg-[#8A8AFF]/20 border border-[#8A8AFF]/30 text-[#8A8AFF] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
-            >
-              <MessageCircle className="w-5 h-5" />
-              Dúvidas Sobre o Tratamento
-            </motion.button>
-            
-            <motion.button 
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setShowReceiptModal(true)}
-              className="w-full bg-mecura-green/10 hover:bg-mecura-green/20 border border-mecura-green/30 text-mecura-green font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
-            >
-              <Receipt className="w-5 h-5" />
-              Abrir Nota Fiscal
-            </motion.button>
+            {/* Doctor Image */}
+            <div className="relative mb-6">
+              <div className="w-24 h-24 rounded-full bg-[#1F1F2E] overflow-hidden border-4 border-[#262636] shadow-xl relative z-10">
+                <img 
+                  src="/doctor-avatar.png" 
+                  alt="Dr. Guilherme" 
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-mecura-neon rounded-full border-4 border-[#161622] flex items-center justify-center z-20">
+                <div className="w-2.5 h-2.5 bg-[#0A0A0F] rounded-full" />
+              </div>
+            </div>
+
+            {/* Doctor Info */}
+            <h2 className="text-2xl font-bold text-white text-center leading-tight mb-2">
+              Dr. Guilherme<br/>Taveira Dias
+            </h2>
+            <p className="text-[#8A8A9E] text-sm font-medium mb-8">CRM 12345/SP</p>
+
+            <div className="w-full h-px bg-gradient-to-r from-transparent via-[#262636] to-transparent mb-8" />
+
+            {/* Consultation Info */}
+            <div className="text-center mb-10">
+              <h3 className="text-white font-bold text-lg mb-2">Consulta Médica Concluída</h3>
+              <div className="inline-flex items-center gap-2 bg-[#1A2E1A] border border-[#2A4A2A] px-4 py-2 rounded-full">
+                <div className="w-2 h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.8)]" />
+                <span className="text-xs font-bold text-mecura-neon uppercase tracking-wider">Finalizada com sucesso</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="w-full space-y-4">
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={async () => {
+                  const blob = await generatePrescriptionPDF(userName, messages, {
+                    birthDate: userBirthDate || answers?.birthDate,
+                    cpf: userCpf || answers?.cpf,
+                    returnBlob: true
+                  });
+                  if (blob instanceof Blob) {
+                    await deliverPdfBlob(blob, `Receita_${(userName || 'Paciente').replace(/\s+/g, '_')}.pdf`);
+                  }
+                }}
+                className="w-full bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] cursor-pointer"
+              >
+                <FileText className="w-5 h-5" />
+                Abrir Receita
+              </motion.button>
+              
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setShowFaqModal(true)}
+                className="w-full bg-[#8A8AFF]/10 hover:bg-[#8A8AFF]/20 border border-[#8A8AFF]/30 text-[#8A8AFF] font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Dúvidas Sobre o Tratamento
+              </motion.button>
+              
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setShowReceiptModal(true)}
+                className="w-full bg-mecura-green/10 hover:bg-mecura-green/20 border border-mecura-green/30 text-mecura-green font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
+              >
+                <Receipt className="w-5 h-5" />
+                Abrir Nota Fiscal
+              </motion.button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* FAQ Modal */}

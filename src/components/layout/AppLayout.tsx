@@ -66,16 +66,8 @@ export function AppLayout() {
     // Set up event listeners for user activity
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     
-    let lastUpdate = 0;
     const handleActivity = () => {
       resetTimeout();
-      const now = Date.now();
-      if (now - lastUpdate > 60000 && auth.currentUser) {
-        lastUpdate = now;
-        setDoc(doc(db, 'users', auth.currentUser.uid), {
-          lastActive: serverTimestamp()
-        }, { merge: true }).catch(() => {});
-      }
     };
 
     events.forEach(event => {

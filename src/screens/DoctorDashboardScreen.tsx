@@ -555,6 +555,8 @@ export function DoctorDashboardScreen() {
       unsubscribeQueue();
       unsubscribeAppointments();
       unsubscribeHistory();
+      // Clean up active consultation ID and messages so they never leak into patient screens
+      useStore.setState({ activeConsultationId: null, messages: [] });
     };
   }, [subscribeToQueue, subscribeToAppointments, subscribeToAllConsultationHistory]);
 
@@ -2669,8 +2671,28 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             <Settings className="w-6 h-6" />
           </button>
           <button 
-            onClick={() => navigate('/')}
-            className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors relative group"
+            type="button"
+            onClick={async () => {
+              try {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_logged_out', 'true');
+                  localStorage.removeItem('mecura_patientId');
+                  localStorage.removeItem('patient_id');
+                  localStorage.removeItem('mecura_pagamento');
+                  localStorage.removeItem('mecura_premium');
+                  localStorage.removeItem('mecura_consultation_active');
+                  localStorage.removeItem('mecura_queue_display_pos');
+                  localStorage.removeItem('mecura_queue_entered_at');
+                  localStorage.removeItem('mecura_queue_notified_10m');
+                }
+                useStore.getState().reset();
+                await auth.signOut();
+              } catch (err) {
+                console.error("Erro ao deslogar médico:", err);
+              }
+              window.location.href = '/';
+            }}
+            className="p-3 rounded-xl text-mecura-silver hover:text-white hover:bg-white/5 transition-colors relative group cursor-pointer active:scale-95"
           >
             <LogOut className="w-6 h-6" />
             <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2 py-1 bg-mecura-surface border border-mecura-elevated rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">

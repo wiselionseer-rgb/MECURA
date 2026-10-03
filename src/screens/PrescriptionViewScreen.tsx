@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, Download, FileText, CheckCircle2, QrCode } from 'lucide-react';
+import { ChevronLeft, Download, FileText, CheckCircle2, QrCode, User } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
@@ -19,7 +19,7 @@ export function PrescriptionViewScreen() {
 
   return (
     <div className="flex flex-col min-h-full bg-[#0A0A0F] text-mecura-pearl relative overflow-y-auto pb-24 font-sans">
-      <header className="flex items-center p-6 pt-8 border-b border-[#1A1A26] bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-20">
+      <header className="flex items-center justify-between p-5 pt-7 border-b border-[#1A1A26] bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-20">
         <button 
           onClick={() => {
             if (location.state?.fromHighlights || sessionStorage.getItem('mecura_return_to_highlights') === 'true') {
@@ -30,10 +30,18 @@ export function PrescriptionViewScreen() {
             }
           }}
           className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white hover:bg-[#1A1A26] transition-colors"
+          title="Voltar"
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />
         </button>
-        <h1 className="flex-1 text-center text-lg font-bold text-white mr-10">Sua Receita</h1>
+        <h1 className="text-center text-base sm:text-lg font-bold text-white">Sua Receita</h1>
+        <button 
+          onClick={() => navigate('/dashboard')}
+          className="w-10 h-10 rounded-full bg-[#161622] border border-mecura-neon/30 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors"
+          title="Acessar Área do Paciente"
+        >
+          <User className="w-4 h-4" />
+        </button>
       </header>
 
       <div className="p-6">

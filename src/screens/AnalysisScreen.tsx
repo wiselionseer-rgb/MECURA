@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Leaf, Activity, Hexagon } from 'lucide-react';
+import { Leaf, Activity, Hexagon, User } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -35,6 +35,21 @@ export function AnalysisScreen() {
 
   return (
     <div className="flex flex-col items-center justify-center h-full bg-mecura-bg relative overflow-hidden">
+      {/* Top Bar with Patient Area Button */}
+      <div className="absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between z-30">
+        <span className="text-xs font-mono uppercase tracking-widest text-mecura-neon/70 font-bold">
+          MECURA • ANÁLISE CLÍNICA
+        </span>
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-mecura-surface/90 hover:bg-mecura-surface border border-mecura-elevated text-xs font-bold text-mecura-silver hover:text-white transition-all shadow-sm cursor-pointer"
+        >
+          <User className="w-3.5 h-3.5 text-mecura-neon" />
+          <span>Meu Painel</span>
+        </button>
+      </div>
+
       {/* Background Glow */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="w-96 h-96 bg-mecura-neon/20 rounded-full blur-[100px] animate-pulse" />

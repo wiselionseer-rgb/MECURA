@@ -47,7 +47,7 @@ export const AdminDashboardScreen = () => {
 
   const forceSendToQueue = async (patient: any) => {
     try {
-      const pId = patient.id;
+      const pId = patient.id || patient.uid || patient.userId || patient.patientId;
       if (!pId) {
         throw new Error('ID do paciente não encontrado');
       }
@@ -88,7 +88,18 @@ export const AdminDashboardScreen = () => {
         lastUpdated: new Date().toISOString()
       }, { merge: true });
 
-      // 3. Sincronizar com o endpoint do servidor (/api/queue/force-join)
+      // 3. Limpar mensagens de sessões antigas
+      try {
+        const msgsRef = collection(db, 'active_consultations', pId, 'messages');
+        const msgsSnap = await getDocs(msgsRef);
+        msgsSnap.forEach((docSnap) => {
+          deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {});
+        });
+      } catch (err) {
+        console.warn("Could not clean old consultation messages:", err);
+      }
+
+      // 4. Sincronizar com o endpoint do servidor (/api/queue/force-join)
       try {
         await fetch('/api/queue/force-join', {
           method: 'POST',
@@ -99,7 +110,7 @@ export const AdminDashboardScreen = () => {
         console.warn('[SERVER QUEUE SYNC] Erro ao sincronizar com servidor:', srvErr);
       }
 
-      // 4. Atualizar o estado global da fila no Zustand imediatamente
+      // 5. Atualizar o estado global da fila no Zustand imediatamente
       const currentQueue = useStore.getState().queue || [];
       const existsIdx = currentQueue.findIndex(q => q.id === pId);
       let updatedQueue;
@@ -110,7 +121,7 @@ export const AdminDashboardScreen = () => {
       }
       useStore.setState({ queue: updatedQueue });
 
-      // 5. Disparar notificação para o painel do médico
+      // 6. Disparar notificação para o painel do médico
       triggerAdminBackgroundPush(
         isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila',
         `${pName} foi enviado para a fila pelo Administrador.`,
@@ -767,10 +778,10 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const revenueTotal = revenueFila + revenuePremium;
 
   return (
-    <div className="flex flex-col md:flex-row min-h-[100dvh] bg-[#0A0A0F] text-white">
+    <div className="flex flex-col md:flex-row h-screen bg-[#0A0A0F] text-white overflow-hidden">
       {/* Sidebar */}
-      <div className="w-full md:w-64 bg-[#12121A] border-r border-white/5 p-6 flex flex-col gap-2">
-        <div className="font-bold text-xl mb-8 flex items-center gap-2">
+      <div className="w-full md:w-64 bg-[#12121A] border-r border-white/5 p-6 flex flex-col gap-2 md:h-screen md:sticky md:top-0 shrink-0 overflow-y-auto z-30">
+        <div className="font-bold text-xl mb-8 flex items-center gap-2 shrink-0">
           <Settings className="w-6 h-6 text-mecura-neon" />
           Mecura Admin
         </div>
@@ -808,10 +819,30 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           );
         })}
         
-        <div className="mt-auto pt-4 border-t border-white/5">
+        <div className="mt-auto pt-4 border-t border-white/5 shrink-0">
           <button
-            onClick={() => navigate('/')}
-            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 cursor-pointer"
+            type="button"
+            onClick={async () => {
+              try {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_logged_out', 'true');
+                  localStorage.removeItem('mecura_patientId');
+                  localStorage.removeItem('patient_id');
+                  localStorage.removeItem('mecura_pagamento');
+                  localStorage.removeItem('mecura_premium');
+                  localStorage.removeItem('mecura_consultation_active');
+                  localStorage.removeItem('mecura_queue_display_pos');
+                  localStorage.removeItem('mecura_queue_entered_at');
+                  localStorage.removeItem('mecura_queue_notified_10m');
+                }
+                useStore.getState().reset();
+                await auth.signOut();
+              } catch (err) {
+                console.error("Erro ao deslogar:", err);
+              }
+              window.location.href = '/';
+            }}
+            className="flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 cursor-pointer active:scale-95"
           >
             <LogOut className="w-5 h-5" />
             Sair do Painel
@@ -820,7 +851,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 md:p-12 overflow-y-auto">
+      <div className="flex-1 p-6 md:p-12 overflow-y-auto h-screen">
         {activeTab === 'overview' && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">

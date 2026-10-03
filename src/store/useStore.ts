@@ -504,6 +504,43 @@ export const useStore = create<AppState>((set, get) => ({
         console.warn("Failed to fetch user data for queue hydration:", e);
       }
     }
+
+    const queuePayload = {
+      ...newPatient,
+      id: currentUserId,
+      patientId: currentUserId,
+      isPremium,
+      plan: isPremium ? 'premium' : 'basic',
+      joinedAt: new Date().toISOString(),
+      status: 'waiting',
+      pagamento_consulta: true,
+      pagamento_premium: isPremium,
+      hasUnread: true,
+      lastMessageText: 'Aguardando atendimento médico',
+      lastMessageAt: new Date().toISOString()
+    };
+
+    // Update Zustand queue immediately so patient is instantly in queue
+    const currentQueue = get().queue || [];
+    const existsIdx = currentQueue.findIndex(q => q.id === currentUserId);
+    let updatedQueue: any[];
+    if (existsIdx >= 0) {
+      updatedQueue = currentQueue.map((item, idx) => idx === existsIdx ? { ...item, ...queuePayload, joinedAt: new Date() } : item);
+    } else {
+      updatedQueue = [{ ...queuePayload, joinedAt: new Date() }, ...currentQueue];
+    }
+
+    set({ 
+      patientId: currentUserId,
+      inQueue: true,
+      isConsultationFinished: false,
+      consultationActive: false,
+      pagamento_consulta: true,
+      queue: updatedQueue,
+      queuePosition: existsIdx >= 0 ? existsIdx + 1 : 1,
+      estimatedWaitTime: 10,
+      messages: []
+    });
     
     try {
       // Clear previous messages from active_consultations to prevent leaking previous session
@@ -511,39 +548,29 @@ export const useStore = create<AppState>((set, get) => ({
         const msgsRef = collection(db, 'active_consultations', currentUserId, 'messages');
         const msgsSnap = await getDocs(msgsRef);
         msgsSnap.forEach((docSnap) => {
-           deleteDoc(doc(msgsRef, docSnap.id));
+           deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {});
         });
       } catch (err) {
         console.warn("Could not delete old messages:", err);
       }
 
-      // Always try to write to Firestore, even if anonymous (using the generated ID)
-      setDoc(doc(db, 'queue', currentUserId), {
-        ...newPatient,
-        id: currentUserId,
-        isPremium,
-        plan: isPremium ? 'premium' : 'basic',
-        joinedAt: new Date().toISOString(),
-        status: 'waiting',
-        pagamento_consulta: true,
-        pagamento_premium: isPremium
-      }, { merge: true }).catch(e => console.warn("[FIRESTORE QUEUE] setDoc caught:", e));
+      // Write to Firestore queue with merge
+      try {
+        await setDoc(doc(db, 'queue', currentUserId), queuePayload, { merge: true });
+      } catch (e) {
+        console.warn("[FIRESTORE QUEUE] setDoc caught:", e);
+      }
 
       // Also sync to persistent server queue API so doctor receives patient even when Firestore daily free quota is exceeded
-      fetch('/api/queue/force-join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newPatient,
-          id: currentUserId,
-          isPremium,
-          plan: isPremium ? 'premium' : 'basic',
-          joinedAt: new Date().toISOString(),
-          status: 'waiting',
-          pagamento_consulta: true,
-          pagamento_premium: isPremium
-        })
-      }).catch(e => console.warn('[SERVER QUEUE SYNC] Error:', e));
+      try {
+        await fetch('/api/queue/force-join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(queuePayload)
+        });
+      } catch (e) {
+        console.warn('[SERVER QUEUE SYNC] Error:', e);
+      }
 
       // Also ensure user document reflects active payment and waiting queue status
       try {
@@ -833,14 +860,23 @@ export const useStore = create<AppState>((set, get) => ({
         const myPhone = (state.userPhone || state.answers?.phone || '').replace(/\D/g, '');
         const myCpf = (state.userCpf || state.answers?.cpf || '').replace(/\D/g, '');
 
-        const myIndex = queueData.findIndex(p => {
-          if (authUid && p.id === authUid) return true;
-          if (storedPatientId && p.id === storedPatientId) return true;
-          if (myEmail && p.email && p.email.toLowerCase() === myEmail) return true;
-          if (myPhone && p.phone && p.phone.replace(/\D/g, '') === myPhone && myPhone.length >= 8) return true;
-          if (myCpf && p.cpf && p.cpf.replace(/\D/g, '') === myCpf && myCpf.length >= 9) return true;
-          return false;
-        });
+        // Prioritize matching by authenticated UID FIRST to avoid cross-patient leakage
+        let myIndex = -1;
+        if (authUid) {
+          myIndex = queueData.findIndex(p => p.id === authUid);
+        }
+        if (myIndex === -1 && storedPatientId && storedPatientId !== 'patient_id') {
+          myIndex = queueData.findIndex(p => p.id === storedPatientId);
+        }
+        if (myIndex === -1 && myEmail) {
+          myIndex = queueData.findIndex(p => p.email && p.email.toLowerCase() === myEmail);
+        }
+        if (myIndex === -1 && myPhone && myPhone.length >= 8) {
+          myIndex = queueData.findIndex(p => p.phone && p.phone.replace(/\D/g, '') === myPhone);
+        }
+        if (myIndex === -1 && myCpf && myCpf.length >= 9) {
+          myIndex = queueData.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === myCpf);
+        }
 
         if (myIndex !== -1) {
           const myEntry = queueData[myIndex];
@@ -870,19 +906,20 @@ export const useStore = create<AppState>((set, get) => ({
             });
           } else if (myEntry.status === 'finished') {
             if (typeof window !== 'undefined') {
-              localStorage.removeItem('mecura_pagamento');
+              localStorage.setItem('mecura_pagamento', 'true');
               localStorage.removeItem('mecura_consultation_active');
             }
             set({
               isConsultationFinished: true,
               consultationActive: false,
-              pagamento_consulta: false,
+              pagamento_consulta: true,
               inQueue: false,
               activeConsultationId: resolvedConsultationId
             });
           } else {
             if (typeof window !== 'undefined') {
               localStorage.setItem('mecura_pagamento', 'true');
+              localStorage.removeItem('mecura_consultation_active');
             }
             set({
               queuePosition: myIndex, // 0 means next
@@ -891,8 +928,13 @@ export const useStore = create<AppState>((set, get) => ({
               isConsultationFinished: false,
               consultationActive: false,
               pagamento_consulta: true,
-              activeConsultationId: resolvedConsultationId
+              activeConsultationId: authUid || resolvedConsultationId
             });
+          }
+        } else {
+          // Patient is not currently in the queue
+          if (authUid && state.activeConsultationId && state.activeConsultationId !== authUid) {
+            set({ activeConsultationId: authUid, messages: [] });
           }
         }
       }
@@ -1183,14 +1225,14 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('mecura_pagamento');
+      localStorage.setItem('mecura_pagamento', 'true');
       localStorage.removeItem('mecura_consultation_active');
     }
 
     set((state) => ({ 
       consultationActive: false, 
       isConsultationFinished: true,
-      pagamento_consulta: false,
+      pagamento_consulta: true,
       inQueue: false,
       activeConsultationId: null,
       consultationHistory: [

@@ -562,97 +562,176 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   }
 
   // Compact layout calculation:
-  // If plan has 1 or 2 products and total length is moderate, place plan + monitoring on Page 2 (2 pages total!)
-  const p2ContentLength = (diagP2?.length || 0) + (rat?.length || 0) + (plan?.length || 0) + (mon?.length || 0);
-  const canFitAllOnPage2 = planItems.length <= 2 && p2ContentLength < 2500;
-
-  if (canFitAllOnPage2) {
+  // Dynamically calculate optimal page count and content distribution to eliminate awkward empty spaces
+  if (totalLength <= 1600 && !isVeryLongDiag) {
+    // 1 SINGLE PAGE: All sections fit comfortably on 1 page!
+    const p1Sections = [
+      { 
+        title: isEvolutivo ? 'Diagnóstico Clínico & Evolução' : 'Diagnóstico Clínico & Anamnese', 
+        content: diag 
+      }
+    ];
+    if (rat) {
+      p1Sections.push({
+        title: isEvolutivo ? 'Fundamentação Terapêutica (Quesito 7)' : 'Raciocínio Clínico & Fundamentação',
+        content: rat
+      });
+    }
     if (plan) {
-      p2Sections.push({
+      p1Sections.push({
         title: 'Plano de Tratamento Canabinoide Individualizado',
         content: plan
       });
     }
     if (mon) {
-      p2Sections.push({
-        title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+      p1Sections.push({
+        title: 'Diretrizes de Acompanhamento e Segurança',
         content: mon
       });
     }
 
     reportPages.push({
-      pageNumber: 2,
-      totalPages: 2,
-      title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
-      sections: p2Sections
+      pageNumber: 1,
+      totalPages: 1,
+      title: baseReportTitle,
+      sections: p1Sections
     });
   } else {
-    // If plan has 3 or 4 products OR text is long, distribute cleanly across 3 pages
-    if (planItems.length >= 3) {
-      const planPart1 = planItems.slice(0, 2).join('\n\n');
-      const planPart2 = planItems.slice(2).join('\n\n');
+    // 2 OR 3 PAGES:
+    // Page 1: Diagnosis & Anamnesis
+    reportPages.push({
+      pageNumber: 1,
+      totalPages: 1, // updated below
+      title: baseReportTitle,
+      sections: [
+        { 
+          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
+          content: diagP1 
+        }
+      ]
+    });
 
-      if (planPart1) {
+    // Determine if page 2 can hold Rationale + Plan + Monitoring (fits up to ~3200 chars)
+    const p2ContentLength = (diagP2?.length || 0) + (rat?.length || 0) + (plan?.length || 0) + (mon?.length || 0);
+    const canFitAllOnPage2 = p2ContentLength <= 3400 && (!isVeryLongDiag || !diagP2);
+
+    if (canFitAllOnPage2) {
+      const p2Sections: { title: string; content: string }[] = [];
+      if (diagP2) {
         p2Sections.push({
-          title: 'Plano de Tratamento Canabinoide Individualizado',
-          content: planPart1
+          title: 'Continuação da Evolução Clínica',
+          content: diagP2
         });
       }
-
-      reportPages.push({
-        pageNumber: 2,
-        totalPages: 3,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
-        sections: p2Sections
-      });
-
-      const p3Sections: { title: string; content: string }[] = [];
-      if (planPart2) {
-        p3Sections.push({
-          title: 'Continuação do Plano de Tratamento Canabinoide',
-          content: planPart2
+      if (rat) {
+        p2Sections.push({
+          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+          content: rat
         });
       }
-      if (mon) {
-        p3Sections.push({
-          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-          content: mon
-        });
-      }
-
-      reportPages.push({
-        pageNumber: 3,
-        totalPages: 3,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
-        sections: p3Sections
-      });
-    } else {
       if (plan) {
         p2Sections.push({
           title: 'Plano de Tratamento Canabinoide Individualizado',
           content: plan
         });
       }
+      if (mon) {
+        p2Sections.push({
+          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+          content: mon
+        });
+      }
 
       reportPages.push({
         pageNumber: 2,
-        totalPages: 3,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
+        totalPages: 2,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
         sections: p2Sections
       });
+    } else {
+      // 3 PAGES - Distribute evenly so Page 3 is not empty
+      const p2Sections: { title: string; content: string }[] = [];
+      if (diagP2) {
+        p2Sections.push({
+          title: 'Continuação da Evolução Clínica',
+          content: diagP2
+        });
+      }
+      if (rat) {
+        p2Sections.push({
+          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+          content: rat
+        });
+      }
 
-      if (mon) {
+      // Split plan or treatment items between Page 2 and Page 3
+      if (planItems.length >= 2) {
+        const half = Math.ceil(planItems.length / 2);
+        const planPart1 = planItems.slice(0, half).join('\n\n');
+        const planPart2 = planItems.slice(half).join('\n\n');
+
+        if (planPart1) {
+          p2Sections.push({
+            title: 'Plano de Tratamento Canabinoide (Parte 1)',
+            content: planPart1
+          });
+        }
+
+        reportPages.push({
+          pageNumber: 2,
+          totalPages: 3,
+          title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
+          sections: p2Sections
+        });
+
+        const p3Sections: { title: string; content: string }[] = [];
+        if (planPart2) {
+          p3Sections.push({
+            title: 'Continuação do Plano de Tratamento Canabinoide',
+            content: planPart2
+          });
+        }
+        if (mon) {
+          p3Sections.push({
+            title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+            content: mon
+          });
+        }
+
         reportPages.push({
           pageNumber: 3,
           totalPages: 3,
           title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
-          sections: [
-            {
-              title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-              content: mon
-            }
-          ]
+          sections: p3Sections
         });
+      } else {
+        if (plan) {
+          p2Sections.push({
+            title: 'Plano de Tratamento Canabinoide Individualizado',
+            content: plan
+          });
+        }
+
+        reportPages.push({
+          pageNumber: 2,
+          totalPages: 3,
+          title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
+          sections: p2Sections
+        });
+
+        if (mon) {
+          reportPages.push({
+            pageNumber: 3,
+            totalPages: 3,
+            title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
+            sections: [
+              {
+                title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+                content: mon
+              }
+            ]
+          });
+        }
       }
     }
   }

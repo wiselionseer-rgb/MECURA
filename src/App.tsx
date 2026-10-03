@@ -66,12 +66,19 @@ export default function App() {
           unsubscribeUserDoc = onSnapshot(doc(db, 'users', user.uid), (snap) => {
             if (snap.exists()) {
               const uData = snap.data();
-              if (uData.pagamento_consulta === true || uData.bypassedPayment === true) {
+              if (uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.consultationStatus === 'finished' || uData.consultationStatus === 'in-consultation') {
                 useStore.getState().setPagamentoConsulta(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
               }
+              if (uData.pagamento_premium === true || uData.isPremium === true || uData.plan === 'premium') {
+                useStore.getState().setPagamentoPremium(true);
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+              }
               if (uData.consultationStatus === 'in-consultation' || uData.doctorActive === true) {
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.setItem('mecura_consultation_active', 'true');
+                }
                 useStore.setState({ 
                   consultationActive: true, 
                   inQueue: false, 
@@ -80,8 +87,29 @@ export default function App() {
                   pagamento_consulta: true 
                 });
               } else if (uData.consultationStatus === 'waiting' || uData.inQueue) {
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
-                useStore.setState({ inQueue: true, pagamento_consulta: true });
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.removeItem('mecura_consultation_active');
+                }
+                useStore.setState({ 
+                  inQueue: true, 
+                  consultationActive: false, 
+                  isConsultationFinished: false,
+                  activeConsultationId: user.uid,
+                  pagamento_consulta: true 
+                });
+              } else if (uData.consultationStatus === 'finished') {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.removeItem('mecura_consultation_active');
+                }
+                useStore.setState({ 
+                  isConsultationFinished: true, 
+                  consultationActive: false, 
+                  inQueue: false, 
+                  activeConsultationId: user.uid,
+                  pagamento_consulta: true 
+                });
               }
             }
           });

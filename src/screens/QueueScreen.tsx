@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle, RefreshCw, Zap } from 'lucide-react';
+import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle, RefreshCw, Zap, LayoutDashboard, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { requestNotificationPermission, showNativeNotification } from '../utils/notifications';
 import { playNotificationSound } from '../utils/sound';
 import { auth } from '../firebase';
@@ -24,6 +24,7 @@ export function QueueScreen() {
     pagamento_consulta, 
     consultationActive, 
     subscribeToQueue,
+    joinQueue,
     userPhone,
     setUserPhone,
     userName,
@@ -63,11 +64,17 @@ export function QueueScreen() {
     return initialPos;
   });
 
-  // Real entrance timestamp
-  const [queueEnteredAt] = useState<number>(() => {
+  // Real entrance timestamp with stale detection (resets if older than 2 hours)
+  const [queueEnteredAt, setQueueEnteredAt] = useState<number>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mecura_queue_entered_at');
-      if (saved) return parseInt(saved, 10);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+        if (!isNaN(parsed) && parsed > 0 && (Date.now() - parsed) < TWO_HOURS_MS && parsed <= Date.now()) {
+          return parsed;
+        }
+      }
       const now = Date.now();
       localStorage.setItem('mecura_queue_entered_at', now.toString());
       return now;
@@ -75,11 +82,21 @@ export function QueueScreen() {
     return Date.now();
   });
   
+  const getSanitizedBaseTime = () => {
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    if (myQueueEntry?.joinedAt) {
+      const parsedJoined = new Date(myQueueEntry.joinedAt).getTime();
+      if (!isNaN(parsedJoined) && parsedJoined > 0 && (Date.now() - parsedJoined) < TWO_HOURS_MS && parsedJoined <= Date.now()) {
+        return parsedJoined;
+      }
+    }
+    return queueEnteredAt;
+  };
+
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(() => {
-    const base = myQueueEntry?.joinedAt 
-      ? new Date(myQueueEntry.joinedAt).getTime() 
-      : queueEnteredAt;
-    return Math.max(0, Math.floor((Date.now() - base) / 1000));
+    const base = getSanitizedBaseTime();
+    const diff = Math.floor((Date.now() - base) / 1000);
+    return Math.max(0, Math.min(7200, isNaN(diff) ? 0 : diff));
   });
   
   const [hasNotifiedExceeded, setHasNotifiedExceeded] = useState<boolean>(() => {
@@ -90,13 +107,12 @@ export function QueueScreen() {
   const [isEditingPhone, setIsEditingPhone] = useState<boolean>(false);
   const [phoneInput, setPhoneInput] = useState<string>(userPhone || '');
 
-  // Live timer interval: checks elapsed time every second
+  // Live timer interval: checks elapsed time every second safely
   useEffect(() => {
     const updateTimer = () => {
-      const base = myQueueEntry?.joinedAt 
-        ? new Date(myQueueEntry.joinedAt).getTime() 
-        : queueEnteredAt;
-      const secs = Math.max(0, Math.floor((Date.now() - base) / 1000));
+      const base = getSanitizedBaseTime();
+      const diff = Math.floor((Date.now() - base) / 1000);
+      const secs = Math.max(0, Math.min(7200, isNaN(diff) ? 0 : diff));
       setElapsedSeconds(secs);
     };
 
@@ -157,26 +173,70 @@ export function QueueScreen() {
     return () => unsubscribe();
   }, [subscribeToQueue]);
 
+  // Ensure patient is formally registered in queue if they paid and are not yet waiting
   useEffect(() => {
-    if (consultationActive || myQueueEntry?.status === 'in-consultation') {
+    const hasPaid = pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true');
+    if (!hasPaid) return;
+
+    const isCurrentlyWaitingOrActive = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
+    
+    if (!isCurrentlyWaitingOrActive) {
+      const pUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
+      const pName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
+      const isPrem = !!(pagamento_premium || selectedOffer === 'premium' || (typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'));
+
+      joinQueue({
+        id: pUid,
+        patientName: pName,
+        email: auth.currentUser?.email || '',
+        phone: userPhone || '',
+        isPremium: isPrem,
+        plan: isPrem ? 'premium' : 'basic'
+      });
+    }
+  }, [myQueueEntry?.status, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
+
+  useEffect(() => {
+    // If patient is waiting in queue, ensure consultationActive is false
+    if (myQueueEntry && myQueueEntry.status === 'waiting') {
+      if (consultationActive) {
+        useStore.setState({ consultationActive: false, inQueue: true });
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('mecura_consultation_active');
+        }
+      }
+      return;
+    }
+
+    // Only transition to chat if the doctor actually called or started consultation
+    if (myQueueEntry?.status === 'in-consultation') {
       setDisplayPosition(1);
-      if (!consultationActive) {
-        useStore.setState({
-          consultationActive: true,
-          inQueue: false,
-          isConsultationFinished: false,
-          activeConsultationId: myQueueEntry?.id || currentUserId,
-          pagamento_consulta: true
-        });
+      useStore.setState({
+        consultationActive: true,
+        inQueue: false,
+        isConsultationFinished: false,
+        activeConsultationId: currentUserId || myQueueEntry.id,
+        pagamento_consulta: true
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mecura_consultation_active', 'true');
+        localStorage.setItem('mecura_pagamento', 'true');
       }
       playNotificationSound();
       navigate('/chat');
     }
-  }, [consultationActive, myQueueEntry?.status, myQueueEntry?.id, currentUserId, navigate]);
+  }, [myQueueEntry?.status, myQueueEntry?.id, currentUserId, consultationActive, navigate]);
 
   const formatTime = (totalSecs: number) => {
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
+    const safeSecs = Math.max(0, isNaN(totalSecs) ? 0 : totalSecs);
+    if (safeSecs >= 3600) {
+      const hours = Math.floor(safeSecs / 3600);
+      const mins = Math.floor((safeSecs % 3600) / 60);
+      const secs = safeSecs % 60;
+      return `${hours}h ${mins}m ${secs.toString().padStart(2, '0')}s`;
+    }
+    const mins = Math.floor(safeSecs / 60);
+    const secs = safeSecs % 60;
     return `${mins}m ${secs.toString().padStart(2, '0')}s`;
   };
 
@@ -209,8 +269,33 @@ export function QueueScreen() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 z-10 max-w-lg mx-auto w-full">
+        {/* Barra Superior de Navegação - Botão Direto para Área do Paciente / Painel */}
+        <div className="w-full flex items-center justify-between mb-4 pb-3 border-b border-mecura-elevated/40">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-mecura-surface/90 hover:bg-mecura-surface border border-mecura-elevated text-xs font-bold text-mecura-silver hover:text-white transition-all shadow-sm group cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4 text-mecura-neon group-hover:-translate-x-0.5 transition-transform" />
+            <span>Meu Painel</span>
+          </button>
+
+          <span className="text-[10px] font-mono uppercase tracking-widest text-mecura-neon/70 font-bold hidden sm:inline-block">
+            MECURA • FILA AO VIVO
+          </span>
+
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-mecura-neon/10 hover:bg-mecura-neon/20 border border-mecura-neon/30 text-xs font-bold text-mecura-neon transition-all shadow-[0_0_12px_rgba(166,255,0,0.15)] cursor-pointer"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Área do Paciente</span>
+          </button>
+        </div>
+
         {/* Banner de Chamada do Médico */}
-        {(myQueueEntry?.status === 'in-consultation' || myQueueEntry?.isAlerted || consultationActive) && (
+        {(myQueueEntry?.status === 'in-consultation' || (myQueueEntry?.isAlerted && myQueueEntry?.status !== 'waiting')) && (
           <div className="w-full mb-6 p-4 rounded-2xl bg-gradient-to-r from-mecura-neon/20 via-emerald-500/20 to-mecura-neon/10 border-2 border-mecura-neon animate-pulse flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_0_35px_rgba(166,255,0,0.35)]">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-mecura-neon text-black flex items-center justify-center font-bold text-2xl shrink-0 shadow-[0_0_15px_rgba(166,255,0,0.5)]">
@@ -443,6 +528,25 @@ export function QueueScreen() {
             <p className="text-mecura-silver text-xs sm:text-sm leading-relaxed">
               Você receberá uma <strong className="text-mecura-pearl">notificação no app e no WhatsApp</strong> quando for a sua vez. Fique tranquilo, sua consulta está confirmada.
             </p>
+          </div>
+
+          {/* Botão de Navegação para a Área do Paciente */}
+          <div 
+            onClick={() => navigate('/dashboard')}
+            className="p-4 rounded-2xl bg-[#161622] border border-mecura-elevated hover:border-mecura-neon/50 flex items-center justify-between gap-3 shadow-lg cursor-pointer transition-all duration-300 group hover:bg-[#1C1C2B]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 border border-mecura-neon/20 flex items-center justify-center text-mecura-neon group-hover:scale-105 transition-transform shrink-0">
+                <LayoutDashboard className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h4 className="text-white font-bold text-sm group-hover:text-mecura-neon transition-colors">Acessar Área do Paciente</h4>
+                <p className="text-[11px] text-mecura-silver">Ver receitas, histórico e tratamentos</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-mecura-silver group-hover:text-mecura-neon font-semibold text-xs transition-colors">
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </div>
           </div>
 
           {/* Fast Validation / Test Toggle */}

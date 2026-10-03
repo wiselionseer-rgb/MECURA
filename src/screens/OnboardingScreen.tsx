@@ -136,7 +136,8 @@ const STEPS = [
       userPhone, setUserPhone,
       userCpf, setUserCpf,
       userBirthDate, setUserBirthDate,
-      setOnboardingStep, setHasCompletedOnboarding, incrementStreak, answers, setAnswer, reset 
+      setOnboardingStep, setHasCompletedOnboarding, incrementStreak, answers, setAnswer, reset,
+      setPagamentoConsulta, setPagamentoPremium, inQueue, consultationActive
     } = useStore();
     const [currentStep, setCurrentStep] = useState(0);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -162,15 +163,46 @@ const STEPS = [
     }, [currentStep]);
     
     useEffect(() => {
-      // Se já estiver logado (ou store tiver dados), pula a etapa de login
-      const unsubscribe = auth.onAuthStateChanged(user => {
+      // Se já estiver logado (ou store tiver dados), pré-preenche dados e avança para etapa de triagem
+      const unsubscribe = auth.onAuthStateChanged(async (user) => {
         if (user && currentStep === 0) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists()) {
+              const data = userDoc.data();
+              if (data.name && !userName) setUserName(data.name);
+              if (data.email && !userEmail) setUserEmail(data.email);
+              if (data.phone && !userPhone) setUserPhone(data.phone);
+              if (data.cpf && !userCpf) setUserCpf(data.cpf);
+              if (data.birthDate && !userBirthDate) setUserBirthDate(data.birthDate);
+              if (data.answers) {
+                Object.entries(data.answers).forEach(([key, value]) => {
+                  setAnswer(key, value);
+                });
+                if (data.answers.birthDate && !data.birthDate) setUserBirthDate(data.answers.birthDate);
+                if (data.answers.cpf && !data.cpf) setUserCpf(data.answers.cpf);
+                if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
+              }
+
+              // Restore payment state if user has already paid
+              if (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true) {
+                setPagamentoConsulta(true);
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+              }
+              if (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium') {
+                setPagamentoPremium(true);
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+              }
+            }
+          } catch (err) {
+            console.warn('[ONBOARDING] Error loading user doc:', err);
+          }
           setCurrentStep(1);
           setOnboardingStep(1);
         }
       });
       return () => unsubscribe();
-    }, [currentStep, setOnboardingStep]);
+    }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium]);
   
       const handleForgotPassword = async () => {
     if (!forgotPasswordEmail) return;
@@ -209,10 +241,9 @@ const STEPS = [
           if (isLogin) {
             const trimmedEmail = userEmail.trim();
             const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
-            // Check if user has completed onboarding
+            // Check if user has completed onboarding or paid
             const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
             if (userDoc.exists()) {
-              reset();
               const data = userDoc.data();
               if (data.name) setUserName(data.name);
               if (data.phone) setUserPhone(data.phone);
@@ -225,9 +256,20 @@ const STEPS = [
                 });
                 if (data.answers.birthDate && !data.birthDate) setUserBirthDate(data.answers.birthDate);
                 if (data.answers.cpf && !data.cpf) setUserCpf(data.answers.cpf);
+                if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
+              }
+
+              // Restore payment state
+              if (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true) {
+                setPagamentoConsulta(true);
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+              }
+              if (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium') {
+                setPagamentoPremium(true);
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
               }
               
-              if (data.hasCompletedOnboarding) {
+              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid) {
                 setHasCompletedOnboarding(true);
                 setShowExistingAccountPrompt(true);
                 setIsLoading(false);
@@ -275,30 +317,38 @@ const STEPS = [
         setCurrentStep(prev => prev + 1);
         setOnboardingStep(currentStep + 1);
       } else {
-        // Save to Firestore on complete
-        if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid), {
-              name: userName,
-              email: userEmail,
-              phone: userPhone,
-              cpf: userCpf,
-              birthDate: userBirthDate,
-              hasCompletedOnboarding: true,
-              answers: {
-                ...answers,
+        setIsLoading(true);
+        try {
+          // Save to Firestore non-blocking with timeout
+          if (auth.currentUser) {
+            Promise.race([
+              setDoc(doc(db, 'users', auth.currentUser.uid), {
+                name: userName,
+                email: userEmail || auth.currentUser.email || '',
+                phone: userPhone,
+                cpf: userCpf,
                 birthDate: userBirthDate,
-                cpf: userCpf
-              },
-              createdAt: new Date().toISOString()
-            }, { merge: true });
-          } catch (e) {
-            console.error("Error saving user data", e);
+                hasCompletedOnboarding: true,
+                answers: {
+                  ...answers,
+                  birthDate: userBirthDate,
+                  cpf: userCpf,
+                  phone: userPhone
+                },
+                createdAt: new Date().toISOString(),
+                lastUpdated: new Date().toISOString()
+              }, { merge: true }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1500))
+            ]).catch((err) => console.warn('[ONBOARDING] Firestore write warning (continuing to analysis):', err));
           }
+        } catch (e) {
+          console.warn('[ONBOARDING] Error:', e);
+        } finally {
+          setIsLoading(false);
+          setHasCompletedOnboarding(true);
+          incrementStreak();
+          navigate('/analysis');
         }
-        setHasCompletedOnboarding(true);
-        incrementStreak();
-        navigate('/analysis');
       }
     };
 
@@ -328,8 +378,10 @@ const STEPS = [
       return !userEmail || !password || isLoading;
     }
     if (step.id === 'name') {
-      const cleanCpf = userCpf.replace(/\D/g, '');
-      return userName.trim().length < 2 || userBirthDate.trim().length < 8 || userPhone.trim().length < 10 || cleanCpf.length < 11;
+      const cleanCpf = (userCpf || '').replace(/\D/g, '');
+      const cleanBirth = (userBirthDate || '').replace(/\D/g, '');
+      const cleanPhone = (userPhone || '').replace(/\D/g, '');
+      return (userName || '').trim().length < 2 || cleanBirth.length < 8 || cleanPhone.length < 10 || cleanCpf.length < 11;
     }
     if (step.id === 'objective') return (answers.objectives || []).length === 0;
     if (step.id === 'physical') return !answers.height || !answers.weight || !answers.sex;
@@ -713,6 +765,47 @@ const STEPS = [
         </Button>
 
       <AnimatePresence>
+        {showExistingAccountPrompt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#161622] border border-mecura-neon/30 rounded-3xl p-6 w-full max-w-md shadow-2xl"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center mb-4 text-mecura-neon">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Conta Localizada!</h3>
+              <p className="text-mecura-silver text-sm mb-6 leading-relaxed">
+                Olá, <strong className="text-white">{userName || 'Paciente'}</strong>! Você já possui cadastro ativo na plataforma. Deseja realizar uma nova triagem/consulta ou acessar seu painel?
+              </p>
+              <div className="flex flex-col gap-3">
+                <Button 
+                  className="w-full shadow-lg shadow-mecura-neon/20 font-bold"
+                  onClick={() => {
+                    setShowExistingAccountPrompt(false);
+                    setCurrentStep(1);
+                    setOnboardingStep(1);
+                  }}
+                >
+                  Continuar Nova Triagem
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="w-full border-mecura-elevated text-mecura-silver hover:text-white"
+                  onClick={() => {
+                    setShowExistingAccountPrompt(false);
+                    navigate('/dashboard');
+                  }}
+                >
+                  Ir para Meu Painel
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showForgotPassword && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
