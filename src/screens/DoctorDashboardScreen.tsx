@@ -8,6 +8,8 @@ import {
   Users, 
   MessageSquare, 
   FileText, 
+  FilePlus2,
+  FileSignature,
   Search, 
   Bell, 
   Settings, 
@@ -93,6 +95,7 @@ import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
 import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEditorModal';
 import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
+import { StandaloneDocumentModal, StandalonePatientData } from '../components/StandaloneDocumentModal';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
 import { generatePersonalizedClinicalReport } from '../utils/clinicalReportGenerator';
@@ -450,6 +453,90 @@ export function DoctorDashboardScreen() {
   const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
   const [prescItems, setPrescItems] = useState<PrescriptionItemData[]>([]);
   const [prescNotes, setPrescNotes] = useState('');
+
+  // Standalone Document Generation Modal State (Receitas e Laudos Avulsos)
+  const [isStandaloneDocModalOpen, setIsStandaloneDocModalOpen] = useState(false);
+  const [standaloneTargetPatientId, setStandaloneTargetPatientId] = useState<string | null>(null);
+
+  const handleLaunchStandalonePrescription = (patientData: StandalonePatientData) => {
+    setStandaloneTargetPatientId(patientData.id || null);
+    setPrescPatientName(patientData.name);
+    setPrescCpf(patientData.cpf);
+    setPrescBirthDate(patientData.birthDate);
+    setPrescEmissionDate(patientData.emissionDate);
+    setPrescDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
+    setPrescDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
+    setPrescDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+
+    // If patient had existing items and user didn't clear, keep them; if empty, provide initial ABECMED/National item
+    if (prescItems.length === 0) {
+      const defaultItem: PrescriptionItemData = {
+        name: "Óleo ABEC CBD Full Spectrum 5% (50 mg/mL — 1.500 mg)",
+        brand: "ABECMED (Associação Nacional)",
+        origin: "Nacional",
+        activeIngredients: "Fitocanabinoides Full Spectrum com predomínio de Canabidiol (CBD)",
+        concentration: "50 mg/mL de CBD (Total: 1.500 mg no frasco)",
+        pharmaceuticalForm: "Solução Oleosa Sublingual / Oral (Frasco 30 mL)",
+        quantity: "01 Frasco de 30 mL",
+        administrationRoute: "Via Sublingual / Oral",
+        dosage: [
+          "Tomar 05 gotas por via sublingual de 12 em 12 horas.",
+          "Reter sob a língua por 60 segundos antes de engolir para rápida absorção."
+        ],
+        description: "Óleo Full Spectrum nacional da ABECMED em extração RSO diluído em MCT puro."
+      };
+      setPrescItems([defaultItem]);
+    }
+
+    setShowPrescriptionEditorModal(true);
+  };
+
+  const handleLaunchStandaloneMedicalReport = (patientData: StandalonePatientData, reportType: 'inicial' | 'evolutivo') => {
+    setStandaloneTargetPatientId(patientData.id || null);
+    setReportPatientName(patientData.name);
+    setReportCpf(patientData.cpf);
+    setReportBirthDate(patientData.birthDate);
+    setReportEmissionDate(patientData.emissionDate);
+    setReportDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setMedicalReportType(reportType);
+
+    if (patientData.diagnosis) {
+      setReportDiagnosis(patientData.diagnosis);
+    }
+
+    if (reportType === 'evolutivo') {
+      setReportRationale("Em reavaliação clínica e evolução do tratamento com derivados de Cannabis sativa L., o(a) paciente relata melhora sustentada dos sintomas primários, com redução relevante em escalas de dor, estabilização dos ciclos de sono e atenuação dos níveis de estresse e ansiedade.");
+      setReportTreatmentPlan("Manutenção e ajuste fino da terapia canabinoide associativa. Continuidade do uso de formulações em espectro integral (Full Spectrum) com titulação individualizada conforme tolerância clínica.");
+      setReportMonitoring("Acompanhamento médico continuado a cada 60 a 90 dias para reavaliação de dosagens basais e exames de rotina.");
+    }
+
+    setShowMedicalReportEditorModal(true);
+  };
+
+  const handleLaunchStandalonePsychomotorReport = (patientData: StandalonePatientData) => {
+    setStandaloneTargetPatientId(patientData.id || null);
+    setReportPatientName(patientData.name);
+    setReportCpf(patientData.cpf);
+    setReportBirthDate(patientData.birthDate);
+    setReportEmissionDate(patientData.emissionDate);
+    setReportDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setShowPsychomotorReportEditorModal(true);
+  };
+
+  const handleLaunchStandaloneAgronomicReport = (patientData: StandalonePatientData) => {
+    setStandaloneTargetPatientId(patientData.id || null);
+    setAgronomicPatientName(patientData.name);
+    setAgronomicCpf(patientData.cpf);
+    setAgronomicEmissionDate(patientData.emissionDate);
+    if (patientData.diagnosis) {
+      setAgronomicDiagnosis(patientData.diagnosis);
+    }
+    setShowAgronomicReportEditorModal(true);
+  };
 
   const handleToggleProductInPrescription = (product: CBDProduct) => {
     const isNational = (product.origin || '').toLowerCase().includes('nacional') || (product.manufacturer || '').toLowerCase().includes('associação');
@@ -1497,13 +1584,13 @@ export function DoctorDashboardScreen() {
   };
 
   const handleDownloadPrescriptionFromEditor = async () => {
-    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = currentPatient?.id || standaloneTargetPatientId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     // 1. Atualizar o chat (banco de dados) com a versão final editada para o paciente ver
     if (targetPatientId) {
       await clearPrescriptionMessages(targetPatientId);
       
       for (const item of prescItems) {
-        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(item.name) || item.origin === 'Nacional';
+        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura|ABEC|ABECMED/i.test(item.name) || item.origin === 'Nacional';
         
         let foundCatProd: any = null;
         const cleanName = item.name.toLowerCase().trim();
@@ -1516,6 +1603,9 @@ export function DoctorDashboardScreen() {
         }
         if (!foundCatProd) {
           foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+        }
+        if (!foundCatProd) {
+          foundCatProd = ABECMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
         }
 
         const enriched = enrichMedicationDetails(
@@ -1574,7 +1664,7 @@ export function DoctorDashboardScreen() {
   };
 
   const handleSendPrescriptionToChat = async () => {
-    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = currentPatient?.id || standaloneTargetPatientId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       alert("Nenhum paciente selecionado para envio da receita.");
       return;
@@ -1586,7 +1676,7 @@ export function DoctorDashboardScreen() {
       // 1. Atualizar o chat com os cards de medicamentos
       await clearPrescriptionMessages(targetPatientId);
       for (const item of prescItems) {
-        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(item.name) || item.origin === 'Nacional';
+        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura|ABEC|ABECMED/i.test(item.name) || item.origin === 'Nacional';
         
         let foundCatProd: any = null;
         const cleanName = item.name.toLowerCase().trim();
@@ -1599,6 +1689,9 @@ export function DoctorDashboardScreen() {
         }
         if (!foundCatProd) {
           foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+        }
+        if (!foundCatProd) {
+          foundCatProd = ABECMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
         }
 
         const enriched = enrichMedicationDetails(
@@ -2821,6 +2914,19 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               Dashboard Analítico
             </div>
           </button>
+          <button 
+            type="button"
+            onClick={() => setIsStandaloneDocModalOpen(true)}
+            className="p-3 rounded-xl transition-all relative group text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.15)] active:scale-95"
+            title="Emitir Receitas ou Laudos Avulsos (Sem Consulta)"
+          >
+            <FilePlus2 className="w-6 h-6 text-emerald-400" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
+            <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2.5 py-1.5 bg-[#0D0D15] border border-emerald-500/40 rounded-lg text-xs font-semibold text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 flex items-center gap-1.5">
+              <FilePlus2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Receitas e Laudos Avulsos</span>
+            </div>
+          </button>
         </nav>
 
         <div className="flex md:flex-col gap-2 md:gap-4 items-center">
@@ -2890,6 +2996,27 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     <span className="hidden sm:inline text-[11px]">Sincronizar</span>
                   </button>
                 </div>
+
+                {/* Botão de Documentos Avulsos (Sem Consulta) */}
+                <button
+                  type="button"
+                  onClick={() => setIsStandaloneDocModalOpen(true)}
+                  className="w-full mb-3 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/10 hover:from-emerald-500/25 hover:to-teal-500/20 border border-emerald-500/35 hover:border-emerald-400 text-white font-medium text-xs flex items-center justify-between group transition-all shadow-sm active:scale-[0.99]"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                      <FilePlus2 className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="text-left">
+                      <span className="font-semibold block text-emerald-300">Receita ou Laudo Avulso</span>
+                      <span className="text-[10px] text-mecura-silver block -mt-0.5">Sem precisar abrir consulta</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 group-hover:bg-emerald-500 group-hover:text-black transition-colors">
+                    + Emitir
+                  </span>
+                </button>
+
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mecura-silver" />
                   <input 
@@ -3248,6 +3375,22 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             </button>
 
             <button
+              onClick={() => setIsStandaloneDocModalOpen(true)}
+              className="w-full p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-4 text-left hover:border-emerald-500/60 hover:bg-emerald-500/20 transition-all shadow-[0_0_15px_rgba(16,185,129,0.1)] active:scale-[0.99]"
+            >
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                <FilePlus2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-emerald-400 font-bold text-base flex items-center gap-2">
+                  <span>Receitas e Laudos Avulsos</span>
+                  <span className="text-[10px] uppercase font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">Sem consulta</span>
+                </h4>
+                <p className="text-xs text-emerald-300/80">Emitir ou alterar prescrições e laudos padrão sem precisar abrir a fila de atendimento.</p>
+              </div>
+            </button>
+
+            <button
               onClick={handleGeneratePDF}
               className="w-full p-4 bg-mecura-surface border border-mecura-elevated rounded-2xl flex items-center gap-4 text-left hover:border-mecura-neon/50 transition-all"
             >
@@ -3454,6 +3597,14 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   title="Prescrever Medicamentos (Editor Estruturado)"
                 >
                   <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsStandaloneDocModalOpen(true)}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-emerald-500/30 hover:border-emerald-400 hover:text-white transition-all flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(16,185,129,0.15)] active:scale-95"
+                  title="Emitir Receitas ou Laudos Avulsos (Sem necessidade de consultar ou alterar a fila)"
+                >
+                  <FilePlus2 className="w-3 h-3 md:w-4 md:h-4 text-emerald-400" /> <span className="hidden lg:inline">Receita/Laudo Avulso</span><span className="lg:hidden">Avulso</span>
                 </button>
                 {messages.some(m => m.type === 'product' || m.type === 'prescription' || m.type === 'prescription_notes') && (
                   <button 
@@ -7011,6 +7162,28 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         onDownloadPDF={handleDownloadAgronomicReportFromEditor}
         onSendToChat={handleSendAgronomicReportToChat}
         isSendingToChat={isSendingAgronomicToChat}
+      />
+
+      {/* Standalone Document Generator Modal (Receitas e Laudos Avulsos) */}
+      <StandaloneDocumentModal
+        isOpen={isStandaloneDocModalOpen}
+        onClose={() => setIsStandaloneDocModalOpen(false)}
+        currentPatient={currentPatient}
+        onOpenPrescriptionEditor={(patientData, prefillItems) => {
+          if (prefillItems && prefillItems.length > 0) {
+            setPrescItems(prefillItems);
+          }
+          handleLaunchStandalonePrescription(patientData);
+        }}
+        onOpenMedicalReportEditor={(patientData, reportType) => {
+          handleLaunchStandaloneMedicalReport(patientData, reportType);
+        }}
+        onOpenPsychomotorReportEditor={(patientData) => {
+          handleLaunchStandalonePsychomotorReport(patientData);
+        }}
+        onOpenAgronomicReportEditor={(patientData) => {
+          handleLaunchStandaloneAgronomicReport(patientData);
+        }}
       />
 
       {/* Action Toast Feedback Banner */}
