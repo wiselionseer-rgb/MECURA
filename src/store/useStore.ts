@@ -659,9 +659,13 @@ export const useStore = create<AppState>((set, get) => ({
               let parsedDate = item.joinedAt ? new Date(item.joinedAt) : (prev.joinedAt || new Date());
               if (isNaN(parsedDate.getTime())) parsedDate = new Date();
               const pName = (item.patientName || item.name || prev.patientName || prev.name || 'Paciente').trim();
+              const resolvedStatus = (prev.status === 'in-consultation' || prev.status === 'finished') && item.status === 'waiting'
+                ? prev.status
+                : (item.status || prev.status || 'waiting');
               map.set(item.id, {
                 ...prev,
                 ...item,
+                status: resolvedStatus,
                 patientName: pName,
                 name: pName,
                 isPremium: isPrem,
@@ -1124,13 +1128,16 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem('mecura_pagamento', 'true');
     }
 
-    set({ 
+    set((state) => ({ 
       consultationActive: true, 
       inQueue: false,
       pagamento_consulta: true,
-      ...(isSwitchingPatient ? { messages: [] } : {}),
-      ...(patientId ? { activeConsultationId: patientId } : {})
-    });
+      ...(patientId ? { 
+        activeConsultationId: patientId,
+        queue: state.queue.map(p => p.id === patientId ? { ...p, status: 'in-consultation', hasUnread: false } : p)
+      } : {}),
+      ...(isSwitchingPatient ? { messages: [] } : {})
+    }));
     if (patientId) {
       // Doctor starting consultation
       try {
@@ -1149,6 +1156,28 @@ export const useStore = create<AppState>((set, get) => ({
         }
         
         await setDoc(doc(db, 'queue', patientId), updates, { merge: true });
+
+        // Synchronize user document so patient's client immediately unblocks and redirects
+        await setDoc(doc(db, 'users', patientId), {
+          inQueue: false,
+          consultationStatus: 'in-consultation',
+          consultationActive: true,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+
+        // Direct notification doc
+        await setDoc(doc(db, 'notifications', patientId), {
+          text: "O Dr. Guilherme já está pronto para te atender! Entre na sala de consulta.",
+          timestamp: new Date().toISOString(),
+          type: 'next'
+        }).catch(() => {});
+
+        // Keep server queue cache updated
+        fetch('/api/queue/update-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patientId, status: 'in-consultation', hasUnread: false })
+        }).catch(() => {});
       } catch (e) {
         console.error("Error updating queue status", e);
       }
@@ -1210,6 +1239,26 @@ export const useStore = create<AppState>((set, get) => ({
         await updateDoc(doc(db, 'queue', consultationId), {
           status: 'finished'
         });
+
+        await setDoc(doc(db, 'users', consultationId), {
+          inQueue: false,
+          consultationStatus: 'finished',
+          consultationActive: false,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+
+        fetch('/api/queue/update-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patientId: consultationId, status: 'finished', hasUnread: false })
+        }).catch(() => {});
+
+        set((state) => ({
+          queue: state.queue.map(p => p.id === consultationId ? { ...p, status: 'finished' } : p),
+          consultationActive: false,
+          isConsultationFinished: true,
+          inQueue: false
+        }));
         
         triggerBackgroundPush(
           consultationId,

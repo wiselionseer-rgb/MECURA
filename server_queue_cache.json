@@ -1,5 +1,45 @@
 [
   {
+    "id": "4myNwitxomZqhuPNQjBXThAEWTA2",
+    "patientName": "teste",
+    "email": "k2@gmail.com",
+    "phone": "(66) 99628-0883",
+    "cpf": "057.436.591-50",
+    "birthDate": "12/21/2122",
+    "tier": "basic",
+    "isPremium": false,
+    "plan": "basic",
+    "status": "waiting",
+    "joinedAt": "2026-10-03T02:31:20.124Z",
+    "hasUnread": true,
+    "lastMessageAt": "2026-10-03T02:31:19.829Z",
+    "lastMessageText": "Aguardando atendimento médico",
+    "answers": {
+      "objectives": [
+        "Ansiedade, Estresse e Transtornos Mentais",
+        "Dor Crônica e Inflamação"
+      ],
+      "filhos": true,
+      "maquinario": true,
+      "casado": true,
+      "irritado": true,
+      "sex": "M",
+      "birthDate": "12/21/2122",
+      "memoria": true,
+      "weight": "80",
+      "height": "180",
+      "remedios": true,
+      "duration": "anos",
+      "phone": "(66) 99628-0883",
+      "intensity": "10",
+      "cpf": "057.436.591-50",
+      "doenca_cronica": true,
+      "dirige": true
+    },
+    "pagamento_consulta": true,
+    "pagamento_premium": false
+  },
+  {
     "id": "test12345",
     "patientName": "Teste API",
     "email": "",
@@ -28,9 +68,9 @@
     "tier": "basic",
     "isPremium": false,
     "plan": "basic",
-    "status": "in-consultation",
-    "joinedAt": "2026-10-03T01:15:56.963Z",
-    "hasUnread": false,
+    "status": "waiting",
+    "joinedAt": "2026-10-03T02:39:22.007Z",
+    "hasUnread": true,
     "lastMessageAt": "2026-10-03T01:15:56.209Z",
     "lastMessageText": "Aguardando atendimento médico",
     "answers": {

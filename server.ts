@@ -283,8 +283,13 @@ async function startServer() {
           // Fast fallback to serverQueue
         }
         const map = new Map<string, any>();
-        fsQueue.forEach(item => map.set(item.id, item));
-        serverQueue.forEach(item => map.set(item.id, { ...(map.get(item.id) || {}), ...item }));
+        // Populate from server fallback first
+        serverQueue.forEach(item => map.set(item.id, item));
+        // Live Firestore status and fields strictly override server cache
+        fsQueue.forEach(item => {
+          const prev = map.get(item.id) || {};
+          map.set(item.id, { ...prev, ...item });
+        });
         const merged = Array.from(map.values());
         return res.json({ success: true, queue: merged });
       } catch (fsErr) {
@@ -324,7 +329,11 @@ async function startServer() {
       };
 
       let currentQueue = loadServerQueue();
-      const existingIdx = currentQueue.findIndex(p => p.id === cleanPatient.id);
+      const cleanEmail = (cleanPatient.email || '').trim().toLowerCase();
+      const existingIdx = currentQueue.findIndex(p => 
+        p.id === cleanPatient.id || 
+        (cleanEmail && p.email && p.email.trim().toLowerCase() === cleanEmail)
+      );
       if (existingIdx >= 0) {
         currentQueue[existingIdx] = { ...currentQueue[existingIdx], ...cleanPatient };
       } else {
@@ -375,6 +384,17 @@ async function startServer() {
       if (hasUnread !== undefined) updateData.hasUnread = hasUnread;
       Promise.race([
         setDoc(doc(db, "queue", patientId), updateData, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+      ]).catch(() => {});
+
+      // Keep users document updated so patient dashboard and queue screen update immediately
+      Promise.race([
+        setDoc(doc(db, "users", patientId), {
+          inQueue: status === 'waiting',
+          consultationStatus: status,
+          consultationActive: status === 'in-consultation',
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
       ]).catch(() => {});
     } catch (e: any) {

@@ -81,8 +81,8 @@ export function DashboardScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const isWaitingInQueue = (myQueueEntry?.status === 'waiting' || inQueue) && myQueueEntry?.status !== 'in-consultation' && !isConsultationFinished;
   const isDoctorCalling = (myQueueEntry?.status === 'in-consultation' || consultationActive) && !isConsultationFinished;
+  const isWaitingInQueue = !isDoctorCalling && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive)) && !isConsultationFinished;
 
   // Handle entering queue directly
   const handleEnterQueue = async () => {
@@ -463,6 +463,33 @@ export function DashboardScreen() {
                 </button>
               </div>
             </motion.div>
+          ) : isDoctorCalling ? (
+            <motion.div 
+              variants={itemVariants}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-mecura-neon/40 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(166,255,0,0.2)] group cursor-pointer"
+              onClick={() => navigate('/chat')}
+            >
+              <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
+              <div className="relative z-10 flex flex-col items-start">
+                <div className="inline-flex items-center gap-2 bg-mecura-neon/15 border border-mecura-neon/30 px-3 py-1.5 rounded-full mb-6">
+                  <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
+                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">EM ANDAMENTO</span>
+                </div>
+                
+                <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
+                  O Dr. Guilherme<br/>está aguardando
+                </h2>
+                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
+                  Sua consulta está ativa e o médico está na sala de chat pronto para te atender.
+                </p>
+                
+                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.3)] transition-all">
+                  Entrar na Consulta <ChevronRight className="w-4 h-4 ml-1" />
+                </button>
+              </div>
+            </motion.div>
           ) : isWaitingInQueue ? (
             <motion.div 
               variants={itemVariants}
@@ -515,33 +542,6 @@ export function DashboardScreen() {
                 
                 <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(255,138,0,0.2)] transition-all">
                   Acompanhar Fila <ChevronRight className="w-4 h-4 ml-1" />
-                </button>
-              </div>
-            </motion.div>
-          ) : isDoctorCalling ? (
-            <motion.div 
-              variants={itemVariants}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              className="relative bg-gradient-to-br from-[#12121A] to-[#0D0D14] border border-mecura-neon/40 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(166,255,0,0.2)] group cursor-pointer"
-              onClick={() => navigate('/chat')}
-            >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
-              <div className="relative z-10 flex flex-col items-start">
-                <div className="inline-flex items-center gap-2 bg-mecura-neon/15 border border-mecura-neon/30 px-3 py-1.5 rounded-full mb-6">
-                  <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
-                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">EM ANDAMENTO</span>
-                </div>
-                
-                <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
-                  O Dr. Guilherme<br/>está aguardando
-                </h2>
-                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
-                  Sua consulta está ativa e o médico está na sala de chat pronto para te atender.
-                </p>
-                
-                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.3)] transition-all">
-                  Entrar na Consulta <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
             </motion.div>

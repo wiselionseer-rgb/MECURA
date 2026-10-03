@@ -388,7 +388,7 @@ export function DoctorDashboardScreen() {
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
   const [isSendingAttachment, setIsSendingAttachment] = useState(false);
   const [prevUnreadCount, setPrevUnreadCount] = useState(0);
-  const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('all');
+  const [queueFilter, setQueueFilter] = useState<'all' | 'waiting' | 'in-consultation' | 'finished'>('waiting');
   const [queuePlanFilter, setQueuePlanFilter] = useState<'all' | 'premium' | 'basic'>('all');
   const [queueSearchTerm, setQueueSearchTerm] = useState('');
   const [mobileTab, setMobileTab] = useState<'chat' | 'ficha' | 'actions'>('chat');
@@ -613,6 +613,11 @@ export function DoctorDashboardScreen() {
 
     setCurrentPatient(enrichedPatient);
     setAnalysisResult(null); // Reset previous analysis to allow fresh generation
+
+    // Immediately update local store queue so patient leaves 'waiting' queue
+    useStore.setState((state) => ({
+      queue: state.queue.map(p => p.id === patient.id ? { ...p, status: 'in-consultation', hasUnread: false } : p)
+    }));
     
     // Explicitly update Firestore queue status to in-consultation
     try {
@@ -620,6 +625,13 @@ export function DoctorDashboardScreen() {
         status: 'in-consultation',
         hasUnread: false
       }, { merge: true });
+
+      await setDoc(doc(db, 'users', patient.id), {
+        inQueue: false,
+        consultationStatus: 'in-consultation',
+        consultationActive: true,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
     } catch (e) {
       console.warn("Error updating queue status:", e);
     }
@@ -652,6 +664,11 @@ export function DoctorDashboardScreen() {
 
   const handleNotifyNext = async (patient: any) => {
     try {
+      // Immediately update local store queue so patient leaves 'waiting' queue
+      useStore.setState((state) => ({
+        queue: state.queue.map(p => p.id === patient.id ? { ...p, status: 'in-consultation', hasUnread: false } : p)
+      }));
+
       await updateDoc(doc(db, 'queue', patient.id), {
         status: 'in-consultation',
         isAlerted: Date.now(),
@@ -659,6 +676,19 @@ export function DoctorDashboardScreen() {
       }).catch(async () => {
         await setDoc(doc(db, 'queue', patient.id), { status: 'in-consultation', isAlerted: Date.now() }, { merge: true });
       });
+
+      await setDoc(doc(db, 'users', patient.id), {
+        inQueue: false,
+        consultationStatus: 'in-consultation',
+        consultationActive: true,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
+
+      fetch('/api/queue/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: patient.id, status: 'in-consultation', hasUnread: false })
+      }).catch(() => {});
 
       startConsultation(patient.id);
       subscribeToMessages(patient.id);
@@ -683,10 +713,53 @@ export function DoctorDashboardScreen() {
         type: 'text'
       }, patient.id);
 
-      alert(`Chamada enviada para ${patient.patientName}: Paciente puxado para consulta!`);
+      showActionToast(`Chamada enviada para ${patient.patientName}: Paciente puxado para consulta!`);
     } catch (error) {
       console.error("Error sending notification", error);
       alert("Erro ao enviar notificação.");
+    }
+  };
+
+  const handleRemoveFromQueue = async (patient: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm(`Deseja remover ${patient.patientName || 'este paciente'} da fila de atendimento?`)) return;
+
+    try {
+      // 1. Immediately update store
+      useStore.setState((state) => ({
+        queue: state.queue.map(p => p.id === patient.id ? { ...p, status: 'finished' } : p)
+      }));
+
+      if (currentPatient?.id === patient.id) {
+        setCurrentPatient(null);
+      }
+
+      // 2. Mark as finished in Firestore
+      await updateDoc(doc(db, 'queue', patient.id), {
+        status: 'finished',
+        hasUnread: false
+      }).catch(async () => {
+        await setDoc(doc(db, 'queue', patient.id), { status: 'finished' }, { merge: true });
+      });
+
+      await setDoc(doc(db, 'users', patient.id), {
+        inQueue: false,
+        consultationStatus: 'finished',
+        consultationActive: false,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
+
+      // 3. Update server queue
+      fetch('/api/queue/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: patient.id, status: 'finished', hasUnread: false })
+      }).catch(() => {});
+
+      showActionToast(`${patient.patientName || 'Paciente'} removido da fila.`);
+    } catch (err) {
+      console.error("Erro ao remover da fila:", err);
+      alert("Não foi possível remover da fila.");
     }
   };
 
@@ -2745,28 +2818,37 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 </div>
                 <div className="flex flex-wrap gap-2 mt-4 pb-1">
                   <button 
-                    onClick={() => setQueueFilter('all')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'all' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
-                  >
-                    Todos
-                  </button>
-                  <button 
                     onClick={() => setQueueFilter('waiting')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'waiting' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${queueFilter === 'waiting' ? 'bg-mecura-neon text-black font-bold' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
                   >
-                    Aguardando
+                    <span>Aguardando</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${queueFilter === 'waiting' ? 'bg-black/20 text-black font-bold' : 'bg-mecura-neon/20 text-mecura-neon font-bold'}`}>
+                      {queue.filter(p => p.status === 'waiting').length}
+                    </span>
                   </button>
                   <button 
                     onClick={() => setQueueFilter('in-consultation')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'in-consultation' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${queueFilter === 'in-consultation' ? 'bg-mecura-neon text-black font-bold' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
                   >
-                    Em Atendimento
+                    <span>Em Atendimento</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${queueFilter === 'in-consultation' ? 'bg-black/20 text-black font-bold' : 'bg-blue-500/20 text-blue-400 font-bold'}`}>
+                      {queue.filter(p => p.status === 'in-consultation').length}
+                    </span>
                   </button>
                   <button 
                     onClick={() => setQueueFilter('finished')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'finished' ? 'bg-mecura-neon text-black' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${queueFilter === 'finished' ? 'bg-mecura-neon text-black font-bold' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
                   >
-                    Concluído
+                    <span>Concluído</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-mecura-silver">
+                      {queue.filter(p => p.status === 'finished').length}
+                    </span>
+                  </button>
+                  <button 
+                    onClick={() => setQueueFilter('all')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'all' ? 'bg-mecura-neon text-black font-bold' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
+                  >
+                    Todos ({queue.length})
                   </button>
                 </div>
 
@@ -2949,6 +3031,13 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       title="Avisar que atende em 5 minutos"
                     >
                       5 min
+                    </button>
+                    <button 
+                      onClick={(e) => handleRemoveFromQueue(patient, e)}
+                      className="text-[10px] bg-red-500/10 border border-red-500/25 px-2 py-1.5 rounded-lg text-red-400 hover:bg-red-500/20 hover:text-white transition-colors"
+                      title="Tirar paciente da fila de atendimento"
+                    >
+                      Tirar da fila
                     </button>
                     {/* Botão do WhatsApp para chamar o paciente */}
                     <button 
@@ -3192,6 +3281,11 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     const targetPatient = currentPatient || queue.find(p => p.status === 'waiting') || queue[0];
                     if (targetPatient) {
                       try {
+                        // Immediately update local store queue so patient leaves 'waiting' queue
+                        useStore.setState((state) => ({
+                          queue: state.queue.map(p => p.id === targetPatient.id ? { ...p, status: 'in-consultation', hasUnread: false } : p)
+                        }));
+
                         // 1. Definitively set status to 'in-consultation' in Firestore
                         await updateDoc(doc(db, 'queue', targetPatient.id), {
                           status: 'in-consultation',
@@ -3204,6 +3298,19 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                             isAlerted: Date.now()
                           }, { merge: true });
                         });
+
+                        await setDoc(doc(db, 'users', targetPatient.id), {
+                          inQueue: false,
+                          consultationStatus: 'in-consultation',
+                          consultationActive: true,
+                          lastUpdated: new Date().toISOString()
+                        }, { merge: true }).catch(() => {});
+
+                        fetch('/api/queue/update-status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ patientId: targetPatient.id, status: 'in-consultation', hasUnread: false })
+                        }).catch(() => {});
 
                         // 2. Start consultation locally and subscribe
                         startConsultation(targetPatient.id);
@@ -3227,7 +3334,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           type: 'text'
                         }, targetPatient.id);
 
-                        alert(`Chamada enviada para ${targetPatient.patientName || 'o paciente'}! Paciente puxado para consulta com sucesso.`);
+                        showActionToast(`Chamada enviada para ${targetPatient.patientName || 'o paciente'}! Paciente puxado para consulta.`);
                       } catch (e) {
                         console.error(e);
                         alert('Erro ao enviar alerta.');
@@ -3313,10 +3420,20 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 </button>
                 <button 
                   onClick={handleFinishConsultation}
-                  className="px-3 md:px-5 py-2 md:py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                  className="px-3 md:px-5 py-2 md:py-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-emerald-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                  title="Concluir consulta médica com sucesso"
                 >
                   <CheckCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Finalizar</span>
                 </button>
+                {currentPatient && (
+                  <button 
+                    onClick={(e) => handleRemoveFromQueue(currentPatient, e)}
+                    className="px-3 md:px-4 py-2 md:py-2.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
+                    title="Remover paciente da fila e fechar atendimento"
+                  >
+                    <Trash2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Tirar da Fila</span>
+                  </button>
+                )}
               </div>
             </div>
 

@@ -45,97 +45,99 @@ export const AdminDashboardScreen = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda' | 'password_requests' | 'legal'>('overview');
   
 
+  const [sendingQueueIds, setSendingQueueIds] = useState<Record<string, boolean>>({});
+
   const forceSendToQueue = async (patient: any) => {
+    const pId = patient.id || patient.uid || patient.userId || patient.patientId;
+    if (!pId) {
+      setSupportToastMessage('ID do paciente não encontrado');
+      setShowSupportToast(true);
+      setTimeout(() => setShowSupportToast(false), 3000);
+      return;
+    }
+
+    const isPrem = !!(patient.isPremium || patient.tier === 'Premium' || patient.plan === 'premium' || patient.answers?.isPremium || patient.pagamento_premium);
+    const pName = (patient.name || patient.patientName || 'Paciente').trim();
+
+    const queuePayload = {
+      id: pId,
+      patientId: pId,
+      patientName: pName,
+      name: pName,
+      email: patient.email || 'sem-email@mecura.com',
+      phone: patient.phone || patient.whatsapp || patient.answers?.phone || patient.answers?.whatsapp || '',
+      cpf: patient.cpf || patient.answers?.cpf || '',
+      birthDate: patient.birthDate || patient.answers?.birthDate || '',
+      tier: isPrem ? 'Premium' : (patient.tier || 'basic'),
+      isPremium: isPrem,
+      plan: isPrem ? 'premium' : 'basic',
+      status: 'waiting',
+      joinedAt: new Date().toISOString(),
+      hasUnread: true,
+      lastMessageAt: new Date().toISOString(),
+      lastMessageText: 'Paciente adicionado à fila pelo Administrador',
+      answers: patient.answers || {},
+      pagamento_consulta: true,
+      pagamento_premium: isPrem
+    };
+
+    // 1. Instant optimistic local UI update in Zustand
+    setSendingQueueIds(prev => ({ ...prev, [pId]: true }));
+    const currentQueue = useStore.getState().queue || [];
+    const existsIdx = currentQueue.findIndex(q => q.id === pId);
+    let updatedQueue: any[];
+    if (existsIdx >= 0) {
+      updatedQueue = currentQueue.map((item, idx) => idx === existsIdx ? { ...item, ...queuePayload, joinedAt: new Date() } : item);
+    } else {
+      updatedQueue = [{ ...queuePayload, joinedAt: new Date() }, ...currentQueue];
+    }
+    useStore.setState({ queue: updatedQueue });
+
+    setSupportToastMessage(`${pName} enviado para a fila do médico com sucesso!`);
+    setShowSupportToast(true);
+    setTimeout(() => setShowSupportToast(false), 3000);
+
+    // 2. Safe non-blocking background persistence
     try {
-      const pId = patient.id || patient.uid || patient.userId || patient.patientId;
-      if (!pId) {
-        throw new Error('ID do paciente não encontrado');
-      }
+      // Background Firestore writes with timeout
+      Promise.race([
+        setDoc(doc(db, 'queue', pId), queuePayload, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
+      ]).catch(e => console.warn('[ADMIN QUEUE] Firestore queue setDoc:', e));
 
-      const isPrem = !!(patient.isPremium || patient.tier === 'Premium' || patient.plan === 'premium' || patient.answers?.isPremium || patient.pagamento_premium);
-      const pName = (patient.name || patient.patientName || 'Paciente').trim();
+      Promise.race([
+        setDoc(doc(db, 'users', pId), {
+          inQueue: true,
+          consultationStatus: 'waiting',
+          pagamento_consulta: true,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 4000))
+      ]).catch(e => console.warn('[ADMIN QUEUE] Firestore users setDoc:', e));
 
-      const queuePayload = {
-        id: pId,
-        patientId: pId,
-        patientName: pName,
-        name: pName,
-        email: patient.email || 'sem-email@mecura.com',
-        phone: patient.phone || patient.whatsapp || patient.answers?.phone || patient.answers?.whatsapp || '',
-        cpf: patient.cpf || patient.answers?.cpf || '',
-        birthDate: patient.birthDate || patient.answers?.birthDate || '',
-        tier: isPrem ? 'Premium' : (patient.tier || 'basic'),
-        isPremium: isPrem,
-        plan: isPrem ? 'premium' : 'basic',
-        status: 'waiting',
-        joinedAt: new Date().toISOString(),
-        hasUnread: true,
-        lastMessageAt: new Date().toISOString(),
-        lastMessageText: 'Paciente adicionado à fila pelo Administrador',
-        answers: patient.answers || {},
-        pagamento_consulta: true,
-        pagamento_premium: isPrem
-      };
+      // Clean old consultation messages
+      const msgsRef = collection(db, 'active_consultations', pId, 'messages');
+      getDocs(msgsRef).then(snap => {
+        snap.forEach(docSnap => deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {}));
+      }).catch(() => {});
 
-      // 1. Gravar na coleção queue do Firestore com merge
-      await setDoc(doc(db, 'queue', pId), queuePayload, { merge: true });
+      // Sincronizar com o endpoint do servidor (/api/queue/force-join)
+      fetch('/api/queue/force-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(queuePayload)
+      }).catch(srvErr => console.warn('[SERVER QUEUE SYNC] Erro ao sincronizar com servidor:', srvErr));
 
-      // 2. Atualizar o documento do usuário
-      await setDoc(doc(db, 'users', pId), {
-        inQueue: true,
-        consultationStatus: 'waiting',
-        pagamento_consulta: true,
-        lastUpdated: new Date().toISOString()
-      }, { merge: true });
-
-      // 3. Limpar mensagens de sessões antigas
-      try {
-        const msgsRef = collection(db, 'active_consultations', pId, 'messages');
-        const msgsSnap = await getDocs(msgsRef);
-        msgsSnap.forEach((docSnap) => {
-          deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {});
-        });
-      } catch (err) {
-        console.warn("Could not clean old consultation messages:", err);
-      }
-
-      // 4. Sincronizar com o endpoint do servidor (/api/queue/force-join)
-      try {
-        await fetch('/api/queue/force-join', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(queuePayload)
-        });
-      } catch (srvErr) {
-        console.warn('[SERVER QUEUE SYNC] Erro ao sincronizar com servidor:', srvErr);
-      }
-
-      // 5. Atualizar o estado global da fila no Zustand imediatamente
-      const currentQueue = useStore.getState().queue || [];
-      const existsIdx = currentQueue.findIndex(q => q.id === pId);
-      let updatedQueue;
-      if (existsIdx >= 0) {
-        updatedQueue = currentQueue.map((item, idx) => idx === existsIdx ? { ...item, ...queuePayload, joinedAt: new Date() } : item);
-      } else {
-        updatedQueue = [{ ...queuePayload, joinedAt: new Date() }, ...currentQueue];
-      }
-      useStore.setState({ queue: updatedQueue });
-
-      // 6. Disparar notificação para o painel do médico
+      // Disparar notificação para o painel do médico
       triggerAdminBackgroundPush(
         isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila',
         `${pName} foi enviado para a fila pelo Administrador.`,
         '/doctor'
       );
-
-      setSupportToastMessage(`${pName} enviado para a fila do médico com sucesso!`);
-      setShowSupportToast(true);
-      setTimeout(() => setShowSupportToast(false), 3000);
-    } catch (e) {
-      console.error(e);
-      setSupportToastMessage('Erro ao enviar para a fila.');
-      setShowSupportToast(true);
-      setTimeout(() => setShowSupportToast(false), 3000);
+    } finally {
+      setTimeout(() => {
+        setSendingQueueIds(prev => ({ ...prev, [pId]: false }));
+      }, 500);
     }
   };
 const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
@@ -1228,11 +1230,20 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   return (
                   <div key={p.id} className="grid grid-cols-5 p-4 items-center gap-2">
                     <div className="font-bold text-white text-sm break-words flex items-center gap-2">
-  {p.name || 'Sem nome'}
-  {queue.find(q => q.id === p.id && q.status === 'waiting') && (
-    <span className="bg-mecura-neon/20 text-mecura-neon text-[9px] px-1.5 py-0.5 rounded-full whitespace-nowrap">Na Fila</span>
-  )}
-</div>
+                      {p.name || 'Sem nome'}
+                      {(() => {
+                        const cleanPEmail = (p.email || '').trim().toLowerCase();
+                        const qItem = queue.find(q => q.id === p.id || (cleanPEmail && q.email && q.email.trim().toLowerCase() === cleanPEmail));
+                        if (!qItem) return null;
+                        if (qItem.status === 'waiting') {
+                          return <span className="bg-mecura-neon/20 border border-mecura-neon/40 text-mecura-neon text-[9px] px-2 py-0.5 rounded-full whitespace-nowrap font-bold shadow-[0_0_10px_rgba(166,255,0,0.2)]">Na Fila</span>;
+                        }
+                        if (qItem.status === 'in-consultation') {
+                          return <span className="bg-blue-500/20 border border-blue-500/40 text-blue-400 text-[9px] px-2 py-0.5 rounded-full whitespace-nowrap font-bold shadow-[0_0_10px_rgba(59,130,246,0.2)]">Em Consulta</span>;
+                        }
+                        return null;
+                      })()}
+                    </div>
                     <div className="text-[#8A8A9E] text-xs break-all">{p.email || 'N/A'}</div>
                     <div>
                        <span className={`px-2 py-1 rounded-full text-xs ${p.tier === 'Premium' ? 'bg-purple-500/20 text-purple-400' : 'bg-mecura-neon/20 text-mecura-neon'}`}>
@@ -1253,7 +1264,48 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                     </div>
                     <div className="flex flex-col gap-1">
                        <div className="grid grid-cols-2 gap-1">
-                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon" onClick={() => forceSendToQueue(p)} title="Mover para Fila">Fila</Button>
+                         {(() => {
+                           const cleanPEmail = (p.email || '').trim().toLowerCase();
+                           const qItem = queue.find(q => q.id === p.id || (cleanPEmail && q.email && q.email.trim().toLowerCase() === cleanPEmail));
+                           const isSending = !!sendingQueueIds[p.id];
+
+                           if (qItem?.status === 'waiting') {
+                             return (
+                               <Button 
+                                 variant="outline" 
+                                 className="text-[10px] h-7 px-1 bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25 flex items-center justify-center gap-0.5 font-bold cursor-pointer" 
+                                 onClick={() => forceSendToQueue(p)} 
+                                 title="Paciente já está na Fila (clique para atualizar/reenviar)"
+                               >
+                                 {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" /> : <><Check className="w-3 h-3 text-emerald-400" /> Na Fila</>}
+                               </Button>
+                             );
+                           }
+
+                           if (qItem?.status === 'in-consultation') {
+                             return (
+                               <Button 
+                                 variant="outline" 
+                                 className="text-[10px] h-7 px-1 bg-blue-500/15 border border-blue-500/40 text-blue-400 hover:bg-blue-500/25 flex items-center justify-center gap-0.5 font-bold cursor-pointer" 
+                                 onClick={() => forceSendToQueue(p)} 
+                                 title="Paciente em consulta (clique para reiniciar na fila)"
+                               >
+                                 {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-blue-400" /> : 'Em Atend.'}
+                               </Button>
+                             );
+                           }
+
+                           return (
+                             <Button 
+                               variant="outline" 
+                               className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon border border-white/10 hover:border-mecura-neon/40 flex items-center justify-center gap-1 font-semibold text-white transition-all cursor-pointer" 
+                               onClick={() => forceSendToQueue(p)} 
+                               title="Mover paciente para a Fila do Médico"
+                             >
+                               {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-mecura-neon" /> : 'Fila'}
+                             </Button>
+                           );
+                         })()}
                          <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-blue-500/20 hover:text-blue-400" onClick={() => setShowAgenda(p.id)} title="Agenda"><Calendar className="w-3 h-3 mr-1"/> Agend.</Button>
                        </div>
                        <div className="grid grid-cols-3 gap-1">

@@ -6,7 +6,8 @@ import { Button } from '../components/ui/Button';
 import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle, RefreshCw, Zap, LayoutDashboard, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { requestNotificationPermission, showNativeNotification } from '../utils/notifications';
 import { playNotificationSound } from '../utils/sound';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -173,10 +174,57 @@ export function QueueScreen() {
     return () => unsubscribe();
   }, [subscribeToQueue]);
 
+  // Direct listener to the user's specific queue & user document for instant real-time response
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const handleDoctorCall = () => {
+      useStore.setState({
+        consultationActive: true,
+        inQueue: false,
+        isConsultationFinished: false,
+        activeConsultationId: currentUserId,
+        pagamento_consulta: true
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mecura_consultation_active', 'true');
+        localStorage.setItem('mecura_pagamento', 'true');
+      }
+      playNotificationSound();
+      navigate('/chat');
+    };
+
+    const unsubQueueDoc = onSnapshot(doc(db, 'queue', currentUserId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.status === 'in-consultation' || (data.isAlerted && data.status !== 'finished')) {
+          handleDoctorCall();
+        }
+      }
+    });
+
+    const unsubUserDoc = onSnapshot(doc(db, 'users', currentUserId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.consultationStatus === 'in-consultation' || data.consultationActive === true) {
+          handleDoctorCall();
+        }
+      }
+    });
+
+    return () => {
+      unsubQueueDoc();
+      unsubUserDoc();
+    };
+  }, [currentUserId, navigate]);
+
   // Ensure patient is formally registered in queue if they paid and are not yet waiting
   useEffect(() => {
     const hasPaid = pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true');
     if (!hasPaid) return;
+
+    // Do NOT re-join if consultation is active or finished or already completed
+    if (consultationActive || myQueueEntry?.status === 'finished') return;
 
     const isCurrentlyWaitingOrActive = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
     
@@ -194,7 +242,7 @@ export function QueueScreen() {
         plan: isPrem ? 'premium' : 'basic'
       });
     }
-  }, [myQueueEntry?.status, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
+  }, [myQueueEntry?.status, consultationActive, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
 
   useEffect(() => {
     // If patient is waiting in queue, ensure consultationActive is false
