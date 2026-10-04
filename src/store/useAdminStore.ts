@@ -169,11 +169,26 @@ export const useAdminStore = create<AdminState>()(
       })),
 
       promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.',
-      setPromotionsText: (text) => set({ promotionsText: text }),
+      setPromotionsText: (text) => {
+        set({ promotionsText: text });
+        if (typeof window !== 'undefined') {
+          setDoc(doc(db, 'settings', 'adminSettings'), { promotionsText: text, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+        }
+      },
       catalogUrl: 'https://drive.google.com/file/d/1X5dDlzrVQ5bENVFd8He96OB-TT39gA8Z/preview',
       catalogUrlNacional: 'https://drive.google.com/file/d/1RkfK1c76aaiyLnSeVxSsFif8WAEi3aU_/preview',
-      setCatalogUrl: (url) => set({ catalogUrl: url }),
-      setCatalogUrlNacional: (url) => set({ catalogUrlNacional: url }),
+      setCatalogUrl: (url) => {
+        set({ catalogUrl: url });
+        if (typeof window !== 'undefined') {
+          setDoc(doc(db, 'settings', 'adminSettings'), { catalogUrl: url, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+        }
+      },
+      setCatalogUrlNacional: (url) => {
+        set({ catalogUrlNacional: url });
+        if (typeof window !== 'undefined') {
+          setDoc(doc(db, 'settings', 'adminSettings'), { catalogUrlNacional: url, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+        }
+      },
       productCategories: cbdGuideData,
       setProductCategories: (categories) => {
         const merged = mergeProductCatalogs(cbdGuideData, categories);
@@ -240,11 +255,45 @@ if (typeof window !== 'undefined') {
       if (cloudCats && Array.isArray(cloudCats) && cloudCats.length > 0) {
         const currentLocal = useAdminStore.getState().productCategories;
         const merged = mergeProductCatalogs(cbdGuideData, currentLocal, cloudCats);
-        useAdminStore.setState({ productCategories: merged });
+        // Only update state if count or ids differ to avoid re-render loops
+        const currentTotal = currentLocal.reduce((acc, c) => acc + c.products.length, 0);
+        const mergedTotal = merged.reduce((acc, c) => acc + c.products.length, 0);
+        if (currentTotal !== mergedTotal || currentLocal.length !== merged.length) {
+          useAdminStore.setState({ productCategories: merged });
+        }
       }
     });
   } catch (err) {
     console.warn("Failed to attach catalog listener:", err);
+  }
+}
+
+// Realtime Firestore synchronization for Admin Settings (Promotions, PDF Catalog links)
+if (typeof window !== 'undefined') {
+  try {
+    const adminSettingsRef = doc(db, 'settings', 'adminSettings');
+    onSnapshot(adminSettingsRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const updates: Partial<AdminState> = {};
+        if (data.promotionsText && typeof data.promotionsText === 'string') {
+          updates.promotionsText = data.promotionsText;
+        }
+        if (data.catalogUrl && typeof data.catalogUrl === 'string') {
+          updates.catalogUrl = data.catalogUrl;
+        }
+        if (data.catalogUrlNacional && typeof data.catalogUrlNacional === 'string') {
+          updates.catalogUrlNacional = data.catalogUrlNacional;
+        }
+        if (Object.keys(updates).length > 0) {
+          useAdminStore.setState(updates);
+        }
+      }
+    }, (err) => {
+      console.warn("Admin settings listener warning:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to attach admin settings listener:", err);
   }
 }
 
@@ -271,7 +320,7 @@ if (typeof window !== 'undefined') {
 
       const currentLocal = useAdminStore.getState().coupons;
 
-      if (cloudCoupons.length > 0) {
+      if (cloudCoupons.length > 0 || initialized) {
         useAdminStore.setState({ coupons: cloudCoupons });
       } else if (!initialized && currentLocal.length > 0) {
         // First run seed: upload existing local coupons to Firestore

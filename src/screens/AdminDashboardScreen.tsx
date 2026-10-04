@@ -1,7 +1,7 @@
 import html2pdf from "html2pdf.js";
 import Markdown from 'react-markdown';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { isToday, isThisWeek, isThisMonth, parseISO, isFuture, startOfDay } from 'date-fns';
@@ -235,27 +235,23 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     deleteProduct
   } = useAdminStore();
 
-  const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
-
-  useEffect(() => {
-    const unsub = subscribeToFirestoreCatalog((cats) => {
-      if (cats && cats.length > 0) {
-        setCloudCategories(cats);
-      }
-    });
-    return () => unsub();
-  }, []);
-
+  // Unified product categories: base catalog + admin modifications from store
   const productCategories = useMemo(() => {
-    return mergeProductCatalogs(cbdGuideData, rawProductCategories, cloudCategories);
-  }, [rawProductCategories, cloudCategories]);
+    return mergeProductCatalogs(cbdGuideData, rawProductCategories);
+  }, [rawProductCategories]);
 
-  useEffect(() => {
-    if (productCategories && productCategories.length > 0) {
-      syncCatalogToFirestore(productCategories).catch(err => console.warn("Sync error:", err));
-    }
-  }, [productCategories]);
-  const { queue, subscribeToQueue, allAppointments, subscribeToAppointments, confirmAppointment, cancelAppointment, rescheduleAppointment, exchangeRate, updateExchangeRate } = useStore();
+  const { 
+    queue, 
+    subscribeToQueue, 
+    allAppointments, 
+    subscribeToAppointments, 
+    confirmAppointment, 
+    cancelAppointment, 
+    rescheduleAppointment, 
+    exchangeRate, 
+    updateExchangeRate,
+    subscribeToExchangeRate
+  } = useStore();
 
   const [supportRequests, setSupportRequests] = useState<any[]>([]);
   const passwordRequests = supportRequests.filter(req => req.userId === 'recovery');
@@ -266,32 +262,18 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [payments, setPayments] = useState<any[]>([]);
   const [isRefreshingCoupons, setIsRefreshingCoupons] = useState(false);
 
-  // Live real-time coupon sync in Admin Dashboard
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'coupons'), (snapshot) => {
-      const list: any[] = [];
-      snapshot.forEach(docSnap => {
-        const d = docSnap.data();
-        list.push({
-          id: docSnap.id,
-          code: d.code || docSnap.id,
-          discount: Number(d.discount) || 0,
-          discountType: d.discountType || 'percentage',
-          active: d.active !== undefined ? d.active : true,
-          quantity: d.quantity !== undefined ? Number(d.quantity) : 0,
-          usedCount: Number(d.usedCount) || 0,
-          usedBy: Array.isArray(d.usedBy) ? d.usedBy : [],
-          ownerId: d.ownerId || undefined,
-        });
-      });
-      if (list.length > 0) {
-        useAdminStore.setState({ coupons: list });
-      }
-    }, (err) => {
-      console.warn("Live coupons error in admin:", err);
-    });
+  // Robust, debounced Toast Helper
+  const [showSupportToast, setShowSupportToast] = useState(false);
+  const [supportToastMessage, setSupportToastMessage] = useState("");
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    return () => unsub();
+  const showToast = useCallback((message: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setSupportToastMessage(message);
+    setShowSupportToast(true);
+    toastTimeoutRef.current = setTimeout(() => {
+      setShowSupportToast(false);
+    }, 3500);
   }, []);
 
   const handleRefreshCoupons = async () => {
@@ -313,13 +295,22 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           ownerId: d.ownerId || undefined,
         });
       });
-      if (list.length > 0) {
-        useAdminStore.setState({ coupons: list });
-      }
-    } catch (e) {
+      useAdminStore.setState({ coupons: list });
+      showToast(`${list.length} cupom(ns) sincronizados com sucesso.`);
+    } catch (e: any) {
       console.error("Erro ao atualizar cupons:", e);
+      showToast("Erro ao sincronizar cupons: " + (e?.message || 'Tente novamente'));
     } finally {
       setIsRefreshingCoupons(false);
+    }
+  };
+
+  const handleManualSyncCatalog = async () => {
+    try {
+      await syncCatalogToFirestore(productCategories);
+      showToast("Catálogo oficial sincronizado com a nuvem com sucesso!");
+    } catch (e: any) {
+      showToast("Erro ao sincronizar catálogo: " + (e?.message || 'Tente novamente'));
     }
   };
 
@@ -336,9 +327,11 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       setPatients(usersData);
     });
 
-    // Subscribe to global queue store and appointments
+    // Subscribe to global queue store, appointments and exchange rate
     const unsubscribeQueueStore = subscribeToQueue();
     const unsubscribeAppointmentsStore = subscribeToAppointments();
+    const unsubscribeExchangeRateStore = subscribeToExchangeRate();
+
     // Fetch queue count
     const qQueue = query(collection(db, 'queue'));
     const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
@@ -352,33 +345,30 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
 
     return () => {
       unsubscribeUsers();
-      if(unsubscribeQueueStore) unsubscribeQueueStore();
-      if(unsubscribeAppointmentsStore) unsubscribeAppointmentsStore();
+      if (unsubscribeQueueStore) unsubscribeQueueStore();
+      if (unsubscribeAppointmentsStore) unsubscribeAppointmentsStore();
+      if (unsubscribeExchangeRateStore) unsubscribeExchangeRateStore();
       unsubscribeQueue();
       unsubscribePayments();
     };
-  }, [subscribeToQueue, subscribeToAppointments]);
+  }, [subscribeToQueue, subscribeToAppointments, subscribeToExchangeRate]);
 
-  const [showSupportToast, setShowSupportToast] = useState(false);
-  const [supportToastMessage, setSupportToastMessage] = useState("");
-
+  const prevSupportRequestsCountRef = useRef(0);
   useEffect(() => {
     const q = query(collection(db, 'support_requests'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const activeRequests = requests.filter((r: any) => r.status === 'pending');
       
-      if (activeRequests.length > supportRequests.length && supportRequests.length > 0) {
-        setSupportToastMessage("Nova solicitação de suporte recebida!");
-        setShowSupportToast(true);
-        setTimeout(() => setShowSupportToast(false), 3000);
+      if (activeRequests.length > prevSupportRequestsCountRef.current && prevSupportRequestsCountRef.current > 0) {
+        showToast("Nova solicitação de suporte recebida!");
       }
-      
+      prevSupportRequestsCountRef.current = activeRequests.length;
       setSupportRequests(activeRequests);
     });
 
     return () => unsubscribe();
-  }, [supportRequests.length]);
+  }, [showToast]);
 
   // Modals state
   const [showAddDoctor, setShowAddDoctor] = useState(false);
@@ -652,18 +642,24 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       return;
     }
     const cleanCode = couponForm.code.trim().toUpperCase();
-    await addCoupon({ 
-      id: 'coupon_' + Date.now(), 
-      code: cleanCode,
-      active: true, 
-      usedCount: 0, 
-      usedBy: [], 
-      discount: Math.min(100, Math.max(1, Number(couponForm.discount) || 10)),
-      discountType: 'percentage',
-      quantity: Number(couponForm.quantity) || 0
-    });
-    setShowAddCoupon(false);
-    setCouponForm({ code: '', discount: 10, quantity: 0 });
+    try {
+      await addCoupon({ 
+        id: 'coupon_' + Date.now(), 
+        code: cleanCode,
+        active: true, 
+        usedCount: 0, 
+        usedBy: [], 
+        discount: Math.min(100, Math.max(1, Number(couponForm.discount) || 10)),
+        discountType: 'percentage',
+        quantity: Number(couponForm.quantity) || 0
+      });
+      setShowAddCoupon(false);
+      setCouponForm({ code: '', discount: 10, quantity: 0 });
+      showToast(`Cupom ${cleanCode} criado e salvo com sucesso no banco de dados!`);
+    } catch (e: any) {
+      console.error("Erro ao adicionar cupom:", e);
+      alert("Erro ao salvar cupom: " + (e?.message || 'Tente novamente'));
+    }
   };
 
   const handleSendNotification = async () => {
@@ -932,22 +928,22 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   className="bg-[#0A0A0F] text-white border border-[#262636] rounded-xl px-4 py-3 flex-1 focus:outline-none focus:border-mecura-neon"
                 />
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const el = document.getElementById('exchange-rate-input') as HTMLInputElement;
                     if (el) {
                       const clean = el.value.trim().replace(',', '.');
                       const val = parseFloat(clean);
                       if (!isNaN(val) && val > 0) {
-                        updateExchangeRate(val);
-                        setSupportToastMessage(`Cotação R$ ${val.toFixed(2)} salva com sucesso!`);
+                        await updateExchangeRate(val);
+                        showToast(`Cotação R$ ${val.toFixed(2)} salva com sucesso no banco de dados!`);
                       } else {
-                        setSupportToastMessage('Por favor insira um valor válido de cotação.');
+                        showToast('Por favor insira um valor válido de cotação.');
                       }
                     }
                   }}
-                  className="bg-mecura-neon text-black font-bold px-6 py-3 rounded-xl hover:bg-[#b5ff33] transition-colors whitespace-nowrap cursor-pointer"
+                  className="bg-mecura-neon text-black font-bold px-6 py-3 rounded-xl hover:bg-[#b5ff33] transition-colors whitespace-nowrap cursor-pointer active:scale-95"
                 >
-                  Salvar
+                  Salvar Cotação
                 </button>
               </div>
               
@@ -962,14 +958,14 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                       if (!isNaN(rate)) {
                         const el = document.getElementById('exchange-rate-input') as HTMLInputElement;
                         if (el) el.value = rate.toFixed(2);
-                        updateExchangeRate(rate);
-                        setSupportToastMessage('Cotação atualizada: R$ ' + rate.toFixed(2));
+                        await updateExchangeRate(rate);
+                        showToast(`Cotação atualizada via mercado comercial: R$ ${rate.toFixed(2)}`);
                       }
                     } catch (e) {
-                      setSupportToastMessage('Erro ao buscar cotação. Tente novamente.');
+                      showToast('Erro ao buscar cotação. Tente novamente.');
                     }
                   }}
-                  className="w-full bg-[#1A2E05] text-mecura-neon border border-mecura-neon/50 font-bold px-6 py-3 rounded-xl hover:bg-mecura-neon/10 transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-[#1A2E05] text-mecura-neon border border-mecura-neon/50 font-bold px-6 py-3 rounded-xl hover:bg-mecura-neon/10 transition-colors flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 >
                   <RefreshCw className="w-5 h-5" />
                   Sincronizar em Tempo Real (Comercial)
@@ -1359,9 +1355,13 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 <Button onClick={() => handleOpenAddMedicine()} className="bg-mecura-neon text-black font-bold hover:bg-[#b5ff33] shadow-[0_0_15px_rgba(166,255,0,0.15)]">
                   <Plus className="w-4 h-4 mr-2" /> + Adicionar Medicamento
                 </Button>
+                <Button variant="outline" onClick={handleManualSyncCatalog} className="border-mecura-neon/40 text-mecura-neon hover:bg-mecura-neon/10">
+                  <RefreshCw className="w-4 h-4 mr-2" /> Sincronizar na Nuvem
+                </Button>
                 <Button variant="outline" onClick={() => {
                   if(window.confirm('Tem certeza? Isso irá restaurar o catálogo do banco de dados oficial (PDF atualizado).')) {
                     setProductCategories(cbdGuideData);
+                    showToast('Catálogo restaurado com as bases oficiais!');
                   }
                 }}>
                   <RefreshCw className="w-4 h-4 mr-2" /> Atualizar via Sistema (PDF)
@@ -1652,19 +1652,23 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                             {coupon.active ? 'Ativo' : 'Inativo'}
                           </span>
                           <button 
-                            onClick={() => updateCoupon(coupon.id, { active: !coupon.active })} 
-                            className="text-[#8A8A9E] hover:text-white transition-colors"
+                            onClick={async () => {
+                              await updateCoupon(coupon.id, { active: !coupon.active });
+                              showToast(coupon.active ? `Cupom ${coupon.code} desativado.` : `Cupom ${coupon.code} ativado com sucesso!`);
+                            }} 
+                            className="text-[#8A8A9E] hover:text-white transition-colors cursor-pointer"
                             title={coupon.active ? "Desativar cupom" : "Ativar cupom"}
                           >
                             {coupon.active ? <XCircle className="w-5 h-5 text-amber-400 hover:text-amber-300"/> : <CheckCircle className="w-5 h-5 text-green-400 hover:text-green-300"/>}
                           </button>
                           <button 
-                            onClick={() => {
+                            onClick={async () => {
                               if (confirm(`Tem certeza que deseja excluir o cupom ${coupon.code}?`)) {
-                                deleteCoupon(coupon.id);
+                                await deleteCoupon(coupon.id);
+                                showToast(`Cupom ${coupon.code} excluído com sucesso.`);
                               }
                             }} 
-                            className="text-[#8A8A9E] hover:text-red-400 transition-colors"
+                            className="text-[#8A8A9E] hover:text-red-400 transition-colors cursor-pointer"
                             title="Excluir cupom"
                           >
                             <Trash2 className="w-5 h-5"/>
