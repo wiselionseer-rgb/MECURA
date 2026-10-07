@@ -366,11 +366,11 @@ export function StandaloneDocumentModal({
 
                 {/* Patient quick chips */}
                 <div className="flex gap-2 overflow-x-auto pb-1 max-h-32 flex-wrap">
-                  {filteredPatients.map(p => {
+                  {filteredPatients.map((p, pIdx) => {
                     const isSelected = selectedPatientId === p.id;
                     return (
                       <button
-                        key={p.id}
+                        key={`${p.id || 'patient'}-${pIdx}`}
                         type="button"
                         onClick={() => handleSelectPatient(p)}
                         className={`px-3 py-2 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-2.5 shrink-0 ${

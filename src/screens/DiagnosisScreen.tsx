@@ -9,14 +9,8 @@ export function DiagnosisScreen() {
   const { userName, answers, setSelectedOffer, pagamento_consulta, inQueue, consultationActive } = useStore();
 
   const handleNext = () => {
-    if (pagamento_consulta) {
-      if (consultationActive) {
-        navigate('/chat');
-      } else if (inQueue) {
-        navigate('/queue');
-      } else {
-        navigate('/dashboard');
-      }
+    if (pagamento_consulta && consultationActive) {
+      navigate('/chat');
       return;
     }
     setSelectedOffer('basic');

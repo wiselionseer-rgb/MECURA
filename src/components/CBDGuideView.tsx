@@ -881,7 +881,7 @@ export function CBDGuideView() {
                     <div className="block md:hidden space-y-3">
                       {category.products.map((product, idx) => (
                         <div 
-                          key={idx} 
+                          key={`mob-prod-${category.id}-${product.name}-${idx}`} 
                           className="p-4 rounded-xl bg-[#0E0E14] border border-mecura-elevated hover:border-mecura-neon/40 transition-all space-y-2.5 cursor-pointer hover:bg-white/5"
                           onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}
                         >
@@ -989,7 +989,7 @@ export function CBDGuideView() {
                         </thead>
                         <tbody className="divide-y divide-mecura-elevated bg-[#0A0A0F]/60">
                           {category.products.map((product, idx) => (
-                            <tr key={idx} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}>
+                            <tr key={`desk-prod-${category.id}-${product.name}-${idx}`} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}>
                               <td className="py-3.5 px-4 font-medium text-white align-top">
                                 <div className="font-bold text-white text-sm group-hover:text-mecura-neon transition-colors leading-snug break-words">
                                   {product.name}

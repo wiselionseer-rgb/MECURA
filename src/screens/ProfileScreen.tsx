@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, User, Mail, Phone, Save, Flame, ShieldCheck, Calendar, CreditCard, Scale, Lock, FileText, ChevronRight, Building2 } from 'lucide-react';
+import { ChevronLeft, User, Mail, Phone, Save, Flame, ShieldCheck, Calendar, CreditCard, Scale, Lock, FileText, ChevronRight, Building2, KeyRound } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
 import { auth, db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { LegalInfoModal } from '../components/LegalInfoModal';
 import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
+import { PasswordResetCpfModal } from '../components/PasswordResetCpfModal';
 
 const formatBirthDate = (val: string) => {
   const digits = val.replace(/\D/g, '').slice(0, 8);
@@ -48,6 +49,7 @@ export function ProfileScreen() {
   const [cpf, setCpf] = useState(userCpf);
   const [birthDate, setBirthDate] = useState(userBirthDate || answers?.birthDate || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState<'parecer' | 'privacidade' | 'termos' | 'empresa'>('privacidade');
 
@@ -66,9 +68,14 @@ export function ProfileScreen() {
     setAnswer('birthDate', birthDate);
     setAnswer('cpf', cpf);
 
-    if (auth.currentUser) {
+    if (name && typeof name === 'string' && name.trim().toLowerCase() !== 'paciente') {
+      if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', name.trim());
+    }
+
+    const targetUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+    if (targetUid) {
       try {
-        await setDoc(doc(db, 'users', auth.currentUser.uid), {
+        await setDoc(doc(db, 'users', targetUid), {
           name,
           email,
           phone,
@@ -234,6 +241,28 @@ export function ProfileScreen() {
             </div>
 
             <div className="space-y-2">
+              {/* Item: Alterar Senha de Acesso */}
+              <button
+                type="button"
+                onClick={() => setShowPasswordModal(true)}
+                className="w-full p-3.5 rounded-2xl bg-[#161622] border border-[#262636] hover:border-mecura-neon/40 transition-all flex items-center justify-between group cursor-pointer text-left shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-mecura-neon/10 border border-mecura-neon/20 flex items-center justify-center shrink-0">
+                    <KeyRound className="w-4 h-4 text-mecura-neon" />
+                  </div>
+                  <div>
+                    <h5 className="text-[13px] font-bold text-white group-hover:text-mecura-neon transition-colors">
+                      Alterar Senha de Acesso
+                    </h5>
+                    <p className="text-[11px] text-[#8A8A9E]">
+                      Redefinição instantânea validando os 4 últimos dígitos do seu CPF
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#8A8A9E] group-hover:text-mecura-neon group-hover:translate-x-0.5 transition-all" />
+              </button>
+
               {/* Item: Política de Privacidade */}
               <button
                 type="button"
@@ -320,6 +349,12 @@ export function ProfileScreen() {
         isOpen={showLegalModal}
         onClose={() => setShowLegalModal(false)}
         initialTab={legalModalTab}
+      />
+
+      <PasswordResetCpfModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        initialEmail={email || userEmail}
       />
     </div>
   );

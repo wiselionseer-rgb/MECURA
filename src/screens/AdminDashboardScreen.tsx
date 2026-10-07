@@ -602,6 +602,30 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     }
   };
 
+  const handleDirectUpdatePatientPassword = async () => {
+    if (!showEditPatientPassword) return;
+    if (!newPatientPassword || newPatientPassword.length < 6) {
+      alert("A nova senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'users', showEditPatientPassword), {
+        password: newPatientPassword,
+        lastPasswordReset: new Date().toISOString(),
+        passwordResetBy: 'admin_dashboard',
+        updatedAt: new Date().toISOString()
+      });
+      setSupportToastMessage('Senha do paciente alterada com sucesso!');
+      setShowSupportToast(true);
+      setTimeout(() => setShowSupportToast(false), 3000);
+      setShowEditPatientPassword(null);
+      setNewPatientPassword('');
+    } catch (err: any) {
+      console.error("Erro ao alterar senha do paciente", err);
+      alert("Erro ao alterar senha: " + err.message);
+    }
+  };
+
   const handleUpdatePatientPassword = async () => {
     if (showEditPatientPassword) {
       const patient = patients.find(p => p.id === showEditPatientPassword);
@@ -1220,11 +1244,11 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                     const search = patientSearch.toLowerCase();
                     if (!search) return true; 
                     return p.name?.toLowerCase().includes(search) || p.email?.toLowerCase().includes(search);
-                }).map(p => {
+                }).map((p, pIdx) => {
                   const lastActiveMs = p.lastActive?.toMillis ? p.lastActive.toMillis() : (p.lastActive?.seconds ? p.lastActive.seconds * 1000 : (p.lastActive ? new Date(p.lastActive).getTime() : 0));
                   const isOnline = lastActiveMs > 0 && (Date.now() - lastActiveMs) < 5 * 60000;
                   return (
-                  <div key={p.id} className="grid grid-cols-5 p-4 items-center gap-2">
+                  <div key={`${p.id || 'pat'}-${pIdx}`} className="grid grid-cols-5 p-4 items-center gap-2">
                     <div className="font-bold text-white text-sm break-words flex items-center gap-2">
                       {p.name || 'Sem nome'}
                       {(() => {
@@ -1885,8 +1909,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {LEGAL_OPINION_DATA.pillars.map((pillar) => (
-                  <div key={pillar.id} className="p-5 rounded-2xl bg-[#161622] border border-white/5 hover:border-mecura-neon/20 transition-all space-y-2">
+                {LEGAL_OPINION_DATA.pillars.map((pillar, idx) => (
+                  <div key={`${pillar.id || 'pil'}-${idx}`} className="p-5 rounded-2xl bg-[#161622] border border-white/5 hover:border-mecura-neon/20 transition-all space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <h4 className="text-sm font-bold text-white">{pillar.title}</h4>
                       {pillar.badge && (
@@ -2270,18 +2294,73 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
         </div>
       )}
 
-      {showEditPatientPassword && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
-          <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold mb-4">Redefinir Senha do Paciente</h3>
-            <p className="text-[#8A8A9E] mb-6 text-sm">Por questões de segurança do Firebase, não é possível definir uma senha provisória manualmente.<br/><br/>Ao confirmar, o sistema enviará um e-mail oficial para <b>{patients.find(p => p.id === showEditPatientPassword)?.email}</b> com um link seguro para ele redefinir a própria senha.</p>
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setShowEditPatientPassword(null)}>Cancelar</Button>
-              <Button className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black" onClick={handleUpdatePatientPassword}>Enviar E-mail</Button>
+      {showEditPatientPassword && (() => {
+        const targetPatient = patients.find(p => p.id === showEditPatientPassword);
+        const pCpf = targetPatient?.cpf || targetPatient?.answers?.cpf || '';
+        const cpfDigits = pCpf.replace(/\D/g, '');
+        const last4 = cpfDigits.length >= 4 ? cpfDigits.slice(-4) : 'N/A';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
+            <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-md">
+              <h3 className="text-xl font-bold mb-2 text-white">Gerenciar Senha do Paciente</h3>
+              <p className="text-xs text-[#8A8A9E] mb-4">
+                Paciente: <b className="text-white">{targetPatient?.name || 'Paciente'}</b> ({targetPatient?.email || 'Sem e-mail'})
+              </p>
+
+              <div className="p-3 bg-[#1F1F2E] border border-[#2D2D42] rounded-xl mb-4 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-[#8A8A9E]">CPF Cadastrado:</span>
+                  <span className="font-mono text-white">{pCpf || 'Não informado'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#8A8A9E]">Últimos 4 dígitos para validação:</span>
+                  <span className="font-mono font-bold text-mecura-neon">***.***.XX{last4.slice(0, 2)}-{last4.slice(2, 4)} ({last4})</span>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-5">
+                <label className="text-xs font-semibold text-[#8A8A9E] block">
+                  Definir Nova Senha Manualmente:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Digite a nova senha (mínimo 6 dígitos)"
+                  value={newPatientPassword}
+                  onChange={(e) => setNewPatientPassword(e.target.value)}
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2.5 text-white text-sm focus:border-mecura-neon focus:outline-none"
+                />
+                <Button 
+                  className="w-full bg-mecura-neon text-black font-bold hover:bg-[#b5ff33] text-sm"
+                  onClick={handleDirectUpdatePatientPassword}
+                  disabled={!newPatientPassword || newPatientPassword.length < 6}
+                >
+                  Salvar Nova Senha do Paciente
+                </Button>
+              </div>
+
+              <div className="border-t border-[#262636] pt-4 mb-4">
+                <p className="text-xs text-[#8A8A9E] mb-3">
+                  Ou se preferir, envie o link oficial do Firebase para o e-mail do paciente:
+                </p>
+                <Button 
+                  variant="outline" 
+                  className="w-full border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10 text-xs" 
+                  onClick={handleUpdatePatientPassword}
+                >
+                  Enviar Link de Redefinição por E-mail
+                </Button>
+              </div>
+
+              <div className="flex justify-end">
+                <Button variant="outline" className="w-full" onClick={() => { setShowEditPatientPassword(null); setNewPatientPassword(''); }}>
+                  Fechar
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {showAddDoctor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">

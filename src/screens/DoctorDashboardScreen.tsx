@@ -148,7 +148,7 @@ export function DoctorDashboardScreen() {
     allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
     subscribeToMessages, subscribeToAppointments, activeConsultationId,
     consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages,
-    exchangeRate
+    exchangeRate, patientId
   } = useStore();
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
@@ -468,26 +468,6 @@ export function DoctorDashboardScreen() {
     setPrescDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
     setPrescDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
 
-    // If patient had existing items and user didn't clear, keep them; if empty, provide initial ABECMED/National item
-    if (prescItems.length === 0) {
-      const defaultItem: PrescriptionItemData = {
-        name: "Óleo ABEC CBD Full Spectrum 5% (50 mg/mL — 1.500 mg)",
-        brand: "ABECMED (Associação Nacional)",
-        origin: "Nacional",
-        activeIngredients: "Fitocanabinoides Full Spectrum com predomínio de Canabidiol (CBD)",
-        concentration: "50 mg/mL de CBD (Total: 1.500 mg no frasco)",
-        pharmaceuticalForm: "Solução Oleosa Sublingual / Oral (Frasco 30 mL)",
-        quantity: "01 Frasco de 30 mL",
-        administrationRoute: "Via Sublingual / Oral",
-        dosage: [
-          "Tomar 05 gotas por via sublingual de 12 em 12 horas.",
-          "Reter sob a língua por 60 segundos antes de engolir para rápida absorção."
-        ],
-        description: "Óleo Full Spectrum nacional da ABECMED em extração RSO diluído em MCT puro."
-      };
-      setPrescItems([defaultItem]);
-    }
-
     setShowPrescriptionEditorModal(true);
   };
 
@@ -679,23 +659,25 @@ export function DoctorDashboardScreen() {
     console.log("Starting consultation for:", patient);
     
     let enrichedPatient = { ...patient };
-    // Fetch answers from users collection if they are missing
-    if (!enrichedPatient.answers || Object.keys(enrichedPatient.answers).length === 0) {
-      try {
-        const userDoc = await getDoc(doc(db, 'users', patient.id));
-        if (userDoc.exists()) {
-           const userData = userDoc.data();
-           if (userData.answers) {
-             enrichedPatient.answers = userData.answers;
-           }
-           enrichedPatient.patientName = userData.name || enrichedPatient.patientName;
-           enrichedPatient.cpf = userData.cpf || enrichedPatient.cpf;
-           enrichedPatient.birthDate = userData.birthDate || enrichedPatient.birthDate;
-           enrichedPatient.phone = userData.phone || enrichedPatient.phone;
-        }
-      } catch (e) {
-        console.warn("Failed to enrich patient data", e);
+    // Fetch answers and real profile data from users collection
+    try {
+      const userDoc = await getDoc(doc(db, 'users', patient.id));
+      if (userDoc.exists()) {
+         const userData = userDoc.data();
+         if (userData.answers && (!enrichedPatient.answers || Object.keys(enrichedPatient.answers).length === 0)) {
+           enrichedPatient.answers = userData.answers;
+         }
+         if (userData.name && typeof userData.name === 'string' && userData.name.trim().toLowerCase() !== 'paciente') {
+           enrichedPatient.patientName = userData.name.trim();
+           (enrichedPatient as any).name = userData.name.trim();
+         }
+         if (userData.cpf) enrichedPatient.cpf = userData.cpf;
+         if (userData.birthDate) enrichedPatient.birthDate = userData.birthDate;
+         if (userData.phone) enrichedPatient.phone = userData.phone;
+         if (userData.email && !enrichedPatient.email?.includes('@')) enrichedPatient.email = userData.email;
       }
+    } catch (e) {
+      console.warn("Failed to enrich patient data", e);
     }
 
     setCurrentPatient(enrichedPatient);
@@ -1351,11 +1333,56 @@ export function DoctorDashboardScreen() {
   };
 
   const handleFinishConsultation = async () => {
+    const targetPatientId = currentPatient?.id || activeConsultationId || patientId;
+    const targetPatientName = currentPatient?.patientName || userName || 'Paciente';
+
     await addMessage({
-      text: `Consulta finalizada.\n\n${userName ? userName + ', a' : 'A'}gradeço a confiança em meu trabalho. Lembre-se que o tratamento com cannabis medicinal é uma jornada de adaptação e descoberta. Estarei acompanhando sua evolução de perto.\n\nQualquer dúvida sobre a dosagem, efeitos ou se precisar de suporte, nossa equipe de acolhimento está à disposição 24h por dia aqui no aplicativo.\n\nUm excelente tratamento e conte conosco!`,
+      text: `Consulta finalizada.\n\n${targetPatientName ? targetPatientName + ', a' : 'A'}gradeço a confiança em meu trabalho. Lembre-se que o tratamento com cannabis medicinal é uma jornada de adaptação e descoberta. Estarei acompanhando sua evolução de perto.\n\nQualquer dúvida sobre a dosagem, efeitos ou se precisar de suporte, nossa equipe de acolhimento está à disposição 24h por dia aqui no aplicativo.\n\nUm excelente tratamento e conte conosco!`,
       sender: 'doctor',
       type: 'text'
-    });
+    }, targetPatientId);
+
+    if (targetPatientId) {
+      try {
+        await updateDoc(doc(db, 'queue', targetPatientId), {
+          status: 'finished',
+          hasUnread: false
+        }).catch(async () => {
+          await setDoc(doc(db, 'queue', targetPatientId), { status: 'finished', hasUnread: false }, { merge: true });
+        });
+
+        await setDoc(doc(db, 'users', targetPatientId), {
+          inQueue: false,
+          consultationStatus: 'finished',
+          isConsultationFinished: true,
+          consultationActive: false,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+
+        fetch('/api/queue/update-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patientId: targetPatientId, status: 'finished', hasUnread: false })
+        }).catch(() => {});
+
+        triggerBackgroundPush(
+          targetPatientId,
+          'Consulta Concluída',
+          'O Dr. Guilherme finalizou o atendimento. Seu protocolo e documentos já estão liberados!',
+          '/protocol'
+        );
+      } catch (e) {
+        console.warn('Erro ao finalizar paciente:', e);
+      }
+
+      useStore.setState((state) => ({
+        queue: state.queue.map(p => p.id === targetPatientId ? { ...p, status: 'finished' } : p),
+        isConsultationFinished: true,
+        consultationActive: false,
+        inQueue: false
+      }));
+    }
+
     endConsultation();
     setCurrentPatient(null);
   };
@@ -1482,24 +1509,7 @@ export function DoctorDashboardScreen() {
     if (items.length > 0) {
       setPrescItems(items);
     } else {
-      const defaultEnriched = enrichMedicationDetails('ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)', 'Associação Brasileira (Nacional)', 'Nacional');
-      setPrescItems([
-        {
-          name: 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml (30ml)',
-          brand: 'Associação Brasileira (Nacional)',
-          origin: 'Nacional',
-          activeIngredients: defaultEnriched.activeIngredients,
-          concentration: defaultEnriched.concentration,
-          pharmaceuticalForm: defaultEnriched.pharmaceuticalForm,
-          quantity: defaultEnriched.quantity,
-          administrationRoute: defaultEnriched.administrationRoute,
-          dosage: [
-            'Tomar 03 gotas de 12/12 horas (sublingual).',
-            'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).'
-          ],
-          description: 'Extrato integral rico em Canabidiol com excelente rendimento e custo-benefício.'
-        }
-      ]);
+      setPrescItems([]);
     }
     const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
     
@@ -1583,73 +1593,9 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleDownloadPrescriptionFromEditor = async () => {
-    const targetPatientId = currentPatient?.id || standaloneTargetPatientId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
-    // 1. Atualizar o chat (banco de dados) com a versão final editada para o paciente ver
-    if (targetPatientId) {
-      await clearPrescriptionMessages(targetPatientId);
-      
-      for (const item of prescItems) {
-        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura|ABEC|ABECMED/i.test(item.name) || item.origin === 'Nacional';
-        
-        let foundCatProd: any = null;
-        const cleanName = item.name.toLowerCase().trim();
-        for (const cat of productCategories) {
-          const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()));
-          if (p) { foundCatProd = p; break; }
-        }
-        if (!foundCatProd) {
-          foundCatProd = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
-        }
-        if (!foundCatProd) {
-          foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
-        }
-        if (!foundCatProd) {
-          foundCatProd = ABECMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
-        }
-
-        const enriched = enrichMedicationDetails(
-          item.name, 
-          item.brand || (isNational ? 'Associação Nacional' : 'GreenBudzCBD'), 
-          item.origin || (isNational ? 'Nacional' : 'Importado'), 
-          item.type, 
-          foundCatProd
-        );
-
-        await addMessage({
-          sender: 'doctor',
-          type: 'product',
-          productData: { 
-            name: item.name,
-            brand: item.brand || (foundCatProd ? foundCatProd.manufacturer : enriched.brand),
-            origin: item.origin || (foundCatProd ? foundCatProd.origin : enriched.origin),
-            type: item.type || (foundCatProd ? foundCatProd.type : enriched.type),
-            activeIngredients: item.activeIngredients || enriched.activeIngredients,
-            concentration: item.concentration || enriched.concentration,
-            pharmaceuticalForm: item.pharmaceuticalForm || enriched.pharmaceuticalForm,
-            quantity: item.quantity || enriched.quantity,
-            administrationRoute: item.administrationRoute || enriched.administrationRoute,
-            details: item.details && item.details.length > 0 ? item.details : (foundCatProd?.details || [enriched.activeIngredients]),
-            dosage: item.dosage && item.dosage.length > 0 ? item.dosage : ['Tomar conforme orientação médica.'],
-            description: item.description || foundCatProd?.description || enriched.description || '',
-            italicText: foundCatProd?.italicText || 'Produto Prescrito',
-            image: item.image || foundCatProd?.image || (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
-            priceUSD: isNational ? undefined : (item.priceUSD || foundCatProd?.priceUSD),
-            priceBRL: isNational ? undefined : (item.priceBRL || foundCatProd?.priceBRL)
-          }
-        }, targetPatientId);
-      }
-      
-      if (prescNotes && prescNotes.trim()) {
-        await addMessage({
-          sender: 'doctor',
-          type: 'prescription_notes',
-          text: prescNotes
-        }, targetPatientId);
-      }
-    }
-
-    // 2. Gerar o PDF com os dados editados para download local
+  const handleDownloadPrescriptionFromEditor = () => {
+    // 1. Gerar o PDF com os dados editados para download local no computador do médico
+    // IMPORTANTE: NÃO envia mensagens nem produtos para o chat ou histórico do paciente
     generatePrescriptionPDF(prescPatientName, messages, {
       customPatientName: prescPatientName,
       birthDate: prescBirthDate,
@@ -1661,9 +1607,10 @@ export function DoctorDashboardScreen() {
       customItems: prescItems,
       customNotes: prescNotes
     });
+    showActionToast("Receita em PDF baixada com sucesso!");
   };
 
-  const handleSendPrescriptionToChat = async () => {
+  const handleSendPrescriptionToChat = async (includeProductCards: boolean = false) => {
     const targetPatientId = currentPatient?.id || standaloneTargetPatientId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       alert("Nenhum paciente selecionado para envio da receita.");
@@ -1673,57 +1620,59 @@ export function DoctorDashboardScreen() {
     try {
       setIsSendingAttachment(true);
 
-      // 1. Atualizar o chat com os cards de medicamentos
-      await clearPrescriptionMessages(targetPatientId);
-      for (const item of prescItems) {
-        const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura|ABEC|ABECMED/i.test(item.name) || item.origin === 'Nacional';
-        
-        let foundCatProd: any = null;
-        const cleanName = item.name.toLowerCase().trim();
-        for (const cat of productCategories) {
-          const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()));
-          if (p) { foundCatProd = p; break; }
-        }
-        if (!foundCatProd) {
-          foundCatProd = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
-        }
-        if (!foundCatProd) {
-          foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
-        }
-        if (!foundCatProd) {
-          foundCatProd = ABECMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
-        }
-
-        const enriched = enrichMedicationDetails(
-          item.name, 
-          item.brand || (isNational ? 'Associação Nacional' : 'GreenBudzCBD'), 
-          item.origin || (isNational ? 'Nacional' : 'Importado'), 
-          item.type, 
-          foundCatProd
-        );
-
-        await addMessage({
-          sender: 'doctor',
-          type: 'product',
-          productData: { 
-            name: item.name,
-            brand: item.brand || (foundCatProd ? foundCatProd.manufacturer : enriched.brand),
-            origin: item.origin || (foundCatProd ? foundCatProd.origin : enriched.origin),
-            type: item.type || (foundCatProd ? foundCatProd.type : enriched.type),
-            activeIngredients: item.activeIngredients || enriched.activeIngredients,
-            concentration: item.concentration || enriched.concentration,
-            pharmaceuticalForm: item.pharmaceuticalForm || enriched.pharmaceuticalForm,
-            quantity: item.quantity || enriched.quantity,
-            administrationRoute: item.administrationRoute || enriched.administrationRoute,
-            details: item.details && item.details.length > 0 ? item.details : (foundCatProd?.details || [enriched.activeIngredients]),
-            dosage: item.dosage && item.dosage.length > 0 ? item.dosage : ['Tomar conforme orientação médica.'],
-            description: item.description || foundCatProd?.description || enriched.description || '',
-            italicText: foundCatProd?.italicText || 'Produto Prescrito',
-            image: item.image || foundCatProd?.image || (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
-            priceUSD: isNational ? undefined : (item.priceUSD || foundCatProd?.priceUSD),
-            priceBRL: isNational ? undefined : (item.priceBRL || foundCatProd?.priceBRL)
+      // 1. Atualizar o chat com os cards individuais de medicamentos SOMENTE se solicitado e se houver itens
+      if (includeProductCards && prescItems.length > 0) {
+        await clearPrescriptionMessages(targetPatientId);
+        for (const item of prescItems) {
+          const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura|ABEC|ABECMED/i.test(item.name) || item.origin === 'Nacional';
+          
+          let foundCatProd: any = null;
+          const cleanName = item.name.toLowerCase().trim();
+          for (const cat of productCategories) {
+            const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()));
+            if (p) { foundCatProd = p; break; }
           }
-        }, targetPatientId);
+          if (!foundCatProd) {
+            foundCatProd = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+          }
+          if (!foundCatProd) {
+            foundCatProd = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()));
+          }
+          if (!foundCatProd) {
+            foundCatProd = ABECMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          }
+
+          const enriched = enrichMedicationDetails(
+            item.name, 
+            item.brand || (isNational ? 'Associação Nacional' : 'GreenBudzCBD'), 
+            item.origin || (isNational ? 'Nacional' : 'Importado'), 
+            item.type, 
+            foundCatProd
+          );
+
+          await addMessage({
+            sender: 'doctor',
+            type: 'product',
+            productData: { 
+              name: item.name,
+              brand: item.brand || (foundCatProd ? foundCatProd.manufacturer : enriched.brand),
+              origin: item.origin || (foundCatProd ? foundCatProd.origin : enriched.origin),
+              type: item.type || (foundCatProd ? foundCatProd.type : enriched.type),
+              activeIngredients: item.activeIngredients || enriched.activeIngredients,
+              concentration: item.concentration || enriched.concentration,
+              pharmaceuticalForm: item.pharmaceuticalForm || enriched.pharmaceuticalForm,
+              quantity: item.quantity || enriched.quantity,
+              administrationRoute: item.administrationRoute || enriched.administrationRoute,
+              details: item.details && item.details.length > 0 ? item.details : (foundCatProd?.details || [enriched.activeIngredients]),
+              dosage: item.dosage && item.dosage.length > 0 ? item.dosage : ['Tomar conforme orientação médica.'],
+              description: item.description || foundCatProd?.description || enriched.description || '',
+              italicText: foundCatProd?.italicText || 'Produto Prescrito',
+              image: item.image || foundCatProd?.image || (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
+              priceUSD: isNational ? undefined : (item.priceUSD || foundCatProd?.priceUSD),
+              priceBRL: isNational ? undefined : (item.priceBRL || foundCatProd?.priceBRL)
+            }
+          }, targetPatientId);
+        }
       }
 
       if (prescNotes && prescNotes.trim()) {
@@ -2981,7 +2930,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-bold text-white tracking-tight">Fila de Atendimento</h2>
                     <span className="text-[11px] bg-mecura-neon/15 border border-mecura-neon/30 text-mecura-neon font-bold px-2 py-0.5 rounded-full">
-                      {queue.filter(p => p.status === 'waiting').length} aguardando
+                      {queue.filter(p => p.status === 'waiting' && (p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true))).length} aguardando
                     </span>
                   </div>
                   <button
@@ -3034,7 +2983,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   >
                     <span>Aguardando</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${queueFilter === 'waiting' ? 'bg-black/20 text-black font-bold' : 'bg-mecura-neon/20 text-mecura-neon font-bold'}`}>
-                      {queue.filter(p => p.status === 'waiting').length}
+                      {queue.filter(p => p.status === 'waiting' && (p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true))).length}
                     </span>
                   </button>
                   <button 
@@ -3102,7 +3051,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
             const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
             const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
-            return matchesStatus && matchesSearch && matchesPlan;
+            const isPaid = p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
+            return matchesStatus && matchesSearch && matchesPlan && (p.status !== 'waiting' || isPaid);
           }).length > 0 ? (
             [...queue].filter(p => {
               const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
@@ -3110,7 +3060,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
               const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
               const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
-              return matchesStatus && matchesSearch && matchesPlan;
+              const isPaid = p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
+              return matchesStatus && matchesSearch && matchesPlan && (p.status !== 'waiting' || isPaid);
             }).sort((a, b) => {
               // 1. Unread messages first
               if (a.hasUnread && !b.hasUnread) return -1;
@@ -3149,7 +3100,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
               return (
               <div 
-                key={patient.id} 
+                key={`${patient.id || 'patient'}-${idx}`} 
                 onClick={() => handleStartConsultation(patient)}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all duration-300 relative overflow-hidden ${
                   patient.hasUnread
@@ -3707,7 +3658,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
                 }).map((msg, msgIdx) => (
                 <div
-                  key={msg.id || `doc-msg-${msgIdx}`}
+                  key={`${msg.id || 'doc-msg'}-${msgIdx}`}
                   className={`flex flex-col w-full ${msg.sender === 'doctor' ? 'items-end' : 'items-start'}`}
                 >
                   {msg.type === 'product' && msg.productData ? (
@@ -4733,11 +4684,11 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                             const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
                             const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
                             
-                            const renderMed = (med, idx, isNational) => {
+                            const renderMed = (med: any, idx: number, isNational: boolean) => {
                               const isAdded = addedMedications.includes(med.name);
                               return (
                                 <button
-                                  key={idx}
+                                  key={`${isNational ? 'nat' : 'imp'}-${idx}-${med.name}`}
                                   onClick={() => addPrescribedMedication(med)}
                                   disabled={isAdded}
                                   className={`w-full p-3 border rounded-xl text-left transition-all group relative overflow-hidden ${
@@ -5284,11 +5235,11 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
                         const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
                         
-                        const renderMed = (med, idx, isNational) => {
+                        const renderMed = (med: any, idx: number, isNational: boolean) => {
                           const isAdded = addedMedications.includes(med.name);
                           return (
                             <button
-                              key={idx}
+                              key={`${isNational ? 'nat' : 'imp'}-${idx}-${med.name}`}
                               onClick={() => addPrescribedMedication(med)}
                               disabled={isAdded}
                               className={`p-4 border rounded-xl text-left transition-all group relative overflow-hidden ${
@@ -5607,8 +5558,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-mecura-neon/50 transition-colors"
                         >
                           <option value="all">Todas as Marcas ({availableBrands.length})</option>
-                          {availableBrands.map(brand => (
-                            <option key={brand} value={brand}>{brand}</option>
+                          {availableBrands.map((brand, bIdx) => (
+                            <option key={`${brand}-${bIdx}`} value={brand}>{brand}</option>
                           ))}
                         </select>
                       </div>
@@ -5629,8 +5580,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                           className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-mecura-neon/50 transition-colors"
                         >
                           <option value="all">Todas as Patologias ({availableDiseases.length})</option>
-                          {availableDiseases.map(disease => (
-                            <option key={disease} value={disease}>{disease}</option>
+                          {availableDiseases.map((disease, dIdx) => (
+                            <option key={`${disease}-${dIdx}`} value={disease}>{disease}</option>
                           ))}
                         </select>
                       </div>
@@ -5914,7 +5865,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
                         return (
                           <div 
-                            key={idx}
+                            key={`filt-prod-${product.name}-${idx}`}
                             onClick={() => handleToggleProductInPrescription(product)}
                             className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group shadow-sm hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)] cursor-pointer ${
                               isInPresc
@@ -6203,14 +6154,14 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                         const timeB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
                         return timeB - timeA;
                       })
-                      .map((history) => {
+                      .map((history, hIdx) => {
                         const histDate = history.date instanceof Date ? history.date : new Date(history.date);
                         const isHistDateValid = !isNaN(histDate.getTime());
                         const formattedDate = isHistDateValid ? format(histDate, 'dd/MM/yyyy HH:mm') : 'Data recente';
                         
                         return (
                           <div 
-                            key={history.id} 
+                            key={`${history.id || 'hist'}-${hIdx}`} 
                             onClick={async () => {
                               setSelectedHistoryItem(history);
                               if (history.id) {

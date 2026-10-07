@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle, RefreshCw, Zap, LayoutDashboard, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { Hexagon, Bell, Clock, CheckCircle2, Phone, Edit2, ShieldCheck, Sparkles, AlertTriangle, RefreshCw, Zap, LayoutDashboard, ChevronLeft, ChevronRight, User, FileText, MessageSquare } from 'lucide-react';
 import { requestNotificationPermission, showNativeNotification } from '../utils/notifications';
 import { playNotificationSound } from '../utils/sound';
 import { auth, db } from '../firebase';
@@ -24,6 +24,7 @@ export function QueueScreen() {
     startConsultation, 
     pagamento_consulta, 
     consultationActive, 
+    isConsultationFinished,
     subscribeToQueue,
     joinQueue,
     userPhone,
@@ -182,8 +183,7 @@ export function QueueScreen() {
 
   // Payment guard: Unpaid users cannot wait in queue and must be redirected to checkout
   useEffect(() => {
-    const hasPaid = pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true');
-    if (!hasPaid) {
+    if (!pagamento_consulta) {
       navigate('/checkout');
     }
   }, [pagamento_consulta, navigate]);
@@ -220,6 +220,25 @@ export function QueueScreen() {
     const unsubUserDoc = onSnapshot(doc(db, 'users', currentUserId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        const hasValidPayment = !!(
+          data.pagamento_consulta === true || 
+          data.hasPaid === true || 
+          data.isPaid === true || 
+          data.bypassedPayment === true
+        );
+
+        if (!hasValidPayment) {
+          console.warn('[QUEUE] Paciente sem pagamento confirmado. Redirecionando para checkout...');
+          useStore.getState().setPagamentoConsulta(false);
+          useStore.setState({ inQueue: false });
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('mecura_pagamento');
+            localStorage.removeItem('mecura_consultation_active');
+          }
+          navigate('/checkout');
+          return;
+        }
+
         if (data.consultationStatus === 'in-consultation' || data.consultationActive === true) {
           handleDoctorCall();
         }
@@ -234,8 +253,7 @@ export function QueueScreen() {
 
   // Ensure patient is formally registered in queue if they paid and are not yet waiting
   useEffect(() => {
-    const hasPaid = pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true');
-    if (!hasPaid) return;
+    if (!pagamento_consulta) return;
 
     // Do NOT re-join if consultation is active or finished or already completed
     if (consultationActive || myQueueEntry?.status === 'finished') return;
@@ -244,7 +262,15 @@ export function QueueScreen() {
     
     if (!isCurrentlyWaitingOrActive) {
       const pUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
-      const pName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
+      const storedPatientName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
+      const pName = (auth.currentUser?.displayName && auth.currentUser.displayName.toLowerCase() !== 'paciente') 
+        ? auth.currentUser.displayName 
+        : (storedPatientName && storedPatientName.toLowerCase() !== 'paciente')
+          ? storedPatientName
+          : (userName && userName.toLowerCase() !== 'paciente')
+            ? userName
+            : undefined;
+
       const isPrem = !!(
         pagamento_premium || 
         selectedOffer === 'premium' || 
@@ -253,7 +279,7 @@ export function QueueScreen() {
 
       joinQueue({
         id: pUid,
-        patientName: pName,
+        patientName: pName || 'Paciente',
         email: auth.currentUser?.email || '',
         phone: userPhone || '',
         isPremium: isPrem,
@@ -327,6 +353,12 @@ export function QueueScreen() {
   const progressPercent = Math.min(100, Math.round((effectiveSeconds / 600) * 100));
   const estimatedMins = Math.max(1, displayPosition * 2);
 
+  const isFinished = !!(
+    isConsultationFinished || 
+    myQueueEntry?.status === 'finished' || 
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true')
+  );
+
   return (
     <div className="flex flex-col min-h-full bg-mecura-bg relative overflow-y-auto">
       {/* Background Glow */}
@@ -347,7 +379,7 @@ export function QueueScreen() {
           </button>
 
           <span className="text-[10px] font-mono uppercase tracking-widest text-mecura-neon/70 font-bold hidden sm:inline-block">
-            MECURA • FILA AO VIVO
+            {isFinished ? 'MECURA • CONSULTA CONCLUÍDA' : 'MECURA • FILA AO VIVO'}
           </span>
 
           <button
@@ -360,6 +392,70 @@ export function QueueScreen() {
           </button>
         </div>
 
+        {/* Finished Consultation Card */}
+        {isFinished ? (
+          <div className="w-full space-y-6 my-auto py-4">
+            <div className="bg-gradient-to-br from-[#121A12] via-[#0E150E] to-[#0A0A0F] border-2 border-emerald-500/40 rounded-[32px] p-6 sm:p-8 text-center space-y-5 shadow-[0_0_50px_rgba(16,185,129,0.2)] relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-[60px] rounded-full pointer-events-none" />
+              
+              <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+
+              <div className="space-y-2">
+                <span className="px-3.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 inline-block">
+                  Atendimento Concluído com Sucesso
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold text-white leading-tight">
+                  Sua consulta médica foi finalizada!
+                </h2>
+                <p className="text-sm text-mecura-silver max-w-sm mx-auto leading-relaxed">
+                  O Dr. Guilherme concluiu o seu atendimento. Seu protocolo terapêutico individualizado, documentos oficiais e farmácia já estão liberados para acesso.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-3 max-w-sm mx-auto">
+                <button
+                  type="button"
+                  onClick={() => navigate('/protocol')}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-mecura-neon to-[#8EE000] text-black font-extrabold text-sm rounded-2xl shadow-[0_0_25px_rgba(166,255,0,0.3)] hover:brightness-105 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <FileText className="w-4 h-4" />
+                  Acessar Meu Protocolo & Receita →
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/pharmacy')}
+                  className="w-full py-3.5 px-6 bg-[#161622] hover:bg-[#1C1C2C] border border-white/10 text-white font-bold text-sm rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 text-mecura-neon" />
+                  Ir para a Farmácia
+                </button>
+
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/chat')}
+                    className="py-3 px-3 bg-white/5 hover:bg-white/10 border border-white/5 text-mecura-silver hover:text-white font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Ver Conversa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/dashboard')}
+                    className="py-3 px-3 bg-white/5 hover:bg-white/10 border border-white/5 text-mecura-silver hover:text-white font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5" />
+                    Meu Painel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Banner de Chamada do Médico */}
         {(myQueueEntry?.status === 'in-consultation' || (myQueueEntry?.isAlerted && myQueueEntry?.status !== 'waiting')) && (
           <div className="w-full mb-6 p-4 rounded-2xl bg-gradient-to-r from-mecura-neon/20 via-emerald-500/20 to-mecura-neon/10 border-2 border-mecura-neon animate-pulse flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_0_35px_rgba(166,255,0,0.35)]">
@@ -643,6 +739,8 @@ export function QueueScreen() {
             </span>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

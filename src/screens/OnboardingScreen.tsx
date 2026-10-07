@@ -8,8 +8,9 @@ import { useStore } from '../store/useStore';
 import { ChevronLeft, CheckCircle, Check, Info, Calendar, User, Phone, CreditCard } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+import { PasswordResetCpfModal } from '../components/PasswordResetCpfModal';
 
 // --- HELPERS DE FORMATAÇÃO ---
 const formatBirthDate = (val: string) => {
@@ -146,11 +147,8 @@ const STEPS = [
     const [isLogin, setIsLogin] = useState(false);
     const [password, setPassword] = useState('');
     const [authError, setAuthError] = useState('');
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
-  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
-  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
-  const [showExistingAccountPrompt, setShowExistingAccountPrompt] = useState(false);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
+    const [showExistingAccountPrompt, setShowExistingAccountPrompt] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
   
     const progress = ((currentStep + 1) / STEPS.length) * 100;
@@ -184,14 +182,20 @@ const STEPS = [
                 if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
               }
 
-              // Restore payment state if user has already paid
+              // Restore payment state only if user has genuinely paid
               if (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true) {
                 setPagamentoConsulta(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+              } else {
+                setPagamentoConsulta(false);
+                if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
               }
               if (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium') {
                 setPagamentoPremium(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+              } else {
+                setPagamentoPremium(false);
+                if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
               }
             }
           } catch (err) {
@@ -203,31 +207,6 @@ const STEPS = [
       });
       return () => unsubscribe();
     }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium]);
-  
-      const handleForgotPassword = async () => {
-    if (!forgotPasswordEmail) return;
-    setForgotPasswordLoading(true);
-    try {
-      await addDoc(collection(db, 'support_requests'), {
-        userId: 'recovery',
-        userName: 'Recuperação de Senha',
-        email: forgotPasswordEmail,
-        message: `O paciente solicitou recuperação de senha. E-mail informado: ${forgotPasswordEmail}. Por favor, altere a senha na aba Pacientes e envie para ele.`,
-        status: 'pending',
-        createdAt: serverTimestamp()
-      });
-      setForgotPasswordSuccess(true);
-      setTimeout(() => {
-        setShowForgotPassword(false);
-        setForgotPasswordSuccess(false);
-        setForgotPasswordEmail('');
-      }, 4000);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setForgotPasswordLoading(false);
-    }
-  };
 
   const handleNext = async () => {
       if (step.id === 'auth') {
@@ -240,17 +219,47 @@ const STEPS = [
         try {
           if (isLogin) {
             const trimmedEmail = userEmail.trim();
-            const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
-            // Check if user has completed onboarding or paid
-            const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-            if (userDoc.exists()) {
-              const data = userDoc.data();
-              if (data.name) setUserName(data.name);
+            let resolvedUid: string | null = null;
+            let resolvedUserData: any = null;
+
+            try {
+              const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+              resolvedUid = userCredential.user.uid;
+              const uDoc = await getDoc(doc(db, 'users', resolvedUid));
+              if (uDoc.exists()) {
+                resolvedUserData = uDoc.data();
+              }
+            } catch (authErr: any) {
+              // Fallback: If Firebase Auth password fails, verify if patient reset password via CPF in Firestore
+              const usersRef = collection(db, 'users');
+              const qSnap = await getDocs(query(usersRef, where('email', '==', trimmedEmail)));
+              let matchedDoc = qSnap.docs.find(d => d.data().password === password);
+              if (!matchedDoc) {
+                const lowerEmail = trimmedEmail.toLowerCase();
+                const allUsersSnap = await getDocs(usersRef);
+                matchedDoc = allUsersSnap.docs.find(d => 
+                  (d.data().email || '').toLowerCase().trim() === lowerEmail && d.data().password === password
+                );
+              }
+
+              if (matchedDoc) {
+                resolvedUid = matchedDoc.id;
+                resolvedUserData = matchedDoc.data();
+              } else {
+                throw authErr;
+              }
+            }
+
+            if (resolvedUid && resolvedUserData) {
+              const data = resolvedUserData;
+              if (data.name && typeof data.name === 'string' && data.name.trim().toLowerCase() !== 'paciente') {
+                setUserName(data.name.trim());
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', data.name.trim());
+              }
               if (data.phone) setUserPhone(data.phone);
               if (data.cpf) setUserCpf(data.cpf);
               if (data.birthDate) setUserBirthDate(data.birthDate);
               if (data.answers) {
-                // Load answers into store
                 Object.entries(data.answers).forEach(([key, value]) => {
                   setAnswer(key, value);
                 });
@@ -258,6 +267,11 @@ const STEPS = [
                 if (data.answers.cpf && !data.cpf) setUserCpf(data.answers.cpf);
                 if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
               }
+
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_patientId', resolvedUid);
+              }
+              useStore.setState({ patientId: resolvedUid });
 
               // Restore payment state
               if (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true) {
@@ -282,10 +296,31 @@ const STEPS = [
             try {
               await setDoc(doc(db, 'users', userCredential.user.uid), {
                 email: trimmedEmail,
+                password: password,
                 hasCompletedOnboarding: false,
+                pagamento_consulta: false,
+                pagamento_premium: false,
+                hasPaid: false,
+                isPaid: false,
+                inQueue: false,
+                consultationStatus: 'not_started',
                 createdAt: new Date().toISOString(),
                 tier: 'basic'
               }, { merge: true });
+
+              // Reset any stale payment state from localStorage/store
+              setPagamentoConsulta(false);
+              setPagamentoPremium(false);
+              useStore.setState({ inQueue: false, consultationActive: false, isConsultationFinished: false });
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_patientId', userCredential.user.uid);
+                localStorage.removeItem('mecura_pagamento');
+                localStorage.removeItem('mecura_premium');
+                localStorage.removeItem('mecura_consultation_active');
+                localStorage.removeItem('mecura_queue_display_pos');
+                localStorage.removeItem('mecura_queue_entered_at');
+                localStorage.removeItem('mecura_queue_notified_10m');
+              }
             } catch (e) {
               console.error("Error creating early user data", e);
             }
@@ -295,15 +330,15 @@ const STEPS = [
         } catch (error: any) {
           console.error(error);
           if (error.code === 'auth/email-already-in-use') {
-            setAuthError('Email já cadastrado. Tente fazer login.');
+            setAuthError('Este e-mail já está cadastrado. Clique em "Fazer Login" ou em "Esqueci minha senha" para acessar.');
           } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-            setAuthError('Email ou senha incorretos.');
+            setAuthError('E-mail ou senha incorretos. Caso tenha esquecido, clique em "Esqueci minha senha" abaixo.');
           } else if (error.code === 'auth/weak-password') {
             setAuthError('A senha deve ter pelo menos 6 caracteres.');
           } else if (error.code === 'auth/operation-not-allowed') {
-            setAuthError('Você precisa ativar o provedor de Email/Senha no console do Firebase > Authentication > Sign-in method.');
+            setAuthError('Você precisa ativar o provedor de Email/Senha no console do Firebase.');
           } else if (error.code === 'auth/invalid-email') {
-            setAuthError('O formato do email é inválido. Verifique se há espaços extras ou erros de digitação.');
+            setAuthError('O formato do email é inválido. Verifique se há espaços extras.');
           } else {
             setAuthError(`Ocorreu um erro: ${error.message || 'Tente novamente.'}`);
           }
@@ -319,30 +354,34 @@ const STEPS = [
       } else {
         setIsLoading(true);
         try {
-          // Save to Firestore non-blocking with timeout
-          if (auth.currentUser) {
-            Promise.race([
-              setDoc(doc(db, 'users', auth.currentUser.uid), {
-                name: userName,
-                email: userEmail || auth.currentUser.email || '',
-                phone: userPhone,
-                cpf: userCpf,
+          const targetUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+          if (targetUid) {
+            const updatePayload: Record<string, any> = {
+              hasCompletedOnboarding: true,
+              answers: {
+                ...answers,
                 birthDate: userBirthDate,
-                hasCompletedOnboarding: true,
-                answers: {
-                  ...answers,
-                  birthDate: userBirthDate,
-                  cpf: userCpf,
-                  phone: userPhone
-                },
-                createdAt: new Date().toISOString(),
-                lastUpdated: new Date().toISOString()
-              }, { merge: true }),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1500))
-            ]).catch((err) => console.warn('[ONBOARDING] Firestore write warning (continuing to analysis):', err));
+                cpf: userCpf,
+                phone: userPhone
+              },
+              lastUpdated: new Date().toISOString()
+            };
+
+            if (userName && userName.trim() && userName.trim().toLowerCase() !== 'paciente') {
+              updatePayload.name = userName.trim();
+              if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', userName.trim());
+            }
+            if (userEmail && !userEmail.includes('sem-email')) {
+              updatePayload.email = userEmail.trim();
+            }
+            if (userPhone && userPhone.trim()) updatePayload.phone = userPhone.trim();
+            if (userCpf && userCpf.trim()) updatePayload.cpf = userCpf.trim();
+            if (userBirthDate && userBirthDate.trim()) updatePayload.birthDate = userBirthDate.trim();
+
+            await setDoc(doc(db, 'users', targetUid), updatePayload, { merge: true });
           }
         } catch (e) {
-          console.warn('[ONBOARDING] Error:', e);
+          console.warn('[ONBOARDING] Error saving final screening data:', e);
         } finally {
           setIsLoading(false);
           setHasCompletedOnboarding(true);
@@ -487,19 +526,20 @@ const STEPS = [
                 type="password" 
               />
               
-              {isLogin && (
-                <div className="flex justify-end mt-1">
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-xs text-[#8A8A9E]">
+                    {isLogin ? 'Esqueceu sua senha de acesso?' : 'Já possui conta mas esqueceu a senha?'}
+                  </span>
                   <button 
+                    type="button"
                     onClick={() => {
-                        setForgotPasswordEmail(userEmail);
-                        setShowForgotPassword(true);
+                      setShowForgotPassword(true);
                     }} 
-                    className="text-xs text-mecura-neon hover:underline"
+                    className="text-xs font-semibold text-mecura-neon hover:underline"
                   >
-                    Esqueci minha senha
+                    Esqueci / Trocar Senha
                   </button>
                 </div>
-              )}
               
               {authError && (
                 <p className="text-red-400 text-sm mt-2">{authError}</p>
@@ -806,41 +846,18 @@ const STEPS = [
           </div>
         )}
 
-        {showForgotPassword && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-md"
-            >
-              {!forgotPasswordSuccess ? (
-                  <>
-                    <h3 className="text-xl font-bold mb-2">Recuperar Senha</h3>
-                    <p className="text-[#8A8A9E] mb-6 text-sm">Digite seu e-mail abaixo. Nossa equipe será notificada e entraremos em contato com você via WhatsApp com uma nova senha.</p>
-                    <Input 
-                        placeholder="Seu e-mail cadastrado" 
-                        value={forgotPasswordEmail} 
-                        onChange={(e) => setForgotPasswordEmail(e.target.value)} 
-                        type="email" 
-                    />
-                    <div className="flex gap-3 mt-6">
-                        <Button variant="outline" className="flex-1" onClick={() => setShowForgotPassword(false)}>Cancelar</Button>
-                        <Button className="flex-1" disabled={!forgotPasswordEmail || forgotPasswordLoading} onClick={handleForgotPassword}>
-                            {forgotPasswordLoading ? 'Enviando...' : 'Solicitar'}
-                        </Button>
-                    </div>
-                  </>
-              ) : (
-                  <div className="text-center py-6">
-                    <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-xl font-bold mb-2">Solicitação Enviada!</h3>
-                    <p className="text-[#8A8A9E] text-sm">Nossa equipe já foi notificada. Aguarde nosso contato pelo WhatsApp em instantes.</p>
-                  </div>
-              )}
-            </motion.div>
-          </div>
-        )}
+        <PasswordResetCpfModal
+          isOpen={showForgotPassword}
+          onClose={() => setShowForgotPassword(false)}
+          initialEmail={userEmail}
+          onPasswordResetSuccess={(email, newPass) => {
+            setIsLogin(true);
+            setUserEmail(email);
+            setPassword(newPass);
+            setAuthError('');
+            setShowForgotPassword(false);
+          }}
+        />
       </AnimatePresence>
 
       </div>

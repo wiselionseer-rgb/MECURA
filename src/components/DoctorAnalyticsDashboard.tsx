@@ -505,7 +505,7 @@ export function DoctorAnalyticsDashboard() {
                   </p>
                 </div>
               ) : filteredAppointments.map((item, i) => (
-                <div key={item.id} className={`flex gap-3 items-start p-3 rounded-xl bg-[#0A0A0F] border transition-colors group relative ${
+                <div key={`${item.id || 'appt'}-${i}`} className={`flex gap-3 items-start p-3 rounded-xl bg-[#0A0A0F] border transition-colors group relative ${
                   item.status === 'pending' ? 'border-mecura-neon/50 bg-mecura-neon/5' : 'border-mecura-elevated hover:border-mecura-neon/30'
                 }`}>
                   <div className="w-12 text-center flex-shrink-0 pt-0.5">

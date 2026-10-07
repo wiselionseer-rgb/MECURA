@@ -81,23 +81,43 @@ export function DashboardScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const hasPaidConsultation = !!(
-    pagamento_consulta || 
-    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
-  );
+  const hasPaidConsultation = !!pagamento_consulta;
 
-  const isDoctorCalling = hasPaidConsultation && (myQueueEntry?.status === 'in-consultation' || consultationActive) && !isConsultationFinished;
-  const isWaitingInQueue = hasPaidConsultation && !isDoctorCalling && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive)) && !isConsultationFinished;
+  const isFinishedConsultation = isConsultationFinished || 
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') ||
+    myQueueEntry?.status === 'finished' ||
+    messages.some(m => m.sender === 'doctor' && (
+      m.text?.toLowerCase().includes('consulta finalizada') || 
+      m.text?.toLowerCase().includes('atendimento finalizado') ||
+      m.text?.toLowerCase().includes('consulta foi finalizada')
+    ));
+
+  const isDoctorCalling = hasPaidConsultation && !isFinishedConsultation && (myQueueEntry?.status === 'in-consultation' || consultationActive);
+  const isWaitingInQueue = hasPaidConsultation && !isDoctorCalling && !isFinishedConsultation && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive));
 
   // Handle entering queue directly
   const handleEnterQueue = async () => {
+    if (!hasPaidConsultation) {
+      setSelectedOffer('basic');
+      navigate('/checkout');
+      return;
+    }
+
     const currentUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
-    const pName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
+    const storedPatientName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
+    const pName = (auth.currentUser?.displayName && auth.currentUser.displayName.toLowerCase() !== 'paciente') 
+      ? auth.currentUser.displayName 
+      : (storedPatientName && storedPatientName.toLowerCase() !== 'paciente')
+        ? storedPatientName
+        : (userName && userName.toLowerCase() !== 'paciente')
+          ? userName
+          : undefined;
+
     const isPrem = !!(pagamento_premium || (typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'));
     
     await joinQueue({
       id: currentUid,
-      patientName: pName,
+      patientName: pName || 'Paciente',
       email: auth.currentUser?.email || userEmail || '',
       phone: userPhone || '',
       cpf: userCpf || '',
@@ -115,12 +135,15 @@ export function DashboardScreen() {
     return () => unsubQueue();
   }, [subscribeToQueue]);
 
-  // Patient only has actual prescription if consultation is finished and documents/items were sent
-  const hasActualPrescription = isConsultationFinished && messages.some(m => 
-    m.type === 'prescription' || 
-    m.type === 'receita_previa' || 
-    (m.type === 'product' && m.productData) ||
-    (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+  // Patient has actual prescription if consultation is finished or doctor has sent prescription/consultation concluding message
+  const hasActualPrescription = hasPaidConsultation && (
+    isFinishedConsultation ||
+    messages.some(m => 
+      m.type === 'prescription' || 
+      m.type === 'receita_previa' || 
+      (m.type === 'product' && m.productData) ||
+      (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+    )
   );
 
   // Sync messages and user payment status if user is logged in
@@ -128,17 +151,35 @@ export function DashboardScreen() {
     const currentUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId');
     if (currentUid) {
       const unsub = subscribeToMessages(currentUid);
-      // Also check Firestore user document directly for payment persistence
+      // Also check Firestore user document directly for payment persistence and identity restoration
       getDoc(doc(db, 'users', currentUid)).then((snap) => {
         if (snap.exists()) {
           const u = snap.data();
+          if (u.name && typeof u.name === 'string' && u.name.trim().toLowerCase() !== 'paciente') {
+            useStore.getState().setUserName(u.name.trim());
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', u.name.trim());
+          }
+          if (u.email) useStore.getState().setUserEmail(u.email);
+          if (u.phone) useStore.getState().setUserPhone(u.phone);
+          if (u.cpf) useStore.getState().setUserCpf(u.cpf);
+          if (u.birthDate) useStore.getState().setUserBirthDate(u.birthDate);
+
           if (u.pagamento_consulta === true || u.hasPaid === true || u.isPaid === true) {
             setPagamentoConsulta(true);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+          } else {
+            setPagamentoConsulta(false);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('mecura_pagamento');
+              localStorage.removeItem('mecura_consultation_active');
+            }
           }
           if (u.pagamento_premium === true || u.isPremium === true || u.plan === 'premium') {
             setPagamentoPremium(true);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+          } else {
+            setPagamentoPremium(false);
+            if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
           }
         }
       }).catch(e => console.warn('Could not check user doc in dashboard:', e));
@@ -554,7 +595,7 @@ export function DashboardScreen() {
                 </button>
               </div>
             </motion.div>
-          ) : (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) ? (
+          ) : hasPaidConsultation ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -664,20 +705,14 @@ export function DashboardScreen() {
             {/* Chat / Consultation */}
             <button 
               onClick={() => {
-                if (!hasPaidConsultation && !isConsultationFinished) {
+                if (!hasPaidConsultation) {
                   setSelectedOffer('basic');
                   navigate('/checkout');
                   return;
                 }
-                if (isDoctorCalling || isConsultationFinished) {
-                  navigate('/chat');
-                } else if (isWaitingInQueue) {
-                  navigate('/queue');
-                } else {
-                  handleEnterQueue();
-                }
+                navigate('/chat');
               }} 
-              className="flex flex-col items-center gap-2.5 group outline-none"
+              className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer"
             >
               <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
                 <MessageCircle className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
@@ -688,8 +723,15 @@ export function DashboardScreen() {
 
             {/* Pharmacy */}
             <button 
-              onClick={() => navigate('/pharmacy')} 
-              className="flex flex-col items-center gap-2.5 group outline-none"
+              onClick={() => {
+                if (!hasPaidConsultation && !hasActualPrescription) {
+                  setSelectedOffer('basic');
+                  navigate('/checkout');
+                  return;
+                }
+                navigate('/pharmacy');
+              }} 
+              className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer"
             >
               <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
                 <ShoppingCart className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
@@ -700,7 +742,14 @@ export function DashboardScreen() {
 
             {/* Protocol */}
             <button 
-              onClick={() => navigate('/protocol')}
+              onClick={() => {
+                if (!hasPaidConsultation) {
+                  setSelectedOffer('basic');
+                  navigate('/checkout');
+                  return;
+                }
+                navigate('/protocol');
+              }}
               className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer"
             >
               <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
@@ -1351,7 +1400,14 @@ export function DashboardScreen() {
 
               {/* Item 6: Receituário & Protocolo */}
               <div 
-                onClick={() => openHighlightRoute('/protocol')}
+                onClick={() => {
+                  if (!hasPaidConsultation) {
+                    setSelectedOffer('basic');
+                    navigate('/checkout');
+                    return;
+                  }
+                  openHighlightRoute('/protocol');
+                }}
                 className="p-3.5 rounded-[18px] bg-[#161622] hover:bg-[#1A1A28] border border-white/5 hover:border-mecura-neon/40 transition-all cursor-pointer group flex items-start gap-3 shadow-sm"
               >
                 <div className="w-9 h-9 rounded-xl bg-[#1A1A24] border border-white/10 group-hover:border-mecura-neon/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">

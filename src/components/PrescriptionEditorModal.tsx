@@ -51,7 +51,7 @@ interface PrescriptionEditorModalProps {
   notes: string;
   setNotes: (val: string) => void;
   onDownloadPDF: () => void;
-  onSendToChat?: () => Promise<void>;
+  onSendToChat?: (includeProductCards?: boolean) => Promise<void>;
   onSendPreviewToChat?: () => Promise<void>;
 }
 
@@ -84,6 +84,7 @@ export function PrescriptionEditorModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSendingToChat, setIsSendingToChat] = useState(false);
   const [isSendingPreview, setIsSendingPreview] = useState(false);
+  const [sendProductsToChat, setSendProductsToChat] = useState(false);
 
   const { productCategories } = useAdminStore();
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
@@ -687,7 +688,7 @@ export function PrescriptionEditorModal({
     if (!onSendToChat) return;
     setIsSendingToChat(true);
     try {
-      await onSendToChat();
+      await onSendToChat(sendProductsToChat);
     } finally {
       setIsSendingToChat(false);
     }
@@ -1162,7 +1163,7 @@ export function PrescriptionEditorModal({
                             + 📚 Toda a Biblioteca ({allLibraryProducts.length} produtos)...
                           </option>
                           {allLibraryProducts.map((p, pIdx) => (
-                            <option key={pIdx} value={p.name} className="bg-[#0A0A0F] text-white">
+                            <option key={`lib-opt-${p.name}-${pIdx}`} value={p.name} className="bg-[#0A0A0F] text-white">
                               {p.name} {p.origin ? `[${p.origin}]` : ''} {p.priceBRL ? `- R$ ${p.priceBRL}` : p.priceUSD ? `- US$ ${p.priceUSD}` : ''}
                             </option>
                           ))}
@@ -1199,7 +1200,7 @@ export function PrescriptionEditorModal({
 
                         return (
                           <div
-                            key={itemIdx}
+                            key={`presc-item-${itemIdx}-${item.name}`}
                             className="p-4 bg-mecura-surface/30 border border-mecura-elevated rounded-2xl space-y-3.5 relative group"
                           >
                             {/* Top Card Bar: Number, Type Badge & Actions */}
@@ -1741,7 +1742,7 @@ export function PrescriptionEditorModal({
                   }
 
                   return guidesToRender.map((guide, gIdx) => (
-                    <div key={gIdx} className="w-full max-w-2xl bg-white text-[#111827] rounded-xl shadow-2xl p-8 sm:p-12 border border-slate-200 font-sans min-h-[650px] flex flex-col justify-between relative">
+                    <div key={`guide-doc-${gIdx}-${guide.title}`} className="w-full max-w-2xl bg-white text-[#111827] rounded-xl shadow-2xl p-8 sm:p-12 border border-slate-200 font-sans min-h-[650px] flex flex-col justify-between relative">
                       {/* Guide Badge */}
                       <div className="absolute top-3 right-4 bg-purple-100 text-purple-900 border border-purple-300 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                         {guide.badge}
@@ -1810,7 +1811,7 @@ export function PrescriptionEditorModal({
                               }
 
                               return (
-                                <div key={idx} className="border-b border-slate-100 pb-4">
+                                <div key={`guide-${gIdx}-item-${idx}-${item.name}`} className="border-b border-slate-100 pb-4">
                                   <div className="flex items-baseline justify-between mb-1">
                                     <span className="text-sm font-bold text-slate-900">
                                       {idx + 1}. {item.name}
@@ -1833,7 +1834,7 @@ export function PrescriptionEditorModal({
                                   <div className="pl-4 space-y-0.5 text-xs text-slate-700">
                                     <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">Posologia:</span>
                                     {dosageList.map((d, dIdx) => (
-                                      <p key={dIdx} className="leading-relaxed">• {d}</p>
+                                      <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
                                     ))}
                                   </div>
                                 </div>
@@ -1915,24 +1916,40 @@ export function PrescriptionEditorModal({
               )}
 
               {onSendToChat && (
-                <button
-                  type="button"
-                  onClick={handleSendToChatClick}
-                  disabled={isGenerating || isSendingToChat || isSendingPreview}
-                  className="w-full sm:w-auto px-6 py-3 bg-mecura-neon hover:bg-[#b5ff33] text-black font-extrabold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(166,255,0,0.35)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSendingToChat ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                      <span>Enviando Receita...</span>
-                    </>
-                  ) : (
-                    <>
-                      <FileText className="w-4 h-4 text-black" />
-                      <span>Emitir Receita Final</span>
-                    </>
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+                  {items.length > 0 && (
+                    <label 
+                      className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-mecura-silver hover:text-white transition-colors bg-white/5 border border-mecura-elevated px-3 py-2 rounded-xl"
+                      title="Se desmarcado, apenas o PDF da Receita Oficial será emitido sem enviar cards separados para o chat/farmácia"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={sendProductsToChat}
+                        onChange={(e) => setSendProductsToChat(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded bg-zinc-900 border-zinc-700 text-mecura-neon focus:ring-0 cursor-pointer accent-[#a6ff00]"
+                      />
+                      <span>Incluir produtos no chat/farmácia</span>
+                    </label>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleSendToChatClick}
+                    disabled={isGenerating || isSendingToChat || isSendingPreview}
+                    className="w-full sm:w-auto px-6 py-3 bg-mecura-neon hover:bg-[#b5ff33] text-black font-extrabold text-xs md:text-sm rounded-xl shadow-[0_0_25px_rgba(166,255,0,0.35)] transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSendingToChat ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        <span>Enviando Receita...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 text-black" />
+                        <span>Emitir Receita Final</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -2080,7 +2097,7 @@ export function PrescriptionEditorModal({
 
                     return (
                       <div
-                        key={pIdx}
+                        key={`lib-grid-${prod.name}-${pIdx}`}
                         className="p-3.5 rounded-xl bg-mecura-surface/40 hover:bg-mecura-surface/70 border border-mecura-elevated hover:border-mecura-neon/40 transition-all flex flex-col justify-between gap-3 group relative"
                       >
                         <div className="space-y-1.5">

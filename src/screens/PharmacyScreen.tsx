@@ -46,9 +46,14 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 export function PharmacyScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { messages, userName, userBirthDate, userCpf, userPhone, exchangeRate } = useStore();
+  const { messages, userName, userBirthDate, userCpf, userPhone, exchangeRate, pagamento_consulta, isConsultationFinished } = useStore();
   const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText } = useAdminStore();
   
+  const hasPaidConsultation = !!(
+    pagamento_consulta || 
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+  );
+
   useEffect(() => {
     if (promotionsText.includes('Desconto progressivo por volume')) {
       setPromotionsText('🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.');
@@ -59,165 +64,177 @@ export function PharmacyScreen() {
   
   // Extract prescribed items from messages & classify accurately
   const prescriptionItems = useMemo(() => {
-    const rawItems = messages
-      .filter(msg => msg.type === 'product' && msg.productData)
-      .map((msg, index) => {
-        const prod = msg.productData!;
-        const nameLower = (prod.name || '').toLowerCase();
-        const brandLower = (prod.brand || '').toLowerCase();
-        const originLower = (prod.origin || '').toLowerCase();
+    let collectedProds: Array<{
+      id: string;
+      name: string;
+      brand?: string;
+      origin?: string;
+      type?: string;
+      dosage?: string[];
+      details?: string[];
+      description?: string;
+      priceUSD?: number;
+      priceBRL?: number;
+      image?: string;
+    }> = [];
 
-        // Check if explicitly imported
-        const isExplicitlyImported = 
-          prod.origin === 'Importado' ||
-          brandLower.includes('flowermed') || 
-          brandLower.includes('greenbudz') || 
-          brandLower.includes('folheto') ||
-          brandLower.includes('sphera') ||
-          originLower.includes('importad') ||
-          originLower.includes('eua') ||
-          originLower.includes('usa') ||
-          nameLower.includes('flowermed') ||
-          nameLower.includes('greenbudz') ||
-          nameLower.includes('sphera') ||
-          nameLower.includes('lemon octane') ||
-          nameLower.includes('sour lifter') ||
-          nameLower.includes('forbidden fruit') ||
-          nameLower.includes('superglue') ||
-          nameLower.includes('gelato') ||
-          nameLower.includes('glitter bomb') ||
-          nameLower.includes('astro candy') ||
-          nameLower.includes('strawpicana') ||
-          nameLower.includes('zoap') ||
-          nameLower.includes('trop banana') ||
-          nameLower.includes('girl cookies') ||
-          nameLower.includes('syringe') ||
-          nameLower.includes('budder') ||
-          nameLower.includes('chill vibe') ||
-          nameLower.includes('calm vibe') ||
-          nameLower.includes('full balance') ||
-          nameLower.includes('drops by') ||
-          nameLower.includes('d9 nano') ||
-          nameLower.includes('hemp oil') ||
-          nameLower.includes('broad spectrum');
-
-        const isAssociacao = !isExplicitlyImported && (
-          originLower.includes('nacional') ||
-          originLower.includes('associação') ||
-          originLower.includes('associacao') ||
-          originLower.includes('abec') ||
-          brandLower.includes('abec') ||
-          brandLower.includes('associação') ||
-          brandLower.includes('associacao') ||
-          brandLower.includes('nacional') ||
-          nameLower.includes('abec') ||
-          nameLower.includes('associação') ||
-          nameLower.includes('associacao') ||
-          nameLower.includes('nacional')
-        );
-
-        // Resolve USD base price for imported items so that exchangeRate converts it dynamically
-        let resolvedPriceUSD: number | undefined = prod.priceUSD;
-
-        if (!isAssociacao) {
-          const cleanName = nameLower.trim();
-
-          const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
-          if (fe) {
-            if (fe.priceUSD) resolvedPriceUSD = fe.priceUSD;
-            else if (fe.priceBRL) resolvedPriceUSD = fe.priceBRL / 5.0;
-          }
-
-          if (!resolvedPriceUSD) {
-            const fm = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
-            if (fm) {
-              if (fm.priceUSD) resolvedPriceUSD = fm.priceUSD;
-              else if (fm.priceBRL) resolvedPriceUSD = fm.priceBRL / 5.0;
-            }
-          }
-
-          if (!resolvedPriceUSD) {
-            for (const cat of cbdGuideData) {
-              const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()) || pr.name.toLowerCase().includes(cleanName));
-              if (p) {
-                if (p.priceUSD) resolvedPriceUSD = p.priceUSD;
-                else if (p.priceBRL) resolvedPriceUSD = p.priceBRL / 5.0;
-                break;
-              }
-            }
-          }
-
-          if (!resolvedPriceUSD) {
-            if (prod.priceBRL) {
-              resolvedPriceUSD = prod.priceBRL / 5.0;
-            } else {
-              resolvedPriceUSD = index === 0 ? 80.00 : 39.90;
-            }
-          }
-        }
-
-        const unitPriceBRL = isAssociacao 
-          ? 0 
-          : Number(((resolvedPriceUSD || 80.00) * exchangeRate).toFixed(2));
-
-        return {
-          id: msg.id,
-          name: prod.name,
-          brand: isAssociacao ? 'Associação Nacional' : (prod.brand || 'GreenBudz / Flowermed (EUA)'),
-          origin: isAssociacao ? 'Nacional' : (prod.origin || 'Importado'),
-          details: prod.details || [],
-          dosage: prod.dosage || [],
-          description: prod.description || '',
-          isAssociacao: Boolean(isAssociacao),
-          priceUSD: resolvedPriceUSD,
-          priceBRL: unitPriceBRL,
-          unitPriceBRL,
-          durationPerUnit: 60,
-          image: prod.image,
-        };
+    // 1. Check direct product messages
+    const productMessages = messages.filter(msg => msg.type === 'product' && msg.productData);
+    productMessages.forEach(m => {
+      collectedProds.push({
+        id: m.id,
+        name: m.productData!.name,
+        brand: m.productData!.brand,
+        origin: m.productData!.origin,
+        type: m.productData!.type,
+        dosage: Array.isArray(m.productData!.dosage) ? m.productData!.dosage : [String(m.productData!.dosage || '')],
+        details: m.productData!.details,
+        description: m.productData!.description,
+        priceUSD: m.productData!.priceUSD,
+        priceBRL: m.productData!.priceBRL,
+        image: m.productData!.image
       });
+    });
 
-    // If no imported items were found in the current messages, provide the doctor's recommended imported treatment
-    const hasAnyImported = rawItems.some(i => !i.isAssociacao);
-    
-    if (!hasAnyImported) {
-      const defaultImported = [
-        {
-          id: 'rx-imported-flowermed-1',
-          name: 'GreenBudzCBD CalmVibe CBD 6000mg + Mint',
-          brand: 'GreenBudzCBD (EUA)',
-          origin: 'Importado',
-          details: ['30ml 200mg/ml', 'Extrato Premium CO2', 'Sabor Menta'],
-          dosage: ['10 gotas sublinguais pela manhã e à noite.'],
-          description: 'Extrato de alta potência para regulação do sono, alívio de estresse e equilíbrio do sistema endocanabinoide.',
-          isAssociacao: false,
-          priceUSD: 80.00,
-          priceBRL: 80.00 * exchangeRate,
-          unitPriceBRL: 80.00 * exchangeRate,
-          durationPerUnit: 60,
-          image: 'https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop'
-        },
-        {
-          id: 'rx-imported-flowermed-2',
-          name: 'GreenBudzCBD Chill Gummies Vibe THC 10mg 1:1 CBD 10mg - 30ct',
-          brand: 'GreenBudzCBD (EUA)',
-          origin: 'Importado',
-          details: ['10mg THC + 10mg CBD por goma', 'Proporção 1:1 Equilibrada', '30 unidades'],
-          dosage: ['1 goma 45 minutos antes de dormir ou em momentos de tensão.'],
-          description: 'Gomas terapêuticas de liberação prolongada para relaxamento mental e alívio do estresse.',
-          isAssociacao: false,
-          priceUSD: 39.90,
-          priceBRL: 39.90 * exchangeRate,
-          unitPriceBRL: 39.90 * exchangeRate,
-          durationPerUnit: 30,
-          image: 'https://images.unsplash.com/photo-1626015561570-80e227092928?q=80&w=400&auto=format&fit=crop'
-        }
-      ];
-      return [...defaultImported, ...rawItems];
+    // 2. Check receita_previa messages
+    if (collectedProds.length === 0) {
+      const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
+      if (previaMsg?.receitaPreviaData?.items) {
+        previaMsg.receitaPreviaData.items.forEach((it, idx) => {
+          collectedProds.push({
+            id: `${previaMsg.id}-${idx}`,
+            name: it.name,
+            brand: it.brand,
+            origin: it.origin,
+            type: it.type,
+            dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')],
+            details: it.details,
+            description: it.description,
+            priceUSD: (it as any).priceUSD,
+            priceBRL: (it as any).priceBRL,
+            image: (it as any).image
+          });
+        });
+      }
     }
 
+    const rawItems = collectedProds.map((prod, index) => {
+      const nameLower = (prod.name || '').toLowerCase();
+      const brandLower = (prod.brand || '').toLowerCase();
+      const originLower = (prod.origin || '').toLowerCase();
+
+      // Check if explicitly imported
+      const isExplicitlyImported = 
+        prod.origin === 'Importado' ||
+        brandLower.includes('flowermed') || 
+        brandLower.includes('greenbudz') || 
+        brandLower.includes('folheto') ||
+        brandLower.includes('sphera') ||
+        originLower.includes('importad') ||
+        originLower.includes('eua') ||
+        originLower.includes('usa') ||
+        nameLower.includes('flowermed') ||
+        nameLower.includes('greenbudz') ||
+        nameLower.includes('sphera') ||
+        nameLower.includes('lemon octane') ||
+        nameLower.includes('sour lifter') ||
+        nameLower.includes('forbidden fruit') ||
+        nameLower.includes('superglue') ||
+        nameLower.includes('gelato') ||
+        nameLower.includes('glitter bomb') ||
+        nameLower.includes('astro candy') ||
+        nameLower.includes('strawpicana') ||
+        nameLower.includes('zoap') ||
+        nameLower.includes('trop banana') ||
+        nameLower.includes('girl cookies') ||
+        nameLower.includes('syringe') ||
+        nameLower.includes('budder') ||
+        nameLower.includes('chill vibe') ||
+        nameLower.includes('calm vibe') ||
+        nameLower.includes('full balance') ||
+        nameLower.includes('drops by') ||
+        nameLower.includes('d9 nano') ||
+        nameLower.includes('hemp oil') ||
+        nameLower.includes('broad spectrum');
+
+      const isAssociacao = !isExplicitlyImported && (
+        originLower.includes('nacional') ||
+        originLower.includes('associação') ||
+        originLower.includes('associacao') ||
+        originLower.includes('abec') ||
+        brandLower.includes('abec') ||
+        brandLower.includes('associação') ||
+        brandLower.includes('associacao') ||
+        brandLower.includes('nacional') ||
+        nameLower.includes('abec') ||
+        nameLower.includes('associação') ||
+        nameLower.includes('associacao') ||
+        nameLower.includes('nacional')
+      );
+
+      // Resolve USD base price for imported items so that exchangeRate converts it dynamically
+      let resolvedPriceUSD: number | undefined = prod.priceUSD;
+
+      if (!isAssociacao) {
+        const cleanName = nameLower.trim();
+
+        const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+        if (fe) {
+          if (fe.priceUSD) resolvedPriceUSD = fe.priceUSD;
+          else if (fe.priceBRL) resolvedPriceUSD = fe.priceBRL / 5.0;
+        }
+
+        if (!resolvedPriceUSD) {
+          const fm = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          if (fm) {
+            if (fm.priceUSD) resolvedPriceUSD = fm.priceUSD;
+            else if (fm.priceBRL) resolvedPriceUSD = fm.priceBRL / 5.0;
+          }
+        }
+
+        if (!resolvedPriceUSD) {
+          for (const cat of cbdGuideData) {
+            const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()) || pr.name.toLowerCase().includes(cleanName));
+            if (p) {
+              if (p.priceUSD) resolvedPriceUSD = p.priceUSD;
+              else if (p.priceBRL) resolvedPriceUSD = p.priceBRL / 5.0;
+              break;
+            }
+          }
+        }
+
+        if (!resolvedPriceUSD) {
+          if (prod.priceBRL) {
+            resolvedPriceUSD = prod.priceBRL / 5.0;
+          } else {
+            resolvedPriceUSD = index === 0 ? 80.00 : 39.90;
+          }
+        }
+      }
+
+      const unitPriceBRL = isAssociacao 
+        ? 0 
+        : Number(((resolvedPriceUSD || 80.00) * exchangeRate).toFixed(2));
+
+      return {
+        id: prod.id,
+        name: prod.name,
+        brand: isAssociacao ? 'Associação Nacional' : (prod.brand || 'GreenBudz / Flowermed (EUA)'),
+        origin: isAssociacao ? 'Nacional' : (prod.origin || 'Importado'),
+        details: prod.details || [],
+        dosage: prod.dosage || [],
+        description: prod.description || '',
+        isAssociacao: Boolean(isAssociacao),
+        priceUSD: resolvedPriceUSD,
+        priceBRL: unitPriceBRL,
+        unitPriceBRL,
+        durationPerUnit: 60,
+        image: prod.image,
+      };
+    });
+
     return rawItems;
-  }, [messages, exchangeRate]);
+  }, [messages, exchangeRate, isConsultationFinished]);
 
   const importedItems = prescriptionItems.filter(item => !item.isAssociacao);
   const associacaoItems = prescriptionItems.filter(item => item.isAssociacao);
@@ -487,7 +504,7 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
               </span>
             </h3>
             
-            {importedItems.map(item => {
+            {importedItems.map((item, idx) => {
               const qty = quantities[item.id] || 1;
               const basePrice = item.unitPriceBRL;
               let itemTotal = basePrice * qty;
@@ -504,7 +521,7 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
               }
 
               return (
-                <div key={item.id} className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[24px] p-5 space-y-5 shadow-lg relative overflow-hidden group mb-4">
+                <div key={`${item.id || 'imp'}-${idx}`} className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[24px] p-5 space-y-5 shadow-lg relative overflow-hidden group mb-4">
                   <div className="absolute top-0 left-0 w-1 h-full bg-mecura-neon/50 opacity-0 group-hover:opacity-100 transition-opacity" />
                   
                   <div className="flex gap-4">
@@ -600,8 +617,8 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
               </div>
             </div>
 
-            {associacaoItems.map(item => (
-              <div key={item.id} className="bg-gradient-to-b from-[#0D1512] to-[#121A16] border border-emerald-500/30 rounded-[24px] p-5 space-y-4 shadow-lg relative overflow-hidden group mb-3">
+            {associacaoItems.map((item, idx) => (
+              <div key={`${item.id || 'assoc'}-${idx}`} className="bg-gradient-to-b from-[#0D1512] to-[#121A16] border border-emerald-500/30 rounded-[24px] p-5 space-y-4 shadow-lg relative overflow-hidden group mb-3">
                 <div className="flex gap-4">
                   <div className="w-20 h-20 rounded-2xl bg-[#0A0A0F] border border-emerald-500/20 p-2 flex-shrink-0 shadow-inner relative flex items-center justify-center">
                     <img 
@@ -650,10 +667,42 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
 
         {/* Empty state */}
         {!hasImportedItems && !hasAssociacaoItems && (
-          <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-8 text-center">
-            <Package className="w-12 h-12 text-[#8A8A9E] mx-auto mb-4 opacity-50" />
-            <h4 className="text-white font-bold mb-2">Nenhum medicamento prescrito</h4>
-            <p className="text-[#8A8A9E] text-sm">Sua prescrição médica ainda não contém medicamentos registrados no chat.</p>
+          <div className="bg-[#12121A] border border-mecura-elevated rounded-[24px] p-8 text-center space-y-4 shadow-xl">
+            <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto text-mecura-silver border border-white/5">
+              <Package className="w-8 h-8 opacity-60" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-white font-bold text-lg">Nenhum Medicamento Prescrito Ainda</h4>
+              <p className="text-xs text-mecura-silver max-w-md mx-auto leading-relaxed">
+                A sua farmácia personalizada é individualizada e será liberada assim que o médico emitir a sua receita oficial durante o atendimento.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-sm mx-auto">
+              {!hasPaidConsultation ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/checkout')}
+                  className="w-full py-3 bg-mecura-neon hover:bg-[#b5ff33] text-black font-extrabold text-xs rounded-xl shadow-[0_0_15px_rgba(166,255,0,0.3)] transition-all cursor-pointer"
+                >
+                  Iniciar Consulta Médica
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate('/chat')}
+                  className="w-full py-3 bg-mecura-neon hover:bg-[#b5ff33] text-black font-extrabold text-xs rounded-xl shadow-[0_0_15px_rgba(166,255,0,0.3)] transition-all cursor-pointer"
+                >
+                  Acessar Sala de Consulta
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                className="w-full py-3 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl border border-white/10 transition-all cursor-pointer"
+              >
+                Voltar ao Painel
+              </button>
+            </div>
           </div>
         )}
       </div>

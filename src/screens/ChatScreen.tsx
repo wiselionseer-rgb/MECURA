@@ -67,11 +67,11 @@ export function ChatScreen() {
   );
 
   useEffect(() => {
-    // If patient has not paid and consultation is not concluded, redirect to checkout immediately
-    if (!hasPaidConsultation && !isConsultationFinished) {
+    // If patient has not paid, redirect to checkout immediately
+    if (!hasPaidConsultation) {
       navigate('/checkout');
     }
-  }, [hasPaidConsultation, isConsultationFinished, navigate]);
+  }, [hasPaidConsultation, navigate]);
 
   // Find if current patient has an active entry in the queue
   const myQueueEntry = queue.find(p => 
@@ -81,10 +81,9 @@ export function ChatScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const isWaitingInQueue = hasPaidConsultation && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive && myQueueEntry?.status !== 'in-consultation')) && !isConsultationFinished;
-
   const isConsultationConcluded = useMemo(() => {
     if (isConsultationFinished) return true;
+    if (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') return true;
     
     // Check if the doctor has sent the final consultation closing message
     const hasFinalDoctorMsg = messages.some(
@@ -105,6 +104,16 @@ export function ChatScreen() {
 
     return false;
   }, [isConsultationFinished, messages, effectiveConsultationId, patientId, queue]);
+
+  const hasDoctorMessages = messages.some(m => m.sender === 'doctor');
+
+  // Waiting guard overlay is ONLY shown if patient is strictly in waiting queue and has never been attended by the doctor yet
+  const isWaitingInQueue = hasPaidConsultation && 
+    !isConsultationConcluded && 
+    !consultationActive && 
+    !hasDoctorMessages && 
+    myQueueEntry?.status !== 'in-consultation' && 
+    (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive));
 
   const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
 
@@ -203,8 +212,8 @@ export function ChatScreen() {
   };
 
   useEffect(() => {
-    // Initial doctor message only if chat is empty AND patient is actually in active consultation
-    if (!isWaitingInQueue && (consultationActive || myQueueEntry?.status === 'in-consultation' || isConsultationFinished) && messages.length === 0) {
+    // Initial doctor message only if patient has actually paid AND chat is empty AND patient is actively in consultation
+    if (hasPaidConsultation && !isWaitingInQueue && (consultationActive || myQueueEntry?.status === 'in-consultation') && messages.length === 0) {
       const timeoutId = setTimeout(() => {
         // Double check if messages are still empty before adding
         if (useStore.getState().messages.length > 0) return;
@@ -227,7 +236,7 @@ export function ChatScreen() {
       
       return () => clearTimeout(timeoutId);
     }
-  }, [userName, answers, messages.length, addMessage, isWaitingInQueue, consultationActive, myQueueEntry?.status, isConsultationFinished, effectiveConsultationId]);
+  }, [userName, answers, messages.length, addMessage, isWaitingInQueue, consultationActive, myQueueEntry?.status, hasPaidConsultation, effectiveConsultationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -461,7 +470,7 @@ export function ChatScreen() {
             return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
           }).map((msg, msgIndex) => (
             <motion.div
-              key={msg.id || `chat-msg-${msgIndex}`}
+              key={`${msg.id || 'chat-msg'}-${msgIndex}`}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.3, type: 'spring', bounce: 0.4 }}

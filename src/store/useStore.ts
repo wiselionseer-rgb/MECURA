@@ -253,7 +253,7 @@ export const useStore = create<AppState>((set, get) => ({
     answers: { ...state.answers, [key]: value } 
   })),
   
-  pagamento_consulta: typeof window !== 'undefined' ? (localStorage.getItem('mecura_pagamento') === 'true' || localStorage.getItem('mecura_consultation_active') === 'true') : false,
+  pagamento_consulta: false,
   setPagamentoConsulta: (status) => { 
     if (typeof window !== 'undefined') { 
       if (status) localStorage.setItem('mecura_pagamento', 'true');
@@ -431,22 +431,82 @@ export const useStore = create<AppState>((set, get) => ({
   queue: [],
   joinQueue: async (patient) => {
     const state = get();
-    const hasPaid = !!(
-      state.pagamento_consulta || 
-      (patient as any)?.pagamento_consulta || 
-      (patient as any)?.hasPaid || 
-      (patient as any)?.isPaid ||
-      (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
-    );
+    const currentUserId = auth.currentUser?.uid || state.patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || `anon_${Date.now()}`;
+    const targetUid = auth.currentUser?.uid || currentUserId;
 
-    if (!hasPaid) {
+    // Strictly verify payment: must have payment confirmed in user document or verified payment payload
+    let isDocPaid = false;
+    let uData: any = null;
+    let resolvedPatientName = (patient?.patientName || state.userName || '').trim();
+    if (resolvedPatientName.toLowerCase() === 'paciente') resolvedPatientName = '';
+    
+    let resolvedEmail = patient?.email || state.userEmail || auth.currentUser?.email || '';
+    if (resolvedEmail.includes('sem-email')) resolvedEmail = '';
+    
+    let resolvedPhone = (patient as any)?.phone || state.userPhone || state.answers?.phone || '';
+    let resolvedCpf = (patient as any)?.cpf || state.userCpf || state.answers?.cpf || '';
+    let resolvedBirthDate = (patient as any)?.birthDate || state.userBirthDate || state.answers?.birthDate || '';
+    let resolvedAnswers = {
+      ...state.answers,
+      ...((patient as any)?.answers || {})
+    };
+
+    try {
+      if (targetUid) {
+        const userDoc = await getDoc(doc(db, 'users', targetUid));
+        if (userDoc.exists()) {
+          uData = userDoc.data();
+          isDocPaid = !!(
+            uData.pagamento_consulta === true || 
+            uData.hasPaid === true || 
+            uData.isPaid === true || 
+            uData.bypassedPayment === true
+          );
+
+          if (uData.name && typeof uData.name === 'string' && uData.name.trim().toLowerCase() !== 'paciente') {
+            resolvedPatientName = uData.name.trim();
+            get().setUserName(resolvedPatientName);
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', resolvedPatientName);
+          }
+          if (uData.email && !uData.email.includes('sem-email')) {
+            resolvedEmail = uData.email;
+            get().setUserEmail(resolvedEmail);
+          }
+          if (uData.phone) {
+            resolvedPhone = uData.phone;
+            get().setUserPhone(resolvedPhone);
+          }
+          if (uData.cpf) {
+            resolvedCpf = uData.cpf;
+            get().setUserCpf(resolvedCpf);
+          }
+          if (uData.birthDate) {
+            resolvedBirthDate = uData.birthDate;
+            get().setUserBirthDate(resolvedBirthDate);
+          }
+          if (uData.answers) {
+            resolvedAnswers = { ...resolvedAnswers, ...uData.answers };
+            Object.entries(uData.answers).forEach(([k, v]) => get().setAnswer(k, v));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch user data for queue hydration:", e);
+    }
+
+    const hasVerifiedPayment = isDocPaid;
+
+    if (!hasVerifiedPayment) {
       console.warn('[JOIN QUEUE] Bloqueado: Paciente tentou entrar na fila sem pagamento confirmado.');
+      set({ inQueue: false, pagamento_consulta: false });
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_pagamento');
+        localStorage.removeItem('mecura_consultation_active');
+      }
       return;
     }
 
-    const currentUserId = auth.currentUser?.uid || state.patientId || `anon_${Date.now()}`;
-    
-    // Save the generated or existing ID
+    // Save the verified payment state and user ID
     if (typeof window !== 'undefined') { 
       localStorage.setItem('mecura_patientId', currentUserId); 
       localStorage.setItem('mecura_pagamento', 'true');
@@ -463,60 +523,39 @@ export const useStore = create<AppState>((set, get) => ({
       messages: []
     });
     
-    const isPremium = !!(state.pagamento_premium || state.selectedOffer === 'premium' || (patient as any)?.isPremium || (patient as any)?.plan === 'premium');
-    
+    const isPremium = !!(state.pagamento_premium || state.selectedOffer === 'premium' || (patient as any)?.isPremium || (patient as any)?.plan === 'premium' || uData?.pagamento_premium || uData?.isPremium);
+
+    if (!resolvedPatientName) {
+      const storedName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
+      if (storedName && storedName.toLowerCase() !== 'paciente') {
+        resolvedPatientName = storedName;
+      } else {
+        resolvedPatientName = 'Paciente';
+      }
+    }
+
+    const finalPatientName = resolvedPatientName;
+
     let newPatient = { 
       id: currentUserId, 
-      patientName: patient?.patientName || state.userName || 'Paciente', 
-      name: patient?.patientName || state.userName || 'Paciente', 
-      email: patient?.email || state.userEmail || auth.currentUser?.email || 'sem-email@mecura.com',
-      phone: (patient as any)?.phone || state.userPhone || state.answers?.phone || '',
-      cpf: (patient as any)?.cpf || state.userCpf || state.answers?.cpf || '',
-      birthDate: (patient as any)?.birthDate || state.userBirthDate || state.answers?.birthDate || '',
+      patientName: finalPatientName, 
+      name: finalPatientName, 
+      email: resolvedEmail || 'sem-email@mecura.com',
+      phone: resolvedPhone,
+      cpf: resolvedCpf,
+      birthDate: resolvedBirthDate,
       isPremium: isPremium,
       plan: isPremium ? 'premium' : 'basic',
       answers: {
-        ...state.answers,
-        ...((patient as any)?.answers || {}),
-        birthDate: (patient as any)?.birthDate || state.userBirthDate || state.answers?.birthDate || '',
-        cpf: (patient as any)?.cpf || state.userCpf || state.answers?.cpf || '',
-        phone: (patient as any)?.phone || state.userPhone || state.answers?.phone || ''
+        ...resolvedAnswers,
+        birthDate: resolvedBirthDate,
+        cpf: resolvedCpf,
+        phone: resolvedPhone
       },
-      ...(patient || {})
+      ...(patient || {}),
+      // Ensure real name is never overwritten by 'Paciente' in patient object
+      ...(finalPatientName !== 'Paciente' ? { patientName: finalPatientName, name: finalPatientName } : {})
     };
-    
-    if (auth.currentUser) {
-      try {
-        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          if (data.name) {
-            newPatient.patientName = data.name;
-            newPatient.name = data.name;
-            get().setUserName(data.name);
-          }
-          if (data.email) newPatient.email = data.email;
-          if (data.phone) {
-            newPatient.phone = data.phone;
-            get().setUserPhone(data.phone);
-          }
-          if (data.cpf) {
-            newPatient.cpf = data.cpf;
-            get().setUserCpf(data.cpf);
-          }
-          if (data.birthDate) {
-            newPatient.birthDate = data.birthDate;
-            get().setUserBirthDate(data.birthDate);
-          }
-          if (data.answers) {
-            newPatient.answers = { ...newPatient.answers, ...data.answers };
-            Object.entries(data.answers).forEach(([k, v]) => get().setAnswer(k, v));
-          }
-        }
-      } catch (e) {
-        console.warn("Failed to fetch user data for queue hydration:", e);
-      }
-    }
 
     const queuePayload = {
       ...newPatient,
@@ -585,24 +624,43 @@ export const useStore = create<AppState>((set, get) => ({
         console.warn('[SERVER QUEUE SYNC] Error:', e);
       }
 
-      // Also ensure user document reflects active payment and waiting queue status
+      // Also ensure user document reflects active payment and waiting queue status without wiping existing data
       try {
-        await setDoc(doc(db, 'users', currentUserId), {
+        const userUpdateData: Record<string, any> = {
           id: currentUserId,
-          name: newPatient.patientName,
-          email: newPatient.email,
-          phone: newPatient.phone,
-          cpf: newPatient.cpf,
-          birthDate: newPatient.birthDate,
-          answers: newPatient.answers,
-          pagamento_consulta: true,
-          pagamento_premium: isPremium,
           inQueue: true,
           consultationStatus: 'waiting',
           isPremium,
           plan: isPremium ? 'premium' : 'basic',
           lastUpdated: new Date().toISOString()
-        }, { merge: true });
+        };
+
+        if (hasVerifiedPayment) {
+          userUpdateData.pagamento_consulta = true;
+          userUpdateData.pagamento_premium = isPremium;
+        }
+
+        // ONLY write identity fields if they are REAL, non-empty values (never overwrite with 'Paciente' or blank!)
+        if (newPatient.patientName && typeof newPatient.patientName === 'string' && newPatient.patientName.trim().toLowerCase() !== 'paciente') {
+          userUpdateData.name = newPatient.patientName.trim();
+        }
+        if (newPatient.email && typeof newPatient.email === 'string' && !newPatient.email.includes('sem-email') && newPatient.email.trim() !== '') {
+          userUpdateData.email = newPatient.email.trim();
+        }
+        if (newPatient.phone && typeof newPatient.phone === 'string' && newPatient.phone.trim()) {
+          userUpdateData.phone = newPatient.phone.trim();
+        }
+        if (newPatient.cpf && typeof newPatient.cpf === 'string' && newPatient.cpf.trim()) {
+          userUpdateData.cpf = newPatient.cpf.trim();
+        }
+        if (newPatient.birthDate && typeof newPatient.birthDate === 'string' && newPatient.birthDate.trim()) {
+          userUpdateData.birthDate = newPatient.birthDate.trim();
+        }
+        if (newPatient.answers && Object.keys(newPatient.answers).length > 0) {
+          userUpdateData.answers = newPatient.answers;
+        }
+
+        await setDoc(doc(db, 'users', currentUserId), userUpdateData, { merge: true });
       } catch (userErr) {
         console.warn("Could not update user doc during joinQueue:", userErr);
       }
@@ -746,7 +804,18 @@ export const useStore = create<AppState>((set, get) => ({
       queueData.forEach(p => {
         if (p && p.id) {
           const prev = mergedMap.get(p.id) || {};
-          mergedMap.set(p.id, { ...prev, ...p });
+          const resolvedName = (p.patientName && typeof p.patientName === 'string' && p.patientName.toLowerCase() !== 'paciente')
+            ? p.patientName
+            : (prev.patientName && typeof prev.patientName === 'string' && prev.patientName.toLowerCase() !== 'paciente')
+              ? prev.patientName
+              : (p.patientName || prev.patientName || 'Paciente');
+
+          mergedMap.set(p.id, { 
+            ...prev, 
+            ...p,
+            patientName: resolvedName,
+            name: resolvedName
+          });
         }
       });
       queueData = Array.from(mergedMap.values());
@@ -1214,7 +1283,7 @@ export const useStore = create<AppState>((set, get) => ({
     };
 
     // Save to Firestore if user is logged in
-    const consultationId = state.activeConsultationId || auth.currentUser?.uid;
+    const consultationId = state.activeConsultationId || state.patientId || auth.currentUser?.uid;
     if (consultationId) {
       try {
         const historyRef = collection(db, 'users', consultationId, 'consultations');
@@ -1241,7 +1310,7 @@ export const useStore = create<AppState>((set, get) => ({
           date: newConsultation.date.toISOString(),
           messages: newConsultation.messages.map(m => ({
             ...m,
-            timestamp: m.timestamp.toISOString()
+            timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : (m.timestamp || new Date().toISOString())
           }))
         });
 
@@ -1250,12 +1319,16 @@ export const useStore = create<AppState>((set, get) => ({
         
         // Clean up active consultation - change status to finished instead of deleting
         await updateDoc(doc(db, 'queue', consultationId), {
-          status: 'finished'
+          status: 'finished',
+          hasUnread: false
+        }).catch(async () => {
+          await setDoc(doc(db, 'queue', consultationId), { status: 'finished', hasUnread: false }, { merge: true });
         });
 
         await setDoc(doc(db, 'users', consultationId), {
           inQueue: false,
           consultationStatus: 'finished',
+          isConsultationFinished: true,
           consultationActive: false,
           lastUpdated: new Date().toISOString()
         }, { merge: true }).catch(() => {});
@@ -1276,8 +1349,8 @@ export const useStore = create<AppState>((set, get) => ({
         triggerBackgroundPush(
           consultationId,
           'Consulta Finalizada',
-          'Sua consulta foi concluída. Muito obrigado!',
-          '/dashboard'
+          'Sua consulta foi concluída com sucesso. Acesse seu protocolo e receitas!',
+          '/protocol'
         );
         
         // We no longer delete messages from active_consultations to preserve chat history
@@ -1288,6 +1361,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.setItem('mecura_consultation_finished', 'true');
       localStorage.removeItem('mecura_consultation_active');
     }
 
@@ -1308,6 +1382,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_pagamento');
       localStorage.removeItem('mecura_consultation_active');
+      localStorage.removeItem('mecura_consultation_finished');
     }
     return set({ 
       consultationActive: false, 
@@ -1678,6 +1753,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_pagamento');
       localStorage.removeItem('mecura_applied_coupon');
+      localStorage.removeItem('mecura_consultation_finished');
+      localStorage.removeItem('mecura_consultation_active');
     }
     return set({
       answers: { objectives: [] },
@@ -1694,7 +1771,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
   
-  reset: () => { if (typeof window !== 'undefined') { localStorage.removeItem('mecura_patientId'); localStorage.removeItem('mecura_pagamento'); } return set({
+  reset: () => { if (typeof window !== 'undefined') { localStorage.removeItem('mecura_patientId'); localStorage.removeItem('mecura_pagamento'); localStorage.removeItem('mecura_consultation_finished'); localStorage.removeItem('mecura_consultation_active'); } return set({
     userName: '',
     userEmail: '',
     userPhone: '',

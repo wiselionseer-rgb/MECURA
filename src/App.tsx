@@ -66,6 +66,22 @@ export default function App() {
           unsubscribeUserDoc = onSnapshot(doc(db, 'users', user.uid), (snap) => {
             if (snap.exists()) {
               const uData = snap.data();
+
+              // Real-time synchronization of patient identity to prevent lost profile data
+              if (uData.name && typeof uData.name === 'string' && uData.name.trim() !== '' && uData.name.toLowerCase() !== 'paciente') {
+                useStore.getState().setUserName(uData.name.trim());
+                if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', uData.name.trim());
+              }
+              if (uData.email) useStore.getState().setUserEmail(uData.email);
+              if (uData.phone) useStore.getState().setUserPhone(uData.phone);
+              if (uData.cpf) useStore.getState().setUserCpf(uData.cpf);
+              if (uData.birthDate) useStore.getState().setUserBirthDate(uData.birthDate);
+              if (uData.answers) {
+                Object.entries(uData.answers).forEach(([k, v]) => useStore.getState().setAnswer(k, v));
+              }
+              useStore.setState({ patientId: user.uid });
+              if (typeof window !== 'undefined') localStorage.setItem('mecura_patientId', user.uid);
+
               const hasActualPayment = !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true);
 
               if (hasActualPayment) {
@@ -124,9 +140,15 @@ export default function App() {
                   pagamento_consulta: true 
                 });
               } else if (!hasActualPayment) {
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('mecura_pagamento');
+                  localStorage.removeItem('mecura_consultation_active');
+                  localStorage.removeItem('mecura_consultation_finished');
+                }
                 useStore.setState({
                   inQueue: false,
                   consultationActive: false,
+                  isConsultationFinished: false,
                   pagamento_consulta: false
                 });
               }

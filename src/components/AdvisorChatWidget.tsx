@@ -348,7 +348,7 @@ export function AdvisorChatWidget() {
               {/* Messages Area */}
               <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-transparent scroll-smooth relative z-10 z-[1] custom-scrollbar">
                 {messages.map((msg, index) => (
-                  <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div key={`${msg.id || 'adv-msg'}-${index}`} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                     {msg.sender === 'advisor' && (
                       <div className="flex items-center gap-1.5 ml-12 mb-1">
                          <span className="text-xs text-mecura-neon/70 font-medium tracking-wide">Mariana</span>
@@ -378,9 +378,9 @@ export function AdvisorChatWidget() {
 
                     {msg.sender === 'advisor' && msg.options && index === messages.length - 1 && (
                       <div className="ml-10 flex flex-col gap-2 mt-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar pb-2">
-                        {msg.options.map(opt => (
+                        {msg.options.map((opt, optIdx) => (
                           <button
-                            key={opt}
+                            key={`${opt}-${optIdx}`}
                             onClick={() => handleUserMessage(opt)}
                             disabled={isTyping}
                             className="w-full text-left px-3 py-2 bg-[#161622] border border-mecura-neon/30 text-mecura-neon text-[11px] font-bold rounded-xl shadow-sm hover:bg-mecura-neon/10 hover:border-mecura-neon hover:shadow-[0_0_10px_rgba(166,255,0,0.2)] transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none active:scale-95"

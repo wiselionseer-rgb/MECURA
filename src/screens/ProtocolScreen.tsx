@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, Droplets, Clock, AlertCircle, FileText, Download, 
   CheckCircle2, ShieldCheck, Calendar, User, Stethoscope, Sparkles, 
   ShoppingCart, MessageCircle, ExternalLink, QrCode, FileCheck, ArrowRight,
-  Sun, Moon, Sunset, Info, Lock
+  Sun, Moon, Sunset, Info, Lock, Sprout, Paperclip, Activity
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
@@ -30,19 +30,32 @@ export function ProtocolScreen() {
   const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
   const [downloadAllProgress, setDownloadAllProgress] = useState(false);
 
+  const hasPaidConsultation = !!(
+    pagamento_consulta || 
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+  );
+
   // Verified if doctor actually conducted consultation and issued documents
   const hasDoctorPrescription = useMemo(() => {
+    if (!hasPaidConsultation) return false;
+
     return messages.some(m => 
       m.type === 'prescription' || 
       m.type === 'receita_previa' || 
       (m.type === 'product' && m.productData) ||
       (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
-    );
-  }, [messages]);
+    ) || (isConsultationFinished && messages.some(m => m.sender === 'doctor'));
+  }, [messages, isConsultationFinished, hasPaidConsultation]);
+
+  useEffect(() => {
+    if (!hasPaidConsultation) {
+      navigate('/checkout');
+    }
+  }, [hasPaidConsultation, navigate]);
 
   // Extract prescribed items from messages, falling back to empty if consultation not done yet
   const prescriptionItems = useMemo(() => {
-    if (!hasDoctorPrescription) {
+    if (!hasPaidConsultation || !hasDoctorPrescription) {
       return [];
     }
 
@@ -104,52 +117,92 @@ export function ProtocolScreen() {
       });
     }
 
-    const docMsg = messages.find(m => m.type === 'prescription');
-    if (docMsg) {
-      return [
-        {
-          name: 'GreenBudz Calm Vibe CBD 6000mg',
-          brand: 'GreenBudz',
-          origin: 'Importado',
-          type: 'Óleo Sublingual',
-          activeIngredients: 'CBD Full Spectrum 6000mg (200mg/ml) + Terpenos',
-          concentration: '200mg/ml (6000mg total)',
-          pharmaceuticalForm: 'Frasco Conta-gotas 30ml',
-          quantity: '1 frasco',
-          administrationRoute: 'Sublingual',
-          dosage: [
-            '☀️ Manhã: 5 gotas (25mg CBD) sob a língua após o café',
-            '🌙 Noite: 10 gotas (50mg CBD) sob a língua 30min antes de deitar'
-          ],
-          details: [
-            'Pingar diretamente sob a língua e aguardar 60 segundos antes de engolir.',
-            'Uso contínuo para controle de ansiedade, regulação do sono e bem-estar geral.'
-          ],
-          image: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=500&auto=format&fit=crop&q=60'
-        }
-      ];
-    }
-
-    // Patient has not been prescribed yet
+    // Patient has not been prescribed any specific products yet
     return [];
-  }, [messages, hasDoctorPrescription]);
+  }, [messages, hasDoctorPrescription, hasPaidConsultation]);
 
   // Find prescription/medical report messages with attachments
   const prescriptionMsg = useMemo(() => {
-    return messages.find(m => m.type === 'prescription');
+    return messages.find(m => 
+      m.type === 'prescription' || 
+      m.docType === 'receita' || 
+      m.type === 'receita_previa' ||
+      (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+    );
   }, [messages]);
 
-  const medicalReportMsg = useMemo(() => {
-    return messages.find(m => m.type === 'medical_report');
+  const initialMedicalReportMsg = useMemo(() => {
+    return messages.find(m => 
+      m.docType === 'laudo_inicial' || 
+      (m.type === 'medical_report' && m.docType !== 'laudo_evolutivo' && !m.attachment?.name?.toLowerCase().includes('evolutivo')) || 
+      (m.attachment && (
+        m.attachment.docType === 'laudo_inicial' || 
+        (m.attachment.name?.toLowerCase().includes('laudo') && !m.attachment.name?.toLowerCase().includes('evolutivo') && !m.attachment.name?.toLowerCase().includes('psicomotor') && !m.attachment.name?.toLowerCase().includes('agronom'))
+      ))
+    );
+  }, [messages]);
+
+  const evolutiveMedicalReportMsg = useMemo(() => {
+    return messages.find(m => 
+      m.docType === 'laudo_evolutivo' || 
+      (m.attachment && (
+        m.attachment.docType === 'laudo_evolutivo' || 
+        m.attachment.name?.toLowerCase().includes('evolutivo')
+      ))
+    );
   }, [messages]);
 
   const psychomotorReportMsg = useMemo(() => {
-    return messages.find(m => m.type === 'psychomotor_report');
+    return messages.find(m => 
+      m.type === 'psychomotor_report' || 
+      m.docType === 'laudo_psicomotor' || 
+      (m.attachment && (
+        m.attachment.docType === 'laudo_psicomotor' || 
+        m.attachment.name?.toLowerCase().includes('psicomotor')
+      ))
+    );
   }, [messages]);
 
   const agronomicReportMsg = useMemo(() => {
-    return messages.find(m => m.type === 'agronomic_report');
+    return messages.find(m => 
+      m.type === 'agronomic_report' || 
+      m.docType === 'laudo_agronomico' || 
+      (m.attachment && (
+        m.attachment.docType === 'laudo_agronomico' || 
+        m.attachment.name?.toLowerCase().includes('agronom')
+      ))
+    );
   }, [messages]);
+
+  // Other custom attachments sent by doctor
+  const otherCustomDocs = useMemo(() => {
+    return messages.filter(m => 
+      m.attachment && 
+      m.attachment !== prescriptionMsg?.attachment &&
+      m.attachment !== initialMedicalReportMsg?.attachment &&
+      m.attachment !== evolutiveMedicalReportMsg?.attachment &&
+      m.attachment !== psychomotorReportMsg?.attachment &&
+      m.attachment !== agronomicReportMsg?.attachment &&
+      m.type !== 'prescription' &&
+      m.type !== 'medical_report' &&
+      m.type !== 'psychomotor_report' &&
+      m.type !== 'agronomic_report'
+    );
+  }, [messages, prescriptionMsg, initialMedicalReportMsg, evolutiveMedicalReportMsg, psychomotorReportMsg, agronomicReportMsg]);
+
+  const hasPrescriptionAttached = !!prescriptionMsg;
+  const hasInitialReportAttached = !!initialMedicalReportMsg;
+  const hasEvolutiveReportAttached = !!evolutiveMedicalReportMsg;
+  const hasPsychomotorAttached = !!psychomotorReportMsg;
+  const hasAgronomicAttached = !!agronomicReportMsg;
+
+  const totalAvailableDocs = 
+    (hasPrescriptionAttached ? 1 : 0) + 
+    (hasInitialReportAttached ? 1 : 0) + 
+    (hasEvolutiveReportAttached ? 1 : 0) + 
+    (hasPsychomotorAttached ? 1 : 0) + 
+    (hasAgronomicAttached ? 1 : 0) + 
+    otherCustomDocs.length;
 
   // Patient metadata
   const displayName = userName || 'Paciente';
@@ -176,8 +229,8 @@ export function ProtocolScreen() {
 
   // Handler for downloading Prescription
   const handleDownloadPrescription = async () => {
-    if (!hasDoctorPrescription) {
-      alert("A receita médica oficial estará disponível para download assim que o Dr. Guilherme finalizar a sua consulta médica.");
+    if (!hasPrescriptionAttached) {
+      alert("A Receita Médica Digital não foi anexada pelo médico nesta consulta.");
       return;
     }
     setDownloadingDoc('prescription');
@@ -212,39 +265,81 @@ export function ProtocolScreen() {
     }
   };
 
-  // Handler for downloading Medical Report
-  const handleDownloadMedicalReport = async () => {
-    if (!hasDoctorPrescription) {
-      alert("O laudo médico oficial estará disponível para download após o Dr. Guilherme realizar o seu atendimento.");
+  // Handler for downloading Initial Medical Report
+  const handleDownloadInitialReport = async () => {
+    if (!hasInitialReportAttached) {
+      alert("O Laudo Médico Inicial não foi anexado pelo médico nesta consulta.");
       return;
     }
-    setDownloadingDoc('medical_report');
+    setDownloadingDoc('initial_report');
     try {
-      if (medicalReportMsg?.attachment) {
+      if (initialMedicalReportMsg?.attachment) {
         await downloadOrGenerateAttachment(
-          medicalReportMsg.attachment,
+          initialMedicalReportMsg.attachment,
           async () => {
             const blob = await generateMedicalReportPDF(displayName, messages, {
               birthDate: displayBirthDate,
               cpf: displayCpf,
+              isEvolutivo: false,
               returnBlob: true
             } as any);
             return blob as Blob;
           },
-          `Laudo_Medico_${displayName.replace(/\s+/g, '_')}.pdf`
+          `Laudo_Medico_Inicial_${displayName.replace(/\s+/g, '_')}.pdf`
         );
       } else {
         const blob = await generateMedicalReportPDF(displayName, messages, {
           birthDate: displayBirthDate,
           cpf: displayCpf,
+          isEvolutivo: false,
           returnBlob: true
         } as any);
         if (blob instanceof Blob) {
-          await deliverPdfBlob(blob, `Laudo_Medico_${displayName.replace(/\s+/g, '_')}.pdf`);
+          await deliverPdfBlob(blob, `Laudo_Medico_Inicial_${displayName.replace(/\s+/g, '_')}.pdf`);
         }
       }
     } catch (err) {
-      console.error('Erro ao baixar laudo médico:', err);
+      console.error('Erro ao baixar laudo médico inicial:', err);
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
+  // Handler for downloading Evolutive Medical Report
+  const handleDownloadEvolutiveReport = async () => {
+    if (!hasEvolutiveReportAttached) {
+      alert("O Laudo Médico Evolutivo não foi anexado pelo médico nesta consulta.");
+      return;
+    }
+    setDownloadingDoc('evolutive_report');
+    try {
+      if (evolutiveMedicalReportMsg?.attachment) {
+        await downloadOrGenerateAttachment(
+          evolutiveMedicalReportMsg.attachment,
+          async () => {
+            const blob = await generateMedicalReportPDF(displayName, messages, {
+              birthDate: displayBirthDate,
+              cpf: displayCpf,
+              isEvolutivo: true,
+              returnBlob: true
+            } as any);
+            return blob as Blob;
+          },
+          `Laudo_Medico_Evolutivo_${displayName.replace(/\s+/g, '_')}.pdf`
+        );
+      } else {
+        const blob = await generateMedicalReportPDF(displayName, messages, {
+          birthDate: displayBirthDate,
+          cpf: displayCpf,
+          isEvolutivo: true,
+          returnBlob: true
+        } as any);
+        if (blob instanceof Blob) {
+          await deliverPdfBlob(blob, `Laudo_Medico_Evolutivo_${displayName.replace(/\s+/g, '_')}.pdf`);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao baixar laudo médico evolutivo:', err);
     } finally {
       setDownloadingDoc(null);
     }
@@ -252,19 +347,34 @@ export function ProtocolScreen() {
 
   // Handler for downloading Psychomotor Report
   const handleDownloadPsychomotorReport = async () => {
-    if (!hasDoctorPrescription) {
-      alert("O laudo de aptidão estará disponível após a sua consulta médica.");
+    if (!hasPsychomotorAttached) {
+      alert("O Laudo de Aptidão Psicomotora não foi anexado pelo médico nesta consulta.");
       return;
     }
     setDownloadingDoc('psychomotor');
     try {
-      const blob = await generatePsychomotorReportPDF(displayName, {
-        birthDate: displayBirthDate,
-        cpf: displayCpf,
-        returnBlob: true
-      } as any);
-      if (blob instanceof Blob) {
-        await deliverPdfBlob(blob, `Laudo_Aptidao_Psicomotora_${displayName.replace(/\s+/g, '_')}.pdf`);
+      if (psychomotorReportMsg?.attachment) {
+        await downloadOrGenerateAttachment(
+          psychomotorReportMsg.attachment,
+          async () => {
+            const blob = await generatePsychomotorReportPDF(displayName, {
+              birthDate: displayBirthDate,
+              cpf: displayCpf,
+              returnBlob: true
+            } as any);
+            return blob as Blob;
+          },
+          `Laudo_Aptidao_Psicomotora_${displayName.replace(/\s+/g, '_')}.pdf`
+        );
+      } else {
+        const blob = await generatePsychomotorReportPDF(displayName, {
+          birthDate: displayBirthDate,
+          cpf: displayCpf,
+          returnBlob: true
+        } as any);
+        if (blob instanceof Blob) {
+          await deliverPdfBlob(blob, `Laudo_Aptidao_Psicomotora_${displayName.replace(/\s+/g, '_')}.pdf`);
+        }
       }
     } catch (err) {
       console.error('Erro ao baixar laudo psicomotor:', err);
@@ -275,19 +385,34 @@ export function ProtocolScreen() {
 
   // Handler for downloading Agronomic Report
   const handleDownloadAgronomicReport = async () => {
-    if (!hasDoctorPrescription) {
-      alert("O parecer agronômico estará disponível após a sua consulta médica.");
+    if (!hasAgronomicAttached) {
+      alert("O Parecer Técnico Agronômico não foi anexado pelo médico nesta consulta.");
       return;
     }
     setDownloadingDoc('agronomic');
     try {
-      const blob = await generateAgronomicReportPDF(displayName, {
-        birthDate: displayBirthDate,
-        cpf: displayCpf,
-        returnBlob: true
-      } as any);
-      if (blob instanceof Blob) {
-        await deliverPdfBlob(blob, `Parecer_Tecnico_Agronomico_${displayName.replace(/\s+/g, '_')}.pdf`);
+      if (agronomicReportMsg?.attachment) {
+        await downloadOrGenerateAttachment(
+          agronomicReportMsg.attachment,
+          async () => {
+            const blob = await generateAgronomicReportPDF(displayName, {
+              birthDate: displayBirthDate,
+              cpf: displayCpf,
+              returnBlob: true
+            } as any);
+            return blob as Blob;
+          },
+          `Parecer_Tecnico_Agronomico_${displayName.replace(/\s+/g, '_')}.pdf`
+        );
+      } else {
+        const blob = await generateAgronomicReportPDF(displayName, {
+          birthDate: displayBirthDate,
+          cpf: displayCpf,
+          returnBlob: true
+        } as any);
+        if (blob instanceof Blob) {
+          await deliverPdfBlob(blob, `Parecer_Tecnico_Agronomico_${displayName.replace(/\s+/g, '_')}.pdf`);
+        }
       }
     } catch (err) {
       console.error('Erro ao baixar laudo agronômico:', err);
@@ -296,27 +421,58 @@ export function ProtocolScreen() {
     }
   };
 
+  // Handler for custom document download
+  const handleDownloadCustomAttachment = async (attachment: any, idx: number) => {
+    setDownloadingDoc(`custom-${idx}`);
+    try {
+      await downloadOrGenerateAttachment(
+        attachment,
+        async () => new Blob(['Documento'], { type: 'application/pdf' }),
+        attachment.name || `Documento_${idx + 1}.pdf`
+      );
+    } catch (e) {
+      console.error('Erro ao baixar anexo:', e);
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
   // Download all official documents in batch
   const handleDownloadAll = async () => {
-    if (!hasDoctorPrescription) {
-      alert("Os documentos médicos oficiais só podem ser baixados após o médico realizar o atendimento.");
+    if (totalAvailableDocs === 0) {
+      alert("Nenhum laudo ou documento oficial foi anexado pelo médico nesta consulta.");
       return;
     }
     setDownloadAllProgress(true);
     try {
-      await handleDownloadPrescription();
-      await new Promise(r => setTimeout(r, 600));
-      await handleDownloadMedicalReport();
-      if (psychomotorReportMsg) {
+      if (hasPrescriptionAttached) {
+        await handleDownloadPrescription();
         await new Promise(r => setTimeout(r, 600));
-        await handleDownloadPsychomotorReport();
       }
-      if (agronomicReportMsg) {
+      if (hasInitialReportAttached) {
+        await handleDownloadInitialReport();
         await new Promise(r => setTimeout(r, 600));
+      }
+      if (hasEvolutiveReportAttached) {
+        await handleDownloadEvolutiveReport();
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (hasPsychomotorAttached) {
+        await handleDownloadPsychomotorReport();
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (hasAgronomicAttached) {
         await handleDownloadAgronomicReport();
+        await new Promise(r => setTimeout(r, 600));
+      }
+      for (let i = 0; i < otherCustomDocs.length; i++) {
+        if (otherCustomDocs[i].attachment) {
+          await handleDownloadCustomAttachment(otherCustomDocs[i].attachment, i);
+          await new Promise(r => setTimeout(r, 600));
+        }
       }
     } catch (err) {
-      console.error('Erro ao baixar todos os documentos:', err);
+      console.error('Erro ao baixar documentos:', err);
     } finally {
       setDownloadAllProgress(false);
     }
@@ -501,33 +657,33 @@ export function ProtocolScreen() {
               <FileCheck className="w-4 h-4 text-mecura-neon" />
               Documentos Médicos Oficiais (PDF)
             </h3>
-            {hasDoctorPrescription ? (
+            {totalAvailableDocs > 0 ? (
               <button
                 onClick={handleDownloadAll}
                 disabled={downloadAllProgress}
-                className="text-[11px] font-bold text-mecura-neon hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                className="text-[11px] font-bold text-mecura-neon hover:underline flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" />
-                {downloadAllProgress ? 'Baixando...' : 'Baixar Todos'}
+                {downloadAllProgress ? 'Baixando...' : `Baixar Laudos Anexados (${totalAvailableDocs})`}
               </button>
             ) : (
-              <span className="text-[10px] text-amber-400/80 font-semibold flex items-center gap-1">
-                <Lock className="w-3 h-3" /> Bloqueado até consulta
+              <span className="text-[10px] text-[#8A8A9E] font-semibold flex items-center gap-1">
+                <Lock className="w-3 h-3 text-amber-400" /> Somente documentos anexados pelo médico
               </span>
             )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Prescription PDF Card */}
-            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-colors ${
-              hasDoctorPrescription 
-                ? 'bg-[#12121A] border-white/5 hover:border-mecura-neon/30' 
-                : 'bg-[#0E0E14] border-white/5 opacity-80'
+            {/* 1. Prescription PDF Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasPrescriptionAttached 
+                ? 'bg-[#12121A] border-mecura-neon/30 hover:border-mecura-neon shadow-[0_4px_20px_rgba(166,255,0,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
             }`}>
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                  hasDoctorPrescription 
-                    ? 'bg-mecura-neon/10 border-mecura-neon/20 text-mecura-neon' 
+                  hasPrescriptionAttached 
+                    ? 'bg-mecura-neon/15 border-mecura-neon/30 text-mecura-neon' 
                     : 'bg-white/5 border-white/10 text-[#8A8A9E]'
                 }`}>
                   <FileText className="w-5 h-5" />
@@ -535,110 +691,216 @@ export function ProtocolScreen() {
                 <div>
                   <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
                     Receita Médica Digital
-                    {!hasDoctorPrescription && <Lock className="w-3 h-3 text-amber-400" />}
+                    {!hasPrescriptionAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
                   </h4>
                   <p className="text-[11px] text-[#8A8A9E]">
-                    {hasDoctorPrescription ? 'Assinatura ICP-Brasil & QR Code' : 'Emitida pelo Dr. Guilherme'}
+                    {hasPrescriptionAttached 
+                      ? 'Assinatura ICP-Brasil & QR Code' 
+                      : 'Não anexada pelo médico'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleDownloadPrescription}
-                disabled={downloadingDoc === 'prescription' || !hasDoctorPrescription}
+                disabled={downloadingDoc === 'prescription' || !hasPrescriptionAttached}
                 className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
-                  hasDoctorPrescription 
-                    ? 'bg-[#1A1A28] hover:bg-mecura-neon hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer' 
-                    : 'bg-white/5 text-[#8A8A9E] border-white/5 cursor-not-allowed'
+                  hasPrescriptionAttached 
+                    ? 'bg-[#1A1A28] hover:bg-mecura-neon hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
                 }`}
-                title={hasDoctorPrescription ? "Baixar Receita Médica" : "Disponível após o atendimento médico"}
+                title={hasPrescriptionAttached ? "Baixar Receita Médica" : "Este documento não foi anexado pelo médico nesta consulta"}
               >
-                {hasDoctorPrescription ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+                {hasPrescriptionAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
               </button>
             </div>
 
-            {/* Medical Report PDF Card */}
-            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-colors ${
-              hasDoctorPrescription 
-                ? 'bg-[#12121A] border-white/5 hover:border-blue-500/30' 
-                : 'bg-[#0E0E14] border-white/5 opacity-80'
+            {/* 2. Initial Medical Report Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasInitialReportAttached 
+                ? 'bg-[#12121A] border-amber-500/30 hover:border-amber-500 shadow-[0_4px_20px_rgba(245,158,11,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
             }`}>
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                  hasDoctorPrescription 
-                    ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
+                  hasInitialReportAttached 
+                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' 
                     : 'bg-white/5 border-white/10 text-[#8A8A9E]'
                 }`}>
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
-                    Laudo Médico Oficial
-                    {!hasDoctorPrescription && <Lock className="w-3 h-3 text-amber-400" />}
+                    Laudo Médico Inicial
+                    {!hasInitialReportAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
                   </h4>
                   <p className="text-[11px] text-[#8A8A9E]">
-                    {hasDoctorPrescription ? 'ANVISA, Planos & Jurídico' : 'Emitido após a consulta'}
+                    {hasInitialReportAttached 
+                      ? 'Anamnese & Parecer Clínico' 
+                      : 'Não anexado pelo médico'}
                   </p>
                 </div>
               </div>
               <button
-                onClick={handleDownloadMedicalReport}
-                disabled={downloadingDoc === 'medical_report' || !hasDoctorPrescription}
+                onClick={handleDownloadInitialReport}
+                disabled={downloadingDoc === 'initial_report' || !hasInitialReportAttached}
                 className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
-                  hasDoctorPrescription 
-                    ? 'bg-[#1A1A28] hover:bg-blue-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer' 
-                    : 'bg-white/5 text-[#8A8A9E] border-white/5 cursor-not-allowed'
+                  hasInitialReportAttached 
+                    ? 'bg-[#1A1A28] hover:bg-amber-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
                 }`}
-                title={hasDoctorPrescription ? "Baixar Laudo Médico" : "Disponível após o atendimento médico"}
+                title={hasInitialReportAttached ? "Baixar Laudo Médico Inicial" : "Este documento não foi anexado pelo médico nesta consulta"}
               >
-                {hasDoctorPrescription ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+                {hasInitialReportAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
               </button>
             </div>
 
-            {/* Psychomotor Report (if available) */}
-            {psychomotorReportMsg && (
-              <div className="bg-[#12121A] border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:border-mecura-neon/30 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-[13px] font-bold text-white">Laudo de Aptidão</h4>
-                    <p className="text-[11px] text-[#8A8A9E]">Aptidão Psicomotora</p>
-                  </div>
+            {/* 3. Evolutive Medical Report Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasEvolutiveReportAttached 
+                ? 'bg-[#12121A] border-blue-500/30 hover:border-blue-500 shadow-[0_4px_20px_rgba(59,130,246,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasEvolutiveReportAttached 
+                    ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
+                  <Activity className="w-5 h-5" />
                 </div>
-                <button
-                  onClick={handleDownloadPsychomotorReport}
-                  disabled={downloadingDoc === 'psychomotor'}
-                  className="w-9 h-9 rounded-full bg-[#1A1A28] hover:bg-purple-400 hover:text-[#0A0A0F] text-white flex items-center justify-center border border-white/10 transition-all shrink-0 cursor-pointer"
-                  title="Baixar Laudo Psicomotor"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
+                <div>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Laudo Médico Evolutivo
+                    {!hasEvolutiveReportAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasEvolutiveReportAttached 
+                      ? 'Evolução & Ajuste Terapêutico' 
+                      : 'Não anexado pelo médico'}
+                  </p>
+                </div>
               </div>
-            )}
+              <button
+                onClick={handleDownloadEvolutiveReport}
+                disabled={downloadingDoc === 'evolutive_report' || !hasEvolutiveReportAttached}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasEvolutiveReportAttached 
+                    ? 'bg-[#1A1A28] hover:bg-blue-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
+                }`}
+                title={hasEvolutiveReportAttached ? "Baixar Laudo Médico Evolutivo" : "Este documento não foi anexado pelo médico nesta consulta"}
+              >
+                {hasEvolutiveReportAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              </button>
+            </div>
 
-            {/* Agronomic Report (if available) */}
-            {agronomicReportMsg && (
-              <div className="bg-[#12121A] border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:border-mecura-neon/30 transition-colors">
+            {/* 4. Psychomotor Report Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasPsychomotorAttached 
+                ? 'bg-[#12121A] border-purple-500/30 hover:border-purple-500 shadow-[0_4px_20px_rgba(168,85,247,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasPsychomotorAttached 
+                    ? 'bg-purple-500/15 border-purple-500/30 text-purple-400' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Laudo de Aptidão
+                    {!hasPsychomotorAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasPsychomotorAttached 
+                      ? 'Aptidão Psicomotora' 
+                      : 'Não anexado pelo médico'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleDownloadPsychomotorReport}
+                disabled={downloadingDoc === 'psychomotor' || !hasPsychomotorAttached}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasPsychomotorAttached 
+                    ? 'bg-[#1A1A28] hover:bg-purple-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
+                }`}
+                title={hasPsychomotorAttached ? "Baixar Laudo Psicomotor" : "Este documento não foi anexado pelo médico nesta consulta"}
+              >
+                {hasPsychomotorAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* 5. Agronomic Report Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasAgronomicAttached 
+                ? 'bg-[#12121A] border-emerald-500/30 hover:border-emerald-500 shadow-[0_4px_20px_rgba(16,185,129,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasAgronomicAttached 
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
+                  <Sprout className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Parecer Agronômico
+                    {!hasAgronomicAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasAgronomicAttached 
+                      ? 'Cultivo & Suporte Técnico' 
+                      : 'Não anexado pelo médico'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleDownloadAgronomicReport}
+                disabled={downloadingDoc === 'agronomic' || !hasAgronomicAttached}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasAgronomicAttached 
+                    ? 'bg-[#1A1A28] hover:bg-emerald-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
+                }`}
+                title={hasAgronomicAttached ? "Baixar Parecer Agronômico" : "Este documento não foi anexado pelo médico nesta consulta"}
+              >
+                {hasAgronomicAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* Custom Doctor Attachments */}
+            {otherCustomDocs.map((msg, idx) => (
+              <div 
+                key={`custom-${idx}`}
+                className="bg-[#12121A] border border-cyan-500/30 hover:border-cyan-500 rounded-2xl p-4 flex items-center justify-between transition-all shadow-[0_4px_20px_rgba(6,182,212,0.06)]"
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                    <Paperclip className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-[13px] font-bold text-white">Parecer Agronômico</h4>
-                    <p className="text-[11px] text-[#8A8A9E]">Cultivo & Suporte Técnico</p>
+                    <h4 className="text-[13px] font-bold text-white truncate max-w-[180px]">
+                      {msg.attachment?.name || `Documento ${idx + 1}`}
+                    </h4>
+                    <p className="text-[11px] text-[#8A8A9E]">Anexo Enviado no Chat</p>
                   </div>
                 </div>
                 <button
-                  onClick={handleDownloadAgronomicReport}
-                  disabled={downloadingDoc === 'agronomic'}
-                  className="w-9 h-9 rounded-full bg-[#1A1A28] hover:bg-emerald-400 hover:text-[#0A0A0F] text-white flex items-center justify-center border border-white/10 transition-all shrink-0 cursor-pointer"
-                  title="Baixar Parecer Agronômico"
+                  onClick={() => msg.attachment && handleDownloadCustomAttachment(msg.attachment, idx)}
+                  disabled={downloadingDoc === `custom-${idx}`}
+                  className="w-9 h-9 rounded-full bg-[#1A1A28] hover:bg-cyan-400 hover:text-[#0A0A0F] text-white flex items-center justify-center border border-white/10 transition-all shrink-0 cursor-pointer shadow-sm"
+                  title="Baixar Anexo"
                 >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
-            )}
+            ))}
           </div>
         </div>
 
@@ -681,8 +943,8 @@ export function ProtocolScreen() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3.5">
                       <div className="w-12 h-12 rounded-2xl bg-[#1A1A26] border border-white/5 flex items-center justify-center text-mecura-neon shrink-0 overflow-hidden">
-                        {item.image ? (
-                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        {(item as any).image ? (
+                          <img src={(item as any).image} alt={item.name} className="w-full h-full object-cover" />
                         ) : (
                           <Droplets className="w-6 h-6" />
                         )}

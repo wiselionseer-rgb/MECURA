@@ -344,9 +344,11 @@ export function CheckoutScreen() {
     const statusParam = params.get('status') || params.get('collection_status');
 
     if (!paymentId && !statusParam) {
-      // Entrando no checkout para comprar: limpar qualquer estado falso residual se ainda não pago
-      if (!localStorage.getItem('mecura_pagamento')) {
-        setPagamentoConsulta(false);
+      // Entrando no checkout para comprar: limpar qualquer estado falso residual
+      setPagamentoConsulta(false);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_pagamento');
+        localStorage.removeItem('mecura_consultation_active');
       }
     }
     
@@ -355,12 +357,16 @@ export function CheckoutScreen() {
       setStep('checkout');
       setPaymentMethod('card');
       setPagamentoConsulta(false);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_pagamento');
+        localStorage.removeItem('mecura_consultation_active');
+      }
       alert('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
 
-    if (paymentParam === 'success' || statusParam === 'approved' || (paymentId && statusParam === 'approved')) {
+    if (statusParam === 'approved' || (paymentId && statusParam === 'approved') || paymentParam === 'success') {
       setIsLoading(true);
       if (paymentId) {
         fetch(`/api/payment-status/${paymentId}`)
@@ -368,18 +374,36 @@ export function CheckoutScreen() {
           .then(data => {
             setIsLoading(false);
             window.history.replaceState({}, '', window.location.pathname);
-            handleSuccess(paymentId);
+            if (data.status === 'approved' || data.status === 'completed') {
+              handleSuccess(paymentId);
+            } else {
+              setPagamentoConsulta(false);
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('mecura_pagamento');
+                localStorage.removeItem('mecura_consultation_active');
+              }
+              alert('O Mercado Pago informou que o pagamento ainda está pendente ou não foi aprovado.');
+            }
           })
           .catch(err => {
             setIsLoading(false);
+            setPagamentoConsulta(false);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('mecura_pagamento');
+              localStorage.removeItem('mecura_consultation_active');
+            }
             console.error("Erro ao verificar pagamento MP:", err);
             window.history.replaceState({}, '', window.location.pathname);
-            handleSuccess(paymentId);
+            alert('Não foi possível verificar a confirmação do pagamento. Tente recarregar em instantes.');
           });
       } else {
         setIsLoading(false);
+        setPagamentoConsulta(false);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('mecura_pagamento');
+          localStorage.removeItem('mecura_consultation_active');
+        }
         window.history.replaceState({}, '', window.location.pathname);
-        handleSuccess();
       }
       return;
     }

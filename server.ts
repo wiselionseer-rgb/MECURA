@@ -308,6 +308,29 @@ async function startServer() {
         return res.status(400).json({ error: "Missing patient id" });
       }
 
+      // Check user document in Firestore to prevent adding unpaid registrations to the doctor's queue
+      try {
+        const userSnap = await getDoc(doc(db, "users", patient.id));
+        if (userSnap.exists()) {
+          const u = userSnap.data();
+          const hasRealPayment = !!(
+            u.pagamento_consulta === true || 
+            u.hasPaid === true || 
+            u.isPaid === true || 
+            u.bypassedPayment === true
+          );
+          if (!hasRealPayment) {
+            console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id} sem pagamento confirmado.`);
+            return res.status(403).json({ error: "Pagamento não confirmado para este paciente" });
+          }
+        } else {
+          console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id}: usuário não encontrado.`);
+          return res.status(403).json({ error: "Usuário não encontrado ou sem pagamento confirmado" });
+        }
+      } catch (err) {
+        console.warn("[QUEUE FORCE-JOIN] Erro ao verificar usuário:", err);
+      }
+
       const cleanPatient = {
         id: patient.id,
         patientName: (patient.patientName || patient.name || 'Paciente').trim(),
