@@ -97,7 +97,7 @@ import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEdi
 import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
 import { StandaloneDocumentModal, StandalonePatientData } from '../components/StandaloneDocumentModal';
 
-import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { generatePersonalizedClinicalReport } from '../utils/clinicalReportGenerator';
 import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
@@ -458,7 +458,7 @@ export function DoctorDashboardScreen() {
   const [isStandaloneDocModalOpen, setIsStandaloneDocModalOpen] = useState(false);
   const [standaloneTargetPatientId, setStandaloneTargetPatientId] = useState<string | null>(null);
 
-  const handleLaunchStandalonePrescription = (patientData: StandalonePatientData) => {
+  const handleLaunchStandalonePrescription = (patientData: StandalonePatientData, prefillItems?: PrescriptionItemData[]) => {
     setStandaloneTargetPatientId(patientData.id || null);
     setPrescPatientName(patientData.name);
     setPrescCpf(patientData.cpf);
@@ -467,6 +467,10 @@ export function DoctorDashboardScreen() {
     setPrescDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
     setPrescDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
     setPrescDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+
+    if (prefillItems && prefillItems.length > 0) {
+      setPrescItems(prefillItems);
+    }
 
     setShowPrescriptionEditorModal(true);
   };
@@ -484,12 +488,40 @@ export function DoctorDashboardScreen() {
 
     if (patientData.diagnosis) {
       setReportDiagnosis(patientData.diagnosis);
+    } else {
+      setReportDiagnosis("Quadro clínico crônico com indicação precisa de terapia fitocanabinoide individualizada para modulação homeostática.");
+    }
+
+    // Capture candidates from patientData.prescribedItems or current prescItems
+    const candidateItems = (patientData.prescribedItems && patientData.prescribedItems.length > 0)
+      ? patientData.prescribedItems
+      : (prescItems && prescItems.length > 0 ? prescItems : []);
+
+    let calculatedTreatmentPlan = "";
+    if (candidateItems.length > 0) {
+      calculatedTreatmentPlan = candidateItems.map((item, idx) => {
+        const ing = item.activeIngredients ? `\n   Princípio Ativo: ${item.activeIngredients}` : '';
+        const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
+        const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.pharmaceuticalForm || '');
+        const isFlower = /flor|in natura/i.test(item.name || item.pharmaceuticalForm || '');
+        const posologyHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+        const cleanDosage = item.dosage.filter(d => {
+          const t = d.trim();
+          return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+        });
+        const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
+        return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
+      }).join('\n\n');
     }
 
     if (reportType === 'evolutivo') {
       setReportRationale("Em reavaliação clínica e evolução do tratamento com derivados de Cannabis sativa L., o(a) paciente relata melhora sustentada dos sintomas primários, com redução relevante em escalas de dor, estabilização dos ciclos de sono e atenuação dos níveis de estresse e ansiedade.");
-      setReportTreatmentPlan("Manutenção e ajuste fino da terapia canabinoide associativa. Continuidade do uso de formulações em espectro integral (Full Spectrum) com titulação individualizada conforme tolerância clínica.");
+      setReportTreatmentPlan(calculatedTreatmentPlan || "Manutenção e ajuste fino da terapia canabinoide associativa. Continuidade do uso de formulações em espectro integral (Full Spectrum) com titulação individualizada conforme tolerância clínica.");
       setReportMonitoring("Acompanhamento médico continuado a cada 60 a 90 dias para reavaliação de dosagens basais e exames de rotina.");
+    } else {
+      setReportRationale("Indicação fundamentada na fisiopatologia e modulação do Sistema Endocanabinoide (SEC). Fitocanabinoides de espectro integral atuam sobre receptores CB1 e CB2 promovendo analgesia, regulação do humor e modulação inflamatória sem tolerância abrupta.");
+      setReportTreatmentPlan(calculatedTreatmentPlan || "Início de terapia canabinoide individualizada em formulação integral (Full Spectrum), associando via sublingual contínua sob titulação progressiva e acompanhamento médico periódico.");
+      setReportMonitoring("Retorno ambulatorial agendado em 30 a 45 dias para avaliação de tolerabilidade, ajuste de posologia e monitoramento de segurança clínica.");
     }
 
     setShowMedicalReportEditorModal(true);
@@ -1625,7 +1657,7 @@ export function DoctorDashboardScreen() {
       if (includeProductCards && prescItems.length > 0) {
         await clearPrescriptionMessages(targetPatientId);
         for (const item of prescItems) {
-          const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura|ABEC|ABECMED/i.test(item.name) || item.origin === 'Nacional';
+          const isNational = isNationalProduct(item);
           
           let foundCatProd: any = null;
           const cleanName = item.name.toLowerCase().trim();
@@ -1839,11 +1871,45 @@ export function DoctorDashboardScreen() {
     const items: PrescriptionItemData[] = [];
     const seenReportNames = new Set<string>();
 
+    // 1. First priority: items currently in prescription editor (prescItems)
+    prescItems.forEach(it => {
+      const clean = it.name.toLowerCase().trim();
+      if (!seenReportNames.has(clean)) {
+        seenReportNames.add(clean);
+        items.push(it);
+      }
+    });
+
+    // 2. Second priority: items from prescription / receita_previa messages in current chat
+    messages.forEach(m => {
+      const anyM = m as any;
+      if (anyM.prescriptionData?.items && Array.isArray(anyM.prescriptionData.items)) {
+        anyM.prescriptionData.items.forEach((it: PrescriptionItemData) => {
+          const clean = it.name.toLowerCase().trim();
+          if (!seenReportNames.has(clean)) {
+            seenReportNames.add(clean);
+            items.push(it);
+          }
+        });
+      }
+      if (m.type === 'receita_previa' && m.receitaPreviaData?.items) {
+        m.receitaPreviaData.items.forEach((it: PrescriptionItemData) => {
+          const clean = it.name.toLowerCase().trim();
+          if (!seenReportNames.has(clean)) {
+            seenReportNames.add(clean);
+            items.push(it);
+          }
+        });
+      }
+    });
+
+    // 3. Third priority: items from individual product cards in chat
     messages.forEach(m => {
       if (m.type === 'product' && m.productData) {
         const pName = m.productData.name;
-        if (!seenReportNames.has(pName)) {
-          seenReportNames.add(pName);
+        const clean = pName.toLowerCase().trim();
+        if (!seenReportNames.has(clean)) {
+          seenReportNames.add(clean);
           const enriched = enrichMedicationDetails(
             pName,
             m.productData.brand || 'Associação Brasileira',
@@ -1871,7 +1937,15 @@ export function DoctorDashboardScreen() {
       ? items.map((item, idx) => {
           const ing = item.activeIngredients ? `\n   Princípio Ativo: ${item.activeIngredients}` : '';
           const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
-          return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   Posologia: ${item.dosage.join(' ')}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
+          const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.pharmaceuticalForm || '');
+          const isFlower = /flor|in natura/i.test(item.name || item.pharmaceuticalForm || '');
+          const posologyHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+          const cleanDosage = item.dosage.filter(d => {
+            const t = d.trim();
+            return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+          });
+          const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
+          return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
         }).join('\n\n')
       : personalized.treatmentPlan;
 
@@ -2313,7 +2387,6 @@ export function DoctorDashboardScreen() {
     let prodName = 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml';
     let prodDesc = 'Óleo integral concentrado de Associação Brasileira com excelente custo-benefício. Indicado para controle de ansiedade, estresse, regulação do humor e inflamação crônica.';
     let dosage = [
-      'Aproximadamente 25 gotas por mL.',
       'Tomar 03 gotas de 12/12 horas (sublingual).',
       'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).',
       '01 Frasco de 30ml rende de 45 a 60 dias de tratamento contínuo.'
@@ -2323,7 +2396,6 @@ export function DoctorDashboardScreen() {
       prodName = 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml';
       prodDesc = 'Extrato Broad Spectrum rico em CBD e CBN (1065mg em 15ml), 0% THC. Indicado para insônia, distúrbios do sono, ansiedade e desaceleração noturna.';
       dosage = [
-        'Aproximadamente 25 gotas por mL.',
         'Pingar 2 gotas pela manhã e 4 a noite.',
         '- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.',
         '- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.'
@@ -2332,7 +2404,6 @@ export function DoctorDashboardScreen() {
       prodName = 'ÓLEO INTEGRAL THC/CBD 100mg/ml';
       prodDesc = 'Óleo integral balanceado de Associação Brasileira com proporção 1:1. Indicado para dores crônicas, fibromialgia, espasticidade e rigidez.';
       dosage = [
-        'Aproximadamente 25 gotas por mL.',
         'Tomar 03 gotas de 12/12 horas (sublingual).',
         'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.',
         '01 Frasco de 30ml rende até 60 dias.'
@@ -2341,7 +2412,6 @@ export function DoctorDashboardScreen() {
       prodName = 'ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml';
       prodDesc = 'Formulação com predominância de THC de Associação Brasileira. Indicado para insônia grave refratária e alívio de crises noturnas.';
       dosage = [
-        'Aproximadamente 25 gotas por mL.',
         'Tomar 04 a 06 gotas 30 minutos antes do repouso noturno.',
         '01 Frasco de 30ml com duração média de 60 a 90 dias.'
       ];
@@ -7066,6 +7136,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         onSendToChat={handleSendMedicalReportToChat}
         isSendingToChat={isSendingReportToChat}
         reportType={medicalReportType}
+        prescribedItems={prescItems}
       />
 
       {/* Psychomotor Report View & Edit Modal */}

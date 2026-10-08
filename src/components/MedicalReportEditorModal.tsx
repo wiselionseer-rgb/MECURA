@@ -15,8 +15,13 @@ import {
   ClipboardList,
   Activity,
   HeartHandshake,
-  Send
+  Send,
+  Plus,
+  Pill,
+  RefreshCw
 } from 'lucide-react';
+import { PrescriptionItemData } from '../utils/pdfGenerator';
+import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
 
 interface MedicalReportEditorModalProps {
   isOpen: boolean;
@@ -47,6 +52,7 @@ interface MedicalReportEditorModalProps {
   onSendToChat?: () => Promise<void> | void;
   isSendingToChat?: boolean;
   reportType?: 'inicial' | 'evolutivo';
+  prescribedItems?: PrescriptionItemData[];
 }
 
 export function MedicalReportEditorModal({
@@ -77,7 +83,8 @@ export function MedicalReportEditorModal({
   onDownloadPDF,
   onSendToChat,
   isSendingToChat = false,
-  reportType = 'inicial'
+  reportType = 'inicial',
+  prescribedItems = []
 }: MedicalReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -306,19 +313,104 @@ export function MedicalReportEditorModal({
                 </div>
 
                 {/* Section 4: Conduta Proposta & Medicamentos */}
-                <div className="p-4 bg-mecura-surface/40 border border-mecura-elevated rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="p-4 bg-mecura-surface/40 border border-mecura-elevated rounded-2xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
                       <Activity className="w-4 h-4" />
                       4. Conduta Terapêutica Proposta & Medicamentos
                     </label>
-                    <span className="text-[10px] text-mecura-silver">Formulação recomendada, posologia e via</span>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {prescribedItems && prescribedItems.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const formatted = prescribedItems.map((item, idx) => {
+                              const ing = item.activeIngredients ? `\n   Princípio Ativo: ${item.activeIngredients}` : '';
+                              const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
+                              const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.pharmaceuticalForm || '');
+                              const isFlower = /flor|in natura/i.test(item.name || item.pharmaceuticalForm || '');
+                              const posologyHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+                              const cleanDosage = item.dosage.filter(d => {
+                                const t = d.trim();
+                                return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+                              });
+                              const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
+                              return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
+                            }).join('\n\n');
+                            setTreatmentPlan(formatted);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Sincronizar medicamentos da receita atual para este laudo"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Sincronizar da Receita ({prescribedItems.length})</span>
+                        </button>
+                      )}
+
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          const found = NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                                        ABECMED_PRODUCTS.find(p => p.name === val);
+                          if (found) {
+                            const enriched = enrichMedicationDetails(found.name, found.manufacturer || 'Associação Nacional', found.origin || 'Nacional', found.type, found);
+                            const ing = found.activeIngredients || enriched.activeIngredients;
+                            const form = found.pharmaceuticalForm || enriched.pharmaceuticalForm;
+                            const qty = found.quantity || enriched.quantity;
+                            const route = found.administrationRoute || enriched.administrationRoute;
+                            const isGummy = /goma/i.test(found.name || form);
+                            const isFlower = /flor|in natura/i.test(found.name || form);
+                            const posHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+                            const dose = (found.usageInstructions || 'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.')
+                              .replace(/Aproximadamente 25 gotas por mL\.?/gi, '')
+                              .trim();
+                            const newBlock = `• ${found.name} (${found.manufacturer || 'Associação Nacional'} - ${found.origin || 'Nacional'})\n   Princípio Ativo: ${ing}\n   Apresentação / Via: ${form} • ${qty} • ${route}\n   ${posHeader}: ${dose}\n   Finalidade: ${found.description || 'Modulação canabinoide.'}`;
+                            setTreatmentPlan(treatmentPlan ? `${treatmentPlan}\n\n${newBlock}` : newBlock);
+                          }
+                          e.target.value = '';
+                        }}
+                        className="px-2.5 py-1 bg-white/5 border border-white/10 text-mecura-silver hover:text-white rounded-lg text-xs font-medium cursor-pointer focus:outline-none"
+                      >
+                        <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
+                          + Inserir Medicamento do Catálogo...
+                        </option>
+                        <optgroup label="Linha ALTO CBD Full Spectrum" className="bg-[#0A0A0F] text-white">
+                          <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 5:1 THC (30 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 5:1 THC (60 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 10:1 THC (30 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 10:1 THC (60 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (100 mg/mL — 3000mg)">Alto CBD 10:1 THC (100 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 20:1 THC (30 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 20:1 THC (60 mg/mL)</option>
+                          <option value="ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (100 mg/mL — 3000mg)">Alto CBD 20:1 THC (100 mg/mL)</option>
+                        </optgroup>
+                        <optgroup label="Linhas CBD + CBN / CBG" className="bg-[#0A0A0F] text-white">
+                          <option value="CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (30 mg/mL — 900mg)">CBD + CBN (2:1 CBN) 30 mg/mL</option>
+                          <option value="CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (60 mg/mL — 1800mg)">CBD + CBN (2:1 CBN) 60 mg/mL</option>
+                          <option value="CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (30 mg/mL — 900mg)">CBD + CBG (2:1 CBG) 30 mg/mL</option>
+                          <option value="CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (60 mg/mL — 1800mg)">CBD + CBG (2:1 CBG) 60 mg/mL</option>
+                          <option value="CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (30 mg/mL — 900mg)">4:1:1 (CBD:CBG:CBN) 30 mg/mL</option>
+                          <option value="CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (60 mg/mL — 1800mg)">4:1:1 (CBD:CBG:CBN) 60 mg/mL</option>
+                        </optgroup>
+                        <optgroup label="Linhas EQUILIBRADO & ALTO THC" className="bg-[#0A0A0F] text-white">
+                          <option value="EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (30 mg/mL — 900mg)">Equilibrado 1:1 (30 mg/mL)</option>
+                          <option value="EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (60 mg/mL — 1800mg)">Equilibrado 1:1 (60 mg/mL)</option>
+                          <option value="EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (100 mg/mL — 3000mg)">Equilibrado 1:1 (100 mg/mL)</option>
+                          <option value="ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (30 mg/mL — 900mg)">Alto THC 10:1 (30 mg/mL)</option>
+                          <option value="ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (60 mg/mL — 1800mg)">Alto THC 10:1 (60 mg/mL)</option>
+                          <option value="ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (100 mg/mL — 3000mg)">Alto THC 10:1 (100 mg/mL)</option>
+                        </optgroup>
+                      </select>
+                    </div>
                   </div>
                   <textarea
-                    rows={4}
+                    rows={6}
                     value={treatmentPlan}
                     onChange={(e) => setTreatmentPlan(e.target.value)}
-                    className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"
+                    className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed font-mono text-[11px] sm:text-xs"
                     placeholder="Formulação canabinoide, posologia inicial, frequência de administração..."
                   />
                 </div>

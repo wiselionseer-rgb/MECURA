@@ -439,7 +439,6 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
-          'Aproximadamente 25 gotas por mL.',
           'Tomar 03 gotas de 12/12 horas (sublingual).',
           'Aumentar 01 gota a cada 05 dias até atingir a dose de controle homeostático.'
         ],
@@ -457,7 +456,6 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity || '01 Frasco de 15 mL',
         administrationRoute: enriched.administrationRoute || 'Via Sublingual / Oral',
         dosage: [
-          'Aproximadamente 25 gotas por mL.',
           'Pingar 2 gotas pela manhã e 4 a noite.',
           '- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.',
           '- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.'
@@ -476,7 +474,6 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
-          'Aproximadamente 25 gotas por mL.',
           'Tomar 03 gotas de 12/12 horas (sublingual).',
           'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.'
         ],
@@ -494,7 +491,6 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
-          'Aproximadamente 25 gotas por mL.',
           'Tomar 04 a 06 gotas sublinguais 1 hora antes de deitar.',
           'Uso noturno preferencial para indução do sono e controle álgico.'
         ],
@@ -581,22 +577,30 @@ export function PrescriptionEditorModal({
   };
 
   const handleAddNationalItem = (productName: string) => {
-    const prod = NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    const enriched = enrichMedicationDetails(productName, 'Associação Nacional', 'Nacional', prod?.type, prod);
+    const pTarget = productName.toLowerCase().trim();
+    const prod = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
+      const pNameLower = p.name.toLowerCase();
+      return pNameLower === pTarget || pNameLower.includes(pTarget) || pTarget.includes(pNameLower);
+    });
+    const enriched = enrichMedicationDetails(prod?.name || productName, 'Associação Nacional', 'Nacional', prod?.type, prod);
     
     let dosageLines: string[];
     if (prod?.usageInstructions) {
       dosageLines = prod.usageInstructions
         .split('\n')
         .map(line => line.trim())
-        .filter(Boolean);
-      if (!dosageLines.some(l => /25 gotas/i.test(l)) && !/goma|flor/i.test(prod.name || prod.type || '')) {
-        dosageLines.unshift('Aproximadamente 25 gotas por mL.');
+        .filter(Boolean)
+        .filter(line => !/^Posologia \(Aproximadamente 25 gotas por mL\):?$/i.test(line) && !/^Aproximadamente 25 gotas por mL\.?$/i.test(line));
+      if (dosageLines.length === 0) {
+        dosageLines = [
+          'Tomar 03 a 05 gotas por via sublingual de 12 em 12 horas.',
+          'Reter sob a língua por 60 segundos antes de engolir para rápida absorção.'
+        ];
       }
     } else {
       dosageLines = [
-        'Aproximadamente 25 gotas por mL.',
-        'Tomar 03 gotas de 12/12 horas por via sublingual.',
+        'Tomar 03 a 05 gotas por via sublingual de 12 em 12 horas.',
+        'Reter sob a língua por 60 segundos antes de engolir.',
         'Aumentar 01 gota a cada 05 dias até atingir a dose terapêutica de controle.'
       ];
     }
@@ -611,7 +615,8 @@ export function PrescriptionEditorModal({
       quantity: enriched.quantity,
       administrationRoute: enriched.administrationRoute,
       dosage: dosageLines,
-      description: prod?.description || enriched.description || 'Medicamento nacional autorizado de associação brasileira.'
+      description: prod?.description || enriched.description || 'Medicamento nacional autorizado de associação brasileira.',
+      priceBRL: prod?.priceBRL
     };
     setItems(prev => [...prev, newItem]);
   };
@@ -1008,24 +1013,40 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 rounded-lg text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
-                            + Prescrever Associação Nacional...
+                            + Prescrever Linha Nacional (Associações)...
                           </option>
-                          <optgroup label="Linha Broad Spectrum & CBN (Sono & Estresse)" className="bg-[#0A0A0F] text-white">
+                          <optgroup label="🌟 LINHA ALTO CBD FULL SPECTRUM (5:1, 10:1, 20:1)" className="bg-[#0A0A0F] text-amber-300 font-bold">
+                            <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 5:1 THC - 30 mg/mL (900mg) - R$ 220</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 5:1 THC - 60 mg/mL (1800mg) - R$ 290</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 10:1 THC - 30 mg/mL (900mg) - R$ 220</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 10:1 THC - 60 mg/mL (1800mg) - R$ 290</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (100 mg/mL — 3000mg)">Alto CBD 10:1 THC - 100 mg/mL (3000mg) - R$ 380</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 20:1 THC - 30 mg/mL (900mg) - R$ 220</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 20:1 THC - 60 mg/mL (1800mg) - R$ 290</option>
+                            <option value="ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (100 mg/mL — 3000mg)">Alto CBD 20:1 THC - 100 mg/mL (3000mg) - R$ 380</option>
+                          </optgroup>
+                          <optgroup label="🌙 LINHAS CBD + CBN / CBG FULL SPECTRUM" className="bg-[#0A0A0F] text-indigo-300 font-bold">
+                            <option value="CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (30 mg/mL — 900mg)">CBD + CBN (2:1 CBN) - 30 mg/mL (Sono) - R$ 230</option>
+                            <option value="CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (60 mg/mL — 1800mg)">CBD + CBN (2:1 CBN) - 60 mg/mL (Sono Forte) - R$ 310</option>
+                            <option value="CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (30 mg/mL — 900mg)">CBD + CBG (2:1 CBG) - 30 mg/mL (Foco/Gastro) - R$ 230</option>
+                            <option value="CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (60 mg/mL — 1800mg)">CBD + CBG (2:1 CBG) - 60 mg/mL (Foco/Dores) - R$ 310</option>
+                            <option value="CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (30 mg/mL — 900mg)">4:1:1 (CBD:CBG:CBN) - 30 mg/mL (Sinergia Tríplice) - R$ 250</option>
+                            <option value="CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (60 mg/mL — 1800mg)">4:1:1 (CBD:CBG:CBN) - 60 mg/mL (Sinergia Máxima) - R$ 340</option>
+                          </optgroup>
+                          <optgroup label="⚖️ LINHAS EQUILIBRADO (1:1) & ALTO THC" className="bg-[#0A0A0F] text-emerald-300 font-bold">
+                            <option value="EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (30 mg/mL — 900mg)">Equilibrado 1:1 - 30 mg/mL (900mg) - R$ 220</option>
+                            <option value="EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (60 mg/mL — 1800mg)">Equilibrado 1:1 - 60 mg/mL (1800mg) - R$ 290</option>
+                            <option value="EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (100 mg/mL — 3000mg)">Equilibrado 1:1 - 100 mg/mL (3000mg) - R$ 380</option>
+                            <option value="ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (30 mg/mL — 900mg)">Alto THC 10:1 CBD - 30 mg/mL (900mg) - R$ 220</option>
+                            <option value="ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (60 mg/mL — 1800mg)">Alto THC 10:1 CBD - 60 mg/mL (1800mg) - R$ 290</option>
+                            <option value="ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (100 mg/mL — 3000mg)">Alto THC 10:1 CBD - 100 mg/mL (3000mg) - R$ 380</option>
+                          </optgroup>
+                          <optgroup label="Linha Broad Spectrum & CBN (15ml)" className="bg-[#0A0A0F] text-white">
                             <option value="Broad SPECTRUM CBD, CBN 1065mg —————- 15ml">Broad SPECTRUM CBD, CBN 1065mg (15ml) - R$ 210</option>
                           </optgroup>
-                          <optgroup label="Óleos CBD Isolado (0% THC)" className="bg-[#0A0A0F] text-white">
+                          <optgroup label="Óleos CBD Isolado & Outros" className="bg-[#0A0A0F] text-white">
                             <option value="Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional">CBD Isolado 100mg/ml (30ml) - R$ 180</option>
                             <option value="Óleo Rico em CBD ISOLADO 200mg/ml - Associação Nacional">CBD Isolado 200mg/ml (30ml) - R$ 280</option>
-                          </optgroup>
-                          <optgroup label="Óleos Balanceados CBD / THC" className="bg-[#0A0A0F] text-white">
-                            <option value="Óleo Balanceado CBD/THC 1:1 (CBD 25mg/ml + THC 25mg/ml)">Balanceado 1:1 (CBD 25mg + THC 25mg) - R$ 210</option>
-                            <option value="Óleo Balanceado CBD/THC 2:1 (CBD 50mg/ml + THC 25mg/ml)">Balanceado 2:1 (CBD 50mg + THC 25mg) - R$ 230</option>
-                            <option value="Óleo Balanceado CBD/THC 3:1 (CBD 30mg/ml + THC 10mg/ml)">Balanceado 3:1 (CBD 30mg + THC 10mg) - R$ 190</option>
-                            <option value="Óleo Balanceado CBD/THC 5:1 (CBD 50mg/ml + THC 10mg/ml)">Balanceado 5:1 (CBD 50mg + THC 10mg) - R$ 220</option>
-                          </optgroup>
-                          <optgroup label="Extratos Integrais e Outros" className="bg-[#0A0A0F] text-white">
-                            <option value="Óleo Integral THC/CBD 100mg/ml - Associação Nacional">Óleo Integral THC/CBD 100mg/ml - R$ 210</option>
-                            <option value="Óleo Integral PREDOMINANTE THC 100mg/ml - Associação Nacional">Óleo Integral THC 100mg/ml (Noturno) - R$ 240</option>
                             <option value="Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional">Pomada Canábica 500mg (50g) - R$ 140</option>
                             <option value="Flor in natura PREDOMINANTE THC (Para Vaporização) 15g - Associação Nacional">Flor in natura THC 15g (Vaporização) - R$ 450</option>
                           </optgroup>
@@ -1895,9 +1916,16 @@ export function PrescriptionEditorModal({
                                     <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">
                                       Posologia e Modo de Uso {!isGummy && !/flor/i.test(item.name || '') ? '(Aproximadamente 25 gotas por mL):' : ':'}
                                     </span>
-                                    {dosageList.map((d, dIdx) => (
-                                      <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
-                                    ))}
+                                    {(() => {
+                                      const cleaned = dosageList.filter(d => {
+                                        const t = d.trim();
+                                        return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+                                      });
+                                      const toRender = cleaned.length > 0 ? cleaned : dosageList;
+                                      return toRender.map((d, dIdx) => (
+                                        <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
+                                      ));
+                                    })()}
                                   </div>
                                 </div>
                               );

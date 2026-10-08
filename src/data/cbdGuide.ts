@@ -1927,7 +1927,10 @@ function _enrichMedicationDetails(
     };
   }
 
-  const isNational = /Associação|Nacional|ÓLEO INTEGRAL|Óleo Balanceado|CBD ISOLADO|Pomada Canábica|Gomas Terapêuticas|Flores in natura/i.test(pName) || origin === 'Nacional';
+  const originLower = (origin || '').toLowerCase();
+  const brandLower = (brand || '').toLowerCase();
+  const isImportedExplicit = originLower.includes('import') || originLower.includes('eua') || brandLower.includes('flowermed') || brandLower.includes('greenbudz');
+  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRASCORP|AMAME|APEPI/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação'));
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
   const typeLower = (type || '').toLowerCase();
@@ -2085,7 +2088,7 @@ function _enrichMedicationDetails(
     brand: manufacturer,
     origin: prodOrigin,
     description: 'Modulação terapêutica do Sistema Endocanabinoide.',
-    usageInstructions: `• Pingar as gotas recomendadas sob a língua e aguardar 1 a 2 minutos antes de engolir.\n• Posologia e Modo de Uso: ${dropsNote}`
+    usageInstructions: '• Pingar as gotas recomendadas sob a língua e aguardar 60 segundos antes de engolir.\n• Titular gradualmente a dose a cada 4 a 5 dias conforme resposta terapêutica individual.'
   };
 }
 

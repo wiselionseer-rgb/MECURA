@@ -39,19 +39,79 @@ export interface PatientPrescriptionData {
 }
 
 export const isNationalProduct = (item: PrescriptionItemData): boolean => {
-  const originLower = (item.origin || '').toLowerCase();
-  const brandLower = (item.brand || '').toLowerCase();
-  const nameLower = (item.name || '').toLowerCase();
+  const originLower = (item.origin || '').toLowerCase().trim();
+  const brandLower = (item.brand || '').toLowerCase().trim();
+  const nameLower = (item.name || '').toLowerCase().trim();
 
-  return (
+  // 1. Explicit origin takes highest priority
+  if (
+    originLower.includes('import') ||
+    originLower.includes('eua') ||
+    originLower.includes('usa') ||
+    originLower.includes('anvisa') ||
+    originLower.includes('rdc 660') ||
+    originLower.includes('rdc660') ||
+    originLower.includes('exterior')
+  ) {
+    return false;
+  }
+
+  if (
     originLower.includes('nacional') ||
     originLower.includes('associação') ||
     originLower.includes('associacao') ||
+    originLower.includes('brasil') ||
+    originLower.includes('brazil')
+  ) {
+    return true;
+  }
+
+  // 2. Explicit brand takes second priority
+  if (
+    brandLower.includes('flowermed') ||
+    brandLower.includes('greenbudz') ||
+    brandLower.includes('cannariver') ||
+    brandLower.includes('canna river') ||
+    brandLower.includes('lazarus') ||
+    brandLower.includes('charlotte') ||
+    brandLower.includes('medreleaf') ||
+    brandLower.includes('tilray') ||
+    brandLower.includes('columbia care')
+  ) {
+    return false;
+  }
+
+  if (
     brandLower.includes('associação') ||
     brandLower.includes('associacao') ||
-    brandLower.includes('nacional') ||
-    /associação|nacional|óleo integral|óleo balanceado|balanceado|óleo rico|cbd isolado|pomada|flor|flores/i.test(nameLower)
-  );
+    brandLower.includes('abecmed') ||
+    brandLower.includes('abrascorp') ||
+    brandLower.includes('amame') ||
+    brandLower.includes('apepi') ||
+    brandLower.includes('santa esperança') ||
+    brandLower.includes('cultive')
+  ) {
+    return true;
+  }
+
+  // 3. Check enriched catalog details
+  try {
+    const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
+    if (enriched && enriched.origin) {
+      const eOrigin = enriched.origin.toLowerCase();
+      if (eOrigin.includes('import') || eOrigin.includes('eua') || eOrigin.includes('usa')) {
+        return false;
+      }
+      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao')) {
+        return true;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 4. Fallback: only if name specifically mentions Associação or Nacional
+  return /associação|associacao|nacional|abecmed|abrascorp|amame|apepi/i.test(nameLower);
 };
 
 export const safeHtml2Canvas = async (element: HTMLElement): Promise<HTMLCanvasElement> => {
@@ -117,10 +177,11 @@ export const generatePrescriptionPDF = async (
     const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
     if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
       previaMsg.receitaPreviaData.items.forEach(it => {
+        const itemOrigin = it.origin || (isNationalProduct(it as any) ? 'Nacional' : 'Importado');
         itemsToRender.push({
           name: it.name,
           brand: it.brand,
-          origin: it.origin || 'Importado',
+          origin: itemOrigin,
           dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')],
           description: it.description,
           activeIngredients: it.activeIngredients,
@@ -133,10 +194,11 @@ export const generatePrescriptionPDF = async (
     } else {
       messages.forEach(m => {
         if (m.type === 'product' && m.productData) {
+          const itemOrigin = m.productData.origin || (isNationalProduct(m.productData as any) ? 'Nacional' : 'Importado');
           itemsToRender.push({
             name: m.productData.name,
             brand: m.productData.brand,
-            origin: m.productData.origin || 'Importado',
+            origin: itemOrigin,
             dosage: Array.isArray(m.productData.dosage) ? m.productData.dosage : typeof (m.productData.dosage as any) === 'string' ? String(m.productData.dosage).split('\n').filter(Boolean) : [m.productData.dosage ? String(m.productData.dosage) : 'Tomar conforme orientação médica.'],
             description: m.productData.description,
             activeIngredients: m.productData.activeIngredients,
@@ -165,44 +227,6 @@ export const generatePrescriptionPDF = async (
   const hasNational = nationalItems.length > 0;
   const hasImported = importedItems.length > 0;
 
-  const guidesToRender: { title: string; subtitle: string; items: PrescriptionItemData[]; badge: string }[] = [];
-
-  if (hasNational && hasImported) {
-    guidesToRender.push({
-      title: "RECEITA MÉDICA",
-      subtitle: "GUIA 1: PRODUTOS NACIONAIS (ASSOCIAÇÃO BRASILEIRA)",
-      items: nationalItems,
-      badge: "Guia 1 - Nacional"
-    });
-    guidesToRender.push({
-      title: "RECEITA MÉDICA",
-      subtitle: "GUIA 2: PRODUTOS IMPORTADOS (ANVISA RDC 660)",
-      items: importedItems,
-      badge: "Guia 2 - Importado"
-    });
-  } else if (hasNational) {
-    guidesToRender.push({
-      title: "RECEITA MÉDICA",
-      subtitle: "PRODUTOS NACIONAIS / ASSOCIAÇÃO BRASILEIRA",
-      items: nationalItems,
-      badge: "Guia 1 - Nacional"
-    });
-  } else if (hasImported) {
-    guidesToRender.push({
-      title: "RECEITA MÉDICA",
-      subtitle: "PRODUTOS IMPORTADOS / ANVISA (RDC 660)",
-      items: importedItems,
-      badge: "Guia 2 - Importado"
-    });
-  } else {
-    guidesToRender.push({
-      title: "RECEITA MÉDICA",
-      subtitle: "RECEITUÁRIO MÉDICO ESPECIALIZADO",
-      items: itemsToRender,
-      badge: "Guia de Prescrição"
-    });
-  }
-
   interface PrescriptionPageData {
     guideTitle: string;
     guideSubtitle: string;
@@ -215,49 +239,88 @@ export const generatePrescriptionPDF = async (
   }
 
   const allPagesToRender: PrescriptionPageData[] = [];
+  const hasNotes = Boolean(customNotesText && customNotesText.trim());
 
-  guidesToRender.forEach(guide => {
-    const items = guide.items;
-    const hasNotes = Boolean(customNotesText && customNotesText.trim());
+  // Helper to create pages for each guide (ensuring national and imported are strictly separated on distinct sheets)
+  const addGuidePages = (
+    guideItems: PrescriptionItemData[],
+    guideTitle: string,
+    subtitleBase: string,
+    badgeBase: string
+  ) => {
+    if (guideItems.length === 0) return;
 
-    // Up to 4 items + notes fit perfectly on 1 single page!
-    if (items.length <= 4) {
-      allPagesToRender.push({
-        guideTitle: guide.title,
-        guideSubtitle: guide.subtitle,
-        badge: guide.badge,
-        pageNumber: 1,
-        totalPages: 1,
-        items: items,
-        itemStartIndex: 0,
-        notesText: hasNotes ? customNotesText : undefined
-      });
-    } else {
-      // 5 or more items in the same guide
-      const chunkSize = 4;
-      const chunks: PrescriptionItemData[][] = [];
-      for (let i = 0; i < items.length; i += chunkSize) {
-        chunks.push(items.slice(i, i + chunkSize));
-      }
-      let startIdx = 0;
-      chunks.forEach((chunk, chunkIdx) => {
-        const isLast = chunkIdx === chunks.length - 1;
-        allPagesToRender.push({
-          guideTitle: guide.title,
-          guideSubtitle: guide.subtitle + (chunks.length > 1 ? ` (PARTE ${chunkIdx + 1})` : ''),
-          badge: guide.badge,
-          pageNumber: chunkIdx + 1,
-          totalPages: chunks.length,
-          items: chunk,
-          itemStartIndex: startIdx,
-          notesText: isLast && hasNotes ? customNotesText : undefined
-        });
-        startIdx += chunk.length;
-      });
+    // Up to 4 items per page to guarantee no overflow, text truncation or clipping
+    const totalItems = guideItems.length;
+    const numPages = Math.ceil(totalItems / 4);
+    const itemsPerPage = Math.ceil(totalItems / numPages);
+    const chunks: PrescriptionItemData[][] = [];
+    for (let i = 0; i < totalItems; i += itemsPerPage) {
+      chunks.push(guideItems.slice(i, i + itemsPerPage));
     }
-  });
 
-  // Calculate global page numbering across the whole document (e.g. Page 1 of 2, Page 2 of 2)
+    let startIdx = 0;
+    chunks.forEach((chunk, chunkIdx) => {
+      const isLast = chunkIdx === chunks.length - 1;
+      const subtitle = chunks.length > 1
+        ? `${subtitleBase} (PARTE ${chunkIdx + 1})`
+        : subtitleBase;
+      const badge = chunks.length > 1
+        ? `${badgeBase} • Pág ${chunkIdx + 1}`
+        : badgeBase;
+
+      allPagesToRender.push({
+        guideTitle,
+        guideSubtitle: subtitle,
+        badge,
+        pageNumber: 0,
+        totalPages: 0,
+        items: chunk,
+        itemStartIndex: startIdx,
+        notesText: isLast && hasNotes ? customNotesText : undefined
+      });
+      startIdx += chunk.length;
+    });
+  };
+
+  if (hasNational && hasImported) {
+    // Exactly 2 sheets when hasNational & hasImported (or partitioned if > 4 items in either)
+    addGuidePages(
+      nationalItems,
+      "RECEITA MÉDICA",
+      "GUIA 1: PRODUTOS NACIONAIS (ASSOCIAÇÃO BRASILEIRA)",
+      "Guia 1 - Nacional"
+    );
+    addGuidePages(
+      importedItems,
+      "RECEITA MÉDICA",
+      "GUIA 2: PRODUTOS IMPORTADOS (ANVISA RDC 660)",
+      "Guia 2 - Importado"
+    );
+  } else if (hasNational) {
+    addGuidePages(
+      nationalItems,
+      "RECEITA MÉDICA",
+      "PRODUTOS NACIONAIS / ASSOCIAÇÃO BRASILEIRA",
+      "Guia Única - Nacional"
+    );
+  } else if (hasImported) {
+    addGuidePages(
+      importedItems,
+      "RECEITA MÉDICA",
+      "PRODUTOS IMPORTADOS / ANVISA (RDC 660)",
+      "Guia Única - Importado"
+    );
+  } else {
+    addGuidePages(
+      itemsToRender,
+      "RECEITA MÉDICA",
+      "RECEITUÁRIO MÉDICO ESPECIALIZADO",
+      "Guia de Prescrição"
+    );
+  }
+
+  // Calculate global page numbering across the whole document (e.g. Página 1 de 2, Página 2 de 2)
   const totalDocPages = allPagesToRender.length;
   allPagesToRender.forEach((page, idx) => {
     page.pageNumber = idx + 1;
@@ -275,12 +338,10 @@ export const generatePrescriptionPDF = async (
               width: "794px", 
               height: "1123px", 
               minHeight: "1123px", 
-              maxHeight: "1123px", 
-              padding: "26px 36px 20px 36px", 
+              padding: "20px 36px 16px 36px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
-              boxSizing: "border-box",
-              overflow: "hidden"
+              boxSizing: "border-box"
             }}
           >
             {/* Guide Badge and Page Indicator */}
@@ -288,56 +349,58 @@ export const generatePrescriptionPDF = async (
               <span className="text-[10px] text-[#64748B] font-bold">
                 Página {page.pageNumber} de {page.totalPages}
               </span>
-              <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9.5px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+              <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                 {page.badge}
               </span>
             </div>
 
             <div>
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-2.5 pt-0.5">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-2 pt-0.5">
                 <div>
-                  <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[9.5px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                  <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
+                  <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
                     CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                   </p>
                 </div>
                 <div className="text-right">
-                  <h3 className="text-[13px] font-bold text-[#1E1B4B] m-0 leading-tight">{docName}</h3>
-                  <p className="text-[11px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
-                  <p className="text-[9.5px] text-[#64748B] m-0 leading-tight">{docSpec}</p>
+                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0 leading-tight">{docName}</h3>
+                  <p className="text-[10px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
+                  <p className="text-[9px] text-[#64748B] m-0 leading-tight">{docSpec}</p>
                 </div>
               </div>
 
               {/* Title & Subtitle */}
-              <div className="text-center my-2">
-                <h1 className="text-base font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
+              <div className="text-center my-1.5">
+                <h1 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
                   {page.guideTitle}
                 </h1>
-                <p className="text-[11px] font-bold text-[#059669] tracking-wider uppercase mt-0.5 m-0">
+                <p className="text-[10px] font-bold text-[#059669] tracking-wider uppercase mt-0.5 m-0">
                   {page.guideSubtitle}
                 </p>
-                <div className="w-14 h-0.5 bg-[#059669] mx-auto mt-1 mb-1.5" />
+                <div className="w-12 h-0.5 bg-[#059669] mx-auto mt-1 mb-1" />
               </div>
 
               {/* Patient Info Box */}
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3.5 py-1.5 mb-2.5 flex justify-between items-center">
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-1.5 mb-2 flex justify-between items-center">
                 <div>
-                  <span className="text-[#64748B] block text-[8.5px] uppercase font-bold leading-none mb-0.5">Paciente</span>
+                  <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">Paciente</span>
                   <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[#64748B] block text-[8.5px] uppercase font-bold leading-none mb-0.5">CPF / Nasc.</span>
-                  <span className="font-semibold text-[#334155] text-[11px] leading-none">{cpfText} • {birthDateText}</span>
+                  <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">CPF / Nasc.</span>
+                  <span className="font-semibold text-[#334155] text-[10.5px] leading-none">{cpfText} • {birthDateText}</span>
                 </div>
               </div>
 
               {/* Items List for this page */}
               {page.items.length > 0 && (
-                <div className="space-y-2.5 my-2">
+                <div className="space-y-2 my-1">
                   {page.items.map((item, idx) => {
                     const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
                     const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(item.name || item.type || '');
+                    const isFlower = /flor|in natura/i.test(item.name || item.type || '');
+                    const isNational = isNationalProduct(item);
                     const activeIng = (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients;
                     const concentration = (item.concentration !== undefined && item.concentration !== null && item.concentration !== '') ? item.concentration : enriched.concentration;
                     const pharmForm = isGummy ? (item.pharmaceuticalForm && !/solução/i.test(item.pharmaceuticalForm) ? item.pharmaceuticalForm : 'Gomas Mastigáveis Veganas') : (item.pharmaceuticalForm || enriched.pharmaceuticalForm);
@@ -356,18 +419,18 @@ export const generatePrescriptionPDF = async (
                     }
 
                     return (
-                      <div key={idx} className="border-b border-[#F1F5F9] pb-2">
-                        <div className="flex items-baseline justify-between mb-1">
-                          <span className="text-[12.5px] font-bold text-[#0F172A] m-0">
+                      <div key={idx} className="border-b border-[#F1F5F9] pb-1.5">
+                        <div className="flex items-baseline justify-between mb-0.5">
+                          <span className="text-[12px] font-bold text-[#0F172A] m-0">
                             {displayIndex}. {item.name}
                           </span>
-                          <span className="text-[9px] bg-[#F1F5F9] text-[#334155] font-bold px-2 py-0.5 rounded border border-[#E2E8F0] m-0 shrink-0">
-                            {item.brand || enriched.brand} ({item.origin || enriched.origin})
+                          <span className="text-[8.5px] bg-[#F1F5F9] text-[#334155] font-bold px-2 py-0.5 rounded border border-[#E2E8F0] m-0 shrink-0">
+                            {item.brand || enriched.brand} • {isNational ? 'Nacional (Associação)' : 'Importado (Anvisa RDC 660)'}
                           </span>
                         </div>
 
                         {/* Active Ingredient, Composition & Presentation */}
-                        <div className="pl-3 mb-1 space-y-0.5 text-[10px] text-[#475569] leading-tight">
+                        <div className="pl-2.5 mb-1 space-y-0.5 text-[9.5px] text-[#475569] leading-tight">
                           <p className="m-0"><span className="font-semibold text-[#1E293B]">Princípio Ativo:</span> {activeIng}</p>
                           {concentration && (
                             <p className="m-0"><span className="font-semibold text-[#1E293B]">Composição / Concentração:</span> {concentration}</p>
@@ -377,17 +440,25 @@ export const generatePrescriptionPDF = async (
 
                         {/* Dosage */}
                         {(() => {
-                          const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || pharmForm);
-                          const isFlower = /flor|in natura/i.test(item.name || pharmForm);
                           const posologyHeader = (isGummy || isFlower)
                             ? 'Posologia e Modo de Uso:'
                             : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):';
 
+                          // Filter out dosage lines that repeat the header note
+                          const cleanedDosageLines = dosageLines.filter(d => {
+                            const trimmed = d.trim();
+                            if (!trimmed) return false;
+                            if (/^Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
+                            if (/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
+                            return true;
+                          });
+                          const linesToRender = cleanedDosageLines.length > 0 ? cleanedDosageLines : dosageLines;
+
                           return (
-                            <div className="pl-3 space-y-0.5 text-[10px] text-[#334155]">
-                              <span className="font-semibold text-[#1E293B] block text-[10.5px] mb-0.5">{posologyHeader}</span>
-                              {dosageLines.map((d, dIdx) => (
-                                <p key={dIdx} className="m-0 leading-snug text-[10px]">• {d}</p>
+                            <div className="pl-2.5 space-y-0.5 text-[9.5px] text-[#334155]">
+                              <span className="font-semibold text-[#1E293B] block text-[10px] mb-0.5">{posologyHeader}</span>
+                              {linesToRender.map((d, dIdx) => (
+                                <p key={dIdx} className="m-0 leading-snug text-[9.5px]">• {d}</p>
                               ))}
                             </div>
                           );
@@ -400,11 +471,11 @@ export const generatePrescriptionPDF = async (
 
               {/* Notes block if present on this page */}
               {page.notesText && (
-                <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-2.5 text-[9.5px] text-[#334155] mt-2 rounded-r">
-                  <span className="font-bold block text-[10px] uppercase text-[#475569] mb-1">Orientações Farmacológicas e Clínicas</span>
+                <div className="bg-[#F8FAFC] border-l-2 border-[#1E1B4B] p-2 text-[9px] text-[#334155] mt-1.5 rounded-r">
+                  <span className="font-bold block text-[9.5px] uppercase text-[#475569] mb-0.5">Orientações Farmacológicas e Clínicas</span>
                   <div className="flex flex-col gap-0.5">
                     {page.notesText.split('\n').map((p, i) => p.trim() ? (
-                      <p key={i} className="text-[9.5px] leading-tight m-0" dangerouslySetInnerHTML={{ __html: p }} />
+                      <p key={i} className="text-[9px] leading-tight m-0" dangerouslySetInnerHTML={{ __html: p }} />
                     ) : null)}
                   </div>
                 </div>
@@ -412,31 +483,31 @@ export const generatePrescriptionPDF = async (
             </div>
 
             {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="pt-2.5 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
-              <div className="text-[9.5px] text-[#64748B] space-y-0.5">
+            <div className="pt-2 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
+              <div className="text-[9px] text-[#64748B] space-y-0.5">
                 <p className="m-0 font-medium">Data de Emissão: {emissionDateStr}</p>
-                <p className="text-[8.5px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
+                <p className="text-[8px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
               </div>
 
               {/* ICP Brasil Badge & Signature */}
-              <div className="flex items-end gap-4">
-                <div style={{ border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', borderRadius: '4px', padding: '4px 8px', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: '#059669', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '8px', flexShrink: 0 }}>
+              <div className="flex items-end gap-3">
+                <div style={{ border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', borderRadius: '4px', padding: '3px 6px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <div style={{ width: '18px', height: '18px', borderRadius: '3px', backgroundColor: '#059669', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '7.5px', flexShrink: 0 }}>
                       ICP
                     </div>
                     <div>
-                      <p style={{ fontSize: '8px', fontWeight: 'bold', color: '#065F46', lineHeight: 1, margin: 0 }}>Documento Assinado Digitalmente</p>
-                      <p style={{ fontSize: '7.5px', color: '#047857', fontFamily: 'monospace', lineHeight: 1, margin: '2px 0 0 0' }}>Padrão ICP-Brasil • Validade Jurídica</p>
+                      <p style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#065F46', lineHeight: 1, margin: 0 }}>Documento Assinado Digitalmente</p>
+                      <p style={{ fontSize: '7px', color: '#047857', fontFamily: 'monospace', lineHeight: 1, margin: '2px 0 0 0' }}>Padrão ICP-Brasil • Validade Jurídica</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="text-center w-52">
-                  <div className="border-b border-[#94A3B8] pb-1 mb-1" />
-                  <p className="text-[11.5px] font-bold text-[#0F172A] m-0 leading-tight">{docName}</p>
-                  <p className="text-[9.5px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
-                  <p className="text-[8.5px] text-[#64748B] m-0 leading-tight">Assinatura Digital / Prescritor</p>
+                <div className="text-center w-48">
+                  <div className="border-b border-[#94A3B8] pb-0.5 mb-0.5" />
+                  <p className="text-[11px] font-bold text-[#0F172A] m-0 leading-tight">{docName}</p>
+                  <p className="text-[9px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
+                  <p className="text-[8px] text-[#64748B] m-0 leading-tight">Assinatura Digital / Prescritor</p>
                 </div>
               </div>
             </div>
@@ -540,52 +611,17 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const reportPages: ReportPageData[] = [];
   const planItems = plan ? plan.split(/\n\n+/).filter(itemBlock => itemBlock.trim()) : [];
 
-  // PAGE 1: Complete Clinical Diagnosis & Anamnesis (including Questions 1 to 6)
-  // Naturally fits and fills Page 1 without premature splits
-  const isVeryLongDiag = diag.length > 2700;
-  let diagP1 = diag;
-  let diagP2 = '';
+  // Paging and capacity distribution:
+  // 1. Fits in 1 Single Page (up to ~2400 chars) -> All sections on Page 1 (reduces sheets!)
+  // 2. Fits in 2 Pages (up to ~4800 chars):
+  //    - If diag + rat <= 2500, Page 1 takes BOTH diag AND rat (fills Page 1!)
+  //      and Page 2 takes plan + mon (fills Page 2!)
+  //    - If diag alone is long (>= 1800), Page 1 takes diag, and Page 2 takes rat + plan + mon!
+  //    - If diag is very long (> 2500), split diag so Page 1 takes ~2000 chars and Page 2 takes the rest!
+  // 3. 3 Pages only if totalLength > 4800, distributed evenly so no page is empty!
 
-  if (isVeryLongDiag) {
-    const splitIndex = diag.indexOf('\n\n', Math.floor(diag.length * 0.55));
-    if (splitIndex !== -1) {
-      diagP1 = diag.substring(0, splitIndex).trim();
-      diagP2 = diag.substring(splitIndex).trim();
-    }
-  }
-
-  reportPages.push({
-    pageNumber: 1,
-    totalPages: 1,
-    title: baseReportTitle,
-    sections: [
-      { 
-        title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
-        content: diagP1 
-      }
-    ]
-  });
-
-  // PAGE 2: Therapeutic Rationale & Risks (Question 7) + Treatment Plan
-  const p2Sections: { title: string; content: string }[] = [];
-  if (diagP2) {
-    p2Sections.push({
-      title: 'Continuação da Evolução Clínica e Resposta Terapêutica',
-      content: diagP2
-    });
-  }
-
-  if (rat) {
-    p2Sections.push({
-      title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
-      content: rat
-    });
-  }
-
-  // Compact layout calculation:
-  // Dynamically calculate optimal page count and content distribution to eliminate awkward empty spaces
-  if (totalLength <= 1600 && !isVeryLongDiag) {
-    // 1 SINGLE PAGE: All sections fit comfortably on 1 page!
+  if (totalLength <= 2400 && diag.length <= 1800) {
+    // 1 SINGLE PAGE: All sections fit on 1 page! (Reduz folhas!)
     const p1Sections = [
       { 
         title: isEvolutivo ? 'Diagnóstico Clínico & Evolução' : 'Diagnóstico Clínico & Anamnese', 
@@ -617,27 +653,78 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       title: baseReportTitle,
       sections: p1Sections
     });
-  } else {
-    // 2 OR 3 PAGES:
-    // Page 1: Diagnosis & Anamnesis
-    reportPages.push({
-      pageNumber: 1,
-      totalPages: 1, // updated below
-      title: baseReportTitle,
-      sections: [
+  } else if (totalLength <= 4800) {
+    // EXACTLY 2 PAGES: Distribute content to fill Page 1 and Page 2 completely!
+    const canPage1TakeRat = (diag.length + rat.length <= 2500) && diag.length <= 1700;
+
+    if (canPage1TakeRat) {
+      // Page 1 gets Diagnosis AND Rationale! (Page 1 is filled, no empty space!)
+      const p1Sections = [
         { 
           title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
-          content: diagP1 
+          content: diag 
         }
-      ]
-    });
+      ];
+      if (rat) {
+        p1Sections.push({
+          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+          content: rat
+        });
+      }
 
-    // Determine if page 2 can hold Rationale + Plan + Monitoring (fits up to ~3200 chars)
-    const p2ContentLength = (diagP2?.length || 0) + (rat?.length || 0) + (plan?.length || 0) + (mon?.length || 0);
-    const canFitAllOnPage2 = p2ContentLength <= 3400 && (!isVeryLongDiag || !diagP2);
+      reportPages.push({
+        pageNumber: 1,
+        totalPages: 2,
+        title: baseReportTitle,
+        sections: p1Sections
+      });
 
-    if (canFitAllOnPage2) {
-      const p2Sections: { title: string; content: string }[] = [];
+      // Page 2 gets Treatment Plan AND Monitoring! (Page 2 is filled!)
+      const p2Sections = [];
+      if (plan) {
+        p2Sections.push({
+          title: 'Plano de Tratamento Canabinoide Individualizado',
+          content: plan
+        });
+      }
+      if (mon) {
+        p2Sections.push({
+          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+          content: mon
+        });
+      }
+
+      reportPages.push({
+        pageNumber: 2,
+        totalPages: 2,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
+        sections: p2Sections
+      });
+    } else {
+      // Diagnosis alone is long (fills Page 1)
+      let diagP1 = diag;
+      let diagP2 = '';
+      if (diag.length > 2500) {
+        const splitIndex = diag.indexOf('\n\n', Math.floor(diag.length * 0.52));
+        if (splitIndex !== -1) {
+          diagP1 = diag.substring(0, splitIndex).trim();
+          diagP2 = diag.substring(splitIndex).trim();
+        }
+      }
+
+      reportPages.push({
+        pageNumber: 1,
+        totalPages: 2,
+        title: baseReportTitle,
+        sections: [
+          { 
+            title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
+            content: diagP1 
+          }
+        ]
+      });
+
+      const p2Sections = [];
       if (diagP2) {
         p2Sections.push({
           title: 'Continuação da Evolução Clínica',
@@ -669,90 +756,111 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
         sections: p2Sections
       });
+    }
+  } else {
+    // 3 PAGES: for very extensive dossiers (> 4800 characters)
+    let diagP1 = diag;
+    let diagP2 = '';
+    if (diag.length > 2500) {
+      const splitIndex = diag.indexOf('\n\n', Math.floor(diag.length * 0.52));
+      if (splitIndex !== -1) {
+        diagP1 = diag.substring(0, splitIndex).trim();
+        diagP2 = diag.substring(splitIndex).trim();
+      }
+    }
+
+    reportPages.push({
+      pageNumber: 1,
+      totalPages: 3,
+      title: baseReportTitle,
+      sections: [
+        { 
+          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
+          content: diagP1 
+        }
+      ]
+    });
+
+    const p2Sections = [];
+    if (diagP2) {
+      p2Sections.push({
+        title: 'Continuação da Evolução Clínica',
+        content: diagP2
+      });
+    }
+    if (rat) {
+      p2Sections.push({
+        title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+        content: rat
+      });
+    }
+
+    if (planItems.length >= 2) {
+      const half = Math.ceil(planItems.length / 2);
+      const planPart1 = planItems.slice(0, half).join('\n\n');
+      const planPart2 = planItems.slice(half).join('\n\n');
+
+      if (planPart1) {
+        p2Sections.push({
+          title: 'Plano de Tratamento Canabinoide (Parte 1)',
+          content: planPart1
+        });
+      }
+
+      reportPages.push({
+        pageNumber: 2,
+        totalPages: 3,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
+        sections: p2Sections
+      });
+
+      const p3Sections = [];
+      if (planPart2) {
+        p3Sections.push({
+          title: 'Continuação do Plano de Tratamento Canabinoide',
+          content: planPart2
+        });
+      }
+      if (mon) {
+        p3Sections.push({
+          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+          content: mon
+        });
+      }
+
+      reportPages.push({
+        pageNumber: 3,
+        totalPages: 3,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
+        sections: p3Sections
+      });
     } else {
-      // 3 PAGES - Distribute evenly so Page 3 is not empty
-      const p2Sections: { title: string; content: string }[] = [];
-      if (diagP2) {
+      if (plan) {
         p2Sections.push({
-          title: 'Continuação da Evolução Clínica',
-          content: diagP2
-        });
-      }
-      if (rat) {
-        p2Sections.push({
-          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
-          content: rat
+          title: 'Plano de Tratamento Canabinoide Individualizado',
+          content: plan
         });
       }
 
-      // Split plan or treatment items between Page 2 and Page 3
-      if (planItems.length >= 2) {
-        const half = Math.ceil(planItems.length / 2);
-        const planPart1 = planItems.slice(0, half).join('\n\n');
-        const planPart2 = planItems.slice(half).join('\n\n');
+      reportPages.push({
+        pageNumber: 2,
+        totalPages: 3,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
+        sections: p2Sections
+      });
 
-        if (planPart1) {
-          p2Sections.push({
-            title: 'Plano de Tratamento Canabinoide (Parte 1)',
-            content: planPart1
-          });
-        }
-
-        reportPages.push({
-          pageNumber: 2,
-          totalPages: 3,
-          title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
-          sections: p2Sections
-        });
-
-        const p3Sections: { title: string; content: string }[] = [];
-        if (planPart2) {
-          p3Sections.push({
-            title: 'Continuação do Plano de Tratamento Canabinoide',
-            content: planPart2
-          });
-        }
-        if (mon) {
-          p3Sections.push({
-            title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-            content: mon
-          });
-        }
-
+      if (mon) {
         reportPages.push({
           pageNumber: 3,
           totalPages: 3,
           title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
-          sections: p3Sections
+          sections: [
+            {
+              title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+              content: mon
+            }
+          ]
         });
-      } else {
-        if (plan) {
-          p2Sections.push({
-            title: 'Plano de Tratamento Canabinoide Individualizado',
-            content: plan
-          });
-        }
-
-        reportPages.push({
-          pageNumber: 2,
-          totalPages: 3,
-          title: `${baseReportTitle} (CONTINUAÇÃO) — FUNDAMENTAÇÃO & CONDUTA`,
-          sections: p2Sections
-        });
-
-        if (mon) {
-          reportPages.push({
-            pageNumber: 3,
-            totalPages: 3,
-            title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
-            sections: [
-              {
-                title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-                content: mon
-              }
-            ]
-          });
-        }
       }
     }
   }
@@ -774,24 +882,23 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               width: "794px", 
               minHeight: "1123px", 
               height: "1123px", 
-              padding: "24px 38px", 
+              padding: "20px 36px 16px 36px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
-              boxSizing: "border-box",
-              overflow: "visible"
+              boxSizing: "border-box"
             }}
           >
             {/* Page number */}
-            <div className="absolute top-4 right-10 text-[9.5px] text-[#64748B] font-bold">
+            <div className="absolute top-4 right-9 text-[9.5px] text-[#64748B] font-bold">
               Página {page.pageNumber} de {page.totalPages}
             </div>
 
             <div>
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2.5 mb-3.5 pt-0.5">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-2 pt-0.5">
                 <div>
                   <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[9.5px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                  <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
                     CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                   </p>
                 </div>
@@ -804,7 +911,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
 
               {/* Title & Patient Identification */}
               {page.pageNumber === 1 ? (
-                <div className="text-center mb-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5">
+                <div className="text-center mb-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2">
                   <h1 className="text-sm font-black text-[#1E1B4B] tracking-widest uppercase mb-1">{page.title}</h1>
                   <div className="flex flex-col items-center gap-0.5">
                     <div className="flex items-center gap-2 text-xs text-[#475569]">
@@ -829,34 +936,34 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between mb-3 px-3 py-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md">
+                <div className="flex items-center justify-between mb-2 px-3 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md">
                   <span className="text-[10px] font-black text-[#1E1B4B] tracking-wider uppercase">{page.title}</span>
-                  <span className="text-[9.5px] font-bold text-[#475569]">PACIENTE: <strong className="text-[#0F172A]">{sanitizedUserName}</strong></span>
+                  <span className="text-[9px] font-bold text-[#475569]">PACIENTE: <strong className="text-[#0F172A]">{sanitizedUserName}</strong></span>
                 </div>
               )}
 
               {/* Sections for this page */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {page.sections.map((sec, sIdx) => {
                   const isPlanSection = sec.title.toLowerCase().includes('plano de tratamento');
 
                   return (
                     <div key={sIdx}>
-                      <h4 className="text-[10.5px] font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-1 mb-2 flex items-center justify-between">
+                      <h4 className="text-[10px] font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-0.5 mb-1 flex items-center justify-between">
                         <span>{sec.title}</span>
                       </h4>
 
                       {isPlanSection ? (
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {sec.content.split(/\n\n+/).filter(itemBlock => itemBlock.trim()).map((itemBlock, iIdx) => {
                             const lines = itemBlock.split('\n').map(l => l.trim()).filter(Boolean);
                             const titleLine = lines[0] || '';
                             const detailLines = lines.slice(1);
 
                             return (
-                              <div key={iIdx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2.5 text-[9.5px] text-[#334155] leading-snug">
-                                <p className="font-bold text-[#0F172A] text-[10px] mb-1 m-0">{titleLine}</p>
-                                <div className="space-y-0.5 pl-2 text-[9px] text-[#475569]">
+                              <div key={iIdx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded p-2 text-[9px] text-[#334155] leading-snug">
+                                <p className="font-bold text-[#0F172A] text-[9.5px] mb-0.5 m-0">{titleLine}</p>
+                                <div className="space-y-0.5 pl-1.5 text-[8.5px] text-[#475569]">
                                   {detailLines.map((line, lIdx) => (
                                     <p key={lIdx} className="m-0 leading-tight">{line}</p>
                                   ))}
@@ -866,7 +973,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                           })}
                         </div>
                       ) : (
-                        <div className="text-[10px] text-[#334155] leading-relaxed flex flex-col gap-1.5 text-justify">
+                        <div className="text-[9.5px] text-[#334155] leading-snug flex flex-col gap-1 text-justify">
                           {sec.content.split('\n').map((p, i) => {
                             const trimmed = p.trim();
                             if (!trimmed) return <div key={i} className="h-0.5" />;
@@ -874,13 +981,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                             const isSubheader = /^(Hist[óo]rico|Evolu[çc][ãa]o|Indica[çc][ãa]o|CID|Quesito|\d+\.\s*Quanto|Racioc[íi]nio|Diretrizes|Seguran[çc]a|Retorno)/i.test(trimmed);
                             if (isSubheader) {
                               return (
-                                <p key={i} className="font-bold text-[#1E1B4B] text-[10px] mt-1 mb-0.5">
+                                <p key={i} className="font-bold text-[#1E1B4B] text-[9.5px] mt-0.5 mb-0.5">
                                   {trimmed}
                                 </p>
                               );
                             }
                             return (
-                              <p key={i} className="m-0 leading-relaxed text-justify">
+                              <p key={i} className="m-0 leading-snug text-justify">
                                 {trimmed}
                               </p>
                             );
@@ -894,12 +1001,12 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
             </div>
 
             {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="mt-auto pt-2.5 border-t border-[#E2E8F0]">
+            <div className="mt-auto pt-2 border-t border-[#E2E8F0]">
               <div className="flex flex-col items-center">
-                <div className="w-52 h-0 border-b border-[#CBD5E1] mb-1"></div>
-                <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0">{docName}</p>
-                <p className="text-[9px] text-[#64748B] m-0 mb-1">{docCrm} • Assinatura Digital / Prescritor</p>
-                <div className="flex justify-between w-full text-[8px] text-[#94A3B8] font-semibold">
+                <div className="w-48 h-0 border-b border-[#CBD5E1] mb-0.5"></div>
+                <p className="text-[10px] font-bold text-[#1E1B4B] m-0">{docName}</p>
+                <p className="text-[8.5px] text-[#64748B] m-0 mb-0.5">{docCrm} • Assinatura Digital / Prescritor</p>
+                <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-semibold">
                   <span>Data de Emissão: {emissionDateStr}</span>
                   <span>Documento Médico Oficial • Válido em todo o território nacional</span>
                 </div>
