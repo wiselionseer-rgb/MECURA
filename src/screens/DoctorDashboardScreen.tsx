@@ -547,6 +547,7 @@ export function DoctorDashboardScreen() {
         dosage: product.usageInstructions 
           ? product.usageInstructions.split('\n').map(s => s.trim()).filter(Boolean)
           : (enriched.usageInstructions ? [enriched.usageInstructions] : [
+              'Aproximadamente 25 gotas por mL.',
               'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
               'Aumentar 01 gota a cada 05 dias conforme resposta clínica.'
             ]),
@@ -2312,6 +2313,7 @@ export function DoctorDashboardScreen() {
     let prodName = 'ÓLEO INTEGRAL PREDOMINANTE CBD 100mg/ml';
     let prodDesc = 'Óleo integral concentrado de Associação Brasileira com excelente custo-benefício. Indicado para controle de ansiedade, estresse, regulação do humor e inflamação crônica.';
     let dosage = [
+      'Aproximadamente 25 gotas por mL.',
       'Tomar 03 gotas de 12/12 horas (sublingual).',
       'Aumentar 01 gota a cada 05 dias até atingir a dose de controle (5 a 8 gotas por tomada).',
       '01 Frasco de 30ml rende de 45 a 60 dias de tratamento contínuo.'
@@ -2321,6 +2323,7 @@ export function DoctorDashboardScreen() {
       prodName = 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml';
       prodDesc = 'Extrato Broad Spectrum rico em CBD e CBN (1065mg em 15ml), 0% THC. Indicado para insônia, distúrbios do sono, ansiedade e desaceleração noturna.';
       dosage = [
+        'Aproximadamente 25 gotas por mL.',
         'Pingar 2 gotas pela manhã e 4 a noite.',
         '- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.',
         '- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.'
@@ -2329,6 +2332,7 @@ export function DoctorDashboardScreen() {
       prodName = 'ÓLEO INTEGRAL THC/CBD 100mg/ml';
       prodDesc = 'Óleo integral balanceado de Associação Brasileira com proporção 1:1. Indicado para dores crônicas, fibromialgia, espasticidade e rigidez.';
       dosage = [
+        'Aproximadamente 25 gotas por mL.',
         'Tomar 03 gotas de 12/12 horas (sublingual).',
         'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.',
         '01 Frasco de 30ml rende até 60 dias.'
@@ -2337,6 +2341,7 @@ export function DoctorDashboardScreen() {
       prodName = 'ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml';
       prodDesc = 'Formulação com predominância de THC de Associação Brasileira. Indicado para insônia grave refratária e alívio de crises noturnas.';
       dosage = [
+        'Aproximadamente 25 gotas por mL.',
         'Tomar 04 a 06 gotas 30 minutos antes do repouso noturno.',
         '01 Frasco de 30ml com duração média de 60 a 90 dias.'
       ];
@@ -2453,7 +2458,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
         REGRA OBRIGATÓRIA E INEGOCIÁVEL PARA MEDICAMENTOS NACIONAIS:
         INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS (FLOWERMED, GREENBUDZCBD OU AMBOS), A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE E OBRIGATORIAMENTE A TRÍADE COMPLETA:
-        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Linha ABECMED Full Spectrum RSO em MCT [Laranja CBD 2%/5%/10%, Azul CBD:THC 2%/5%/10%, Verde THC 2%/5%/10%, Vermelho CBG 5%/10%, Limão CBD:CBN 5%, Lilás CBD:CBG 5%], ou Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
+        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Linha ALTO CBD Full SPECTRUM [CBD 5:1 THC, CBD 10:1 THC ou CBD 20:1 THC - 30ml em 30mg/mL, 60mg/mL ou 100mg/mL], Linha CBD + CBN Full Spectrum [CBD 2:1 CBN 30ml em 30mg/mL ou 60mg/mL], Linha CBD + CBG Full Spectrum [CBD 2:1 CBG 30ml em 30mg/mL ou 60mg/mL], Linha CBD + CBG + CBN Full Spectrum [4:1:1 30ml em 30mg/mL ou 60mg/mL], Linha EQUILIBRADO Full Spectrum [CBD 1:1 THC 30ml em 30mg/mL, 60mg/mL ou 100mg/mL], Linha ALTO THC Full Spectrum [THC 10:1 CBD 30ml em 30mg/mL, 60mg/mL ou 100mg/mL], Linha ABECMED Full Spectrum RSO em MCT [Laranja CBD, Azul CBD:THC, Verde THC, Vermelho CBG, Limão CBD:CBN, Lilás CBD:CBG], ou Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
         - 2. EXTRAÇÃO (Extração Sem Solvente ABEC rica em THC 30%-50%, Extrato Peneirado Dry Sift Full Spectrum ABEC, ou Pomada Canábica Terapêutica 500mg - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
         - 3. FLORES (Inflorescências ABEC ricas em THC 15%-30% ou ricas em CBD 8%-18% em embalagens de 5g a 25g [cultivo Indoor, Outdoor ou Estufa] ou Flores in natura de cannabis sp 15g - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
         Desta forma, fica estritamente a critério e autonomia do paciente escolher se prefere seguir com o tratamento completo de medicamentos nacionais ou com os importados.
@@ -2507,8 +2512,8 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
            (OBRIGATÓRIO: Gerar SEMPRE e INDEPENDENTE da marca de importados os 3 medicamentos nacionais abaixo: 1 ÓLEO, 1 EXTRAÇÃO e 1 FLOR IN NATURA)
            Medicamento: (Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1 ou Óleo Integral THC/CBD 100mg/ml - Associação Nacional)
            Indicação: (Condição primária alvo e homeostase basal contínua)
-           Modo de Uso: (Posologia, via sublingual e titulação gradual)
-           Observações: (Reter 60 a 90 segundos sublingual)
+           Modo de Uso: (Posologia, via sublingual e titulação gradual. Padrão: Aproximadamente 25 gotas por mL)
+           Observações: (Reter 60 a 90 segundos sublingual. Padrão: Aproximadamente 25 gotas por mL)
 
            Medicamento: (Pomada Canábica Terapêutica 500mg ou Extrato Concentrado RSO - Associação Nacional)
            Indicação: (Extração terapêutica para analgesia localizada, espasmos ou alívio de tensões somatizadas)

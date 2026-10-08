@@ -376,12 +376,22 @@ export const generatePrescriptionPDF = async (
                         </div>
 
                         {/* Dosage */}
-                        <div className="pl-3 space-y-0.5 text-[10px] text-[#334155]">
-                          <span className="font-semibold text-[#1E293B] block text-[10.5px] mb-0.5">Posologia e Modo de Uso:</span>
-                          {dosageLines.map((d, dIdx) => (
-                            <p key={dIdx} className="m-0 leading-snug text-[10px]">• {d}</p>
-                          ))}
-                        </div>
+                        {(() => {
+                          const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || pharmForm);
+                          const isFlower = /flor|in natura/i.test(item.name || pharmForm);
+                          const posologyHeader = (isGummy || isFlower)
+                            ? 'Posologia e Modo de Uso:'
+                            : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):';
+
+                          return (
+                            <div className="pl-3 space-y-0.5 text-[10px] text-[#334155]">
+                              <span className="font-semibold text-[#1E293B] block text-[10.5px] mb-0.5">{posologyHeader}</span>
+                              {dosageLines.map((d, dIdx) => (
+                                <p key={dIdx} className="m-0 leading-snug text-[10px]">• {d}</p>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}

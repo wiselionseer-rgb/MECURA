@@ -58,7 +58,354 @@ export interface CBDCategory {
   products: CBDProduct[];
 }
 
+export const NATIONAL_FULL_SPECTRUM_PRODUCTS: CBDProduct[] = [
+  // ==============================================================
+  // LINHA ALTO CBD FULL SPECTRUM (CBD 5:1, 10:1, 20:1 THC - 30 mL)
+  // ==============================================================
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum (Alto CBD 5:1)",
+    activeIngredients: "25 mg de CBD e 5 mg de THC por mL",
+    concentration: "30 mg/mL (900mg) — 25 mg CBD e 5 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 220,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "25 mg CBD e 5 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 5:1 THC - 30 ml. Apresentação de 30 mg/mL (900mg) contendo 25 mg de CBD e 5 mg de THC por mL. Formulação nacional padronizada para modulação do sistema endocanabinoide.",
+    usageInstructions: "• Iniciar com 03 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 4 a 5 dias.",
+    indications: "Ansiedade, Estresse Crônico, Dores Inflamatórias, Modulação do Humor, TDAH, Suporte Neuroprotetor"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum (Alto CBD 5:1)",
+    activeIngredients: "50 mg de CBD e 10 mg de THC por mL",
+    concentration: "60 mg/mL (1800mg) — 50 mg CBD e 10 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 290,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "50 mg CBD e 10 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 5:1 THC - 30 ml. Apresentação de 60 mg/mL (1800mg) contendo 50 mg de CBD e 10 mg de THC por mL. Concentração intermediária com excelente rendimento.",
+    usageInstructions: "• Tomar 02 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular conforme orientação médica.",
+    indications: "Dores Crônicas, Fibromialgia, Ansiedade Severa, TEA, Espasticidade Leve, Doenças Autoimunes"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum (Alto CBD 10:1)",
+    activeIngredients: "Aproximadamente 27,3 mg de CBD e 2,7 mg de THC por mL",
+    concentration: "30 mg/mL (900mg) — ~27,3 mg CBD e 2,7 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 220,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "Aprox. 27,3 mg CBD e 2,7 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 10:1 THC - 30 ml. Apresentação de 30 mg/mL (900mg) contendo aproximadamente 27,3 mg de CBD e 2,7 mg de THC por mL. Alta tolerabilidade e microdosagem de THC.",
+    usageInstructions: "• Tomar 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Ansiedade, Estresse, Início de Terapia Canabinoide, Pacientes Idosos, Burnout"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum (Alto CBD 10:1)",
+    activeIngredients: "Aproximadamente 54,5 mg de CBD e 5,5 mg de THC por mL",
+    concentration: "60 mg/mL (1800mg) — ~54,5 mg CBD e 5,5 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 290,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "Aprox. 54,5 mg CBD e 5,5 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 10:1 THC - 30 ml. Apresentação de 60 mg/mL (1800mg) contendo aproximadamente 54,5 mg de CBD e 5,5 mg de THC por mL. Rendimento terapêutico balanceado.",
+    usageInstructions: "• Tomar 02 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Ansiedade Crônica, Insônia Moderada, Dores Articulares, Modulação Imunológica, TDAH"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 10:1 THC - 30ml (100 mg/mL — 3000mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Alta Concentração (10:1)",
+    activeIngredients: "Aproximadamente 90,9 mg de CBD e 9,1 mg de THC por mL",
+    concentration: "100 mg/mL (3000mg) — ~90,9 mg CBD e 9,1 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 360,
+    details: ["Frasco 30 mL", "Apresentação 100 mg/mL (3000mg)", "Aprox. 90,9 mg CBD e 9,1 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 10:1 THC - 30 ml. Apresentação de 100 mg/mL (3000mg) contendo aproximadamente 90,9 mg de CBD e 9,1 mg de THC por mL. Alta potência canabinoide nacional.",
+    usageInstructions: "• Tomar 01 a 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos. Titulação sob orientação médica.",
+    indications: "Epilepsia Refratária, TEA (Autismo), Doenças Neurodegenerativas (Parkinson, Alzheimer), Dores Severas"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum (Alto CBD 20:1)",
+    activeIngredients: "28,6 mg de CBD e 1,4 mg de THC por mL",
+    concentration: "30 mg/mL (900mg) — 28,6 mg CBD e 1,4 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 220,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "28,6 mg CBD e 1,4 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml. Apresentação de 30 mg/mL (900mg) contendo 28,6 mg de CBD e 1,4 mg de THC por mL. Ideal para pacientes com alta sensibilidade ao THC.",
+    usageInstructions: "• Tomar 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Ansiedade, Síndrome do Pânico, Pacientes Idosos, Sensibilidade ao THC, Desmame de Ansiolíticos"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum (Alto CBD 20:1)",
+    activeIngredients: "57,1 mg de CBD e 2,9 mg de THC por mL",
+    concentration: "60 mg/mL (1800mg) — 57,1 mg CBD e 2,9 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 290,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "57,1 mg CBD e 2,9 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml. Apresentação de 60 mg/mL (1800mg) contendo 57,1 mg de CBD e 2,9 mg de THC por mL. Formulação estável para tratamentos contínuos.",
+    usageInstructions: "• Tomar 02 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "TEA, TDAH, Ansiedade Crônica Generalizada, Transtornos do Humor, Dores Inflamatórias"
+  },
+  {
+    name: "ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (100 mg/mL — 3000mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Alta Concentração (20:1)",
+    activeIngredients: "95,2 mg de CBD e 4,8 mg de THC por mL",
+    concentration: "100 mg/mL (3000mg) — 95,2 mg CBD e 4,8 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 360,
+    details: ["Frasco 30 mL", "Apresentação 100 mg/mL (3000mg)", "95,2 mg CBD e 4,8 mg THC por mL", "Full Spectrum Nacional", "Uso Oral / Sublingual"],
+    description: "ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml. Apresentação de 100 mg/mL (3000mg) contendo 95,2 mg de CBD e 4,8 mg de THC por mL. Alta densidade para máxima eficiência posológica.",
+    usageInstructions: "• Tomar 01 a 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Epilepsias Graves, TEA Severo, Transtornos Neurológicos, Altas Dosagens Diárias de CBD"
+  },
+
+  // ==============================================================
+  // LINHA CBD + CBN FULL SPECTRUM (CBD 2:1 CBN - 30 mL)
+  // ==============================================================
+  {
+    name: "CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum CBD + CBN (Indução do Sono)",
+    activeIngredients: "20 mg de CBD e 10 mg de CBN por mL",
+    concentration: "30 mg/mL (900mg) — 20 mg CBD e 10 mg CBN por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 230,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "20 mg CBD e 10 mg CBN por mL", "Full Spectrum Nacional", "Foco em Sono Reparador"],
+    description: "CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml. Apresentação 30 mg/mL contendo 20 mg de CBD e 10 mg de CBN por mL. Sinergia voltada à arquitetura e indução do sono reparador.",
+    usageInstructions: "• Tomar 04 a 06 gotas por via sublingual 30 a 60 minutos antes de deitar. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Insônia Inicial e Intermediária, Despertares Noturnos, Agitação Noturna, Bruxismo, Qualidade do Sono"
+  },
+  {
+    name: "CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum CBD + CBN Alta Potência",
+    activeIngredients: "40 mg de CBD e 20 mg de CBN por mL",
+    concentration: "60 mg/mL (1800mg) — 40 mg CBD e 20 mg CBN por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 310,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "40 mg CBD e 20 mg CBN por mL", "Full Spectrum Nacional", "Insônia Crônica Refratária"],
+    description: "CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml. Apresentação 60 mg/mL contendo 40 mg de CBD e 20 mg de CBN por mL. Indicado para insônia severa e relaxamento profundo.",
+    usageInstructions: "• Tomar 03 a 05 gotas por via sublingual 45 minutos antes de dormir. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Insônia Crônica Refratária, Síndrome das Pernas Inquietas, Dores Noturnas, Arquitetura do Sono Profundo"
+  },
+
+  // ==============================================================
+  // LINHA CBD + CBG FULL SPECTRUM (CBD 2:1 CBG - 30 mL)
+  // ==============================================================
+  {
+    name: "CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum CBD + CBG (Foco & Digestivo)",
+    activeIngredients: "20 mg de CBD e 10 mg de CBG por mL",
+    concentration: "30 mg/mL (900mg) — 20 mg CBD e 10 mg CBG por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 230,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "20 mg CBD e 10 mg CBG por mL", "Full Spectrum Nacional", "Foco & Saúde Digestiva"],
+    description: "CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml. Apresentação 30 mg/mL contendo 20 mg de CBD e 10 mg de CBG por mL. Associação com Canabigerol para clareza mental e saúde gastrointestinal.",
+    usageInstructions: "• Tomar 03 a 05 gotas por via sublingual pela manhã e no início da tarde. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Foco e Concentração, TDAH, Fadiga Mental, Doenças Inflamatórias Intestinais (Crohn, SII), Neuroproteção"
+  },
+  {
+    name: "CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum CBD + CBG Alta Concentração",
+    activeIngredients: "40 mg de CBD e 20 mg de CBG por mL",
+    concentration: "60 mg/mL (1800mg) — 40 mg CBD e 20 mg CBG por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 310,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "40 mg CBD e 20 mg CBG por mL", "Full Spectrum Nacional", "Ação Anti-inflamatória & Cognitiva"],
+    description: "CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml. Apresentação 60 mg/mL contendo 40 mg de CBD e 20 mg de CBG por mL. Alta potência de CBG para inflamações crônicas e fadiga.",
+    usageInstructions: "• Tomar 02 a 04 gotas por via sublingual 2 vezes ao dia (manhã e almoço). Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Síndrome do Intestino Irritável, Doença de Crohn, Fadiga Crônica, Burnout, TDAH, Dores Articulares"
+  },
+
+  // ==============================================================
+  // LINHA TRIPLA CBD + CBG + CBN FULL SPECTRUM (4:1:1 - 30 mL)
+  // ==============================================================
+  {
+    name: "CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Triplo Canabinoide (4:1:1)",
+    activeIngredients: "20 mg de CBD, 5 mg de CBG e 5 mg de CBN por mL",
+    concentration: "30 mg/mL (900mg) — 20 mg CBD, 5 mg CBG e 5 mg CBN por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 240,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "20 mg CBD, 5 mg CBG e 5 mg CBN por mL", "Full Spectrum Triplo Canabinoide", "Proporção 4:1:1"],
+    description: "CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30 ml. Apresentação 30 mg/mL contendo 20 mg de CBD, 5 mg de CBG e 5 mg de CBN por mL. Sinergia completa multi-alvo.",
+    usageInstructions: "• Tomar 03 a 05 gotas por via sublingual de 12/12 horas ou à noite. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Equilíbrio Neurovegetativo Geral, Estresse com Insônia Mista, Tensão Miofascial, Recuperação Sistêmica"
+  },
+  {
+    name: "CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Triplo Canabinoide Alta Potência",
+    activeIngredients: "40 mg de CBD, 10 mg de CBG e 10 mg de CBN por mL",
+    concentration: "60 mg/mL (1800mg) — 40 mg CBD, 10 mg CBG e 10 mg CBN por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 320,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "40 mg CBD, 10 mg CBG e 10 mg CBN por mL", "Full Spectrum Triplo Canabinoide", "Proporção 4:1:1"],
+    description: "CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml. Apresentação 60 mg/mL contendo 40 mg de CBD, 10 mg de CBG e 10 mg de CBN por mL. Alta potência combinada.",
+    usageInstructions: "• Tomar 02 a 04 gotas por via sublingual 2 vezes ao dia. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Dores Crônicas Difusas, Fibromialgia com Distúrbio do Sono, Burnout Complexo, Neuroinflamação"
+  },
+
+  // ==============================================================
+  // LINHA EQUILIBRADO FULL SPECTRUM (CBD 1:1 THC - 30 mL)
+  // ==============================================================
+  {
+    name: "EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 1:1 (CBD:THC)",
+    activeIngredients: "15 mg de CBD e 15 mg de THC por mL",
+    concentration: "30 mg/mL (900mg) — 15 mg CBD e 15 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 230,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "15 mg CBD e 15 mg THC por mL", "Full Spectrum Equilibrado 1:1", "Analgesia & Relaxamento"],
+    description: "EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml. Apresentação 30mg/ml contendo 15 mg de CBD e 15 mg de THC por mL. Proporção áurea de alívio da dor com atenuação mútua de efeitos colaterais.",
+    usageInstructions: "• Iniciar com 02 a 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titulação gradual a cada 4 a 5 dias.",
+    indications: "Dor Crônica Moderada a Severa, Fibromialgia, Espasticidade, Esclerose Múltipla, Artrite, Cuidados Paliativos"
+  },
+  {
+    name: "EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 1:1 Alta Concentração",
+    activeIngredients: "30 mg de CBD e 30 mg de THC por mL",
+    concentration: "60 mg/mL (1800mg) — 30 mg CBD e 30 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 310,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "30 mg CBD e 30 mg THC por mL", "Full Spectrum Equilibrado 1:1", "Alta Eficácia Analgésica"],
+    description: "EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml. Apresentação 60 mg/mL contendo 30 mg de CBD e 30 mg de THC por mL. Concentração intermediária para controle álgico robusto.",
+    usageInstructions: "• Tomar 02 a 03 gotas por via sublingual de 12/12 horas ou antes de dormir. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Dor Neuropática Severa, Espasmos Agudos, Rigidez Motora, Parkinson, Artrite Reumatóide, Suporte Oncológico"
+  },
+  {
+    name: "EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (100 mg/mL — 3000mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Balanceado 1:1 Máxima Potência",
+    activeIngredients: "50 mg de CBD e 50 mg de THC por mL",
+    concentration: "100 mg/mL (3000mg) — 50 mg CBD e 50 mg THC por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 380,
+    details: ["Frasco 30 mL", "Apresentação 100 mg/mL (3000mg)", "50 mg CBD e 50 mg THC por mL", "Full Spectrum Equilibrado 1:1", "Máxima Potência Terapêutica"],
+    description: "EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml. Apresentação 100 mg/mL contendo 50 mg de CBD e 50 mg de THC por mL. Máxima concentração para dor intensa e espasticidade refratária.",
+    usageInstructions: "• Iniciar com 01 a 02 gotas por via sublingual sob estrita orientação médica. Reter por 60 segundos antes de engolir. Titulação cuidadosa a cada 5 a 7 dias.",
+    indications: "Dor Refratária Intensa, Cuidados Paliativos Avançados, Espasticidade Severa, Caquexia, Neuropatias Graves"
+  },
+
+  // ==============================================================
+  // LINHA ALTO THC FULL SPECTRUM (THC 10:1 CBD - 30 mL)
+  // ==============================================================
+  {
+    name: "ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (30 mg/mL — 900mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante em THC (10:1)",
+    activeIngredients: "27,3 mg de THC e 2,7 mg de CBD por mL",
+    concentration: "30 mg/mL (900mg) — 27,3 mg THC e 2,7 mg CBD por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 230,
+    details: ["Frasco 30 mL", "Apresentação 30 mg/mL (900mg)", "27,3 mg THC e 2,7 mg CBD por mL", "Full Spectrum Alto THC", "Uso Noturno Preferencial"],
+    description: "ALTO THC Full Spectrum (THC 10:1 CBD) - 30 ml. Apresentação 30 mg/mL contendo 27,3 mg de THC e 2,7 mg de CBD por mL. Predomínio de THC para insônia severa e relaxamento profundo.",
+    usageInstructions: "• Iniciar com 01 a 02 gotas por via sublingual à noite, 1 hora antes de dormir. Reter por 60 segundos antes de engolir. Titulação lenta.",
+    indications: "Insônia Grave Refratária, Dores Noturnas Intensas, Estímulo de Apetite (Caquexia), Náuseas e Vômitos, Relaxamento Muscular"
+  },
+  {
+    name: "ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (60 mg/mL — 1800mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante em THC (10:1) Concentrado",
+    activeIngredients: "54,5 mg de THC e 5,5 mg de CBD por mL",
+    concentration: "60 mg/mL (1800mg) — 54,5 mg THC e 5,5 mg CBD por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 310,
+    details: ["Frasco 30 mL", "Apresentação 60 mg/mL (1800mg)", "54,5 mg THC e 5,5 mg CBD por mL", "Full Spectrum Alto THC", "Ação Central & Miorrelaxante"],
+    description: "ALTO THC Full Spectrum (THC 10:1 CBD) - 30 ml. Apresentação 60 mg/mL contendo 54,5 mg de THC e 5,5 mg de CBD por mL. Concentração intermediária para analgesia central potente.",
+    usageInstructions: "• Administrar 01 a 03 gotas por via sublingual à noite antes de deitar sob estrita orientação médica. Reter por 60 segundos antes de engolir.",
+    indications: "Dor Neuropática Noturna, Espasmos Severos, Insônia Crônica Aguda, Enxaqueca Refratária, Suporte Oncológico"
+  },
+  {
+    name: "ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (100 mg/mL — 3000mg)",
+    manufacturer: "Associação Nacional",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante em THC (10:1) Alta Potência",
+    activeIngredients: "90,9 mg de THC e 9,1 mg de CBD por mL",
+    concentration: "100 mg/mL (3000mg) — 90,9 mg THC e 9,1 mg CBD por mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Frasco 30 mL)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 380,
+    details: ["Frasco 30 mL", "Apresentação 100 mg/mL (3000mg)", "90,9 mg THC e 9,1 mg CBD por mL", "Full Spectrum Alto THC", "Máxima Potência Analgésica"],
+    description: "ALTO THC Full Spectrum (THC 10:1 CBD) - 30 ml. Apresentação 100 mg/mL contendo 90,9 mg de THC e 9,1 mg de CBD por mL. Máxima concentração para dor oncológica e cuidados paliativos.",
+    usageInstructions: "• Uso estritamente individualizado. Iniciar com 01 gota à noite sob monitoramento do prescritor. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Dor Oncológica Severa, Cuidados Paliativos, Espasticidade Severa Refratária, Dor Neuropática Extrema, Insônia Grave"
+  }
+];
+
 export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
+  ...NATIONAL_FULL_SPECTRUM_PRODUCTS,
   {
     name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
     manufacturer: "Associação Brasileira",
@@ -72,7 +419,7 @@ export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
     priceBRL: 230,
     details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
     description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-    usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`,
+    usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Dias 1 a 5: Administrar 0,1 mL (2 a 3 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (7 a 8 gotas) a cada 12 horas. (Total: 30 mg/dose)`,
     indications: "TDAH, Burnout, Foco e Concentração, Obesidade e Controle Metabólico, Diabetes e Resistência Insulínica, Melhora no Esporte, Fadiga Crônica, Parkinson, Alzheimer, Demência, Tremores e Rigidez Muscular, Qualidade de vida na Terceira Idade, Epilepsia Refratária, Crises Convulsivas, Síndrome de Dravet, Síndrome de Lennox-Gastaut, Redução de Vícios, Controle de Fissuras (Craving), Desmame de Benzodiazepínicos e Opioides, Estabilização Emocional"
   },
   {
@@ -323,6 +670,10 @@ export const cbdGuideData: CBDCategory[] = [
     indicationsList: ["Ansiedade", "Depressão", "Estresse Crônico", "Burnout", "TDAH", "Transtornos do Humor"],
     dosageGuidance: "Iniciar com doses baixas (ex: 10-15 mg/dia de CBD ou 1/2 goma). Aumentar gradualmente conforme a resposta do paciente.",
     products: [
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[0], // ALTO CBD 5:1 THC (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[2], // ALTO CBD 10:1 THC (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[5], // ALTO CBD 20:1 THC (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[12], // CBD + CBG + CBN (4:1:1) (30 mg/mL — 900mg)
       {
         name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
         manufacturer: "Associação Nacional",
@@ -443,7 +794,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 50 mg/mL (5%)", "CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 50 mg/mL (5%).\nComposição: CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Semana 1: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Semana 2: Aumentar para 0,4 mL (8 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Manutenção: Ajustar 0,1 mL (2 gotas) por dose a cada 7 dias conforme resposta clínica.`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Semana 1: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Semana 2: Aumentar para 0,4 mL (10 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Manutenção: Ajustar 0,1 mL (2 a 3 gotas) por dose a cada 7 dias conforme resposta clínica.`
       }
     ]
   },
@@ -454,7 +805,13 @@ export const cbdGuideData: CBDCategory[] = [
     indicationsList: ["Dor Crônica", "Enxaqueca", "Fibromialgia", "Artrite / Artrose", "Hérnia de Disco", "Dores Neuropáticas", "Neuropatia Diabética", "Esclerose Múltipla", "Asma", "Glaucoma"],
     dosageGuidance: "Dose inicial moderada. Aumentar conforme dor referida e tolerabilidade. Uso 2 a 3 vezes ao dia.",
     products: [
-            {
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[14], // EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[15], // EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (60 mg/mL — 1800mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[16], // EQUILIBRADO Full Spectrum (CBD 1:1 THC) - 30ml (100 mg/mL — 3000mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[1],  // ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (60 mg/mL — 1800mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[18], // ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (60 mg/mL — 1800mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[11], // CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (60 mg/mL — 1800mg)
+      {
         name: "Adesivo Transdérmico CBD/THC 1:1 (Patch 72h)",
         manufacturer: "MedPatch",
         origin: "Nacional",
@@ -578,6 +935,11 @@ export const cbdGuideData: CBDCategory[] = [
     indicationsList: ["Insônia", "Distúrbios do Sono", "Bruxismo", "Síndrome das Pernas Inquietas", "Agitação Noturna"],
     dosageGuidance: "Uso noturno. Administrar a dose de 30 a 45 minutos antes do horário de dormir.",
     products: [
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[8],  // CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[9],  // CBD + CBN Full Spectrum (CBD 2:1 CBN) - 30ml (60 mg/mL — 1800mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[17], // ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[18], // ALTO THC Full Spectrum (THC 10:1 CBD) - 30ml (60 mg/mL — 1800mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[13], // CBD + CBG + CBN Full Spectrum (4 CBD : 1 CBG : 1 CBN) - 30ml (60 mg/mL — 1800mg)
       {
         name: "Broad SPECTRUM CBD, CBN 1065mg —————- 15ml",
         manufacturer: "Associação Nacional",
@@ -637,7 +999,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 60 mg/mL (6%)", "CBD 50 mg/mL, CBN 10 mg/mL, THC 0,0%", "Veículo com terpenos relaxantes (Mirceno/Linalol)", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum Sono) — Canabinoides Totais: 60 mg/mL (6%).\nComposição: CBD 50 mg/mL, CBN 10 mg/mL, Delta-9-THC: 0,0%.\nVeículo: com terpenos relaxantes (Mirceno/Linalol).\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Semana 1: Administrar 0,25 mL (5 gotas) via sublingual, 30 a 45 minutos antes de deitar. (Total: 12,5 mg CBD + 2,5 mg CBN)\n• Semana 2: Se persistir latência aumentada, progredir para 0,5 mL (10 gotas) antes de deitar. (Total: 25 mg CBD + 5 mg CBN)`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Semana 1: Administrar 0,25 mL (6 gotas) via sublingual, 30 a 45 minutos antes de deitar. (Total: 12,5 mg CBD + 2,5 mg CBN)\n• Semana 2: Se persistir latência aumentada, progredir para 0,5 mL (12 a 13 gotas) antes de deitar. (Total: 25 mg CBD + 5 mg CBN)`
       },
       {
         name: "Gomas Terapêuticas CBD/CBN 25mg - 30 unidades",
@@ -656,7 +1018,10 @@ export const cbdGuideData: CBDCategory[] = [
     indicationsList: ["TDAH", "Burnout", "Foco e Concentração", "Obesidade e Controle Metabólico", "Diabetes e Resistência Insulínica", "Melhora no Esporte", "Fadiga Crônica"],
     dosageGuidance: "Uso diurno. Evitar após as 16h para não interferir no sono.",
     products: [
-            {
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[10], // CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (30 mg/mL — 900mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[11], // CBD + CBG Full Spectrum (CBD 2:1 CBG) - 30ml (60 mg/mL — 1800mg)
+      NATIONAL_FULL_SPECTRUM_PRODUCTS[6],  // ALTO CBD Full SPECTRUM CBD 20:1 THC - 30ml (60 mg/mL — 1800mg)
+      {
         name: "Extrato Fluido Rico em THCV (Focus & Energy)",
         manufacturer: "VitalLeaf",
         origin: "Nacional",
@@ -733,7 +1098,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Dias 1 a 5: Administrar 0,1 mL (2 a 3 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (7 a 8 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -960,7 +1325,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Dias 1 a 5: Administrar 0,1 mL (2 a 3 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (7 a 8 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -1023,7 +1388,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Dias 1 a 5: Administrar 0,1 mL (2 a 3 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (7 a 8 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -1072,7 +1437,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 50 mg/mL (5%)", "CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 50 mg/mL (5%).\nComposição: CBD 47,5 mg/mL, Fitocanabinoides menores 2,5 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Semana 1: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Semana 2: Aumentar para 0,4 mL (8 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Manutenção: Ajustar 0,1 mL (2 gotas) por dose a cada 7 dias conforme resposta clínica.`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Semana 1: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Semana 2: Aumentar para 0,4 mL (10 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Manutenção: Ajustar 0,1 mL (2 a 3 gotas) por dose a cada 7 dias conforme resposta clínica.`
       },
       {
         name: "Drops By GreenBudz Goma Looking Glass CBD THC CBC CBG",
@@ -1187,7 +1552,7 @@ export const cbdGuideData: CBDCategory[] = [
         type: "Óleo Broad Spectrum",
         details: ["Frasco 30mL", "Canabinoides Totais: 100 mg/mL (10%)", "CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, THC 0,0%", "Associação Nacional", "USO ORAL / SUBLINGUAL"],
         description: `Extrato de Cannabis sativa (Broad Spectrum) — Canabinoides Totais: 100 mg/mL (10%).\nComposição: CBD 90 mg/mL, CBG/CBN/CBC 10 mg/mL, Delta-9-THC: 0,0%.\nQuantidade: 01 (um) frasco de 30 mL.`,
-        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Considerando 1 mL = 20 gotas):\n• Dias 1 a 5: Administrar 0,1 mL (2 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (4 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (6 gotas) a cada 12 horas. (Total: 30 mg/dose)`
+        usageInstructions: `USO ORAL / SUBLINGUAL\nPosologia (Aproximadamente 25 gotas por mL):\n• Dias 1 a 5: Administrar 0,1 mL (2 a 3 gotas) a cada 12 horas. (Total: 10 mg/dose)\n• Dias 6 a 10: Administrar 0,2 mL (5 gotas) a cada 12 horas. (Total: 20 mg/dose)\n• Dias 11 a 15: Administrar 0,3 mL (7 a 8 gotas) a cada 12 horas. (Total: 30 mg/dose)`
       }
     ]
   },
@@ -1426,7 +1791,61 @@ function _enrichMedicationDetails(
     const pLower = p.name.toLowerCase();
     if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
     
-    // Check specific formulations
+    // Check specific national full spectrum formulations
+    // 1. Alto CBD 5:1 THC
+    if ((nameLower.includes('5:1') || (nameLower.includes('alto cbd') && nameLower.includes('5'))) && p.name.includes('5:1')) {
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 2. Alto CBD 10:1 THC
+    if ((nameLower.includes('10:1') || (nameLower.includes('alto cbd') && nameLower.includes('10'))) && !nameLower.includes('alto thc') && !nameLower.includes('thc 10:1') && p.name.includes('CBD 10:1 THC')) {
+      if ((nameLower.includes('100') || nameLower.includes('3000')) && p.name.includes('100 mg/mL')) return true;
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 3. Alto CBD 20:1 THC
+    if ((nameLower.includes('20:1') || (nameLower.includes('alto cbd') && nameLower.includes('20'))) && p.name.includes('20:1')) {
+      if ((nameLower.includes('100') || nameLower.includes('3000')) && p.name.includes('100 mg/mL')) return true;
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 4. CBD + CBN Full Spectrum (2:1 CBN)
+    if ((nameLower.includes('cbn') && (nameLower.includes('2:1') || nameLower.includes('cbd + cbn') || nameLower.includes('cbd:cbn'))) && p.name.includes('CBD 2:1 CBN')) {
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 5. CBD + CBG Full Spectrum (2:1 CBG)
+    if ((nameLower.includes('cbg') && !nameLower.includes('cbn') && (nameLower.includes('2:1') || nameLower.includes('cbd + cbg') || nameLower.includes('cbd:cbg'))) && p.name.includes('CBD 2:1 CBG')) {
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 6. CBD + CBG + CBN Full Spectrum (4:1:1)
+    if (((nameLower.includes('4 cbd') || nameLower.includes('4:1:1') || (nameLower.includes('cbg') && nameLower.includes('cbn')))) && p.name.includes('4 CBD : 1 CBG : 1 CBN')) {
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 7. Equilibrado Full Spectrum (1:1)
+    if ((nameLower.includes('equilibrado') || (nameLower.includes('cbd 1:1') || nameLower.includes('1:1 thc'))) && p.name.includes('EQUILIBRADO Full Spectrum')) {
+      if ((nameLower.includes('100') || nameLower.includes('3000')) && p.name.includes('100 mg/mL')) return true;
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+    // 8. Alto THC Full Spectrum (10:1 CBD)
+    if ((nameLower.includes('alto thc') || nameLower.includes('thc 10:1')) && p.name.includes('ALTO THC Full Spectrum')) {
+      if ((nameLower.includes('100') || nameLower.includes('3000')) && p.name.includes('100 mg/mL')) return true;
+      if ((nameLower.includes('60') || nameLower.includes('1800')) && p.name.includes('60 mg/mL')) return true;
+      if ((nameLower.includes('30') || nameLower.includes('900')) && p.name.includes('30 mg/mL')) return true;
+      return true;
+    }
+
+    // Other specific formulations
     if ((nameLower.includes('1065') || (nameLower.includes('broad') && nameLower.includes('cbn'))) && p.name.includes('1065')) return true;
     if (nameLower.includes('isolado') && (nameLower.includes('100mg') || nameLower.includes('100 mg')) && p.name.includes('100mg/ml')) return true;
     if (nameLower.includes('isolado') && (nameLower.includes('200mg') || nameLower.includes('200 mg')) && p.name.includes('200mg/ml')) return true;
@@ -1651,11 +2070,8 @@ function _enrichMedicationDetails(
   }
 
   // DEFAULT (ÓLEOS)
-  const isImported = prodOrigin.toLowerCase() === 'importado';
-  const dropsPerMl = isImported ? 'aprox. 40 gotas por mL' : 'aprox. 20 a 30 gotas por mL';
-  const dropsNote = isImported 
-    ? '(Nota p/ Importados: 1 mL costuma equivaler a ~40 gotas devido ao gotejador padrão americano/europeu. Verifique a bula).'
-    : '(Nota p/ Nacionais: 1 mL costuma equivaler a cerca de 20-30 gotas, dependendo do dosador do frasco).';
+  const dropsPerMl = 'Aproximadamente 25 gotas por mL';
+  const dropsNote = 'Aproximadamente 25 gotas por mL.';
 
   return {
     name: pName,
@@ -1663,13 +2079,13 @@ function _enrichMedicationDetails(
       ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD)' 
       : 'Canabidiol (CBD) Full Spectrum / Broad Spectrum',
     concentration: 'Variável (Verificar concentração no rótulo)',
-    pharmaceuticalForm: `Solução Oleosa Sublingual (${dropsPerMl})`,
+    pharmaceuticalForm: `Solução Oleosa Sublingual (Gotas • ${dropsPerMl})`,
     quantity: '01 Frasco de 30ml',
     administrationRoute: 'Via Sublingual',
     brand: manufacturer,
     origin: prodOrigin,
     description: 'Modulação terapêutica do Sistema Endocanabinoide.',
-    usageInstructions: `• Pingar as gotas recomendadas sob a língua e aguardar 1 a 2 minutos antes de engolir. ${dropsNote}`
+    usageInstructions: `• Pingar as gotas recomendadas sob a língua e aguardar 1 a 2 minutos antes de engolir.\n• Posologia e Modo de Uso: ${dropsNote}`
   };
 }
 

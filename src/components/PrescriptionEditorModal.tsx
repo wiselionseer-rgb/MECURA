@@ -260,6 +260,23 @@ export function PrescriptionEditorModal({
               dosage: newDosage
             };
           }
+        } else if (Array.isArray(item.dosage)) {
+          // Normalize standard drops equivalence for oils/sublingual
+          let itemChanged = false;
+          const updatedDosage = item.dosage.map(line => {
+            if (/1 mL = 20 gotas/i.test(line) || /20 a 30 gotas por mL/i.test(line)) {
+              itemChanged = true;
+              changed = true;
+              return line.replace(/1 mL = 20 gotas|20 a 30 gotas por mL/gi, 'Aproximadamente 25 gotas por mL');
+            }
+            return line;
+          });
+          if (itemChanged) {
+            return {
+              ...item,
+              dosage: updatedDosage
+            };
+          }
         }
         return item;
       });
@@ -330,6 +347,7 @@ export function PrescriptionEditorModal({
           .filter(Boolean);
       } else {
         dosageLines = [
+          'Aproximadamente 25 gotas por mL.',
           'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.',
           'Reter sob a língua por 60 segundos antes de engolir para rápida absorção.'
         ];
@@ -421,6 +439,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
+          'Aproximadamente 25 gotas por mL.',
           'Tomar 03 gotas de 12/12 horas (sublingual).',
           'Aumentar 01 gota a cada 05 dias até atingir a dose de controle homeostático.'
         ],
@@ -438,6 +457,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity || '01 Frasco de 15 mL',
         administrationRoute: enriched.administrationRoute || 'Via Sublingual / Oral',
         dosage: [
+          'Aproximadamente 25 gotas por mL.',
           'Pingar 2 gotas pela manhã e 4 a noite.',
           '- Aumentar 1 gota a cada 7 dias, sendo máximo de 10 gotas por dose.',
           '- Se obtiver melhora dos sintomas em doses mínimas não a necessidade de chegar em dose máxima.'
@@ -456,6 +476,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
+          'Aproximadamente 25 gotas por mL.',
           'Tomar 03 gotas de 12/12 horas (sublingual).',
           'Aumentar gradualmente 01 gota a cada 04 dias conforme intensidade dos sintomas.'
         ],
@@ -473,6 +494,7 @@ export function PrescriptionEditorModal({
         quantity: enriched.quantity,
         administrationRoute: enriched.administrationRoute,
         dosage: [
+          'Aproximadamente 25 gotas por mL.',
           'Tomar 04 a 06 gotas sublinguais 1 hora antes de deitar.',
           'Uso noturno preferencial para indução do sono e controle álgico.'
         ],
@@ -568,8 +590,12 @@ export function PrescriptionEditorModal({
         .split('\n')
         .map(line => line.trim())
         .filter(Boolean);
+      if (!dosageLines.some(l => /25 gotas/i.test(l)) && !/goma|flor/i.test(prod.name || prod.type || '')) {
+        dosageLines.unshift('Aproximadamente 25 gotas por mL.');
+      }
     } else {
       dosageLines = [
+        'Aproximadamente 25 gotas por mL.',
         'Tomar 03 gotas de 12/12 horas por via sublingual.',
         'Aumentar 01 gota a cada 05 dias até atingir a dose terapêutica de controle.'
       ];
@@ -1584,16 +1610,30 @@ export function PrescriptionEditorModal({
                             {/* Posology / Dosage Lines */}
                             <div className="pt-2 border-t border-mecura-elevated/40 space-y-1.5">
                               <div className="flex items-center justify-between">
-                                <label className="text-[10px] text-purple-400 uppercase font-bold tracking-wider">
-                                  Posologia & Modo de Uso {isGummy && '(Via Oral - Mastigável)'}
+                                <label className="text-[10px] text-purple-400 uppercase font-bold tracking-wider flex items-center gap-2">
+                                  <span>Posologia & Modo de Uso {isGummy ? '(Via Oral - Mastigável)' : '(Aproximadamente 25 gotas por mL)'}</span>
                                 </label>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddDosageLine(itemIdx)}
-                                  className="text-[10px] text-mecura-silver hover:text-white flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Plus className="w-3 h-3" /> + Linha de dosagem
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  {!item.dosage.some(d => /25 gotas/i.test(d)) && !isGummy && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleUpdateDosageLine(itemIdx, item.dosage.length, 'Aproximadamente 25 gotas por mL.');
+                                      }}
+                                      className="text-[10px] text-purple-300 hover:text-white bg-purple-500/15 hover:bg-purple-500/30 px-2 py-0.5 rounded border border-purple-500/25 flex items-center gap-1 cursor-pointer transition-colors"
+                                      title="Adicionar linha com o padrão de 25 gotas por mL"
+                                    >
+                                      <Sparkles className="w-2.5 h-2.5 text-purple-400" /> + 25 gotas/mL
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddDosageLine(itemIdx)}
+                                    className="text-[10px] text-mecura-silver hover:text-white flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-3 h-3" /> + Linha de dosagem
+                                  </button>
+                                </div>
                               </div>
 
                               {item.dosage.map((line, lineIdx) => (
@@ -1603,7 +1643,7 @@ export function PrescriptionEditorModal({
                                     type="text"
                                     value={line}
                                     onChange={(e) => handleUpdateDosageLine(itemIdx, lineIdx, e.target.value)}
-                                    placeholder={isGummy ? "Ex: Mastigar 01 goma ao final da tarde..." : "Ex: Tomar 05 gotas sublinguais pela manhã..."}
+                                    placeholder={isGummy ? "Ex: Mastigar 01 goma ao final da tarde..." : "Ex: Aproximadamente 25 gotas por mL / Tomar 05 gotas sublinguais..."}
                                     className="flex-1 bg-[#0A0A0F] border border-mecura-elevated rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50"
                                   />
                                   {item.dosage.length > 1 && (
@@ -1617,6 +1657,26 @@ export function PrescriptionEditorModal({
                                   )}
                                 </div>
                               ))}
+
+                              {/* Padrão sublinhado em azul pelo usuário */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 bg-[#120F1D] border border-purple-500/25 rounded-lg px-3 py-1.5 text-xs text-purple-200 mt-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                  <span className="text-mecura-silver text-[11px]">Padrão:</span>
+                                  <strong className="text-white font-medium text-[11px]">Aproximadamente 25 gotas por mL.</strong>
+                                </div>
+                                {!item.dosage.some(d => /25 gotas/i.test(d)) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateDosageLine(itemIdx, item.dosage.length, 'Aproximadamente 25 gotas por mL.');
+                                    }}
+                                    className="text-[10px] text-purple-200 hover:text-white bg-purple-600/30 hover:bg-purple-600/50 px-2 py-0.5 rounded border border-purple-400/30 transition-colors cursor-pointer flex items-center gap-1 font-medium"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" /> Incluir na posologia
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -1832,7 +1892,9 @@ export function PrescriptionEditorModal({
 
                                   {/* Dosage */}
                                   <div className="pl-4 space-y-0.5 text-xs text-slate-700">
-                                    <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">Posologia:</span>
+                                    <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">
+                                      Posologia e Modo de Uso {!isGummy && !/flor/i.test(item.name || '') ? '(Aproximadamente 25 gotas por mL):' : ':'}
+                                    </span>
                                     {dosageList.map((d, dIdx) => (
                                       <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
                                     ))}

@@ -123,8 +123,32 @@ export function PharmacyScreen() {
       const brandLower = (prod.brand || '').toLowerCase();
       const originLower = (prod.origin || '').toLowerCase();
 
+      // Check if explicitly national association
+      const isExplicitlyNational = (
+        prod.origin === 'Nacional' ||
+        originLower.includes('nacional') ||
+        originLower.includes('associação') ||
+        originLower.includes('associacao') ||
+        originLower.includes('abec') ||
+        brandLower.includes('abec') ||
+        brandLower.includes('associação') ||
+        brandLower.includes('associacao') ||
+        brandLower.includes('nacional') ||
+        nameLower.includes('abec') ||
+        nameLower.includes('associação') ||
+        nameLower.includes('associacao') ||
+        nameLower.includes('alto cbd') ||
+        nameLower.includes('alto thc') ||
+        nameLower.includes('equilibrado full spectrum') ||
+        nameLower.includes('cbd 5:1') ||
+        nameLower.includes('cbd 10:1') ||
+        nameLower.includes('cbd 20:1') ||
+        nameLower.includes('cbd 2:1') ||
+        nameLower.includes('4 cbd : 1 cbg : 1 cbn')
+      );
+
       // Check if explicitly imported
-      const isExplicitlyImported = 
+      const isExplicitlyImported = !isExplicitlyNational && (
         prod.origin === 'Importado' ||
         brandLower.includes('flowermed') || 
         brandLower.includes('greenbudz') || 
@@ -154,10 +178,10 @@ export function PharmacyScreen() {
         nameLower.includes('full balance') ||
         nameLower.includes('drops by') ||
         nameLower.includes('d9 nano') ||
-        nameLower.includes('hemp oil') ||
-        nameLower.includes('broad spectrum');
+        nameLower.includes('hemp oil')
+      );
 
-      const isAssociacao = !isExplicitlyImported && (
+      const isAssociacao = isExplicitlyNational || (!isExplicitlyImported && (
         originLower.includes('nacional') ||
         originLower.includes('associação') ||
         originLower.includes('associacao') ||
@@ -170,7 +194,7 @@ export function PharmacyScreen() {
         nameLower.includes('associação') ||
         nameLower.includes('associacao') ||
         nameLower.includes('nacional')
-      );
+      ));
 
       // Resolve USD base price for imported items so that exchangeRate converts it dynamically
       let resolvedPriceUSD: number | undefined = prod.priceUSD;
