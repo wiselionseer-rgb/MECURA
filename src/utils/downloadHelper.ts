@@ -46,43 +46,52 @@ export async function deliverPdfBlob(blob: Blob, fileName: string): Promise<bool
   // Ensure the blob has the proper MIME type
   const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
 
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
-
   try {
     const blobUrl = URL.createObjectURL(pdfBlob);
 
-    // 1. iOS Safari specific: opening blob directly in a new window allows iOS native PDF reader to display with full zoom/save
-    if (isIOS) {
-      const win = window.open(blobUrl, '_blank');
-      if (!win) {
-        window.location.href = blobUrl;
-      }
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
-      return true;
-    }
-
-    // 2. Direct binary download (Desktop Windows/Mac and Android)
-    // Directly saves the .pdf file to the Downloads folder without opening OS share sheets (Windows Compartilhar)
+    // Direct binary download (Desktop Windows/Mac, Android, iOS and iframes)
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = blobUrl;
     a.download = safeFileName;
+    a.rel = 'noopener noreferrer';
     document.body.appendChild(a);
     a.click();
     
     // Revoke the object URL after a delay
     setTimeout(() => {
-      if (a.parentNode) {
-        document.body.removeChild(a);
+      try {
+        if (a.parentNode) {
+          document.body.removeChild(a);
+        }
+        URL.revokeObjectURL(blobUrl);
+      } catch {
+        // ignore
       }
-      URL.revokeObjectURL(blobUrl);
     }, 60000);
     return true;
   } catch (err) {
     console.error("Falha ao disparar download do Blob:", err);
-    const blobUrl = URL.createObjectURL(pdfBlob);
-    window.open(blobUrl, '_blank');
-    return true;
+    try {
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = safeFileName;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try {
+          if (a.parentNode) document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        } catch {
+          // ignore
+        }
+      }, 60000);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

@@ -168,11 +168,15 @@ export function ChatScreen() {
           return b instanceof Blob ? b : null;
         }
         if (isMed) {
+          const isEv = msg.docType === 'laudo_evolutivo' || msg.attachment?.docType === 'laudo_evolutivo' || msg.attachment?.name?.toLowerCase().includes('evolutivo');
           const b = await generateMedicalReportPDF(userName, messages, {
             customPatientName: userName,
             birthDate: userBirthDate || (answers && answers.birthDate),
             cpf: userCpf || (answers && answers.cpf),
             answers: answers,
+            reportType: isEv ? 'evolutivo' : 'inicial',
+            docType: isEv ? 'laudo_evolutivo' : 'laudo_inicial',
+            isEvolutivo: isEv,
             returnBlob: true
           });
           return b instanceof Blob ? b : null;

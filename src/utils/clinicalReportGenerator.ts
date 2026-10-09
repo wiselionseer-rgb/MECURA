@@ -53,7 +53,7 @@ export interface PersonalizedReportResult {
 
 export function generatePersonalizedClinicalReport(
   patientData: PatientCaseData,
-  reportType: 'inicial' | 'evolutivo' = 'evolutivo'
+  reportType: 'inicial' | 'evolutivo' = 'inicial'
 ): PersonalizedReportResult {
   const pName = patientData.patientName || 'Paciente';
   const pCpf = patientData.cpf || 'Não informado';
@@ -195,8 +195,16 @@ export function generatePersonalizedClinicalReport(
     sideEffectsDescription = `${sideEffectsDescription}, somado a queixas gastrointestinais específicas reportadas: ${digestivoDetails.trim()}`;
   }
 
-  // Clinical Summary for Page 1 (Quesitos 1, 2 e 3)
-  const clinicalSummary = `O(A) paciente ${pName}, inscrito(a) no CPF ${pCpf}, encontra-se sob acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide, apresentando diagnóstico clínico de ${conditionName}, com intensidade sintomática basal referida em ${intensity} e tempo de evolução crônica caracterizado por ${duration.toLowerCase()}.
+  const isInicial = reportType === 'inicial';
+
+  // Clinical Summary for Page 1
+  const clinicalSummary = isInicial
+    ? `Declaro, para os devidos fins clínicos e comprobatórios, que o(a) paciente ${pName}, inscrito(a) no CPF ${pCpf}, foi submetido(a) a consulta e avaliação médica neste Centro Integrado de Medicina Canabinoide, atestando-se o INÍCIO FORMAL DO TRATAMENTO MÉDICO SUPERVISIONADO com fitocanabinoides (Cannabis sativa L.) para ${conditionName}, com intensidade sintomática basal referida em ${intensity} e tempo de evolução crônica caracterizado por ${duration.toLowerCase()}.
+
+Histórico Clínico e Refratariedade Prévia:
+${rawDesc ? rawDesc.trim() : `Paciente apresenta histórico prolongado de sofrimento clínico associado a ${conditionName.toLowerCase()}, com impacto funcional relevante.`} ${rawOrigin ? `Relato de origem clínica: ${rawOrigin.trim()}` : ''}
+O(a) paciente já foi submetido(a) a esquemas farmacológicos convencionais prévios (${conventionalMedsTried}), apresentando resposta terapêutica insatisfatória (${refractoryDescription}) e/ou intolerância a eventos adversos (${sideEffectsDescription}), justificando formalmente a indicação da terapêutica canabinoide sob supervisão contínua.`
+    : `O(A) paciente ${pName}, inscrito(a) no CPF ${pCpf}, encontra-se sob acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide, apresentando diagnóstico clínico de ${conditionName}, com intensidade sintomática basal referida em ${intensity} e tempo de evolução crônica caracterizado por ${duration.toLowerCase()}.
 
 Histórico da Moléstia Atual (HMA):
 ${rawDesc ? rawDesc.trim() : `Paciente relata histórico prolongado de sofrimento clínico associado a ${conditionName.toLowerCase()}, com episódios frequentes de exacerbação que comprometem suas atividades laborais, o repouso noturno e o convívio sociossomático.`} ${rawOrigin ? `Relato de origem clínica: ${rawOrigin.trim()}` : ''}
@@ -220,8 +228,17 @@ Em resposta aos quesitos de evolução clínica e necessidade de autocultivo:
 
 6. Quanto à resposta aos derivados extraídos artesanalmente (Quesito 6): O(a) paciente vem demonstrando excelente resposta terapêutica, plena tolerabilidade gástrica e biológica, e ausência total de toxicidade aos derivados canabinoides extraídos de forma artesanal, mantendo controle sintomático rigoroso e evolução clínica consolidada sob supervisão médica continuada.`;
 
-  // Therapeutic Rationale for Page 3 (Quesito 7 + CIDs)
-  const therapeuticRationale = `Raciocínio Fisiopatológico e Fundamentação Farmacológica:
+  // Therapeutic Rationale
+  const therapeuticRationale = isInicial
+    ? `Raciocínio Fisiopatológico & Indicação Canabinoide:
+A indicação médica para o início da terapêutica fundamenta-se na modulação do Sistema Endocanabinoide (SEC). O tratamento atua promovendo ${secRationaleSEC}, restaurando a homeostase fisiológica e amenizando a sintomatologia refratária.
+
+Comprovação de Início Terapêutico e Necessidade de Continuidade:
+Atesto formalmente o início do tratamento supervisionado com fitocanabinoides. Diante da documentada refratariedade aos alopáticos tradicionais, o acesso regular e ininterrupto aos medicamentos prescritos é indispensável para viabilizar a estabilização e recuperação do(a) paciente.
+
+Enquadramento Diagnóstico Internacional (CID-10):
+CID-10 Principal: ${cidPrincipal} | CIDs Secundários: ${cidsSecundarios}`
+    : `Raciocínio Fisiopatológico e Fundamentação Farmacológica:
 A Cannabis medicinal e seus fitocanabinoides representam o recurso farmacoterapêutico de maior eficácia, especificidade e segurança para este(a) paciente. A fundamentação biológica repousa na disfunção do Sistema Endocanabinoide (SEC) subjacente ao quadro, sendo que o tratamento promove ${secRationaleSEC}, restaurando a homeostase fisiológica do organismo.
 
 Indicação de Continuidade e Riscos Imediatos de Interrupção (Quesito 7):
@@ -233,7 +250,13 @@ CID-10 Principal: ${cidPrincipal}
 CIDs Secundários: ${cidsSecundarios}`;
 
   // Personalized Treatment Plan
-  const treatmentPlan = `1. ÓLEO FULL SPECTRUM ARTESANAL RICO EM CBD (${isEpilepsy || isAutism ? '100mg/ml' : '50mg/ml'})
+  const treatmentPlan = isInicial
+    ? `1. ÓLEO FITOCANABINOIDE FULL SPECTRUM (${isEpilepsy || isAutism ? '100mg/ml' : '50mg/ml'})
+   Princípio Ativo: Canabidiol (CBD) Full Spectrum com canabinoides e terpenos nativos
+   Apresentação / Via: Solução Oleosa Gotas • Frasco de 30ml • Via Sublingual
+   Posologia: Iniciar com 03 gotas a cada 12 horas. Titular gradualmente aumentando 01 gota por tomada a cada 4 dias até a dose de estabilização clínica.
+   Finalidade: Modulação anti-inflamatória, estabilização neurofuncional e regulação basal do Sistema Endocanabinoide.`
+    : `1. ÓLEO FULL SPECTRUM ARTESANAL RICO EM CBD (${isEpilepsy || isAutism ? '100mg/ml' : '50mg/ml'})
    Princípio Ativo: Canabidiol Full Spectrum integral com terpenos e canabinoides menores (CBG, CBC, CBN)
    Apresentação / Via: Solução Oleosa Gotas • Frasco de 30ml • Via Sublingual
    Posologia: Iniciar com 03 gotas a cada 12 horas (manhã e noite). Titular gradualmente aumentando 01 gota por dose a cada 4 dias até a dose de estabilização clínica.
@@ -252,7 +275,11 @@ CIDs Secundários: ${cidsSecundarios}`;
    Finalidade: Ação anti-inflamatória e analgésica tópica imediata nos tecidos periféricos.`;
 
   // Monitoring Guidelines
-  const monitoringText = `1. Diretrizes de Titulação e Farmacovigilância:
+  const monitoringText = isInicial
+    ? `1. Diretrizes de Titulação ("Start Low, Go Slow"): Iniciar em doses mínimas e titular lentamente até identificar a dosagem ideal individualizada com máxima eficácia clínica e ausência de eventos adversos.
+2. Segurança e Farmacovigilância: Acompanhamento de rotina da função hepática/renal se houver uso de alopáticos concomitantes. Excelente perfil de tolerabilidade clínica.
+3. Retorno Clínico: Retorno médico agendado em 60 a 90 dias para reavaliação clínica e acompanhamento da evolução.`
+    : `1. Diretrizes de Titulação e Farmacovigilância:
 - O tratamento fundamenta-se no princípio clínico "Start Low, Go Slow" (iniciar em baixas doses e titular lentamente), visando identificar a janela terapêutica individualizada ideal com máxima eficácia sintomática e ausência de efeitos colaterais.
 - Acompanhamento laboratorial periódico de função hepática (TGO, TGP) e renal caso haja uso concomitante de qualquer fármaco alopático metabolizado pelas isoenzimas CYP3A4 ou CYP2C19.
 

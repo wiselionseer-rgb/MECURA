@@ -24,7 +24,7 @@ import {
   Layers
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct } from '../data/cbdGuide';
+import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, ABECMED_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 import { useAdminStore } from '../store/useAdminStore';
@@ -151,6 +151,11 @@ export function PrescriptionEditorModal({
       addProd(p, 'ABECMED (Associação Nacional)', 'ABECMED');
     }
 
+    // 7. From ABRACE Official National Catalog (Brasil)
+    for (const p of ABRACE_PRODUCTS) {
+      addProd(p, 'ABRACE Esperança (Associação Nacional)', 'ABRACE');
+    }
+
     return list;
   }, [productCategories]);
 
@@ -165,13 +170,20 @@ export function PrescriptionEditorModal({
           (p.sourceCatalog || '').toLowerCase().includes('abec') || 
           (p.name || '').toLowerCase().includes('abec')
         );
+      } else if (librarySelectedCategory === 'abrace') {
+        result = result.filter(p => 
+          (p.manufacturer || '').toLowerCase().includes('abrace') || 
+          (p.sourceCatalog || '').toLowerCase().includes('abrace') || 
+          (p.name || '').toLowerCase().includes('abrace')
+        );
       } else if (librarySelectedCategory === 'gomas') {
         result = result.filter(p => /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
       } else if (librarySelectedCategory === 'nacionais') {
         result = result.filter(p => 
           p.origin === 'Nacional' || 
           (p.manufacturer || '').toLowerCase().includes('associação') ||
-          (p.manufacturer || '').toLowerCase().includes('abec')
+          (p.manufacturer || '').toLowerCase().includes('abec') ||
+          (p.manufacturer || '').toLowerCase().includes('abrace')
         );
       } else if (librarySelectedCategory === 'flowermed') {
         result = result.filter(p => (p.manufacturer || '').toLowerCase().includes('flowermed') || p.sourceCatalog === 'Flowermed');
@@ -191,13 +203,15 @@ export function PrescriptionEditorModal({
         result = result.filter(p => 
           p.origin === 'Nacional' || 
           (p.manufacturer || '').toLowerCase().includes('associação') ||
-          (p.manufacturer || '').toLowerCase().includes('abec')
+          (p.manufacturer || '').toLowerCase().includes('abec') ||
+          (p.manufacturer || '').toLowerCase().includes('abrace')
         );
       } else {
         result = result.filter(p => 
           p.origin !== 'Nacional' && 
           !(p.manufacturer || '').toLowerCase().includes('associação') &&
-          !(p.manufacturer || '').toLowerCase().includes('abec')
+          !(p.manufacturer || '').toLowerCase().includes('abec') &&
+          !(p.manufacturer || '').toLowerCase().includes('abrace')
         );
       }
     }
@@ -656,6 +670,41 @@ export function PrescriptionEditorModal({
     setItems(prev => [...prev, newItem]);
   };
 
+  const handleAddAbraceItem = (productName: string) => {
+    const prod = ABRACE_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
+    if (!prod) return;
+    const enriched = enrichMedicationDetails(prod.name, 'ABRACE', 'Nacional', prod.type, prod);
+
+    let dosageLines: string[];
+    if (prod.usageInstructions) {
+      dosageLines = prod.usageInstructions
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    } else {
+      dosageLines = [
+        'Conforme determinação individual do prescritor habilitado.',
+        'Administrar conforme orientação médica.'
+      ];
+    }
+
+    const newItem: PrescriptionItemData = {
+      name: prod.name,
+      brand: 'ABRACE (Associação Nacional)',
+      origin: 'Nacional',
+      type: prod.type || enriched.type,
+      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
+      concentration: prod.concentration || enriched.concentration,
+      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
+      quantity: prod.quantity || enriched.quantity,
+      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
+      dosage: dosageLines,
+      description: prod.description || enriched.description || 'Produto oficial da ABRACE (Associação Brasileira de Apoio Cannabis Esperança).',
+      priceBRL: prod.priceBRL
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
   const handleRemoveItem = (index: number) => {
     setItems(prev => prev.filter((_, i) => i !== index));
   };
@@ -1101,6 +1150,55 @@ export function PrescriptionEditorModal({
                           <optgroup label="⚗️ Extrações Sem Solvente ABECMED" className="bg-[#0A0A0F] text-violet-400 font-bold">
                             <option value="Extração Sem Solvente ABEC rica em THC (30% a 50% THC)">Extração Sem Solvente THC (30-50% - 2g/5g)</option>
                             <option value="Extrato Peneirado Full Spectrum ABEC">Extrato Peneirado Dry Sift Full Spectrum (2g/5g)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* ABRACE Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-abrace"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddAbraceItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
+                            🌿 + Linha ABRACE Nacional...
+                          </option>
+                          <optgroup label="🟠 Óleos de CBD (Laranja, Vermelho, Prata)" className="bg-[#0A0A0F] text-orange-400 font-bold">
+                            <option value="Óleo Laranja CBD 20 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 20 mg/mL (30 mL)</option>
+                            <option value="Óleo Laranja CBD 30 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 30 mg/mL (30 mL)</option>
+                            <option value="Óleo Vermelho CBD 100 mg/mL — ABRACE (30 mL)">Óleo Vermelho CBD 100 mg/mL (30 mL)</option>
+                            <option value="Óleo Cinza/Prata CBD 200 mg/mL — ABRACE (30 mL)">Óleo Cinza/Prata CBD 200 mg/mL (30 mL)</option>
+                          </optgroup>
+                          <optgroup label="⚫ Óleo de THC (Preto)" className="bg-[#0A0A0F] text-slate-300 font-bold">
+                            <option value="Óleo Preto THC 30 mg/mL — ABRACE (30 mL)">Óleo Preto THC 30 mg/mL (30 mL)</option>
+                          </optgroup>
+                          <optgroup label="🔵 Óleos Combinados CBD + THC 1:1 (Azul, Roxo)" className="bg-[#0A0A0F] text-sky-400 font-bold">
+                            <option value="Óleo Azul CBD + THC 15 mg/mL + 15 mg/mL (1:1) — ABRACE (30 mL)">Óleo Azul CBD+THC 15+15 mg/mL (1:1) (30 mL)</option>
+                            <option value="Óleo Roxo CBD + THC 30 mg/mL + 30 mg/mL (1:1) — ABRACE (30 mL)">Óleo Roxo CBD+THC 30+30 mg/mL (1:1) (30 mL)</option>
+                          </optgroup>
+                          <optgroup label="🌿 Flores In Natura (10 g)" className="bg-[#0A0A0F] text-green-400 font-bold">
+                            <option value="Flores In Natura Ricas em CBD — ABRACE (10 g)">Flores In Natura Ricas em CBD (10 g)</option>
+                            <option value="Flores In Natura Ricas em THC — ABRACE (10 g)">Flores In Natura Ricas em THC (10 g)</option>
+                            <option value="Flores In Natura Ricas em CBD + THC — ABRACE (10 g)">Flores In Natura Ricas em CBD + THC (10 g)</option>
+                          </optgroup>
+                          <optgroup label="🍬 Gomas de Canabinoides (30 un)" className="bg-[#0A0A0F] text-pink-400 font-bold">
+                            <option value="Gomas de CBD 10 mg/goma — ABRACE (30 un)">Gomas de CBD 10 mg/goma (30 un)</option>
+                            <option value="Gomas de THC 10 mg/goma — ABRACE (30 un)">Gomas de THC 10 mg/goma (30 un)</option>
+                            <option value="Gomas de CBD + THC 10 mg/goma (1:1) — ABRACE (30 un)">Gomas de CBD + THC 10 mg/goma (1:1) (30 un)</option>
+                          </optgroup>
+                          <optgroup label="🧴 Pomadas e Cremes (100 g)" className="bg-[#0A0A0F] text-teal-400 font-bold">
+                            <option value="Pomada Full Rica em CBD 30 mg/g — ABRACE (100 g)">Pomada Full Rica em CBD 30 mg/g (100 g)</option>
+                            <option value="Pomada Full Rica em THC 20 mg/g — ABRACE (100 g)">Pomada Full Rica em THC 20 mg/g (100 g)</option>
+                          </optgroup>
+                          <optgroup label="💨 Spray de Resgate (25 mL)" className="bg-[#0A0A0F] text-cyan-400 font-bold">
+                            <option value="Spray Resgate THC 5 mg/mL — ABRACE (25 mL)">Spray Resgate THC 5 mg/mL (25 mL)</option>
                           </optgroup>
                         </select>
                       </div>
@@ -1823,10 +1921,15 @@ export function PrescriptionEditorModal({
                   }
 
                   return guidesToRender.map((guide, gIdx) => (
-                    <div key={`guide-doc-${gIdx}-${guide.title}`} className="w-full max-w-2xl bg-white text-[#111827] rounded-xl shadow-2xl p-8 sm:p-12 border border-slate-200 font-sans min-h-[650px] flex flex-col justify-between relative">
-                      {/* Guide Badge */}
-                      <div className="absolute top-3 right-4 bg-purple-100 text-purple-900 border border-purple-300 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        {guide.badge}
+                    <div key={`guide-doc-${gIdx}-${guide.title}`} className="w-full max-w-2xl bg-white text-[#111827] rounded-xl shadow-2xl p-8 sm:p-12 border border-slate-200 font-sans min-h-[650px] flex flex-col justify-between">
+                      {/* Top Bar with Badge in flow */}
+                      <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          Documento Médico Oficial MECURA
+                        </span>
+                        <span className="bg-purple-100 text-purple-900 border border-purple-300 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          {guide.badge}
+                        </span>
                       </div>
 
                       <div>
@@ -1838,10 +1941,10 @@ export function PrescriptionEditorModal({
                               CENTRO INTEGRADO DE MEDICINA CANABINOIDE
                             </p>
                           </div>
-                          <div className="text-right pr-28 sm:pr-0">
+                          <div className="text-right">
                             <h3 className="text-sm font-bold text-[#1E1B4B]">{doctorName}</h3>
-                            <p className="text-xs text-slate-600 font-semibold">{doctorCrm}</p>
-                            <p className="text-[10px] text-slate-500">{doctorSpecialty}</p>
+                            <p className="text-xs text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{doctorSpecialty}</p>
                           </div>
                         </div>
 
@@ -1950,10 +2053,10 @@ export function PrescriptionEditorModal({
                         </div>
 
                         <div className="text-center w-52">
-                          <div className="border-b border-slate-400 pb-1 mb-1" />
+                          <div className="border-b border-slate-400 mb-2" />
                           <p className="text-xs font-bold text-slate-900">{doctorName}</p>
-                          <p className="text-[10px] text-slate-600 font-semibold">{doctorCrm}</p>
-                          <p className="text-[9px] text-slate-500">Assinatura Digital / Prescritor</p>
+                          <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
+                          <p className="text-[9px] text-slate-500 mt-0.5">Assinatura Digital / Prescritor</p>
                         </div>
                       </div>
                     </div>
@@ -2116,6 +2219,7 @@ export function PrescriptionEditorModal({
                 <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto py-1">
                   {[
                     { id: 'all', label: `Todos (${allLibraryProducts.length})` },
+                    { id: 'abrace', label: '🌿 ABRACE Esperança (Nacional)' },
                     { id: 'abecmed', label: '🟠 ABECMED Oficial (Nacional)' },
                     { id: 'gomas', label: '🍬 Gomas & Comestíveis' },
                     { id: 'nacionais', label: '🇧🇷 Associações Nacionais' },

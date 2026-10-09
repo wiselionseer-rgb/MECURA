@@ -1,5 +1,6 @@
 import html2pdf from "html2pdf.js";
 import Markdown from 'react-markdown';
+import { withSafeComputedStyle } from '../utils/pdfGenerator';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -577,7 +578,9 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
               pagebreak: { mode: ['css', 'legacy'] }
           };
-          html2pdf().set(opt).from(element).save();
+          await withSafeComputedStyle(async () => {
+              await html2pdf().set(opt).from(element).save();
+          });
       } catch (e) {
           console.error("Erro ao gerar PDF:", e);
           alert("Erro ao gerar o arquivo PDF.");

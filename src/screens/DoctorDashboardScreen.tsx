@@ -85,7 +85,7 @@ import {
 } from 'recharts';
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
-import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
+import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT, ABRACE_PRODUCTS, ABRACE_COMPANY_INFO, ABRACE_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases } from '../utils/productCatalog';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
@@ -1626,21 +1626,27 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleDownloadPrescriptionFromEditor = () => {
+  const handleDownloadPrescriptionFromEditor = async () => {
     // 1. Gerar o PDF com os dados editados para download local no computador do médico
     // IMPORTANTE: NÃO envia mensagens nem produtos para o chat ou histórico do paciente
-    generatePrescriptionPDF(prescPatientName, messages, {
-      customPatientName: prescPatientName,
-      birthDate: prescBirthDate,
-      cpf: prescCpf,
-      emissionDate: prescEmissionDate,
-      customDoctorName: prescDoctorName,
-      customDoctorCrm: prescDoctorCrm,
-      customDoctorSpecialty: prescDoctorSpecialty,
-      customItems: prescItems,
-      customNotes: prescNotes
-    });
-    showActionToast("Receita em PDF baixada com sucesso!");
+    try {
+      showActionToast("Gerando PDF da receita...");
+      await generatePrescriptionPDF(prescPatientName, messages, {
+        customPatientName: prescPatientName,
+        birthDate: prescBirthDate,
+        cpf: prescCpf,
+        emissionDate: prescEmissionDate,
+        customDoctorName: prescDoctorName,
+        customDoctorCrm: prescDoctorCrm,
+        customDoctorSpecialty: prescDoctorSpecialty,
+        customItems: prescItems,
+        customNotes: prescNotes
+      });
+      showActionToast("Receita em PDF baixada com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao baixar receita:", err);
+      showActionToast(`Erro ao gerar PDF: ${err?.message || 'Tente novamente'}`);
+    }
   };
 
   const handleSendPrescriptionToChat = async (includeProductCards: boolean = false) => {
@@ -1673,6 +1679,9 @@ export function DoctorDashboardScreen() {
           }
           if (!foundCatProd) {
             foundCatProd = ABECMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          }
+          if (!foundCatProd) {
+            foundCatProd = ABRACE_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
           }
 
           const enriched = enrichMedicationDetails(
@@ -2256,22 +2265,33 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleDownloadMedicalReportFromEditor = () => {
+  const handleDownloadMedicalReportFromEditor = async () => {
     const patientAnswers = currentPatient?.answers || answers;
-    generateMedicalReportPDF(reportPatientName, messages, {
-      customPatientName: reportPatientName,
-      birthDate: reportBirthDate,
-      cpf: reportCpf,
-      emissionDate: reportEmissionDate,
-      answers: patientAnswers,
-      customDoctorName: reportDoctorName,
-      customDoctorCrm: reportDoctorCrm,
-      customDoctorSpecialty: reportDoctorSpecialty,
-      customDiagnosis: reportDiagnosis,
-      customRationale: reportRationale,
-      customTreatmentPlan: reportTreatmentPlan,
-      customMonitoring: reportMonitoring
-    });
+    const isEvolutivo = medicalReportType === 'evolutivo';
+    try {
+      showActionToast(isEvolutivo ? "Gerando Laudo Evolutivo..." : "Gerando Laudo Inicial...");
+      await generateMedicalReportPDF(reportPatientName, messages, {
+        customPatientName: reportPatientName,
+        birthDate: reportBirthDate,
+        cpf: reportCpf,
+        emissionDate: reportEmissionDate,
+        answers: patientAnswers,
+        customDoctorName: reportDoctorName,
+        customDoctorCrm: reportDoctorCrm,
+        customDoctorSpecialty: reportDoctorSpecialty,
+        customDiagnosis: reportDiagnosis,
+        customRationale: reportRationale,
+        customTreatmentPlan: reportTreatmentPlan,
+        customMonitoring: reportMonitoring,
+        reportType: medicalReportType,
+        docType: isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial',
+        isEvolutivo
+      });
+      showActionToast(isEvolutivo ? "Laudo Evolutivo baixado com sucesso!" : "Laudo Inicial baixado com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao gerar laudo médico:", err);
+      showActionToast(`Erro ao gerar PDF: ${err?.message || 'Tente novamente'}`);
+    }
   };
 
   const handleSendMedicalReportToChat = async () => {
@@ -2285,6 +2305,9 @@ export function DoctorDashboardScreen() {
       setIsSendingReportToChat(true);
 
       const patientAnswers = currentPatient?.answers || answers;
+      const isEvolutivo = medicalReportType === 'evolutivo';
+      const docType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
+
       const pdfBlob = await generateMedicalReportPDF(reportPatientName, messages, {
         customPatientName: reportPatientName,
         birthDate: reportBirthDate,
@@ -2298,12 +2321,13 @@ export function DoctorDashboardScreen() {
         customRationale: reportRationale,
         customTreatmentPlan: reportTreatmentPlan,
         customMonitoring: reportMonitoring,
+        reportType: medicalReportType,
+        docType: docType,
+        isEvolutivo,
         returnBlob: true
       }) as Blob;
 
       let fileUrl = '';
-      const isEvolutivo = medicalReportType === 'evolutivo';
-      const docType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
       const cleanPatientName = (reportPatientName || 'Paciente').replace(/\s+/g, '_');
       const fileName = `${isEvolutivo ? 'Laudo_Evolutivo' : 'Laudo_Inicial'}_${cleanPatientName}.pdf`;
 
@@ -2528,9 +2552,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
         REGRA OBRIGATÓRIA E INEGOCIÁVEL PARA MEDICAMENTOS NACIONAIS:
         INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS (FLOWERMED, GREENBUDZCBD OU AMBOS), A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE E OBRIGATORIAMENTE A TRÍADE COMPLETA:
-        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Linha ALTO CBD Full SPECTRUM [CBD 5:1 THC, CBD 10:1 THC ou CBD 20:1 THC - 30ml em 30mg/mL, 60mg/mL ou 100mg/mL], Linha CBD + CBN Full Spectrum [CBD 2:1 CBN 30ml em 30mg/mL ou 60mg/mL], Linha CBD + CBG Full Spectrum [CBD 2:1 CBG 30ml em 30mg/mL ou 60mg/mL], Linha CBD + CBG + CBN Full Spectrum [4:1:1 30ml em 30mg/mL ou 60mg/mL], Linha EQUILIBRADO Full Spectrum [CBD 1:1 THC 30ml em 30mg/mL, 60mg/mL ou 100mg/mL], Linha ALTO THC Full Spectrum [THC 10:1 CBD 30ml em 30mg/mL, 60mg/mL ou 100mg/mL], Linha ABECMED Full Spectrum RSO em MCT [Laranja CBD, Azul CBD:THC, Verde THC, Vermelho CBG, Limão CBD:CBN, Lilás CBD:CBG], ou Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
-        - 2. EXTRAÇÃO (Extração Sem Solvente ABEC rica em THC 30%-50%, Extrato Peneirado Dry Sift Full Spectrum ABEC, ou Pomada Canábica Terapêutica 500mg - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
-        - 3. FLORES (Inflorescências ABEC ricas em THC 15%-30% ou ricas em CBD 8%-18% em embalagens de 5g a 25g [cultivo Indoor, Outdoor ou Estufa] ou Flores in natura de cannabis sp 15g - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
+        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Linha ABRACE [Óleo Laranja CBD 20 ou 30 mg/mL, Óleo Vermelho CBD 100 mg/mL, Óleo Cinza/Prata CBD 200 mg/mL, Óleo Preto THC 30 mg/mL, Óleo Azul CBD+THC 1:1 15mg/mL, Óleo Roxo CBD+THC 1:1 30mg/mL], Linha ABECMED Full Spectrum RSO em MCT [Laranja CBD, Azul CBD:THC, Verde THC, Vermelho CBG, Limão CBD:CBN, Lilás CBD:CBG], Linha ALTO CBD Full SPECTRUM [CBD 5:1 THC, CBD 10:1 THC ou CBD 20:1 THC], ou Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
+        - 2. EXTRAÇÃO / FORMA COMPLEMENTAR (Pomada Full Rica em CBD 30 mg/g 100g — ABRACE, Pomada Full Rica em THC 20 mg/g 100g — ABRACE, Gomas de Canabinoides ABRACE [CBD 10mg, THC 10mg ou CBD+THC 10mg], Spray Resgate THC 5 mg/mL (25 mL) — ABRACE, Extração Sem Solvente ABEC rica em THC 30%-50%, Extrato Peneirado Dry Sift Full Spectrum ABEC, ou Pomada Canábica Terapêutica 500mg - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
+        - 3. FLORES (Flores In Natura ABRACE [Ricas em CBD 10g, Ricas em THC 10g ou Ricas em CBD+THC 10g], Inflorescências ABEC ricas em THC 15%-30% ou ricas em CBD 8%-18% em embalagens de 5g a 25g, ou Flores in natura de cannabis sp 15g - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
         Desta forma, fica estritamente a critério e autonomia do paciente escolher se prefere seguir com o tratamento completo de medicamentos nacionais ou com os importados.
 
         CRITÉRIOS CLÍNICOS CRÍTICOS DE SEGURANÇA E PERSONALIZAÇÃO CASO A CASO:
@@ -2693,7 +2717,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             rawName = rawName.substring(0, 150) + "...";
           }
           
-          const isExplicitlyNat = /associação|associacao|cannabis sp 15g|associação brasileira|associação nacional/i.test(rawName);
+          const isExplicitlyNat = /associação|associacao|cannabis sp 15g|associação brasileira|associação nacional|abrace|abec/i.test(rawName);
           const isExplicitlyImp = /flowermed|greenbudz|sphera|sour lifter|lemon octane|forbidden fruit|gellato|gelato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|hemp oil|broad spectrum|cbg|cbn|drops by/i.test(rawName);
 
           const finalOrigin: 'Importado' | 'Nacional' = isExplicitlyImp 
@@ -2736,6 +2760,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
     // Check if explicitly an association product
     const isExplicitlyNational = 
       med.origin === 'Nacional' ||
+      cleanMedName.includes('abrace') ||
       cleanMedName.includes('abec') ||
       cleanMedName.includes('abecmed') ||
       cleanMedName.includes('associação') || 
@@ -2743,13 +2768,27 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       cleanMedName.includes('associação nacional') ||
       cleanMedName.includes('associação brasileira') ||
       cleanMedName.includes('cannabis sp 15g') ||
+      cleanMedName.includes('spray resgate thc') ||
+      cleanMedName.includes('pomada full rica') ||
       cleanMedName.includes('pomada canábica terapêutica');
 
     // Find product across catalogs
     let foundProduct: any = null;
 
-    // Check ABECMED first if explicitly national or ABEC
-    if (cleanMedName.includes('abec') || isExplicitlyNational) {
+    // Check ABRACE first if explicitly ABRACE or national
+    if (cleanMedName.includes('abrace') || isExplicitlyNational) {
+      const abrace = ABRACE_PRODUCTS.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
+      if (abrace) {
+        foundProduct = { ...abrace, manufacturer: 'ABRACE', origin: 'Nacional' };
+      }
+    }
+
+    // Check ABECMED if explicitly national or ABEC
+    if (!foundProduct && (cleanMedName.includes('abec') || isExplicitlyNational)) {
       const abec = ABECMED_PRODUCTS.find(p => 
         p.name.toLowerCase() === cleanMedName ||
         p.name.toLowerCase().includes(cleanMedName) ||
@@ -2799,7 +2838,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
     const isNational = isExplicitlyNational || (foundProduct ? foundProduct.origin === 'Nacional' : med.origin === 'Nacional');
 
-    const defaultManufacturer = (cleanMedName.includes('abec') || cleanMedName.includes('abecmed'))
+    const defaultManufacturer = cleanMedName.includes('abrace')
+      ? 'ABRACE'
+      : (cleanMedName.includes('abec') || cleanMedName.includes('abecmed'))
       ? 'ABECMED'
       : isNational 
       ? 'Associação Brasileira' 

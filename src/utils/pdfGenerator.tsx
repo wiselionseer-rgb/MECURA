@@ -6,6 +6,8 @@ import html2canvas from 'html2canvas';
 import { format } from 'date-fns';
 import { Message, useStore } from '../store/useStore';
 import { enrichMedicationDetails } from '../data/cbdGuide';
+import { deliverPdfBlob } from './downloadHelper';
+import { generatePersonalizedClinicalReport } from './clinicalReportGenerator';
 
 export interface PrescriptionItemData {
   name: string;
@@ -84,6 +86,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
   if (
     brandLower.includes('associação') ||
     brandLower.includes('associacao') ||
+    brandLower.includes('abrace') ||
     brandLower.includes('abecmed') ||
     brandLower.includes('abrascorp') ||
     brandLower.includes('amame') ||
@@ -102,7 +105,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
       if (eOrigin.includes('import') || eOrigin.includes('eua') || eOrigin.includes('usa')) {
         return false;
       }
-      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao')) {
+      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao') || eOrigin.includes('abrace')) {
         return true;
       }
     }
@@ -110,38 +113,206 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     // ignore
   }
 
-  // 4. Fallback: only if name specifically mentions Associação or Nacional
-  return /associação|associacao|nacional|abecmed|abrascorp|amame|apepi/i.test(nameLower);
+  // 4. Fallback: only if name specifically mentions Associação or Nacional or ABRACE
+  return /associação|associacao|nacional|abrace|abecmed|abrascorp|amame|apepi/i.test(nameLower);
+};
+
+// Offscreen canvas context for native browser conversion of modern CSS color functions (oklch, oklab, color-mix) to standard sRGB
+let colorCanvasContext: CanvasRenderingContext2D | null = null;
+const getColorCanvasContext = (): CanvasRenderingContext2D | null => {
+  if (typeof document === 'undefined') return null;
+  if (!colorCanvasContext) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 1;
+      c.height = 1;
+      colorCanvasContext = c.getContext('2d', { willReadFrequently: true });
+    } catch {
+      colorCanvasContext = null;
+    }
+  }
+  return colorCanvasContext;
+};
+
+const colorConversionCache = new Map<string, string>();
+
+export const convertSingleColorToRgb = (colorStr: string): string => {
+  if (!colorStr) return colorStr;
+  const trimmed = colorStr.trim();
+  if (colorConversionCache.has(trimmed)) {
+    return colorConversionCache.get(trimmed)!;
+  }
+
+  const ctx = getColorCanvasContext();
+  if (ctx) {
+    try {
+      ctx.fillStyle = '#000000';
+      ctx.fillStyle = trimmed;
+      const converted = ctx.fillStyle;
+      if (converted && !converted.includes('oklch') && !converted.includes('oklab') && !converted.includes('color(')) {
+        colorConversionCache.set(trimmed, converted);
+        return converted;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Fallbacks if native canvas conversion fails or is unsupported
+  let fallback = '#111827';
+  if (/^oklch\s*\(\s*0\b/i.test(trimmed)) {
+    fallback = '#000000';
+  } else if (/^oklch\s*\(\s*1\b/i.test(trimmed)) {
+    fallback = '#FFFFFF';
+  } else if (/slate-200|border/i.test(trimmed)) {
+    fallback = '#E2E8F0';
+  }
+  colorConversionCache.set(trimmed, fallback);
+  return fallback;
+};
+
+export const sanitizeColorString = (val: string): string => {
+  if (!val || typeof val !== 'string') return val;
+  if (!val.includes('oklch') && !val.includes('oklab') && !val.includes('color(') && !val.includes('color-mix')) {
+    return val;
+  }
+
+  // Exact function match
+  if (/^(oklch|oklab|color)\([^)]+\)$/i.test(val.trim())) {
+    return convertSingleColorToRgb(val.trim());
+  }
+
+  // Composite strings like box-shadow, linear-gradient, or border definitions
+  return val
+    .replace(/oklch\([^)]+\)/gi, (m) => convertSingleColorToRgb(m))
+    .replace(/oklab\([^)]+\)/gi, (m) => convertSingleColorToRgb(m))
+    .replace(/color\([^)]+\)/gi, (m) => convertSingleColorToRgb(m));
+};
+
+export const createComputedStyleProxy = (computed: CSSStyleDeclaration): CSSStyleDeclaration => {
+  return new Proxy(computed, {
+    get(target, prop) {
+      if (prop === 'getPropertyValue') {
+        return (propertyName: string) => {
+          try {
+            const val = target.getPropertyValue(propertyName);
+            return typeof val === 'string' ? sanitizeColorString(val) : val;
+          } catch {
+            return '';
+          }
+        };
+      }
+      try {
+        const val = (target as any)[prop];
+        if (typeof val === 'string') {
+          return sanitizeColorString(val);
+        }
+        if (typeof val === 'function') {
+          return val.bind(target);
+        }
+        return val;
+      } catch {
+        return (target as any)[prop];
+      }
+    }
+  });
+};
+
+export async function withSafeComputedStyle<T>(fn: () => Promise<T>): Promise<T> {
+  if (typeof window === 'undefined') {
+    return await fn();
+  }
+  const origGetComputedStyle = window.getComputedStyle;
+  window.getComputedStyle = function (elt: Element, pseudoElt?: string | null) {
+    try {
+      const orig = origGetComputedStyle.call(window, elt, pseudoElt);
+      return createComputedStyleProxy(orig);
+    } catch {
+      return origGetComputedStyle.call(window, elt, pseudoElt);
+    }
+  };
+  try {
+    return await fn();
+  } finally {
+    window.getComputedStyle = origGetComputedStyle;
+  }
 };
 
 export const safeHtml2Canvas = async (element: HTMLElement): Promise<HTMLCanvasElement> => {
-  return await html2canvas(element, {
-    scale: 1.5,
-    useCORS: true,
-    logging: false,
-    windowWidth: 794,
-    onclone: (_clonedDoc, clonedElement) => {
-      // Traverse all elements in clonedElement and sanitize any computed colors containing modern oklab/oklch/color-mix
-      const allElements = clonedElement.querySelectorAll<HTMLElement>('*');
-      allElements.forEach((el) => {
+  return await withSafeComputedStyle(async () => {
+    return await html2canvas(element, {
+      scale: 1.5,
+      useCORS: true,
+      logging: false,
+      windowWidth: 794,
+      onclone: (_clonedDoc, clonedElement) => {
+        // Ensure cloned element is fully visible in cloned document
         try {
-          const bg = el.style?.backgroundColor || '';
-          if (bg.includes('oklab') || bg.includes('oklch') || bg.includes('color-mix')) {
-            el.style.backgroundColor = '#FFFFFF';
-          }
-          const col = el.style?.color || '';
-          if (col.includes('oklab') || col.includes('oklch') || col.includes('color-mix')) {
-            el.style.color = '#111827';
-          }
-          const bc = el.style?.borderColor || '';
-          if (bc.includes('oklab') || bc.includes('oklch') || bc.includes('color-mix')) {
-            el.style.borderColor = '#E2E8F0';
+          if (clonedElement) {
+            clonedElement.style.opacity = '1';
+            clonedElement.style.visibility = 'visible';
           }
         } catch {
           // ignore
         }
-      });
-    }
+
+        // 1. Wrap cloned document defaultView.getComputedStyle if present
+        if (_clonedDoc.defaultView) {
+          const origClonedGCS = _clonedDoc.defaultView.getComputedStyle;
+          _clonedDoc.defaultView.getComputedStyle = function (elt: Element, pseudoElt?: string | null) {
+            try {
+              const orig = origClonedGCS.call(_clonedDoc.defaultView, elt, pseudoElt);
+              return createComputedStyleProxy(orig);
+            } catch {
+              return origClonedGCS.call(_clonedDoc.defaultView, elt, pseudoElt);
+            }
+          };
+        }
+
+        // 2. Sanitize any modern oklch/oklab in all <style> tags within clonedDoc
+        _clonedDoc.querySelectorAll('style').forEach((styleEl) => {
+          try {
+            let css = styleEl.textContent || '';
+            if (css.includes('oklch') || css.includes('oklab') || css.includes('color(')) {
+              css = css.replace(/oklch\([^)]+\)/gi, (m) => convertSingleColorToRgb(m));
+              css = css.replace(/oklab\([^)]+\)/gi, (m) => convertSingleColorToRgb(m));
+              styleEl.textContent = css;
+            }
+          } catch {
+            // ignore
+          }
+        });
+
+        // 3. Sanitize inline styles on all elements
+        const allElements = _clonedDoc.querySelectorAll<HTMLElement>('*');
+        allElements.forEach((el) => {
+          try {
+            if (el.style) {
+              const colorKeys = [
+                'color',
+                'backgroundColor',
+                'borderColor',
+                'borderTopColor',
+                'borderRightColor',
+                'borderBottomColor',
+                'borderLeftColor',
+                'outlineColor',
+                'boxShadow'
+              ] as const;
+
+              for (const k of colorKeys) {
+                const val = (el.style as any)[k];
+                if (typeof val === 'string' && (val.includes('oklch') || val.includes('oklab') || val.includes('color('))) {
+                  (el.style as any)[k] = sanitizeColorString(val);
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
+        });
+      }
+    });
   });
 };
 
@@ -344,19 +515,19 @@ export const generatePrescriptionPDF = async (
               boxSizing: "border-box"
             }}
           >
-            {/* Guide Badge and Page Indicator */}
-            <div className="absolute top-4 right-9 flex items-center gap-2">
-              <span className="text-[10px] text-[#64748B] font-bold">
-                Página {page.pageNumber} de {page.totalPages}
-              </span>
-              <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                {page.badge}
-              </span>
-            </div>
-
             <div>
+              {/* Top Bar with Page Indicator & Guide Badge in-flow (never overlaps doctor info) */}
+              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
+                <span className="text-[9.5px] text-[#64748B] font-semibold">
+                  Documento Médico Oficial MECURA • Página {page.pageNumber} de {page.totalPages}
+                </span>
+                <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                  {page.badge}
+                </span>
+              </div>
+
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-2 pt-0.5">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2.5 mb-2">
                 <div>
                   <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
                   <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
@@ -364,9 +535,9 @@ export const generatePrescriptionPDF = async (
                   </p>
                 </div>
                 <div className="text-right">
-                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0 leading-tight">{docName}</h3>
-                  <p className="text-[10px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
-                  <p className="text-[9px] text-[#64748B] m-0 leading-tight">{docSpec}</p>
+                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
+                  <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
+                  <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
                 </div>
               </div>
 
@@ -503,11 +674,11 @@ export const generatePrescriptionPDF = async (
                   </div>
                 </div>
 
-                <div className="text-center w-48">
-                  <div className="border-b border-[#94A3B8] pb-0.5 mb-0.5" />
-                  <p className="text-[11px] font-bold text-[#0F172A] m-0 leading-tight">{docName}</p>
-                  <p className="text-[9px] text-[#475569] font-semibold m-0 leading-tight">{docCrm}</p>
-                  <p className="text-[8px] text-[#64748B] m-0 leading-tight">Assinatura Digital / Prescritor</p>
+                <div className="text-center w-52">
+                  <div className="border-b border-[#94A3B8] mb-2" style={{ height: '0px' }} />
+                  <p className="text-[11px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
+                  <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
+                  <p className="text-[8.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>Assinatura Digital / Prescritor</p>
                 </div>
               </div>
             </div>
@@ -551,11 +722,9 @@ export const generatePrescriptionPDF = async (
     }
 
     const filename = `Receita_Medica_${sanitizedUserName}.pdf`;
-    let resultBlob: Blob | undefined;
-    if (patientData?.returnBlob) {
-      resultBlob = pdf.output('blob');
-    } else {
-      pdf.save(filename);
+    const resultBlob = pdf.output('blob');
+    if (!patientData?.returnBlob) {
+      await deliverPdfBlob(resultBlob, filename);
     }
     return resultBlob;
   } finally {
@@ -584,10 +753,40 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
   const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
-  const diag = patientData?.customDiagnosis || '';
-  const rat = patientData?.customRationale || '';
-  const plan = patientData?.customTreatmentPlan || '';
-  const mon = patientData?.customMonitoring || '';
+  const isEvolutivo = Boolean(
+    (patientData?.reportType === 'evolutivo' ||
+     patientData?.docType === 'laudo_evolutivo' ||
+     patientData?.isEvolutivo === true) &&
+    patientData?.reportType !== 'inicial' &&
+    patientData?.docType !== 'laudo_inicial' &&
+    patientData?.isEvolutivo !== false
+  );
+
+  const fallback = (!patientData?.customDiagnosis || !patientData?.customRationale)
+    ? generatePersonalizedClinicalReport({
+        patientName: sanitizedUserName,
+        birthDate: birthDateText,
+        cpf: cpfText,
+        objectives: patientData?.answers?.objectives || ['Ansiedade e Dor Crônica'],
+        intensity: patientData?.answers?.intensity,
+        duration: patientData?.answers?.duration,
+        description: patientData?.answers?.description,
+        diseaseOrigin: patientData?.answers?.diseaseOrigin,
+        remedios: patientData?.answers?.remedios,
+        remedios_details: patientData?.answers?.remedios_details,
+        doenca_cronica: patientData?.answers?.doenca_cronica,
+        doenca_cronica_details: patientData?.answers?.doenca_cronica_details,
+        digestivo: patientData?.answers?.digestivo,
+        digestivo_details: patientData?.answers?.digestivo_details,
+        mainSymptoms: patientData?.answers?.mainSymptoms,
+        pathology: patientData?.answers?.pathology
+      }, isEvolutivo ? 'evolutivo' : 'inicial')
+    : null;
+
+  const diag = patientData?.customDiagnosis || fallback?.clinicalSummary || 'Quadro clínico crônico sob acompanhamento médico continuado.';
+  const rat = patientData?.customRationale || fallback?.therapeuticRationale || 'Modulação do Sistema Endocanabinoide (SEC).';
+  const plan = patientData?.customTreatmentPlan || fallback?.treatmentPlan || 'Terapêutica fitocanabinoide individualizada.';
+  const mon = patientData?.customMonitoring || fallback?.monitoringText || 'Acompanhamento clínico periódico.';
 
   const totalLength = diag.length + rat.length + plan.length + mon.length;
 
@@ -598,39 +797,36 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     sections: { title: string; content: string }[];
   }
 
-  const isEvolutivo = Boolean(
-    patientData?.reportType === 'evolutivo' ||
-    patientData?.docType === 'laudo_evolutivo' ||
-    (diag && diag.toLowerCase().includes('cultivo')) ||
-    (diag && diag.toLowerCase().includes('quesito')) ||
-    (rat && rat.toLowerCase().includes('continuidade')) ||
-    (rat && rat.toLowerCase().includes('interrupção'))
-  );
-  const baseReportTitle = isEvolutivo ? 'LAUDO MÉDICO EVOLUTIVO' : 'LAUDO MÉDICO';
+  const baseReportTitle = isEvolutivo ? 'LAUDO MÉDICO EVOLUTIVO' : 'LAUDO MÉDICO INICIAL';
+  const baseReportSubtitle = isEvolutivo
+    ? 'ACOMPANHAMENTO CLÍNICO E EVOLUÇÃO TERAPÊUTICA'
+    : 'COMPROVAÇÃO DE INÍCIO DE TRATAMENTO CANABINOIDE';
+  const baseReportBadge = isEvolutivo ? 'Laudo Evolutivo' : 'Laudo Inicial';
 
   const reportPages: ReportPageData[] = [];
   const planItems = plan ? plan.split(/\n\n+/).filter(itemBlock => itemBlock.trim()) : [];
 
   // Paging and capacity distribution:
-  // 1. Fits in 1 Single Page (up to ~2400 chars) -> All sections on Page 1 (reduces sheets!)
-  // 2. Fits in 2 Pages (up to ~4800 chars):
-  //    - If diag + rat <= 2500, Page 1 takes BOTH diag AND rat (fills Page 1!)
-  //      and Page 2 takes plan + mon (fills Page 2!)
-  //    - If diag alone is long (>= 1800), Page 1 takes diag, and Page 2 takes rat + plan + mon!
-  //    - If diag is very long (> 2500), split diag so Page 1 takes ~2000 chars and Page 2 takes the rest!
-  // 3. 3 Pages only if totalLength > 4800, distributed evenly so no page is empty!
+  // - For Laudo Inicial (!isEvolutivo):
+  //   Consolidated into 1 SINGLE PAGE (Folha Única) by default (up to ~3200 chars), so the physician signs only once!
+  //   If exceptionally extensive (> 3200 chars), max 2 pages. Never 3 pages for Laudo Inicial!
+  // - For Laudo Evolutivo (isEvolutivo):
+  //   Judicial dossier with 7 pericial quesitos, fits into 1 page up to ~2400 chars, 2 pages up to 4800 chars, or 3 pages if > 4800 chars.
+  const isSinglePage = isEvolutivo
+    ? (totalLength <= 2400 && diag.length <= 1800)
+    : (totalLength <= 3200 && diag.length <= 2200);
 
-  if (totalLength <= 2400 && diag.length <= 1800) {
-    // 1 SINGLE PAGE: All sections fit on 1 page! (Reduz folhas!)
+  if (isSinglePage) {
+    // 1 SINGLE PAGE: All sections fit on 1 page! (Folha única oficial!)
     const p1Sections = [
       { 
-        title: isEvolutivo ? 'Diagnóstico Clínico & Evolução' : 'Diagnóstico Clínico & Anamnese', 
+        title: isEvolutivo ? 'Diagnóstico Clínico & Evolução Terapêutica' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
         content: diag 
       }
     ];
     if (rat) {
       p1Sections.push({
-        title: isEvolutivo ? 'Fundamentação Terapêutica (Quesito 7)' : 'Raciocínio Clínico & Fundamentação',
+        title: isEvolutivo ? 'Fundamentação Terapêutica & Continuidade (Quesito 7)' : 'Raciocínio Clínico & Indicação de Início de Tratamento',
         content: rat
       });
     }
@@ -653,21 +849,23 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       title: baseReportTitle,
       sections: p1Sections
     });
-  } else if (totalLength <= 4800) {
+  } else if (!isEvolutivo || totalLength <= 4800) {
     // EXACTLY 2 PAGES: Distribute content to fill Page 1 and Page 2 completely!
-    const canPage1TakeRat = (diag.length + rat.length <= 2500) && diag.length <= 1700;
+    // Page 1 comfortably holds Diagnosis AND Rationale up to ~3800 chars, filling Page 1 gracefully
+    // and leaving Page 2 dedicated to Treatment Plan, Monitoring Guidelines & Doctor Signature!
+    const canPage1TakeRat = (diag.length + rat.length <= 3800) && diag.length <= 2500;
 
     if (canPage1TakeRat) {
       // Page 1 gets Diagnosis AND Rationale! (Page 1 is filled, no empty space!)
       const p1Sections = [
         { 
-          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
+          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
           content: diag 
         }
       ];
       if (rat) {
         p1Sections.push({
-          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+          title: isEvolutivo ? 'Fundamentação Terapêutica & Continuidade (Quesito 7)' : 'Raciocínio Fisiopatológico e Indicação de Tratamento',
           content: rat
         });
       }
@@ -718,7 +916,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         title: baseReportTitle,
         sections: [
           { 
-            title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
+            title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
             content: diagP1 
           }
         ]
@@ -727,13 +925,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       const p2Sections = [];
       if (diagP2) {
         p2Sections.push({
-          title: 'Continuação da Evolução Clínica',
+          title: isEvolutivo ? 'Continuação da Evolução Clínica' : 'Continuação da Avaliação Clínica',
           content: diagP2
         });
       }
       if (rat) {
         p2Sections.push({
-          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+          title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Indicação do Tratamento',
           content: rat
         });
       }
@@ -775,7 +973,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       title: baseReportTitle,
       sections: [
         { 
-          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Anamnese do Paciente', 
+          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
           content: diagP1 
         }
       ]
@@ -784,13 +982,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     const p2Sections = [];
     if (diagP2) {
       p2Sections.push({
-        title: 'Continuação da Evolução Clínica',
+        title: isEvolutivo ? 'Continuação da Evolução Clínica' : 'Continuação da Avaliação Clínica',
         content: diagP2
       });
     }
     if (rat) {
       p2Sections.push({
-        title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Continuidade Terapêutica',
+        title: isEvolutivo ? 'Fundamentação Terapêutica & Riscos de Interrupção (Quesito 7)' : 'Raciocínio Fisiopatológico e Indicação do Tratamento',
         content: rat
       });
     }
@@ -882,20 +1080,25 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               width: "794px", 
               minHeight: "1123px", 
               height: "1123px", 
-              padding: "20px 36px 16px 36px", 
+              padding: "16px 36px 14px 36px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
               boxSizing: "border-box"
             }}
           >
-            {/* Page number */}
-            <div className="absolute top-4 right-9 text-[9.5px] text-[#64748B] font-bold">
-              Página {page.pageNumber} de {page.totalPages}
-            </div>
-
             <div>
+              {/* Top Bar with Page Indicator in-flow (never overlaps doctor info) */}
+              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
+                <span className="text-[9.5px] text-[#64748B] font-semibold">
+                  Documento Médico Oficial MECURA
+                </span>
+                <span className="text-[9.5px] text-[#64748B] font-bold">
+                  Página {page.pageNumber} de {page.totalPages}
+                </span>
+              </div>
+
               {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-2 pt-0.5">
+              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2.5 mb-2">
                 <div>
                   <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
                   <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
@@ -903,15 +1106,27 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                   </p>
                 </div>
                 <div className="text-right">
-                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</h3>
-                  <p className="text-[10px] text-[#475569] font-semibold m-0">{docCrm}</p>
-                  <p className="text-[9px] text-[#64748B] m-0">{docSpec}</p>
+                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
+                  <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
+                  <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
                 </div>
               </div>
 
               {/* Title & Patient Identification */}
               {page.pageNumber === 1 ? (
                 <div className="text-center mb-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2">
+                  <div className="flex items-center justify-between mb-1 px-1">
+                    <span className="text-[9px] font-bold tracking-widest text-[#059669] uppercase">
+                      {baseReportSubtitle}
+                    </span>
+                    <span className={`font-bold text-[8.5px] px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                      isEvolutivo 
+                        ? 'bg-[#DBEAFE] text-[#1E40AF] border-[#BFDBFE]' 
+                        : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+                    }`}>
+                      {baseReportBadge}
+                    </span>
+                  </div>
                   <h1 className="text-sm font-black text-[#1E1B4B] tracking-widest uppercase mb-1">{page.title}</h1>
                   <div className="flex flex-col items-center gap-0.5">
                     <div className="flex items-center gap-2 text-xs text-[#475569]">
@@ -954,16 +1169,16 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                       </h4>
 
                       {isPlanSection ? (
-                        <div className="space-y-1.5">
+                        <div className={planItems.length >= 4 ? "space-y-1" : "space-y-1.5"}>
                           {sec.content.split(/\n\n+/).filter(itemBlock => itemBlock.trim()).map((itemBlock, iIdx) => {
                             const lines = itemBlock.split('\n').map(l => l.trim()).filter(Boolean);
                             const titleLine = lines[0] || '';
                             const detailLines = lines.slice(1);
 
                             return (
-                              <div key={iIdx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded p-2 text-[9px] text-[#334155] leading-snug">
-                                <p className="font-bold text-[#0F172A] text-[9.5px] mb-0.5 m-0">{titleLine}</p>
-                                <div className="space-y-0.5 pl-1.5 text-[8.5px] text-[#475569]">
+                              <div key={iIdx} className={`bg-[#F8FAFC] border border-[#E2E8F0] rounded leading-snug ${planItems.length >= 4 ? 'p-1.5 text-[8.5px]' : 'p-2 text-[9px] text-[#334155]'}`}>
+                                <p className={`font-bold text-[#0F172A] mb-0.5 m-0 ${planItems.length >= 4 ? 'text-[9px]' : 'text-[9.5px]'}`}>{titleLine}</p>
+                                <div className={`space-y-0.5 pl-1 text-[#475569] ${planItems.length >= 4 ? 'text-[8px]' : 'text-[8.5px]'}`}>
                                   {detailLines.map((line, lIdx) => (
                                     <p key={lIdx} className="m-0 leading-tight">{line}</p>
                                   ))}
@@ -1000,18 +1215,33 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               </div>
             </div>
 
-            {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="mt-auto pt-2 border-t border-[#E2E8F0]">
-              <div className="flex flex-col items-center">
-                <div className="w-48 h-0 border-b border-[#CBD5E1] mb-0.5"></div>
-                <p className="text-[10px] font-bold text-[#1E1B4B] m-0">{docName}</p>
-                <p className="text-[8.5px] text-[#64748B] m-0 mb-0.5">{docCrm} • Assinatura Digital / Prescritor</p>
-                <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-semibold">
-                  <span>Data de Emissão: {emissionDateStr}</span>
-                  <span>Documento Médico Oficial • Válido em todo o território nacional</span>
+            {/* Doctor Signature & Emission Footer — Signature only on final page so doctor does not have to sign every intermediate page */}
+            {page.pageNumber === page.totalPages ? (
+              <div className="mt-auto pt-2 border-t border-[#E2E8F0]">
+                <div className="flex flex-col items-center">
+                  <div className="w-52 border-b border-[#CBD5E1] mb-2" style={{ height: '0px' }}></div>
+                  <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
+                  <p className="text-[9px] text-[#64748B] font-semibold m-0" style={{ marginTop: '2px', marginBottom: '3px', lineHeight: '1.2' }}>{docCrm} • Assinatura Digital / Prescritor</p>
+                  <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-semibold mt-1">
+                    <span>Data de Emissão: {emissionDateStr}</span>
+                    <span>Documento Médico Oficial • Válido em todo o território nacional</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="mt-auto pt-2 border-t border-[#E2E8F0]">
+                <div className="flex items-center justify-between text-[8px] text-[#64748B] font-semibold">
+                  <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+                  <span className="text-[#1E1B4B] font-bold">Documento Médico Oficial — Continua na folha {page.pageNumber + 1}...</span>
+                  <span>Folha {page.pageNumber} de {page.totalPages}</span>
+                </div>
+                <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-medium mt-1">
+                  <span>Paciente: {sanitizedUserName}</span>
+                  <span>Médico Assistente: {docName} ({docCrm})</span>
+                  <span>Emissão: {emissionDateStr}</span>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -1050,11 +1280,9 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     }
 
     const filename = `Laudo_Medico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
-    let resultBlob: Blob | undefined;
-    if (patientData?.returnBlob) {
-      resultBlob = pdf.output('blob');
-    } else {
-      pdf.save(filename);
+    const resultBlob = pdf.output('blob');
+    if (!patientData?.returnBlob) {
+      await deliverPdfBlob(resultBlob, filename);
     }
     return resultBlob;
   } finally {
@@ -1121,9 +1349,9 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
                 </p>
               </div>
               <div className="text-right">
-                <h3 className="text-sm font-bold text-[#1E1B4B] m-0">{docName}</h3>
-                <p className="text-xs text-[#475569] font-semibold m-0">{docCrm}</p>
-                <p className="text-[10px] text-[#64748B] m-0">{docSpec}</p>
+                <h3 className="text-sm font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
+                <p className="text-xs text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
+                <p className="text-[10px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
               </div>
             </div>
 
@@ -1162,10 +1390,10 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
           {/* Doctor Signature & Emission Footer */}
           <div className="mt-auto pt-4 border-t border-[#E2E8F0]">
             <div className="flex flex-col items-center">
-              <div className="w-56 h-0 border-b border-[#CBD5E1] mb-1.5"></div>
-              <p className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</p>
-              <p className="text-[10px] text-[#64748B] m-0 mb-2">{docCrm} • Assinatura Digital / Prescritor</p>
-              <div className="flex justify-between w-full text-[9px] text-[#94A3B8] font-semibold">
+              <div className="w-56 border-b border-[#CBD5E1] mb-2.5" style={{ height: '0px' }}></div>
+              <p className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
+              <p className="text-[10px] text-[#64748B] font-semibold m-0" style={{ marginTop: '2px', marginBottom: '4px', lineHeight: '1.2' }}>{docCrm} • Assinatura Digital / Prescritor</p>
+              <div className="flex justify-between w-full text-[9px] text-[#94A3B8] font-semibold mt-1">
                 <span>Data de Emissão: {emissionDateStr}</span>
                 <span>Válido em todo o território nacional</span>
               </div>
@@ -1208,11 +1436,9 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
     }
 
     const filename = `Laudo_Psicomotor_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
-    let resultBlob: Blob | undefined;
-    if (patientData?.returnBlob) {
-      resultBlob = pdf.output('blob');
-    } else {
-      pdf.save(filename);
+    const resultBlob = pdf.output('blob');
+    if (!patientData?.returnBlob) {
+      await deliverPdfBlob(resultBlob, filename);
     }
     return resultBlob;
   } finally {
@@ -1785,14 +2011,10 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
     }
 
     const filename = `Parecer_Agronomico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
-
-    let resultBlob: Blob | undefined;
-    if (agronomicData?.returnBlob) {
-      resultBlob = pdf.output('blob');
-    } else {
-      pdf.save(filename);
+    const resultBlob = pdf.output('blob');
+    if (!agronomicData?.returnBlob) {
+      await deliverPdfBlob(resultBlob, filename);
     }
-
     return resultBlob;
   } finally {
     root.unmount();

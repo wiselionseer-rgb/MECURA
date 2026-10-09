@@ -11,6 +11,13 @@ import {
   formatAbecmedStandardOutput, 
   AbecmedProduct 
 } from './abecmedCatalog';
+import {
+  ABRACE_PRODUCTS,
+  ABRACE_COMPANY_INFO,
+  ABRACE_AGENT_SYSTEM_PROMPT,
+  formatAbraceStandardOutput,
+  AbraceProduct
+} from './abraceCatalog';
 
 export { 
   FLOWERMED_PRODUCTS, 
@@ -24,9 +31,13 @@ export {
   ABECMED_PRICING_TABLE,
   ABECMED_PRESCRIPTION_RULES,
   ABECMED_USAGE_GUIDELINES,
-  formatAbecmedStandardOutput
+  formatAbecmedStandardOutput,
+  ABRACE_PRODUCTS,
+  ABRACE_COMPANY_INFO,
+  ABRACE_AGENT_SYSTEM_PROMPT,
+  formatAbraceStandardOutput
 };
-export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct };
+export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct, AbraceProduct };
 
 export interface CBDProduct {
   name: string;
@@ -624,6 +635,23 @@ export const cbdGuideData: CBDCategory[] = [
     ],
     dosageGuidance: "Posologia conforme determinação do prescritor individual. Não há quantidade universal de gotas; aguardar posologia médica.",
     products: ABECMED_PRODUCTS
+  },
+  {
+    id: "abrace_oficial",
+    title: "ABRACE ESPERANÇA — CATÁLOGO OFICIAL (ASSOCIAÇÃO NACIONAL)",
+    description: "Catálogo Oficial de Produtos da ABRACE (Associação Brasileira de Apoio Cannabis Esperança — João Pessoa/PB). Óleos de CBD (Laranja, Vermelho, Cinza/Prata), Óleo de THC (Preto 30 mg/mL), Óleos Combinados 1:1 (Azul e Roxo), Flores In Natura (CBD, THC e CBD+THC em 10g), Gomas farmacotécnicas (CBD, THC e CBD+THC em 30 un), Pomadas Full Spectrum (CBD e THC em 100g) e Spray Resgate THC (5 mg/mL em 25 mL).",
+    indicationsList: [
+      "Ansiedade & Estresse (Linha Laranja CBD 20 e 30 mg/mL)",
+      "Epilepsia & TEA (Linha Vermelha CBD 100 mg/mL e Prata 200 mg/mL)",
+      "Dor Crônica & Espasticidade (Linha Preto THC 30 mg/mL)",
+      "Fibromialgia & Dores Refratárias (Linha Azul e Roxo CBD:THC 1:1)",
+      "Resgate Inalatório Rápido de Crises (Flores In Natura CBD, THC e CBD+THC)",
+      "Praticidade Posológica e Ansiedade Diurna (Gomas de Canabinoides)",
+      "Dores Articulares, Tendinites & Contraturas (Pomadas Full CBD e THC)",
+      "Resgate Imediato de Crises Álgicas & Náuseas (Spray Resgate THC 5 mg/mL)"
+    ],
+    dosageGuidance: "Administração conforme prescrição médica individualizada. Uso sublingual para óleos e spray, inalatório sem combustão para flores, mastigável para gomas e tópico para pomadas.",
+    products: ABRACE_PRODUCTS
   },
   {
     id: "flowermed_oficial",
@@ -1786,6 +1814,47 @@ function _enrichMedicationDetails(
     };
   }
 
+  // Check if product is from ABRACE official catalog (Nacional)
+  const abraceMatch = ABRACE_PRODUCTS.find(p => {
+    const pLower = p.name.toLowerCase().trim();
+    if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
+    if (nameLower.includes('abrace')) {
+      if (nameLower.includes('laranja') && (nameLower.includes('20') || p.name.includes('20 mg/mL'))) return p.name.includes('20 mg/mL');
+      if (nameLower.includes('laranja') && (nameLower.includes('30') || p.name.includes('30 mg/mL'))) return p.name.includes('30 mg/mL');
+      if (nameLower.includes('vermelho') && p.name.includes('Vermelho')) return true;
+      if ((nameLower.includes('cinza') || nameLower.includes('prata')) && p.name.includes('Cinza/Prata')) return true;
+      if (nameLower.includes('preto') && p.name.includes('Preto')) return true;
+      if (nameLower.includes('azul') && p.name.includes('Azul')) return true;
+      if (nameLower.includes('roxo') && p.name.includes('Roxo')) return true;
+      if (nameLower.includes('flor') && nameLower.includes('cbd') && nameLower.includes('thc') && p.name.includes('CBD + THC')) return true;
+      if (nameLower.includes('flor') && nameLower.includes('cbd') && p.name.includes('Ricas em CBD')) return true;
+      if (nameLower.includes('flor') && nameLower.includes('thc') && p.name.includes('Ricas em THC')) return true;
+      if (nameLower.includes('goma') && nameLower.includes('cbd') && nameLower.includes('thc') && p.name.includes('CBD + THC')) return true;
+      if (nameLower.includes('goma') && nameLower.includes('cbd') && p.name.includes('Gomas de CBD')) return true;
+      if (nameLower.includes('goma') && nameLower.includes('thc') && p.name.includes('Gomas de THC')) return true;
+      if (nameLower.includes('pomada') && nameLower.includes('cbd') && p.name.includes('Rica em CBD')) return true;
+      if (nameLower.includes('pomada') && nameLower.includes('thc') && p.name.includes('Rica em THC')) return true;
+      if (nameLower.includes('spray') && p.name.includes('Spray')) return true;
+    }
+    return false;
+  });
+
+  if (abraceMatch) {
+    return {
+      name: abraceMatch.name,
+      activeIngredients: abraceMatch.activeIngredients || 'Fitocanabinoides de Associação Nacional ABRACE',
+      concentration: abraceMatch.concentration || 'Concentração padronizada',
+      pharmaceuticalForm: abraceMatch.pharmaceuticalForm || 'Forma farmacêutica padronizada',
+      quantity: abraceMatch.quantity || '01 Unidade',
+      administrationRoute: abraceMatch.administrationRoute || 'Conforme orientação médica',
+      brand: 'ABRACE',
+      origin: 'Nacional',
+      type: abraceMatch.type || 'Produto de Associação Nacional ABRACE',
+      description: abraceMatch.description || 'Produto oficial da ABRACE (Associação Brasileira de Apoio Cannabis Esperança).',
+      usageInstructions: abraceMatch.usageInstructions || '• Administrar conforme posologia estabelecida pelo médico assistente.'
+    };
+  }
+
   // Check if product is from National Association catalog or full cbdGuideData
   let guideMatch = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
     const pLower = p.name.toLowerCase();
@@ -1930,7 +1999,7 @@ function _enrichMedicationDetails(
   const originLower = (origin || '').toLowerCase();
   const brandLower = (brand || '').toLowerCase();
   const isImportedExplicit = originLower.includes('import') || originLower.includes('eua') || brandLower.includes('flowermed') || brandLower.includes('greenbudz');
-  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRASCORP|AMAME|APEPI/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação'));
+  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRACE|ABRASCORP|AMAME|APEPI/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação') || brandLower.includes('abrace'));
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
   const typeLower = (type || '').toLowerCase();

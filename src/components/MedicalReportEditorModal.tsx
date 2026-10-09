@@ -21,7 +21,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { PrescriptionItemData } from '../utils/pdfGenerator';
-import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
+import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
 
 interface MedicalReportEditorModalProps {
   isOpen: boolean;
@@ -129,18 +129,30 @@ export function MedicalReportEditorModal({
           {/* Header */}
           <div className="p-4 sm:p-6 border-b border-mecura-elevated bg-[#0A0A0F]/90 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                reportType === 'evolutivo'
+                  ? 'bg-blue-500/15 border border-blue-500/30 text-blue-400'
+                  : 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
+              }`}>
                 <FileCheck className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-white font-bold text-base sm:text-lg">Laudo Médico Pericial & Clínico</h3>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded border border-amber-500/30">
-                    Visualizar & Editar
+                  <h3 className="text-white font-bold text-base sm:text-lg">
+                    {reportType === 'evolutivo' ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial'}
+                  </h3>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                    reportType === 'evolutivo'
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  }`}>
+                    {reportType === 'evolutivo' ? 'Acompanhamento & Evolução' : 'Comprovação de Início'}
                   </span>
                 </div>
                 <p className="text-xs text-mecura-silver">
-                  Documento detalhado com diagnóstico, fisiopatologia do SEC e fundamentação terapêutica
+                  {reportType === 'evolutivo'
+                    ? 'Acompanhamento clínico, resposta terapêutica com canabinoides e justificativa de continuidade'
+                    : 'Documento pericial e clínico comprovando o início do tratamento supervisionado com Cannabis medicinal'}
                 </p>
               </div>
             </div>
@@ -354,7 +366,8 @@ export function MedicalReportEditorModal({
                           const val = e.target.value;
                           if (!val) return;
                           const found = NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
-                                        ABECMED_PRODUCTS.find(p => p.name === val);
+                                        ABECMED_PRODUCTS.find(p => p.name === val) ||
+                                        ABRACE_PRODUCTS.find(p => p.name === val);
                           if (found) {
                             const enriched = enrichMedicationDetails(found.name, found.manufacturer || 'Associação Nacional', found.origin || 'Nacional', found.type, found);
                             const ing = found.activeIngredients || enriched.activeIngredients;
@@ -377,6 +390,24 @@ export function MedicalReportEditorModal({
                         <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
                           + Inserir Medicamento do Catálogo...
                         </option>
+                        <optgroup label="🌿 Linha ABRACE Esperança (Nacional)" className="bg-[#0A0A0F] text-emerald-400 font-bold">
+                          <option value="Óleo Laranja CBD 20 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 20 mg/mL (30 mL)</option>
+                          <option value="Óleo Laranja CBD 30 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 30 mg/mL (30 mL)</option>
+                          <option value="Óleo Vermelho CBD 100 mg/mL — ABRACE (30 mL)">Óleo Vermelho CBD 100 mg/mL (30 mL)</option>
+                          <option value="Óleo Cinza/Prata CBD 200 mg/mL — ABRACE (30 mL)">Óleo Cinza/Prata CBD 200 mg/mL (30 mL)</option>
+                          <option value="Óleo Preto THC 30 mg/mL — ABRACE (30 mL)">Óleo Preto THC 30 mg/mL (30 mL)</option>
+                          <option value="Óleo Azul CBD + THC 15 mg/mL + 15 mg/mL (1:1) — ABRACE (30 mL)">Óleo Azul CBD+THC 15+15 mg/mL (1:1) (30 mL)</option>
+                          <option value="Óleo Roxo CBD + THC 30 mg/mL + 30 mg/mL (1:1) — ABRACE (30 mL)">Óleo Roxo CBD+THC 30+30 mg/mL (1:1) (30 mL)</option>
+                          <option value="Flores In Natura Ricas em CBD — ABRACE (10 g)">Flores In Natura Ricas em CBD (10 g)</option>
+                          <option value="Flores In Natura Ricas em THC — ABRACE (10 g)">Flores In Natura Ricas em THC (10 g)</option>
+                          <option value="Flores In Natura Ricas em CBD + THC — ABRACE (10 g)">Flores In Natura Ricas em CBD + THC (10 g)</option>
+                          <option value="Gomas de CBD 10 mg/goma — ABRACE (30 un)">Gomas de CBD 10 mg/goma (30 un)</option>
+                          <option value="Gomas de THC 10 mg/goma — ABRACE (30 un)">Gomas de THC 10 mg/goma (30 un)</option>
+                          <option value="Gomas de CBD + THC 10 mg/goma (1:1) — ABRACE (30 un)">Gomas de CBD + THC 10 mg/goma (1:1) (30 un)</option>
+                          <option value="Pomada Full Rica em CBD 30 mg/g — ABRACE (100 g)">Pomada Full Rica em CBD 30 mg/g (100 g)</option>
+                          <option value="Pomada Full Rica em THC 20 mg/g — ABRACE (100 g)">Pomada Full Rica em THC 20 mg/g (100 g)</option>
+                          <option value="Spray Resgate THC 5 mg/mL — ABRACE (25 mL)">Spray Resgate THC 5 mg/mL (25 mL)</option>
+                        </optgroup>
                         <optgroup label="Linha ALTO CBD Full Spectrum" className="bg-[#0A0A0F] text-white">
                           <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 5:1 THC (30 mg/mL)</option>
                           <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 5:1 THC (60 mg/mL)</option>
@@ -448,15 +479,24 @@ export function MedicalReportEditorModal({
                       </div>
                       <div className="text-right">
                         <h3 className="text-sm font-bold text-[#1E1B4B]">{doctorName}</h3>
-                        <p className="text-xs text-slate-600 font-semibold">{doctorCrm}</p>
-                        <p className="text-[10px] text-slate-500">{doctorSpecialty}</p>
+                        <p className="text-xs text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{doctorSpecialty}</p>
                       </div>
                     </div>
 
                     {/* Title */}
                     <div className="text-center my-3">
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        <span className={`text-[9px] font-bold tracking-widest px-2.5 py-0.5 rounded-full uppercase border ${
+                          reportType === 'evolutivo'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : 'bg-amber-50 text-amber-800 border-amber-200'
+                        }`}>
+                          {reportType === 'evolutivo' ? 'Acompanhamento Clínico & Evolução' : 'Comprovação de Início de Tratamento'}
+                        </span>
+                      </div>
                       <h1 className="text-base font-bold text-[#1E1B4B] uppercase tracking-widest">
-                        Laudo Médico Pericial e Justificativa Terapêutica
+                        {reportType === 'evolutivo' ? 'LAUDO MÉDICO EVOLUTIVO' : 'LAUDO MÉDICO INICIAL'}
                       </h1>
                       <div className="w-20 h-0.5 bg-[#059669] mx-auto mt-1" />
                     </div>
@@ -476,7 +516,7 @@ export function MedicalReportEditorModal({
                     {/* Section 2 */}
                     <div className="my-4">
                       <h3 className="text-xs font-bold text-[#1E1B4B] uppercase tracking-wider mb-1">
-                        2. Diagnóstico e Quadro Clínico
+                        {reportType === 'evolutivo' ? '2. Diagnóstico Clínico & Evolução Terapêutica' : '2. Diagnóstico Clínico & Comprovação de Início de Tratamento'}
                       </h3>
                       <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-2.5 rounded border border-slate-100">
                         {diagnosis}
@@ -486,7 +526,7 @@ export function MedicalReportEditorModal({
                     {/* Section 3 */}
                     <div className="my-4">
                       <h3 className="text-xs font-bold text-[#1E1B4B] uppercase tracking-wider mb-1">
-                        3. Justificativa & Fisiopatologia do Sistema Endocanabinoide (SEC)
+                        {reportType === 'evolutivo' ? '3. Fundamentação Terapêutica & Continuidade' : '3. Raciocínio Clínico & Indicação de Tratamento'}
                       </h3>
                       <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-2.5 rounded border border-slate-100">
                         {rationale}
@@ -523,10 +563,10 @@ export function MedicalReportEditorModal({
                     </div>
 
                     <div className="text-center w-52">
-                      <div className="border-b border-slate-400 pb-1 mb-1" />
+                      <div className="border-b border-slate-400 mb-2" />
                       <p className="text-xs font-bold text-slate-900">{doctorName}</p>
-                      <p className="text-[10px] text-slate-600 font-semibold">{doctorCrm}</p>
-                      <p className="text-[9px] text-slate-500">Assinatura Digital / Médico Prescritor</p>
+                      <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5">Assinatura Digital / Médico Prescritor</p>
                     </div>
                   </div>
                 </div>

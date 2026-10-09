@@ -4,7 +4,16 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useStore } from '../store/useStore';
-import { ABECMED_PRODUCTS, formatAbecmedStandardOutput, ABECMED_COMPANY_INFO, ABECMED_PRICING_TABLE, ABECMED_PRESCRIPTION_RULES } from '../data/cbdGuide';
+import { 
+  ABECMED_PRODUCTS, 
+  formatAbecmedStandardOutput, 
+  ABECMED_COMPANY_INFO, 
+  ABECMED_PRICING_TABLE, 
+  ABECMED_PRESCRIPTION_RULES,
+  ABRACE_PRODUCTS,
+  formatAbraceStandardOutput,
+  ABRACE_COMPANY_INFO
+} from '../data/cbdGuide';
 
 type Message = {
   id: number;
@@ -112,6 +121,7 @@ export function AdvisorChatWidget() {
 
       const startOptions = [
         "Quem somos nós?",
+        "Medicamentos Nacionais (ABRACE)",
         "Medicamentos Nacionais (ABECMED)",
         "Quais doenças são tratadas?",
         "Como funciona a compra e envio?",
@@ -123,8 +133,30 @@ export function AdvisorChatWidget() {
         "Falar com suporte humano"
       ];
 
-      // 1. Dúvidas sobre dosagem, gotas ou posologia (Regra estrita ABECMED)
-      if (lowerText.includes("quantas gotas") || lowerText.includes("quantas gota") || (lowerText.includes("gotas") && (lowerText.includes("tomar") || lowerText.includes("devo"))) || lowerText.includes("qual a dose") || lowerText.includes("minha dose")) {
+      // Dúvidas sobre ABRACE
+      if (lowerText.includes("abrace") || text === "Medicamentos Nacionais (ABRACE)") {
+        const matchedProd = ABRACE_PRODUCTS.find(p => {
+          const pNameLower = p.name.toLowerCase();
+          return lowerText.includes("laranja") && pNameLower.includes("laranja")
+            || lowerText.includes("vermelho") && pNameLower.includes("vermelho")
+            || (lowerText.includes("cinza") || lowerText.includes("prata")) && pNameLower.includes("cinza/prata")
+            || lowerText.includes("preto") && pNameLower.includes("preto")
+            || lowerText.includes("azul") && pNameLower.includes("azul")
+            || lowerText.includes("roxo") && pNameLower.includes("roxo")
+            || lowerText.includes("flor") && pNameLower.includes("flores")
+            || lowerText.includes("goma") && pNameLower.includes("gomas")
+            || lowerText.includes("pomada") && pNameLower.includes("pomada")
+            || lowerText.includes("spray") && pNameLower.includes("spray");
+        });
+
+        if (matchedProd) {
+          botResponse.text = `📋 **Catálogo Oficial ABRACE — Ficha do Produto:**\n\n${formatAbraceStandardOutput(matchedProd)}`;
+          botResponse.options = ["Ver outros produtos ABRACE", "Medicamentos Nacionais (ABECMED)", "Falar com suporte humano", "Voltar ao início"];
+        } else {
+          botResponse.text = `🇧🇷 **BASE OFICIAL DE PRODUTOS — ABRACE (Associação Brasileira de Apoio Cannabis Esperança)**\n\nA ABRACE é uma das pioneiras no Brasil, oferecendo tratamentos padronizados sob supervisão médica:\n\n🟠 **1. ÓLEOS DE CBD (30 mL):**\n• **Laranja 20 mg/mL** (600 mg total) e **30 mg/mL** (900 mg total)\n• **Vermelho 100 mg/mL** (3.000 mg total — Alta Concentração)\n• **Cinza/Prata 200 mg/mL** (6.000 mg total — Ultra Concentração)\n\n⚫ **2. ÓLEO DE THC (30 mL):**\n• **Preto 30 mg/mL THC** (900 mg total — Noturno & Analgésico)\n\n🔵 **3. ÓLEOS COMBINADOS CBD + THC 1:1 (30 mL):**\n• **Azul 15+15 mg/mL** (450 mg CBD + 450 mg THC)\n• **Roxo 30+30 mg/mL** (900 mg CBD + 900 mg THC — Alta Densidade)\n\n🌿 **4. FLORES IN NATURA (10 g - Vaporização Medicinal):**\n• Ricas em CBD, Ricas em THC e Ricas em CBD+THC (10 g)\n\n🍬 **5. GOMAS DE CANNABINOIDES (30 un):**\n• Gomas de CBD 10mg, THC 10mg e CBD+THC 10mg\n\n🧴 **6. POMADAS E CREMES (100 g):**\n• Pomada Full Rica em CBD 30 mg/g e Pomada Full Rica em THC 20 mg/g\n\n💨 **7. SPRAY DE RESGATE (25 mL):**\n• Spray Resgate THC 5 mg/mL (Absorção transmucosa imediata)\n\n*Nota: Todos os medicamentos são nacionais de associação sem valor comercial informado ao público e emitidos na Guia 1 da receita.*`;
+          botResponse.options = ["Óleo Laranja (ABRACE)", "Óleo Vermelho 100mg", "Óleo Preto (THC)", "Óleo Azul 1:1", "Flores ABRACE (10g)", "Gomas ABRACE", "Pomada ABRACE", "Spray Resgate THC", "Voltar ao início"];
+        }
+      } else if (lowerText.includes("quantas gotas") || lowerText.includes("quantas gota") || (lowerText.includes("gotas") && (lowerText.includes("tomar") || lowerText.includes("devo"))) || lowerText.includes("qual a dose") || lowerText.includes("minha dose")) {
         botResponse.text = "⚠️ **Orientação de Segurança e Dosagem:**\n\nO catálogo oficial da ABECMED **não especifica uma quantidade universal de gotas ou tomadas por dia** — a dosagem é obrigatoriamente individualizada e determinada pelo médico prescritor.\n\n• **Se você já possui receita médica:** O cálculo matemático segue a concentração do rótulo (ex: em um óleo de 50 mg/mL, cada 1 mL contém 50 mg do composto ativo). Contudo, a conversão exata em gotas depende da calibração do conta-gotas específico de cada frasco.\n• **Nunca inicie ou altere doses sem a prévia orientação do seu médico assistente.** Se tiver dúvidas sobre a sua posologia, recomendamos consultar seu prescritor habilitado ou nossa equipe de acolhimento.";
         botResponse.options = ["Medicamentos Nacionais (ABECMED)", "Falar com suporte humano", "Voltar ao início"];
       } else if (lowerText.includes("abecmed") || lowerText.includes("abec") || text === "Medicamentos Nacionais (ABECMED)") {
