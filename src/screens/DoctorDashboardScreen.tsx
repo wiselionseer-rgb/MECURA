@@ -1,5 +1,5 @@
 import { useAdminStore } from '../store/useAdminStore';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -123,6 +123,54 @@ const calculateAge = (birthDateStr?: string) => {
   }
   return age >= 0 && age < 130 ? age : null;
 };
+
+// Isolated chat input component with local state to prevent re-rendering the massive dashboard on every keystroke
+const DoctorChatInputBar = memo(({
+  onSend,
+  hasPendingAttachment,
+  onSendPendingAttachment
+}: {
+  onSend: (text: string) => void;
+  hasPendingAttachment: boolean;
+  onSendPendingAttachment: () => void;
+}) => {
+  const [text, setText] = useState('');
+
+  const submit = () => {
+    if (text.trim()) {
+      onSend(text.trim());
+      setText('');
+    } else if (hasPendingAttachment) {
+      onSendPendingAttachment();
+    }
+  };
+
+  return (
+    <>
+      <input 
+        type="text" 
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Digite sua mensagem para o paciente..." 
+        className="flex-1 h-12 md:h-14 bg-mecura-surface border border-mecura-elevated rounded-full px-4 md:px-6 text-white focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface-light transition-all text-base md:text-[15px]"
+      />
+      <button 
+        type="button"
+        onClick={submit}
+        disabled={!text.trim() && !hasPendingAttachment}
+        className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-mecura-neon text-black flex items-center justify-center hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] disabled:opacity-50 disabled:shadow-none hover:scale-105 active:scale-95 flex-shrink-0 cursor-pointer"
+      >
+        <Send className="w-4 h-4 md:w-5 md:h-5 ml-1" />
+      </button>
+    </>
+  );
+});
 
 export function DoctorDashboardScreen() {
   const { productCategories: storeProductCategories } = useAdminStore();
@@ -1122,18 +1170,19 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleSend = () => {
-    if (!inputText.trim() && !pendingAttachment) return;
+  const handleSend = (customText?: string) => {
+    const textToSend = typeof customText === 'string' ? customText : inputText;
+    if (!textToSend.trim() && !pendingAttachment) return;
     
     if (pendingAttachment) {
       handleSendAttachment(pendingAttachment);
       return;
     }
 
-    if (inputText.trim()) {
+    if (textToSend.trim()) {
       const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
       addMessage({
-        text: inputText,
+        text: textToSend.trim(),
         sender: 'doctor'
       }, targetPatientId);
       setInputText('');
@@ -4559,21 +4608,11 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   accept=".pdf,image/*" 
                 />
               </div>
-              <input 
-                type="text" 
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Digite sua mensagem para o paciente..." 
-                className="flex-1 h-12 md:h-14 bg-mecura-surface border border-mecura-elevated rounded-full px-4 md:px-6 text-white focus:outline-none focus:border-mecura-neon/50 focus:bg-mecura-surface-light transition-all text-base md:text-[15px]"
+              <DoctorChatInputBar
+                onSend={(text) => handleSend(text)}
+                hasPendingAttachment={Boolean(pendingAttachment)}
+                onSendPendingAttachment={() => pendingAttachment && handleSendAttachment(pendingAttachment)}
               />
-              <button 
-                onClick={handleSend}
-                disabled={!inputText.trim() && !pendingAttachment}
-                className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-mecura-neon text-black flex items-center justify-center hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.2)] disabled:opacity-50 disabled:shadow-none hover:scale-105 active:scale-95 flex-shrink-0"
-              >
-                <Send className="w-4 h-4 md:w-5 md:h-5 ml-1" />
-              </button>
             </div>
           </div>
         </div>

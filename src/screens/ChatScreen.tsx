@@ -11,6 +11,49 @@ import { requestNotificationPermission, subscribeToBackgroundNotifications } fro
 
 import { auth } from '../firebase';
 
+const PatientChatInputBar = ({
+  onSend,
+  disabled
+}: {
+  onSend: (text: string) => void;
+  disabled?: boolean;
+}) => {
+  const [text, setText] = useState('');
+
+  const submit = () => {
+    if (!text.trim() || disabled) return;
+    onSend(text.trim());
+    setText('');
+  };
+
+  return (
+    <>
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        disabled={disabled}
+        placeholder={disabled ? "Enviando anexo..." : "Escreva sua mensagem..."}
+        className="flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border border-mecura-elevated focus:border-mecura-neon/50 transition-colors"
+      />
+      <button 
+        type="button"
+        onClick={submit}
+        disabled={!text.trim() || disabled}
+        className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)] shrink-0 cursor-pointer"
+      >
+        <Send className="w-5 h-5 ml-1" />
+      </button>
+    </>
+  );
+};
+
 export function ChatScreen() {
   const navigate = useNavigate();
   const { 
@@ -246,11 +289,12 @@ export function ChatScreen() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
+  const handleSend = (customText?: string) => {
+    const textToSend = typeof customText === 'string' ? customText : inputText;
+    if (!textToSend.trim()) return;
 
     addMessage({
-      text: inputText,
+      text: textToSend.trim(),
       sender: 'user'
     }, effectiveConsultationId);
     
@@ -1174,21 +1218,10 @@ export function ChatScreen() {
                 <Paperclip className="w-5 h-5" />
               )}
             </button>
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={isUploadingFile ? "Enviando anexo..." : "Escreva sua mensagem..."}
-              className="flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border border-mecura-elevated focus:border-mecura-neon/50 transition-colors"
+            <PatientChatInputBar
+              onSend={(text) => handleSend(text)}
+              disabled={isUploadingFile}
             />
-            <button 
-              onClick={handleSend}
-              disabled={!inputText.trim()}
-              className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)] shrink-0"
-            >
-              <Send className="w-5 h-5 ml-1" />
-            </button>
           </div>
         </div>
       )}

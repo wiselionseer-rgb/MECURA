@@ -89,9 +89,68 @@ export function MedicalReportEditorModal({
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Local state for blazing fast editing without re-rendering parent Dashboard on every keystroke
+  const [localPatientName, setLocalPatientName] = useState(patientName);
+  const [localBirthDate, setLocalBirthDate] = useState(birthDate);
+  const [localCpf, setLocalCpf] = useState(cpf);
+  const [localEmissionDate, setLocalEmissionDate] = useState(emissionDate);
+  const [localDoctorName, setLocalDoctorName] = useState(doctorName);
+  const [localDoctorCrm, setLocalDoctorCrm] = useState(doctorCrm);
+  const [localDoctorSpecialty, setLocalDoctorSpecialty] = useState(doctorSpecialty);
+  const [localDiagnosis, setLocalDiagnosis] = useState(diagnosis);
+  const [localRationale, setLocalRationale] = useState(rationale);
+  const [localTreatmentPlan, setLocalTreatmentPlan] = useState(treatmentPlan);
+  const [localMonitoring, setLocalMonitoring] = useState(monitoring);
+
+  // Keep local state in sync when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalPatientName(patientName);
+      setLocalBirthDate(birthDate);
+      setLocalCpf(cpf);
+      setLocalEmissionDate(emissionDate);
+      setLocalDoctorName(doctorName);
+      setLocalDoctorCrm(doctorCrm);
+      setLocalDoctorSpecialty(doctorSpecialty);
+      setLocalDiagnosis(diagnosis);
+      setLocalRationale(rationale);
+      setLocalTreatmentPlan(treatmentPlan);
+      setLocalMonitoring(monitoring);
+    }
+  }, [isOpen]);
+
+  // Synchronize all edited fields back to parent
+  const syncToParent = () => {
+    setPatientName(localPatientName);
+    setBirthDate(localBirthDate);
+    setCpf(localCpf);
+    setEmissionDate(localEmissionDate);
+    setDoctorName(localDoctorName);
+    setDoctorCrm(localDoctorCrm);
+    setDoctorSpecialty(localDoctorSpecialty);
+    setDiagnosis(localDiagnosis);
+    setRationale(localRationale);
+    setTreatmentPlan(localTreatmentPlan);
+    setMonitoring(localMonitoring);
+  };
+
+  // Debounced background sync so parent state stays up to date without blocking keystrokes
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      syncToParent();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    isOpen, localPatientName, localBirthDate, localCpf, localEmissionDate,
+    localDoctorName, localDoctorCrm, localDoctorSpecialty,
+    localDiagnosis, localRationale, localTreatmentPlan, localMonitoring
+  ]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
+        syncToParent();
         onClose();
       }
     };
@@ -101,13 +160,25 @@ export function MedicalReportEditorModal({
 
   if (!isOpen) return null;
 
+  const handleClose = () => {
+    syncToParent();
+    onClose();
+  };
+
   const handleDownload = () => {
+    syncToParent();
     setIsGenerating(true);
     try {
       onDownloadPDF();
     } finally {
       setTimeout(() => setIsGenerating(false), 800);
     }
+  };
+
+  const handleSendToChatAction = async () => {
+    if (!onSendToChat) return;
+    syncToParent();
+    await onSendToChat();
   };
 
   return (
@@ -162,7 +233,10 @@ export function MedicalReportEditorModal({
               <div className="bg-mecura-surface border border-mecura-elevated rounded-xl p-1 flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('edit')}
+                  onClick={() => {
+                    syncToParent();
+                    setActiveTab('edit');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     activeTab === 'edit'
                       ? 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]'
@@ -174,7 +248,10 @@ export function MedicalReportEditorModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('preview')}
+                  onClick={() => {
+                    syncToParent();
+                    setActiveTab('preview');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     activeTab === 'preview'
                       ? 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]'
@@ -188,7 +265,7 @@ export function MedicalReportEditorModal({
 
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
                 title="Fechar e sair sem enviar o laudo"
                 aria-label="Fechar laudo"
@@ -217,8 +294,8 @@ export function MedicalReportEditorModal({
                         <label className="text-[11px] text-mecura-silver font-medium block mb-1">Nome do Paciente</label>
                         <input
                           type="text"
-                          value={patientName}
-                          onChange={(e) => setPatientName(e.target.value)}
+                          value={localPatientName}
+                          onChange={(e) => setLocalPatientName(e.target.value)}
                           className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50"
                         />
                       </div>
@@ -228,8 +305,8 @@ export function MedicalReportEditorModal({
                           <label className="text-[11px] text-mecura-silver font-medium block mb-1">CPF</label>
                           <input
                             type="text"
-                            value={cpf}
-                            onChange={(e) => setCpf(e.target.value)}
+                            value={localCpf}
+                            onChange={(e) => setLocalCpf(e.target.value)}
                             className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50"
                           />
                         </div>
@@ -237,8 +314,8 @@ export function MedicalReportEditorModal({
                           <label className="text-[11px] text-mecura-silver font-medium block mb-1">Data Nasc.</label>
                           <input
                             type="text"
-                            value={birthDate}
-                            onChange={(e) => setBirthDate(e.target.value)}
+                            value={localBirthDate}
+                            onChange={(e) => setLocalBirthDate(e.target.value)}
                             className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50"
                           />
                         </div>
@@ -258,8 +335,8 @@ export function MedicalReportEditorModal({
                         <label className="text-[11px] text-mecura-silver font-medium block mb-1">Médico Emitente</label>
                         <input
                           type="text"
-                          value={doctorName}
-                          onChange={(e) => setDoctorName(e.target.value)}
+                          value={localDoctorName}
+                          onChange={(e) => setLocalDoctorName(e.target.value)}
                           className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50"
                         />
                       </div>
@@ -269,8 +346,8 @@ export function MedicalReportEditorModal({
                           <label className="text-[11px] text-mecura-silver font-medium block mb-1">CRM / UF</label>
                           <input
                             type="text"
-                            value={doctorCrm}
-                            onChange={(e) => setDoctorCrm(e.target.value)}
+                            value={localDoctorCrm}
+                            onChange={(e) => setLocalDoctorCrm(e.target.value)}
                             className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50"
                           />
                         </div>
@@ -278,8 +355,8 @@ export function MedicalReportEditorModal({
                           <label className="text-[11px] text-mecura-silver font-medium block mb-1">Data Emissão</label>
                           <input
                             type="text"
-                            value={emissionDate}
-                            onChange={(e) => setEmissionDate(e.target.value)}
+                            value={localEmissionDate}
+                            onChange={(e) => setLocalEmissionDate(e.target.value)}
                             className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50"
                           />
                         </div>
@@ -299,8 +376,8 @@ export function MedicalReportEditorModal({
                   </div>
                   <textarea
                     rows={5}
-                    value={diagnosis}
-                    onChange={(e) => setDiagnosis(e.target.value)}
+                    value={localDiagnosis}
+                    onChange={(e) => setLocalDiagnosis(e.target.value)}
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"
                     placeholder="Descreva o quadro do paciente, tempo de evolução, intensidade e tratamentos prévios..."
                   />
@@ -317,8 +394,8 @@ export function MedicalReportEditorModal({
                   </div>
                   <textarea
                     rows={6}
-                    value={rationale}
-                    onChange={(e) => setRationale(e.target.value)}
+                    value={localRationale}
+                    onChange={(e) => setLocalRationale(e.target.value)}
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"
                     placeholder="Fundamentação técnico-científica sobre a indicação de fitocanabinoides..."
                   />
@@ -350,7 +427,7 @@ export function MedicalReportEditorModal({
                               const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
                               return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
                             }).join('\n\n');
-                            setTreatmentPlan(formatted);
+                            setLocalTreatmentPlan(formatted);
                           }}
                           className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                           title="Sincronizar medicamentos da receita atual para este laudo"
@@ -381,7 +458,7 @@ export function MedicalReportEditorModal({
                               .replace(/Aproximadamente 25 gotas por mL\.?/gi, '')
                               .trim();
                             const newBlock = `• ${found.name} (${found.manufacturer || 'Associação Nacional'} - ${found.origin || 'Nacional'})\n   Princípio Ativo: ${ing}\n   Apresentação / Via: ${form} • ${qty} • ${route}\n   ${posHeader}: ${dose}\n   Finalidade: ${found.description || 'Modulação canabinoide.'}`;
-                            setTreatmentPlan(treatmentPlan ? `${treatmentPlan}\n\n${newBlock}` : newBlock);
+                            setLocalTreatmentPlan(localTreatmentPlan ? `${localTreatmentPlan}\n\n${newBlock}` : newBlock);
                           }
                           e.target.value = '';
                         }}
@@ -439,8 +516,8 @@ export function MedicalReportEditorModal({
                   </div>
                   <textarea
                     rows={6}
-                    value={treatmentPlan}
-                    onChange={(e) => setTreatmentPlan(e.target.value)}
+                    value={localTreatmentPlan}
+                    onChange={(e) => setLocalTreatmentPlan(e.target.value)}
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed font-mono text-[11px] sm:text-xs"
                     placeholder="Formulação canabinoide, posologia inicial, frequência de administração..."
                   />
@@ -457,8 +534,8 @@ export function MedicalReportEditorModal({
                   </div>
                   <textarea
                     rows={4}
-                    value={monitoring}
-                    onChange={(e) => setMonitoring(e.target.value)}
+                    value={localMonitoring}
+                    onChange={(e) => setLocalMonitoring(e.target.value)}
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"
                     placeholder="Recomendações de titulação lenta, acompanhamento de segurança e reavaliação..."
                   />
@@ -478,9 +555,9 @@ export function MedicalReportEditorModal({
                         </p>
                       </div>
                       <div className="text-right">
-                        <h3 className="text-sm font-bold text-[#1E1B4B]">{doctorName}</h3>
-                        <p className="text-xs text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{doctorSpecialty}</p>
+                        <h3 className="text-sm font-bold text-[#1E1B4B]">{localDoctorName}</h3>
+                        <p className="text-xs text-slate-600 font-semibold mt-0.5">{localDoctorCrm}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{localDoctorSpecialty}</p>
                       </div>
                     </div>
 
@@ -505,11 +582,11 @@ export function MedicalReportEditorModal({
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 my-4 text-xs flex justify-between items-center">
                       <div>
                         <span className="text-slate-500 block text-[10px] uppercase font-bold">1. Paciente</span>
-                        <span className="font-bold text-slate-900 text-sm">{patientName}</span>
+                        <span className="font-bold text-slate-900 text-sm">{localPatientName}</span>
                       </div>
                       <div className="text-right">
                         <span className="text-slate-500 block text-[10px] uppercase font-bold">CPF / Nasc.</span>
-                        <span className="font-semibold text-slate-700">{cpf} • {birthDate}</span>
+                        <span className="font-semibold text-slate-700">{localCpf} • {localBirthDate}</span>
                       </div>
                     </div>
 
@@ -519,7 +596,7 @@ export function MedicalReportEditorModal({
                         {reportType === 'evolutivo' ? '2. Diagnóstico Clínico & Evolução Terapêutica' : '2. Diagnóstico Clínico & Comprovação de Início de Tratamento'}
                       </h3>
                       <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-2.5 rounded border border-slate-100">
-                        {diagnosis}
+                        {localDiagnosis}
                       </p>
                     </div>
 
@@ -529,7 +606,7 @@ export function MedicalReportEditorModal({
                         {reportType === 'evolutivo' ? '3. Fundamentação Terapêutica & Continuidade' : '3. Raciocínio Clínico & Indicação de Tratamento'}
                       </h3>
                       <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-2.5 rounded border border-slate-100">
-                        {rationale}
+                        {localRationale}
                       </p>
                     </div>
 
@@ -539,7 +616,7 @@ export function MedicalReportEditorModal({
                         4. Conduta Proposta & Medicamentos
                       </h3>
                       <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-2.5 rounded border border-slate-100">
-                        {treatmentPlan}
+                        {localTreatmentPlan}
                       </p>
                     </div>
 
@@ -549,7 +626,7 @@ export function MedicalReportEditorModal({
                         5. Monitoramento Clínico & Recomendações
                       </h3>
                       <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-2.5 rounded border border-slate-100">
-                        {monitoring}
+                        {localMonitoring}
                       </p>
                     </div>
                   </div>
@@ -557,15 +634,15 @@ export function MedicalReportEditorModal({
                   {/* Footer & Signature */}
                   <div className="pt-6 border-t border-slate-200 mt-6 flex justify-between items-end">
                     <div className="text-[10px] text-slate-500">
-                      <p>Data de Emissão: {emissionDate}</p>
+                      <p>Data de Emissão: {localEmissionDate}</p>
                       <p>Documento com validade pericial e assistencial</p>
                       <p className="text-[9px] text-slate-400 mt-1">Conforme Resoluções CFM e Diretrizes ANVISA</p>
                     </div>
 
                     <div className="text-center w-52">
                       <div className="border-b border-slate-400 mb-2" />
-                      <p className="text-xs font-bold text-slate-900">{doctorName}</p>
-                      <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
+                      <p className="text-xs font-bold text-slate-900">{localDoctorName}</p>
+                      <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{localDoctorCrm}</p>
                       <p className="text-[9px] text-slate-500 mt-0.5">Assinatura Digital / Médico Prescritor</p>
                     </div>
                   </div>
@@ -578,7 +655,7 @@ export function MedicalReportEditorModal({
           <div className="p-4 sm:p-6 border-t border-mecura-elevated bg-[#0A0A0F]/90 flex flex-col sm:flex-row justify-between items-center gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="w-full sm:w-auto px-6 py-2.5 bg-white/5 hover:bg-red-500/15 border border-mecura-elevated hover:border-red-500/30 rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-red-400 transition-all flex items-center justify-center gap-2 cursor-pointer"
               title="Sair desta tela sem enviar o laudo para o paciente"
             >
@@ -600,7 +677,7 @@ export function MedicalReportEditorModal({
               {onSendToChat && (
                 <button
                   type="button"
-                  onClick={onSendToChat}
+                  onClick={handleSendToChatAction}
                   disabled={isGenerating || isSendingToChat}
                   className={`w-full sm:w-auto px-6 py-3 font-extrabold text-xs md:text-sm rounded-xl transition-all flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer ${
                     reportType === 'evolutivo'

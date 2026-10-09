@@ -808,13 +808,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
 
   // Paging and capacity distribution:
   // - For Laudo Inicial (!isEvolutivo):
-  //   Consolidated into 1 SINGLE PAGE (Folha Única) by default (up to ~3200 chars), so the physician signs only once!
-  //   If exceptionally extensive (> 3200 chars), max 2 pages. Never 3 pages for Laudo Inicial!
+  //   Consolidated into 1 SINGLE PAGE (Folha Única) by default (up to ~3600 chars), so the physician signs only once!
+  //   If exceptionally extensive (> 3600 chars), max 2 pages. Never 3 pages for Laudo Inicial!
   // - For Laudo Evolutivo (isEvolutivo):
-  //   Judicial dossier with 7 pericial quesitos, fits into 1 page up to ~2400 chars, 2 pages up to 4800 chars, or 3 pages if > 4800 chars.
+  //   Judicial dossier with 7 pericial quesitos, fits into 1 page up to ~2500 chars, 2 pages up to 4800 chars, or 3 pages if > 4800 chars.
   const isSinglePage = isEvolutivo
-    ? (totalLength <= 2400 && diag.length <= 1800)
-    : (totalLength <= 3200 && diag.length <= 2200);
+    ? (totalLength <= 2500 && diag.length <= 1800)
+    : (totalLength <= 3600 && diag.length <= 2500);
 
   if (isSinglePage) {
     // 1 SINGLE PAGE: All sections fit on 1 page! (Folha única oficial!)
@@ -850,64 +850,16 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       sections: p1Sections
     });
   } else if (!isEvolutivo || totalLength <= 4800) {
-    // EXACTLY 2 PAGES: Distribute content to fill Page 1 and Page 2 completely!
-    // Page 1 comfortably holds Diagnosis AND Rationale up to ~3800 chars, filling Page 1 gracefully
-    // and leaving Page 2 dedicated to Treatment Plan, Monitoring Guidelines & Doctor Signature!
-    const canPage1TakeRat = (diag.length + rat.length <= 3800) && diag.length <= 2500;
-
-    if (canPage1TakeRat) {
-      // Page 1 gets Diagnosis AND Rationale! (Page 1 is filled, no empty space!)
-      const p1Sections = [
-        { 
-          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
-          content: diag 
-        }
-      ];
-      if (rat) {
-        p1Sections.push({
-          title: isEvolutivo ? 'Fundamentação Terapêutica & Continuidade (Quesito 7)' : 'Raciocínio Fisiopatológico e Indicação de Tratamento',
-          content: rat
-        });
-      }
-
-      reportPages.push({
-        pageNumber: 1,
-        totalPages: 2,
-        title: baseReportTitle,
-        sections: p1Sections
-      });
-
-      // Page 2 gets Treatment Plan AND Monitoring! (Page 2 is filled!)
-      const p2Sections = [];
-      if (plan) {
-        p2Sections.push({
-          title: 'Plano de Tratamento Canabinoide Individualizado',
-          content: plan
-        });
-      }
-      if (mon) {
-        p2Sections.push({
-          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-          content: mon
-        });
-      }
-
-      reportPages.push({
-        pageNumber: 2,
-        totalPages: 2,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
-        sections: p2Sections
-      });
-    } else {
-      // Diagnosis alone is long (fills Page 1)
+    // EXACTLY 2 PAGES: Distribute content intelligently between Page 1 and Page 2!
+    // Never leave Page 1 half-empty and never overload Page 2!
+    if (diag.length > 2500) {
+      // Diagnosis alone is very long: split diagnosis smoothly across pages
       let diagP1 = diag;
       let diagP2 = '';
-      if (diag.length > 2500) {
-        const splitIndex = diag.indexOf('\n\n', Math.floor(diag.length * 0.52));
-        if (splitIndex !== -1) {
-          diagP1 = diag.substring(0, splitIndex).trim();
-          diagP2 = diag.substring(splitIndex).trim();
-        }
+      const splitIndex = diag.indexOf('\n\n', Math.floor(diag.length * 0.52));
+      if (splitIndex !== -1) {
+        diagP1 = diag.substring(0, splitIndex).trim();
+        diagP2 = diag.substring(splitIndex).trim();
       }
 
       reportPages.push({
@@ -947,6 +899,76 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
           content: mon
         });
       }
+
+      reportPages.push({
+        pageNumber: 2,
+        totalPages: 2,
+        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
+        sections: p2Sections
+      });
+    } else {
+      // Diagnosis fits on Page 1 along with Rationale.
+      // If plan has multiple items and Page 1 has room, share plan items between Page 1 and Page 2
+      // so Page 1 is filled (no blank white space) and Page 2 is not cramped (no cutting off)!
+      const p1Sections = [
+        { 
+          title: isEvolutivo ? 'Diagnóstico Clínico, Histórico Convencional & Evolução com Canabinoides' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
+          content: diag 
+        }
+      ];
+      if (rat) {
+        p1Sections.push({
+          title: isEvolutivo ? 'Fundamentação Terapêutica & Continuidade (Quesito 7)' : 'Raciocínio Fisiopatológico e Indicação de Tratamento',
+          content: rat
+        });
+      }
+
+      const p2Sections = [];
+
+      if (planItems.length >= 2 && (diag.length + rat.length <= 2600)) {
+        // Distribute plan items: First item(s) on Page 1 to fill Page 1 nicely
+        const p1PlanCount = Math.min(Math.ceil(planItems.length / 2), 2);
+        const p1PlanPart = planItems.slice(0, p1PlanCount).join('\n\n');
+        const p2PlanPart = planItems.slice(p1PlanCount).join('\n\n');
+
+        p1Sections.push({
+          title: 'Plano de Tratamento Canabinoide Individualizado',
+          content: p1PlanPart
+        });
+
+        if (p2PlanPart) {
+          p2Sections.push({
+            title: 'Plano de Tratamento Canabinoide Individualizado (Continuação)',
+            content: p2PlanPart
+          });
+        }
+      } else if (plan && (diag.length + rat.length + plan.length <= 2800)) {
+        // Diagnosis + Rationale + Plan all fit nicely on Page 1!
+        p1Sections.push({
+          title: 'Plano de Tratamento Canabinoide Individualizado',
+          content: plan
+        });
+      } else if (plan) {
+        // Plan goes on Page 2
+        p2Sections.push({
+          title: 'Plano de Tratamento Canabinoide Individualizado',
+          content: plan
+        });
+      }
+
+      if (mon) {
+        p2Sections.push({
+          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+          content: mon
+        });
+      }
+
+      reportPages.push({
+        pageNumber: 1,
+        totalPages: 2,
+        title: baseReportTitle,
+        sections: p1Sections
+      });
 
       reportPages.push({
         pageNumber: 2,
@@ -1080,13 +1102,15 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               width: "794px", 
               minHeight: "1123px", 
               height: "1123px", 
-              padding: "16px 36px 14px 36px", 
+              maxHeight: "1123px",
+              padding: page.totalPages === 1 ? "14px 34px 12px 34px" : "16px 36px 14px 36px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
-              boxSizing: "border-box"
+              boxSizing: "border-box",
+              overflow: "hidden"
             }}
           >
-            <div>
+            <div className="flex-1 flex flex-col justify-start min-h-0 overflow-hidden">
               {/* Top Bar with Page Indicator in-flow (never overlaps doctor info) */}
               <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
                 <span className="text-[9.5px] text-[#64748B] font-semibold">
@@ -1158,7 +1182,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               )}
 
               {/* Sections for this page */}
-              <div className="space-y-2">
+              <div className={page.totalPages === 1 ? "space-y-1.5" : "space-y-2"}>
                 {page.sections.map((sec, sIdx) => {
                   const isPlanSection = sec.title.toLowerCase().includes('plano de tratamento');
 
@@ -1169,16 +1193,16 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                       </h4>
 
                       {isPlanSection ? (
-                        <div className={planItems.length >= 4 ? "space-y-1" : "space-y-1.5"}>
+                        <div className={page.totalPages === 1 || planItems.length >= 3 ? "space-y-1" : "space-y-1.5"}>
                           {sec.content.split(/\n\n+/).filter(itemBlock => itemBlock.trim()).map((itemBlock, iIdx) => {
                             const lines = itemBlock.split('\n').map(l => l.trim()).filter(Boolean);
                             const titleLine = lines[0] || '';
                             const detailLines = lines.slice(1);
 
                             return (
-                              <div key={iIdx} className={`bg-[#F8FAFC] border border-[#E2E8F0] rounded leading-snug ${planItems.length >= 4 ? 'p-1.5 text-[8.5px]' : 'p-2 text-[9px] text-[#334155]'}`}>
-                                <p className={`font-bold text-[#0F172A] mb-0.5 m-0 ${planItems.length >= 4 ? 'text-[9px]' : 'text-[9.5px]'}`}>{titleLine}</p>
-                                <div className={`space-y-0.5 pl-1 text-[#475569] ${planItems.length >= 4 ? 'text-[8px]' : 'text-[8.5px]'}`}>
+                              <div key={iIdx} className={`bg-[#F8FAFC] border border-[#E2E8F0] rounded leading-snug ${page.totalPages === 1 || planItems.length >= 3 ? 'p-1.5 text-[8.5px]' : 'p-2 text-[9px] text-[#334155]'}`}>
+                                <p className={`font-bold text-[#0F172A] mb-0.5 m-0 ${page.totalPages === 1 || planItems.length >= 3 ? 'text-[8.5px]' : 'text-[9.5px]'}`}>{titleLine}</p>
+                                <div className={`space-y-0.5 pl-1 text-[#475569] ${page.totalPages === 1 || planItems.length >= 3 ? 'text-[8px]' : 'text-[8.5px]'}`}>
                                   {detailLines.map((line, lIdx) => (
                                     <p key={lIdx} className="m-0 leading-tight">{line}</p>
                                   ))}
@@ -1188,7 +1212,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                           })}
                         </div>
                       ) : (
-                        <div className="text-[9.5px] text-[#334155] leading-snug flex flex-col gap-1 text-justify">
+                        <div className={`${page.totalPages === 1 ? 'text-[8.5px]' : 'text-[9.5px]'} text-[#334155] leading-snug flex flex-col gap-1 text-justify`}>
                           {sec.content.split('\n').map((p, i) => {
                             const trimmed = p.trim();
                             if (!trimmed) return <div key={i} className="h-0.5" />;
@@ -1196,7 +1220,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                             const isSubheader = /^(Hist[óo]rico|Evolu[çc][ãa]o|Indica[çc][ãa]o|CID|Quesito|\d+\.\s*Quanto|Racioc[íi]nio|Diretrizes|Seguran[çc]a|Retorno)/i.test(trimmed);
                             if (isSubheader) {
                               return (
-                                <p key={i} className="font-bold text-[#1E1B4B] text-[9.5px] mt-0.5 mb-0.5">
+                                <p key={i} className={`font-bold text-[#1E1B4B] ${page.totalPages === 1 ? 'text-[9px]' : 'text-[9.5px]'} mt-0.5 mb-0.5`}>
                                   {trimmed}
                                 </p>
                               );
@@ -1217,7 +1241,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
 
             {/* Doctor Signature & Emission Footer — Signature only on final page so doctor does not have to sign every intermediate page */}
             {page.pageNumber === page.totalPages ? (
-              <div className="mt-auto pt-2 border-t border-[#E2E8F0]">
+              <div className="shrink-0 mt-auto pt-2 border-t border-[#E2E8F0]">
                 <div className="flex flex-col items-center">
                   <div className="w-52 border-b border-[#CBD5E1] mb-2" style={{ height: '0px' }}></div>
                   <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
@@ -1229,7 +1253,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                 </div>
               </div>
             ) : (
-              <div className="mt-auto pt-2 border-t border-[#E2E8F0]">
+              <div className="shrink-0 mt-auto pt-2 border-t border-[#E2E8F0]">
                 <div className="flex items-center justify-between text-[8px] text-[#64748B] font-semibold">
                   <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
                   <span className="text-[#1E1B4B] font-bold">Documento Médico Oficial — Continua na folha {page.pageNumber + 1}...</span>
