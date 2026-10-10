@@ -172,6 +172,64 @@ const DoctorChatInputBar = memo(({
   );
 });
 
+// Isolated fast textarea with local state to prevent re-rendering the massive dashboard on every keystroke
+const IsolatedFastTextarea = memo(({
+  value,
+  onChange,
+  placeholder,
+  className,
+  rows = 3
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  rows?: number;
+}) => {
+  const [localVal, setLocalVal] = useState(value);
+  const isFocusedRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const lastEmittedRef = useRef(value);
+
+  useEffect(() => {
+    if (!isFocusedRef.current && value !== lastEmittedRef.current) {
+      setLocalVal(value);
+      lastEmittedRef.current = value;
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localVal !== lastEmittedRef.current) {
+        lastEmittedRef.current = localVal;
+        onChangeRef.current(localVal);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [localVal]);
+
+  const handleBlur = () => {
+    isFocusedRef.current = false;
+    if (localVal !== lastEmittedRef.current) {
+      lastEmittedRef.current = localVal;
+      onChangeRef.current(localVal);
+    }
+  };
+
+  return (
+    <textarea
+      rows={rows}
+      value={localVal}
+      onChange={(e) => setLocalVal(e.target.value)}
+      onFocus={() => { isFocusedRef.current = true; }}
+      onBlur={handleBlur}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
+});
+
 export function DoctorDashboardScreen() {
   const { productCategories: storeProductCategories } = useAdminStore();
   const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
@@ -5092,9 +5150,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
               <ClipboardList className="w-4 h-4" /> Triagem / Laudo Evolutivo
             </h3>
             <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-4">
-              <textarea
+              <IsolatedFastTextarea
                 value={evolutionNotes}
-                onChange={(e) => setEvolutionNotes(e.target.value)}
+                onChange={setEvolutionNotes}
                 placeholder="Insira as informações chaves aqui. (ex: Histórico laboral, uso prévio de óleos/flor in natura, cultivo artesanal, etc.)"
                 className="w-full bg-transparent border-none text-white text-sm resize-none focus:ring-0 p-0 placeholder-mecura-silver/50 min-h-[80px]"
               />
@@ -5565,9 +5623,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                 <label className="text-sm font-bold text-mecura-silver uppercase tracking-wider">
                   Orientações e Prescrição Detalhada
                 </label>
-                <textarea 
+                <IsolatedFastTextarea 
+                  rows={6}
                   value={prescriptionInput}
-                  onChange={(e) => setPrescriptionInput(e.target.value)}
+                  onChange={setPrescriptionInput}
                   placeholder="Digite aqui as orientações de uso, medicamentos manipulados ou qualquer outra informação que deva constar na receita..."
                   className="w-full h-48 bg-mecura-surface-light/50 border border-mecura-elevated rounded-xl p-4 text-white focus:outline-none focus:border-mecura-neon/50 transition-all resize-none text-base leading-relaxed"
                 />
@@ -6172,10 +6231,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                       <label className="block text-sm font-medium text-mecura-silver mb-2">
                         Dosagem / Posologia & Modo de Usar
                       </label>
-                      <textarea
+                      <IsolatedFastTextarea
                         rows={4}
                         value={dosageInput}
-                        onChange={(e) => setDosageInput(e.target.value)}
+                        onChange={setDosageInput}
                         placeholder="Ex: Pingar 2 gotas pela manhã e 4 a noite..."
                         className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3 text-white placeholder-mecura-silver focus:outline-none focus:border-mecura-neon/50 transition-colors text-sm leading-relaxed"
                       />
@@ -6801,9 +6860,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     Mensagem Acolhedora para o Paciente (Chat)
                     <span className="ml-auto text-[9px] text-mecura-silver/50 font-normal normal-case">(editável antes do envio)</span>
                   </label>
-                  <textarea
+                  <IsolatedFastTextarea
+                    rows={4}
                     value={accessibleImportCustomMessage}
-                    onChange={(e) => setAccessibleImportCustomMessage(e.target.value)}
+                    onChange={setAccessibleImportCustomMessage}
                     placeholder="Ex: 'Como conversamos sobre o orçamento, estou enviando este tratamento de entrada. Ele durará cerca de 60 dias...'"
                     className="w-full h-24 p-3.5 bg-[#0F1017] border border-mecura-elevated rounded-xl text-[13px] text-white placeholder-mecura-silver/50 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all resize-none shadow-inner"
                   />
@@ -7118,10 +7178,10 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                     </span>
                     <span className="text-[10px] text-mecura-silver lowercase font-normal">(Editável antes do envio)</span>
                   </label>
-                  <textarea
+                  <IsolatedFastTextarea
                     rows={4}
                     value={accessibleCustomMessage || `Olá ${currentPatient?.patientName || userName || 'Paciente'}! Pensando na sua acessibilidade e conforto financeiro, estruturei um Protocolo de Entrada Acessível através de Associação Brasileira autorizada.\n\nIniciaremos com apenas 01 medicamento essencial de alto rendimento que dura cerca de 2 meses com a posologia inicial.\n\nVamos acompanhar sua resposta e, conforme sua evolução e condições futuras, poderemos ajustar as doses ou introduzir novos itens se houver real necessidade. Conte sempre com nosso apoio!`}
-                    onChange={(e) => setAccessibleCustomMessage(e.target.value)}
+                    onChange={setAccessibleCustomMessage}
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3 text-xs md:text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all resize-none leading-relaxed"
                   />
                 </div>

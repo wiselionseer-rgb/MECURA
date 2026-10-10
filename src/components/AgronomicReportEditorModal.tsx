@@ -31,24 +31,24 @@ interface AgronomicReportEditorModalProps {
 export function AgronomicReportEditorModal({
   isOpen,
   onClose,
-  patientName,
-  setPatientName,
-  cpf,
-  setCpf,
-  emissionDate,
-  setEmissionDate,
-  agronomistName,
-  setAgronomistName,
-  agronomistCrea,
-  setAgronomistCrea,
-  diagnosis,
-  setDiagnosis,
-  dailyDoseMg,
-  setDailyDoseMg,
-  targetPlants,
-  setTargetPlants,
-  agronomicText,
-  setAgronomicText,
+  patientName: propPatientName,
+  setPatientName: propSetPatientName,
+  cpf: propCpf,
+  setCpf: propSetCpf,
+  emissionDate: propEmissionDate,
+  setEmissionDate: propSetEmissionDate,
+  agronomistName: propAgronomistName,
+  setAgronomistName: propSetAgronomistName,
+  agronomistCrea: propAgronomistCrea,
+  setAgronomistCrea: propSetAgronomistCrea,
+  diagnosis: propDiagnosis,
+  setDiagnosis: propSetDiagnosis,
+  dailyDoseMg: propDailyDoseMg,
+  setDailyDoseMg: propSetDailyDoseMg,
+  targetPlants: propTargetPlants,
+  setTargetPlants: propSetTargetPlants,
+  agronomicText: propAgronomicText,
+  setAgronomicText: propSetAgronomicText,
   onDownloadPDF,
   onSendToChat,
   isSendingToChat = false
@@ -57,17 +57,80 @@ export function AgronomicReportEditorModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Local state for smooth lag-free editing
+  const [patientName, setPatientName] = useState(propPatientName);
+  const [cpf, setCpf] = useState(propCpf);
+  const [emissionDate, setEmissionDate] = useState(propEmissionDate);
+  const [agronomistName, setAgronomistName] = useState(propAgronomistName);
+  const [agronomistCrea, setAgronomistCrea] = useState(propAgronomistCrea);
+  const [diagnosis, setDiagnosis] = useState(propDiagnosis);
+  const [dailyDoseMg, setDailyDoseMg] = useState(propDailyDoseMg);
+  const [targetPlants, setTargetPlants] = useState(propTargetPlants);
+  const [agronomicText, setAgronomicText] = useState(propAgronomicText);
+
+  // Sync from props on open
+  useEffect(() => {
+    if (isOpen) {
+      setPatientName(propPatientName);
+      setCpf(propCpf);
+      setEmissionDate(propEmissionDate);
+      setAgronomistName(propAgronomistName);
+      setAgronomistCrea(propAgronomistCrea);
+      setDiagnosis(propDiagnosis);
+      setDailyDoseMg(propDailyDoseMg);
+      setTargetPlants(propTargetPlants);
+      setAgronomicText(propAgronomicText);
+    }
+  }, [isOpen]);
+
+  const syncToParent = () => {
+    propSetPatientName(patientName);
+    propSetCpf(cpf);
+    propSetEmissionDate(emissionDate);
+    propSetAgronomistName(agronomistName);
+    propSetAgronomistCrea(agronomistCrea);
+    propSetDiagnosis(diagnosis);
+    propSetDailyDoseMg(dailyDoseMg);
+    propSetTargetPlants(targetPlants);
+    propSetAgronomicText(agronomicText);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      syncToParent();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [isOpen, patientName, cpf, emissionDate, agronomistName, agronomistCrea, diagnosis, dailyDoseMg, targetPlants, agronomicText]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
+        syncToParent();
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, syncToParent]);
 
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    syncToParent();
+    onClose();
+  };
+
+  const handleDownloadAction = () => {
+    syncToParent();
+    handleDownload();
+  };
+
+  const handleSendToChatAction = async () => {
+    if (!onSendToChat) return;
+    syncToParent();
+    await onSendToChat();
+  };
 
   // Math metrics based on pericial agronomic standards
   const monthlyMg = Math.round(dailyDoseMg * 31);

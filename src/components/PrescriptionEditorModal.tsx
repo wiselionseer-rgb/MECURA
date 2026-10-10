@@ -58,24 +58,24 @@ interface PrescriptionEditorModalProps {
 export function PrescriptionEditorModal({
   isOpen,
   onClose,
-  patientName,
-  setPatientName,
-  birthDate,
-  setBirthDate,
-  cpf,
-  setCpf,
-  emissionDate,
-  setEmissionDate,
-  doctorName,
-  setDoctorName,
-  doctorCrm,
-  setDoctorCrm,
-  doctorSpecialty,
-  setDoctorSpecialty,
-  items,
-  setItems,
-  notes,
-  setNotes,
+  patientName: propPatientName,
+  setPatientName: propSetPatientName,
+  birthDate: propBirthDate,
+  setBirthDate: propSetBirthDate,
+  cpf: propCpf,
+  setCpf: propSetCpf,
+  emissionDate: propEmissionDate,
+  setEmissionDate: propSetEmissionDate,
+  doctorName: propDoctorName,
+  setDoctorName: propSetDoctorName,
+  doctorCrm: propDoctorCrm,
+  setDoctorCrm: propSetDoctorCrm,
+  doctorSpecialty: propDoctorSpecialty,
+  setDoctorSpecialty: propSetDoctorSpecialty,
+  items: propItems,
+  setItems: propSetItems,
+  notes: propNotes,
+  setNotes: propSetNotes,
   onDownloadPDF,
   onSendToChat,
   onSendPreviewToChat
@@ -85,6 +85,57 @@ export function PrescriptionEditorModal({
   const [isSendingToChat, setIsSendingToChat] = useState(false);
   const [isSendingPreview, setIsSendingPreview] = useState(false);
   const [sendProductsToChat, setSendProductsToChat] = useState(false);
+
+  // Local state for instant typing and editing without re-rendering parent DoctorDashboard
+  const [patientName, setPatientName] = useState(propPatientName);
+  const [birthDate, setBirthDate] = useState(propBirthDate);
+  const [cpf, setCpf] = useState(propCpf);
+  const [emissionDate, setEmissionDate] = useState(propEmissionDate);
+  const [doctorName, setDoctorName] = useState(propDoctorName);
+  const [doctorCrm, setDoctorCrm] = useState(propDoctorCrm);
+  const [doctorSpecialty, setDoctorSpecialty] = useState(propDoctorSpecialty);
+  const [items, setItems] = useState<PrescriptionItemData[]>(propItems);
+  const [notes, setNotes] = useState(propNotes);
+
+  // Sync from parent props whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPatientName(propPatientName);
+      setBirthDate(propBirthDate);
+      setCpf(propCpf);
+      setEmissionDate(propEmissionDate);
+      setDoctorName(propDoctorName);
+      setDoctorCrm(propDoctorCrm);
+      setDoctorSpecialty(propDoctorSpecialty);
+      setItems(propItems);
+      setNotes(propNotes);
+    }
+  }, [isOpen]);
+
+  // Synchronize all edited fields back to parent
+  const syncToParent = () => {
+    propSetPatientName(patientName);
+    propSetBirthDate(birthDate);
+    propSetCpf(cpf);
+    propSetEmissionDate(emissionDate);
+    propSetDoctorName(doctorName);
+    propSetDoctorCrm(doctorCrm);
+    propSetDoctorSpecialty(doctorSpecialty);
+    propSetItems(items);
+    propSetNotes(notes);
+  };
+
+  // Debounced background sync
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      syncToParent();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    isOpen, patientName, birthDate, cpf, emissionDate,
+    doctorName, doctorCrm, doctorSpecialty, items, notes
+  ]);
 
   const { productCategories } = useAdminStore();
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
@@ -304,11 +355,14 @@ export function PrescriptionEditorModal({
     const isTopical = /pomada|t[óo]pico/i.test(product.name || product.type || '');
     const isSyrup = /syrup|xarope/i.test(product.name || product.type || '');
 
-    const isNat = product.origin === 'Nacional' || (product.manufacturer || '').toLowerCase().includes('associação');
+    const isNat = product.origin === 'Nacional' || 
+      /associação|associacao|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|brasil/i.test(product.manufacturer || '') ||
+      /associação|associacao|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|brasil/i.test(product.origin || '') ||
+      /abrace|abecmed|associação|associacao|santa cannabis|flor da vida/i.test(product.name || '');
 
     const enriched = enrichMedicationDetails(
       product.name,
-      product.manufacturer || (isNat ? 'Associação Brasileira (Nacional)' : 'GreenBudzCBD'),
+      product.manufacturer || (isNat ? 'Associação Nacional (Brasil)' : 'GreenBudzCBD'),
       product.origin || (isNat ? 'Nacional' : 'Importado'),
       product.type,
       product
@@ -402,12 +456,13 @@ export function PrescriptionEditorModal({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
+        syncToParent();
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, syncToParent]);
 
   // Clean up legacy confusing dosage phrasing if present
   useEffect(() => {
@@ -756,6 +811,7 @@ export function PrescriptionEditorModal({
   };
 
   const handleDownload = () => {
+    syncToParent();
     setIsGenerating(true);
     try {
       onDownloadPDF();
@@ -766,6 +822,7 @@ export function PrescriptionEditorModal({
 
   const handleSendToChatClick = async () => {
     if (!onSendToChat) return;
+    syncToParent();
     setIsSendingToChat(true);
     try {
       await onSendToChat(sendProductsToChat);
@@ -776,6 +833,7 @@ export function PrescriptionEditorModal({
 
   const handleSendPreviewClick = async () => {
     if (!onSendPreviewToChat) return;
+    syncToParent();
     setIsSendingPreview(true);
     try {
       await onSendPreviewToChat();
@@ -784,12 +842,17 @@ export function PrescriptionEditorModal({
     }
   };
 
+  const handleClose = () => {
+    syncToParent();
+    onClose();
+  };
+
   return (
     <AnimatePresence>
       <div 
         onClick={(e) => {
           if (e.target === e.currentTarget) {
-            onClose();
+            handleClose();
           }
         }}
         className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md"
@@ -873,7 +936,7 @@ export function PrescriptionEditorModal({
 
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
                 title="Fechar receita"
                 aria-label="Fechar receita"

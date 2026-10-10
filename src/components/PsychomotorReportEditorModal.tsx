@@ -29,22 +29,22 @@ interface PsychomotorReportEditorModalProps {
 export function PsychomotorReportEditorModal({
   isOpen,
   onClose,
-  patientName,
-  setPatientName,
-  birthDate,
-  setBirthDate,
-  cpf,
-  setCpf,
-  emissionDate,
-  setEmissionDate,
-  doctorName,
-  setDoctorName,
-  doctorCrm,
-  setDoctorCrm,
-  doctorSpecialty,
-  setDoctorSpecialty,
-  psychomotorText,
-  setPsychomotorText,
+  patientName: propPatientName,
+  setPatientName: propSetPatientName,
+  birthDate: propBirthDate,
+  setBirthDate: propSetBirthDate,
+  cpf: propCpf,
+  setCpf: propSetCpf,
+  emissionDate: propEmissionDate,
+  setEmissionDate: propSetEmissionDate,
+  doctorName: propDoctorName,
+  setDoctorName: propSetDoctorName,
+  doctorCrm: propDoctorCrm,
+  setDoctorCrm: propSetDoctorCrm,
+  doctorSpecialty: propDoctorSpecialty,
+  setDoctorSpecialty: propSetDoctorSpecialty,
+  psychomotorText: propPsychomotorText,
+  setPsychomotorText: propSetPsychomotorText,
   onDownloadPDF,
   onSendToChat,
   isSendingToChat = false
@@ -52,19 +52,69 @@ export function PsychomotorReportEditorModal({
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Local state for instant typing without re-rendering parent Dashboard
+  const [patientName, setPatientName] = useState(propPatientName);
+  const [birthDate, setBirthDate] = useState(propBirthDate);
+  const [cpf, setCpf] = useState(propCpf);
+  const [emissionDate, setEmissionDate] = useState(propEmissionDate);
+  const [doctorName, setDoctorName] = useState(propDoctorName);
+  const [doctorCrm, setDoctorCrm] = useState(propDoctorCrm);
+  const [doctorSpecialty, setDoctorSpecialty] = useState(propDoctorSpecialty);
+  const [psychomotorText, setPsychomotorText] = useState(propPsychomotorText);
+
+  // Sync from props when opened
+  useEffect(() => {
+    if (isOpen) {
+      setPatientName(propPatientName);
+      setBirthDate(propBirthDate);
+      setCpf(propCpf);
+      setEmissionDate(propEmissionDate);
+      setDoctorName(propDoctorName);
+      setDoctorCrm(propDoctorCrm);
+      setDoctorSpecialty(propDoctorSpecialty);
+      setPsychomotorText(propPsychomotorText);
+    }
+  }, [isOpen]);
+
+  const syncToParent = () => {
+    propSetPatientName(patientName);
+    propSetBirthDate(birthDate);
+    propSetCpf(cpf);
+    propSetEmissionDate(emissionDate);
+    propSetDoctorName(doctorName);
+    propSetDoctorCrm(doctorCrm);
+    propSetDoctorSpecialty(doctorSpecialty);
+    propSetPsychomotorText(psychomotorText);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      syncToParent();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [isOpen, patientName, birthDate, cpf, emissionDate, doctorName, doctorCrm, doctorSpecialty, psychomotorText]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
+        syncToParent();
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, syncToParent]);
 
   if (!isOpen) return null;
 
+  const handleClose = () => {
+    syncToParent();
+    onClose();
+  };
+
   const handleDownload = () => {
+    syncToParent();
     setIsGenerating(true);
     try {
       onDownloadPDF();
@@ -73,12 +123,18 @@ export function PsychomotorReportEditorModal({
     }
   };
 
+  const handleSendToChatAction = async () => {
+    if (!onSendToChat) return;
+    syncToParent();
+    await onSendToChat();
+  };
+
   return (
     <AnimatePresence>
       <div 
         onClick={(e) => {
           if (e.target === e.currentTarget) {
-            onClose();
+            handleClose();
           }
         }}
         className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md"

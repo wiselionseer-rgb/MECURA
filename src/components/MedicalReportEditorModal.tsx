@@ -139,7 +139,7 @@ export function MedicalReportEditorModal({
     if (!isOpen) return;
     const timer = setTimeout(() => {
       syncToParent();
-    }, 400);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [
     isOpen, localPatientName, localBirthDate, localCpf, localEmissionDate,
