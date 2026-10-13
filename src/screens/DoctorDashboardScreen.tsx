@@ -624,6 +624,56 @@ export function DoctorDashboardScreen() {
     showActionToast('Alterações do Laudo Psicomotor salvas com sucesso!');
   };
 
+  const loadSavedPrescription = (patientKey: string) => {
+    try {
+      const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.[patientKey] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const savePrescriptionToStorage = (patientKey: string, data: any) => {
+    try {
+      const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
+      const parsed = raw ? JSON.parse(raw) : {};
+      parsed[patientKey] = {
+        ...data,
+        updatedAt: new Date().toISOString()
+      };
+      localStorage.setItem('mecura_saved_prescriptions_v2', JSON.stringify(parsed));
+    } catch (e) {
+      console.warn("Could not save prescription to localStorage:", e);
+    }
+  };
+
+  const handleSavePrescription = (savedData: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => {
+    const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, savedData.patientName || prescPatientName);
+    savePrescriptionToStorage(key, savedData);
+    setPrescPatientName(savedData.patientName);
+    setPrescBirthDate(savedData.birthDate);
+    setPrescCpf(savedData.cpf);
+    setPrescEmissionDate(savedData.emissionDate);
+    setPrescDoctorName(savedData.doctorName);
+    setPrescDoctorCrm(savedData.doctorCrm);
+    setPrescDoctorSpecialty(savedData.doctorSpecialty);
+    setPrescItems(savedData.items);
+    setPrescNotes(savedData.notes);
+    showActionToast('Receita e posologias salvas com sucesso!');
+  };
+
   // Prescription (Receita Médica) Editor & Preview States
   const [showPrescriptionEditorModal, setShowPrescriptionEditorModal] = useState(false);
   const [showDocMenu, setShowDocMenu] = useState(false);
@@ -644,15 +694,21 @@ export function DoctorDashboardScreen() {
 
   const handleLaunchStandalonePrescription = (patientData: StandalonePatientData, prefillItems?: PrescriptionItemData[]) => {
     setStandaloneTargetPatientId(patientData.id || null);
-    setPrescPatientName(patientData.name);
-    setPrescCpf(patientData.cpf);
-    setPrescBirthDate(patientData.birthDate);
-    setPrescEmissionDate(patientData.emissionDate);
-    setPrescDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
-    setPrescDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
-    setPrescDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    const patientKey = getPatientReportKey(patientData.id, patientData.name);
+    const saved = loadSavedPrescription(patientKey);
 
-    if (prefillItems && prefillItems.length > 0) {
+    setPrescPatientName(saved?.patientName || patientData.name);
+    setPrescCpf(saved?.cpf || patientData.cpf);
+    setPrescBirthDate(saved?.birthDate || patientData.birthDate);
+    setPrescEmissionDate(saved?.emissionDate || patientData.emissionDate);
+    setPrescDoctorName(saved?.doctorName || patientData.doctorName || 'Dr. Guilherme Taveira Dias');
+    setPrescDoctorCrm(saved?.doctorCrm || patientData.doctorCrm || 'CRM/MT 17259');
+    setPrescDoctorSpecialty(saved?.doctorSpecialty || patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+
+    if (saved?.items && saved.items.length > 0) {
+      setPrescItems(saved.items);
+      setPrescNotes(saved.notes || '');
+    } else if (prefillItems && prefillItems.length > 0) {
       setPrescItems(prefillItems);
     }
 
@@ -1517,7 +1573,7 @@ export function DoctorDashboardScreen() {
     if (!selectedProduct.description) {
       if ((selectedProduct.type || '').includes('Full Spectrum')) {
         if (!selectedProduct.details) details.push("Efeito Entourage Potencializado");
-        italicText = "Contém traços de THC (<0.3%). Pode causar leve sonolência.";
+        italicText = "Contém traços de THC (< 0,2%). Pode causar leve sonolência.";
         description = `O ${selectedProduct.name} da ${selectedProduct.manufacturer} é um extrato de espectro completo, preservando todos os canabinóides, terpenos e flavonoides naturais da planta. Ideal para um tratamento abrangente, aproveitando o efeito comitiva para maior eficácia terapêutica.`;
       } else if ((selectedProduct.type || '').includes('Isolado')) {
         if (!selectedProduct.details) details.push("Zero THC garantido");
@@ -1640,10 +1696,29 @@ export function DoctorDashboardScreen() {
   };
 
   const handleOpenPrescriptionEditor = () => {
+    setStandaloneTargetPatientId(null);
     const patientAnswers = currentPatient?.answers || answers;
     const pName = currentPatient?.patientName || userName || 'Paciente';
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+
+    const patientKey = getPatientReportKey(currentPatient?.id, pName);
+    const saved = loadSavedPrescription(patientKey);
+
+    if (saved && saved.items && saved.items.length > 0) {
+      setPrescPatientName(saved.patientName || pName);
+      setPrescBirthDate(saved.birthDate || pBirthDate);
+      setPrescCpf(saved.cpf || pCpf);
+      setPrescEmissionDate(saved.emissionDate || format(new Date(), 'dd/MM/yyyy'));
+      setPrescDoctorName(saved.doctorName || 'Dr. Guilherme Taveira Dias');
+      setPrescDoctorCrm(saved.doctorCrm || 'CRM/MT 17259');
+      setPrescDoctorSpecialty(saved.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+      setPrescItems(saved.items);
+      setPrescNotes(saved.notes || '');
+      setPrescriptionTab('edit');
+      setShowPrescriptionEditorModal(true);
+      return;
+    }
 
     // Extract products already in prescItems, messages & enrich with full pharmacology
     const items: PrescriptionItemData[] = [];
@@ -7776,6 +7851,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         setItems={setPrescItems}
         notes={prescNotes}
         setNotes={setPrescNotes}
+        onSave={handleSavePrescription}
         onDownloadPDF={handleDownloadPrescriptionFromEditor}
         onSendToChat={handleSendPrescriptionToChat}
         onSendPreviewToChat={handleSendReceitaPrevia}

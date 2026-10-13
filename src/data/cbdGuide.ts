@@ -2413,7 +2413,7 @@ export function getDiseaseClinicalDetails(diseaseName: string): ClinicalDetails 
         start: "CBD: 10 a 15 mg/dia, preferencialmente pela manhã ou dividido em 2 tomadas.",
         titration: "Incrementos de 5-10 mg a cada 5 dias, até remissão dos sintomas ansiosos.",
         range: "25–75 mg/dia para ansiedade leve a moderada. Até 300mg em fobias sociais agudas (dose de resgate).",
-        thc: "Apenas formulações Full Spectrum (traços de THC <0.3%) ou concentrações mínimas se houver insônia severa associada.",
+        thc: "Apenas formulações Full Spectrum (traços de THC < 0,2%) ou concentrações mínimas se houver insônia severa associada.",
         note: "Doses excessivamente altas de CBD podem gerar sedação diurna. O objetivo é a dose mínima efetiva."
       },
       precautions: [

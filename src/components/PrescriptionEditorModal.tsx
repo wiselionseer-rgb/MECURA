@@ -18,6 +18,7 @@ import {
   Search,
   RefreshCw,
   Check,
+  Save,
   Pill,
   AlertTriangle,
   ChevronRight,
@@ -50,6 +51,17 @@ interface PrescriptionEditorModalProps {
   setItems: React.Dispatch<React.SetStateAction<PrescriptionItemData[]>>;
   notes: string;
   setNotes: (val: string) => void;
+  onSave?: (savedData: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => void;
   onDownloadPDF: () => void;
   onSendToChat?: (includeProductCards?: boolean) => Promise<void>;
   onSendPreviewToChat?: () => Promise<void>;
@@ -76,6 +88,7 @@ export function PrescriptionEditorModal({
   setItems: propSetItems,
   notes: propNotes,
   setNotes: propSetNotes,
+  onSave,
   onDownloadPDF,
   onSendToChat,
   onSendPreviewToChat
@@ -85,6 +98,8 @@ export function PrescriptionEditorModal({
   const [isSendingToChat, setIsSendingToChat] = useState(false);
   const [isSendingPreview, setIsSendingPreview] = useState(false);
   const [sendProductsToChat, setSendProductsToChat] = useState(false);
+  const [isSavedFeedback, setIsSavedFeedback] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
   // Local state for instant typing and editing without re-rendering parent DoctorDashboard
   const [patientName, setPatientName] = useState(propPatientName);
@@ -943,8 +958,42 @@ export function PrescriptionEditorModal({
     }
   };
 
+  const handleSave = () => {
+    syncToParent();
+    if (onSave) {
+      onSave({
+        patientName,
+        birthDate,
+        cpf,
+        emissionDate,
+        doctorName,
+        doctorCrm,
+        doctorSpecialty,
+        items,
+        notes
+      });
+    }
+    setIsSavedFeedback(true);
+    const now = new Date();
+    setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    setTimeout(() => setIsSavedFeedback(false), 2500);
+  };
+
   const handleClose = () => {
     syncToParent();
+    if (onSave) {
+      onSave({
+        patientName,
+        birthDate,
+        cpf,
+        emissionDate,
+        doctorName,
+        doctorCrm,
+        doctorSpecialty,
+        items,
+        notes
+      });
+    }
     onClose();
   };
 
@@ -1024,6 +1073,32 @@ export function PrescriptionEditorModal({
                   <span>{isSendingPreview ? 'Enviando...' : 'Enviar Receita Prévia'}</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={handleSave}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+                    : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
+                }`}
+                title="Salvar alterações da receita e posologias para este paciente"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
+                    <span>Salvo!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Salvar</span>
+                    {lastSavedTime && (
+                      <span className="hidden lg:inline text-[10px] opacity-75 font-normal">({lastSavedTime})</span>
+                    )}
+                  </>
+                )}
+              </button>
 
               <button
                 type="button"
@@ -1113,7 +1188,7 @@ export function PrescriptionEditorModal({
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div>
                           <label className="text-[11px] text-mecura-silver font-medium block mb-1">CRM / UF</label>
                           <input
@@ -1121,6 +1196,16 @@ export function PrescriptionEditorModal({
                             value={doctorCrm}
                             onChange={(e) => setDoctorCrm(e.target.value)}
                             className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-purple-500/50 font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-mecura-silver font-medium block mb-1">Especialidade / Título</label>
+                          <input
+                            type="text"
+                            value={doctorSpecialty}
+                            onChange={(e) => setDoctorSpecialty(e.target.value)}
+                            placeholder="Ex: Medicina Canabinoide"
+                            className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:outline-none focus:border-purple-500/50"
                           />
                         </div>
                         <div>
@@ -2009,22 +2094,44 @@ export function PrescriptionEditorModal({
                                 </datalist>
                               </div>
 
-                              {/* Via de Administração (Separated) */}
+                              {/* Via de Administração (Separated & 100% editável) */}
                               <div className="sm:col-span-4">
                                 <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
                                   Via de Administração
                                 </label>
-                                <select
-                                  value={admRoute || (isGummy ? 'Via Oral' : isFlower ? 'Via Inalatória (Vaporização)' : isTopical ? 'Uso Tópico' : 'Via Sublingual / Oral')}
+                                <input
+                                  type="text"
+                                  list={`route-suggestions-${itemIdx}`}
+                                  value={admRoute !== undefined && admRoute !== null ? admRoute : (isGummy ? 'Via Oral' : isFlower ? 'Via Inalatória (Vaporização)' : isTopical ? 'Uso Tópico' : 'Via Sublingual / Oral')}
                                   onChange={(e) => handleUpdateItem(itemIdx, 'administrationRoute', e.target.value)}
+                                  placeholder="Ex: Via Sublingual / Oral"
                                   className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-semibold"
-                                >
-                                  <option value="Via Oral">Via Oral (Mastigável / Ingestão)</option>
-                                  <option value="Via Sublingual / Oral">Via Sublingual / Oral (Gotas)</option>
-                                  <option value="Via Inalatória (Vaporização)">Via Inalatória (Vaporização Medicinal)</option>
-                                  <option value="Uso Tópico">Uso Tópico (Cutâneo)</option>
-                                </select>
+                                />
+                                <datalist id={`route-suggestions-${itemIdx}`}>
+                                  <option value="Via Sublingual / Oral" />
+                                  <option value="Via Oral" />
+                                  <option value="Via Inalatória (Vaporização Medicinal)" />
+                                  <option value="Uso Tópico" />
+                                  <option value="Via Nasal (Spray)" />
+                                  <option value="Via Transdérmica" />
+                                  <option value="Via Retal / Transmucosa" />
+                                </datalist>
                               </div>
+                            </div>
+
+                            {/* Orientações Específicas / Detalhes deste Medicamento */}
+                            <div className="pt-0.5">
+                              <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1 flex items-center justify-between">
+                                <span>Orientações Específicas / Observações Clínicas deste Medicamento</span>
+                                <span className="text-[9px] text-mecura-silver/60 lowercase font-normal">(opcional)</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={item.description || ''}
+                                onChange={(e) => handleUpdateItem(itemIdx, 'description', e.target.value)}
+                                placeholder="Ex: Administrar preferencialmente após refeições com lipídios para aumentar biodisponibilidade. Manter sob a língua 60s."
+                                className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                              />
                             </div>
 
                             {/* Gummy Posology Warning Safeguard */}
@@ -2404,13 +2511,40 @@ export function PrescriptionEditorModal({
 
           {/* Modal Footer Actions */}
           <div className="p-4 sm:p-6 border-t border-mecura-elevated bg-[#0A0A0F]/90 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-6 py-2.5 bg-transparent border border-mecura-elevated rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-white hover:bg-white/5 transition-all"
-            >
-              Cancelar
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="w-full sm:w-auto px-5 py-2.5 bg-transparent border border-mecura-elevated rounded-xl text-xs md:text-sm font-bold text-mecura-silver hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+              >
+                Fechar / Sair
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black shadow-[0_0_20px_rgba(16,185,129,0.5)]'
+                    : 'bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/50'
+                }`}
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-4 h-4 text-black stroke-[3]" />
+                    <span>Alterações Salvas!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar Alterações</span>
+                    {lastSavedTime && (
+                      <span className="text-[10px] opacity-75 font-normal">({lastSavedTime})</span>
+                    )}
+                  </>
+                )}
+              </button>
+            </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               <button

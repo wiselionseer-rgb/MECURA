@@ -1958,7 +1958,10 @@ export function CBDGuideView() {
         <ProductBulaModal 
           product={selectedProduct} 
           onClose={() => setSelectedProduct(null)} 
-          exchangeRate={exchangeRate} 
+          exchangeRate={exchangeRate}
+          onSave={(savedData) => {
+            setSelectedProduct((prev: any) => (prev ? { ...prev, ...savedData } : null));
+          }}
         />
       )}
     </div>
