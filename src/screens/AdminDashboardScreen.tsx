@@ -1224,117 +1224,196 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           </div>
         )}
         {activeTab === 'patients' && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div className="flex justify-between items-center mb-6">
-               <h2 className="text-2xl font-bold">Pacientes Cadastrados</h2>
-               <input 
-                  type="text" 
-                  placeholder="Buscar paciente..." 
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                  className="bg-[#161622] border border-[#262636] rounded-lg px-4 py-2 outline-none focus:border-mecura-neon w-64"
-               />
+          <div className="max-w-6xl mx-auto space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+               <div>
+                 <h2 className="text-2xl font-bold flex items-center gap-2">
+                   <Users className="w-6 h-6 text-mecura-neon" /> Pacientes Cadastrados
+                 </h2>
+                 <p className="text-xs text-[#8A8A9E] mt-1">
+                   Acompanhe os dados de cadastro, pagamentos confirmados, plano contratado e status na fila do médico.
+                 </p>
+               </div>
+               <div className="flex items-center gap-3">
+                 <Button 
+                   variant="outline" 
+                   onClick={handleSyncMpPayments} 
+                   disabled={isSyncingMpPayments}
+                   className="text-xs bg-[#161622] border-[#262636] hover:border-mecura-neon/40 text-white flex items-center gap-2 h-9"
+                 >
+                   <RefreshCw className={`w-3.5 h-3.5 text-mecura-neon ${isSyncingMpPayments ? 'animate-spin' : ''}`} />
+                   Sincronizar Pagamentos
+                 </Button>
+                 <input 
+                    type="text" 
+                    placeholder="Buscar paciente (nome, email, cpf)..." 
+                    onChange={(e) => setPatientSearch(e.target.value)}
+                    className="bg-[#161622] border border-[#262636] rounded-lg px-4 py-2 outline-none focus:border-mecura-neon text-sm w-64 text-white"
+                 />
+               </div>
             </div>
-            <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden">
-              <div className="grid grid-cols-5 p-4 border-b border-[#262636] text-[#8A8A9E] font-bold text-sm">
-                <div>Nome</div>
-                <div>Email</div>
-                <div>Plano</div>
-                <div>Status / Online</div>
-                <div>Ações</div>
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl overflow-hidden shadow-xl">
+              <div className="grid grid-cols-6 p-4 border-b border-[#262636] text-[#8A8A9E] font-bold text-xs uppercase tracking-wider">
+                <div className="col-span-2">Paciente & Contato</div>
+                <div>Plano Adquirido</div>
+                <div>Status do Pagamento</div>
+                <div>Data & Hora do Cadastro</div>
+                <div className="text-right pr-2">Ações na Fila / Conta</div>
               </div>
               <div className="divide-y divide-[#262636]">
                 {patients.length > 0 ? patients.filter(p => {
                     const search = patientSearch.toLowerCase();
                     if (!search) return true; 
-                    return p.name?.toLowerCase().includes(search) || p.email?.toLowerCase().includes(search);
+                    return p.name?.toLowerCase().includes(search) || 
+                           p.email?.toLowerCase().includes(search) ||
+                           p.cpf?.includes(search) ||
+                           p.phone?.includes(search);
                 }).map((p, pIdx) => {
                   const lastActiveMs = p.lastActive?.toMillis ? p.lastActive.toMillis() : (p.lastActive?.seconds ? p.lastActive.seconds * 1000 : (p.lastActive ? new Date(p.lastActive).getTime() : 0));
                   const isOnline = lastActiveMs > 0 && (Date.now() - lastActiveMs) < 5 * 60000;
+
+                  // Resolvendo plano real contratado
+                  const isPrem = !!(p.isPremium || p.tier === 'Premium' || p.plan === 'premium' || p.answers?.isPremium || p.pagamento_premium);
+                  const planLabel = isPrem ? '👑 Premium (VIP)' : '⚡ Essencial';
+
+                  // Resolvendo status de pagamento
+                  const cleanPEmail = (p.email || '').trim().toLowerCase();
+                  const matchedPayment = payments.find(pay => 
+                    (pay.patientId && pay.patientId === p.id) ||
+                    (cleanPEmail && pay.payerEmail && pay.payerEmail.trim().toLowerCase() === cleanPEmail)
+                  );
+                  const hasPaid = !!(p.pagamento_consulta === true || p.hasPaid === true || p.isPaid === true || p.bypassedPayment === true || matchedPayment);
+
+                  // Resolvendo Data e Hora formatadas
+                  let formattedDate = 'N/A';
+                  if (p.createdAt) {
+                    try {
+                      const d = new Date(p.createdAt);
+                      if (!isNaN(d.getTime())) {
+                        formattedDate = `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+                      }
+                    } catch (e) {}
+                  }
+
+                  // Item na Fila do médico
+                  const qItem = queue.find(q => q.id === p.id || (cleanPEmail && q.email && q.email.trim().toLowerCase() === cleanPEmail));
+
                   return (
-                  <div key={`${p.id || 'pat'}-${pIdx}`} className="grid grid-cols-5 p-4 items-center gap-2">
-                    <div className="font-bold text-white text-sm break-words flex items-center gap-2">
-                      {p.name || 'Sem nome'}
-                      {(() => {
-                        const cleanPEmail = (p.email || '').trim().toLowerCase();
-                        const qItem = queue.find(q => q.id === p.id || (cleanPEmail && q.email && q.email.trim().toLowerCase() === cleanPEmail));
-                        if (!qItem) return null;
-                        if (qItem.status === 'waiting') {
-                          return <span className="bg-mecura-neon/20 border border-mecura-neon/40 text-mecura-neon text-[9px] px-2 py-0.5 rounded-full whitespace-nowrap font-bold shadow-[0_0_10px_rgba(166,255,0,0.2)]">Na Fila</span>;
-                        }
-                        if (qItem.status === 'in-consultation') {
-                          return <span className="bg-blue-500/20 border border-blue-500/40 text-blue-400 text-[9px] px-2 py-0.5 rounded-full whitespace-nowrap font-bold shadow-[0_0_10px_rgba(59,130,246,0.2)]">Em Consulta</span>;
-                        }
-                        return null;
-                      })()}
+                  <div key={`${p.id || 'pat'}-${pIdx}`} className="grid grid-cols-6 p-4 items-center gap-2 hover:bg-white/[0.02] transition-colors">
+                    {/* Paciente e Contato */}
+                    <div className="col-span-2 flex flex-col gap-1 pr-2">
+                      <div className="font-bold text-white text-sm break-words flex items-center gap-2">
+                        {p.name || 'Paciente Sem Nome'}
+                        {isOnline ? (
+                          <span className="flex items-center gap-1 text-[10px] text-mecura-neon bg-mecura-neon/10 px-1.5 py-0.5 rounded-full border border-mecura-neon/30"><span className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse"></span> Online</span>
+                        ) : null}
+                      </div>
+                      <div className="text-[#8A8A9E] text-xs break-all flex flex-col gap-0.5">
+                        <span>📧 {p.email || 'Sem email'}</span>
+                        {p.phone ? <span className="text-white/70">📱 {p.phone}</span> : null}
+                        {p.cpf ? <span className="text-[#8A8A9E]/80 text-[11px]">CPF: {p.cpf}</span> : null}
+                      </div>
                     </div>
-                    <div className="text-[#8A8A9E] text-xs break-all">{p.email || 'N/A'}</div>
+
+                    {/* Plano Adquirido */}
                     <div>
-                       <span className={`px-2 py-1 rounded-full text-xs ${p.tier === 'Premium' ? 'bg-purple-500/20 text-purple-400' : 'bg-mecura-neon/20 text-mecura-neon'}`}>
-                         {p.tier || 'Essencial'}
+                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                         isPrem 
+                           ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
+                           : 'bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30'
+                       }`}>
+                         {planLabel}
                        </span>
                     </div>
-                    <div className="flex flex-col gap-1 items-start">
-                       {p.hasCompletedOnboarding ? (
-                          <span className="text-green-400 text-xs">Ativo</span>
+
+                    {/* Status do Pagamento */}
+                    <div className="flex flex-col gap-1">
+                       {hasPaid ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-bold text-xs bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-full w-fit">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Pago ({isPrem ? 'R$ 249,90' : 'R$ 49,90'})
+                          </span>
                        ) : (
-                          <span className="text-yellow-400 text-xs">Pendente</span>
+                          <span className="inline-flex items-center gap-1 text-amber-400 font-medium text-xs bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 rounded-full w-fit">
+                            <Clock className="w-3.5 h-3.5 text-amber-400" /> Aguardando Pgto
+                          </span>
                        )}
-                       {isOnline ? (
-                          <span className="flex items-center gap-1 text-[10px] text-mecura-neon"><span className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse"></span> Online</span>
-                       ) : (
-                          <span className="text-[10px] text-[#8A8A9E]">Offline</span>
+
+                       {/* Status de Atendimento / Fila */}
+                       {qItem?.status === 'waiting' && (
+                         <span className="text-[10px] text-mecura-neon font-semibold flex items-center gap-1 mt-0.5">
+                            <span className="w-2 h-2 rounded-full bg-mecura-neon animate-ping"></span> Na Fila de Espera
+                         </span>
+                       )}
+                       {qItem?.status === 'in-consultation' && (
+                         <span className="text-[10px] text-blue-400 font-semibold flex items-center gap-1 mt-0.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span> Em Atendimento
+                         </span>
+                       )}
+                       {qItem?.status === 'finished' && (
+                         <span className="text-[10px] text-gray-400 font-medium flex items-center gap-1 mt-0.5">
+                            ✓ Atendimento Concluído
+                         </span>
                        )}
                     </div>
-                    <div className="flex flex-col gap-1">
-                       <div className="grid grid-cols-2 gap-1">
+
+                    {/* Data & Hora do Cadastro */}
+                    <div className="text-xs text-[#8A8A9E] flex flex-col gap-0.5">
+                       <span className="font-semibold text-white/90">{formattedDate.split(' às ')[0]}</span>
+                       {formattedDate.includes(' às ') && (
+                         <span className="text-[11px] text-mecura-neon/90">às {formattedDate.split(' às ')[1]}</span>
+                       )}
+                    </div>
+
+                    {/* Ações */}
+                    <div className="flex flex-col gap-1.5 items-end">
+                       <div className="flex items-center gap-1">
                          {(() => {
-                           const cleanPEmail = (p.email || '').trim().toLowerCase();
-                           const qItem = queue.find(q => q.id === p.id || (cleanPEmail && q.email && q.email.trim().toLowerCase() === cleanPEmail));
-                           const isSending = !!sendingQueueIds[p.id];
+                            const isSending = !!sendingQueueIds[p.id];
 
-                           if (qItem?.status === 'waiting') {
-                             return (
-                               <Button 
-                                 variant="outline" 
-                                 className="text-[10px] h-7 px-1 bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25 flex items-center justify-center gap-0.5 font-bold cursor-pointer" 
-                                 onClick={() => forceSendToQueue(p)} 
-                                 title="Paciente já está na Fila (clique para atualizar/reenviar)"
-                               >
-                                 {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" /> : <><Check className="w-3 h-3 text-emerald-400" /> Na Fila</>}
-                               </Button>
-                             );
-                           }
+                            if (qItem?.status === 'waiting') {
+                              return (
+                                <Button 
+                                  variant="outline" 
+                                  className="text-[10px] h-7 px-2 bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25 flex items-center justify-center gap-1 font-bold cursor-pointer" 
+                                  onClick={() => forceSendToQueue(p)} 
+                                  title="Paciente já está na Fila do Médico (clique para reordenar/atualizar)"
+                                >
+                                  {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" /> : <><Check className="w-3 h-3 text-emerald-400" /> Na Fila</>}
+                                </Button>
+                              );
+                            }
 
-                           if (qItem?.status === 'in-consultation') {
-                             return (
-                               <Button 
-                                 variant="outline" 
-                                 className="text-[10px] h-7 px-1 bg-blue-500/15 border border-blue-500/40 text-blue-400 hover:bg-blue-500/25 flex items-center justify-center gap-0.5 font-bold cursor-pointer" 
-                                 onClick={() => forceSendToQueue(p)} 
-                                 title="Paciente em consulta (clique para reiniciar na fila)"
-                               >
-                                 {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-blue-400" /> : 'Em Atend.'}
-                               </Button>
-                             );
-                           }
+                            if (qItem?.status === 'in-consultation') {
+                              return (
+                                <Button 
+                                  variant="outline" 
+                                  className="text-[10px] h-7 px-2 bg-blue-500/15 border border-blue-500/40 text-blue-400 hover:bg-blue-500/25 flex items-center justify-center gap-1 font-bold cursor-pointer" 
+                                  onClick={() => forceSendToQueue(p)} 
+                                  title="Paciente em atendimento com o médico"
+                                >
+                                  {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-blue-400" /> : 'Em Atend.'}
+                                </Button>
+                              );
+                            }
 
-                           return (
-                             <Button 
-                               variant="outline" 
-                               className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon border border-white/10 hover:border-mecura-neon/40 flex items-center justify-center gap-1 font-semibold text-white transition-all cursor-pointer" 
-                               onClick={() => forceSendToQueue(p)} 
-                               title="Mover paciente para a Fila do Médico"
-                             >
-                               {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-mecura-neon" /> : 'Fila'}
-                             </Button>
-                           );
-                         })()}
-                         <Button variant="outline" className="text-[10px] h-7 px-1 bg-[#161622] hover:bg-blue-500/20 hover:text-blue-400" onClick={() => setShowAgenda(p.id)} title="Agenda"><Calendar className="w-3 h-3 mr-1"/> Agend.</Button>
+                            return (
+                              <Button 
+                                variant="outline" 
+                                className="text-[10px] h-7 px-2 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon border border-white/10 hover:border-mecura-neon/40 flex items-center justify-center gap-1 font-semibold text-white transition-all cursor-pointer shadow-sm" 
+                                onClick={() => forceSendToQueue(p)} 
+                                title="Enviar ou mover paciente diretamente para a Fila do Médico"
+                              >
+                                {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-mecura-neon" /> : '➕ Enviar p/ Fila'}
+                              </Button>
+                            );
+                          })()}
+                          <Button variant="outline" className="text-[10px] h-7 px-1.5 bg-[#161622] hover:bg-blue-500/20 hover:text-blue-400 border border-white/10" onClick={() => setShowAgenda(p.id)} title="Ver / Agendar Agenda"><Calendar className="w-3 h-3 mr-0.5"/> Agenda</Button>
                        </div>
-                       <div className="grid grid-cols-3 gap-1">
-                         <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-green-500/20 hover:text-green-400" onClick={() => window.open(`https://wa.me/55${(p.phone || '').replace(/\D/g, '')}`, '_blank')} title="WhatsApp"><MessageCircle className="w-3 h-3"/></Button>
-                         <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-yellow-500/20 hover:text-yellow-400" onClick={() => setShowEditPatientPassword(p.id)} title="Trocar Senha"><Key className="w-3 h-3"/></Button>
-                         <Button variant="outline" className="text-[10px] h-7 px-0 bg-[#161622] hover:bg-red-500/20 hover:text-red-400" onClick={() => setDeletePatientConfirm(p.id)} title="Excluir Paciente"><Trash2 className="w-3 h-3"/></Button>
+
+                       <div className="flex items-center gap-1">
+                          <Button variant="outline" className="text-[10px] h-7 px-2 bg-[#161622] hover:bg-green-500/20 hover:text-green-400 border border-white/10" onClick={() => window.open(`https://wa.me/55${(p.phone || '').replace(/\D/g, '')}`, '_blank')} title="Abrir WhatsApp"><MessageCircle className="w-3 h-3 mr-1"/> Whats</Button>
+                          <Button variant="outline" className="text-[10px] h-7 px-2 bg-[#161622] hover:bg-yellow-500/20 hover:text-yellow-400 border border-white/10" onClick={() => setShowEditPatientPassword(p.id)} title="Trocar Senha"><Key className="w-3 h-3 mr-1"/> Senha</Button>
+                          <Button variant="outline" className="text-[10px] h-7 px-2 bg-[#161622] hover:bg-red-500/20 hover:text-red-400 border border-white/10" onClick={() => setDeletePatientConfirm(p.id)} title="Excluir Paciente"><Trash2 className="w-3 h-3"/></Button>
                        </div>
                     </div>
                   </div>
