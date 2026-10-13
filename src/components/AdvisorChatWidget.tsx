@@ -12,7 +12,13 @@ import {
   ABECMED_PRESCRIPTION_RULES,
   ABRACE_PRODUCTS,
   formatAbraceStandardOutput,
-  ABRACE_COMPANY_INFO
+  ABRACE_COMPANY_INFO,
+  SOUCANNABIS_PRODUCTS,
+  formatSouCannabisStandardOutput,
+  SOUCANNABIS_COMPANY_INFO,
+  PANGAIA_PRODUCTS,
+  formatPangaiaStandardOutput,
+  PANGAIA_COMPANY_INFO
 } from '../data/cbdGuide';
 
 type Message = {
@@ -121,6 +127,8 @@ export function AdvisorChatWidget() {
 
       const startOptions = [
         "Quem somos nós?",
+        "Medicamentos Importados (Pangaia)",
+        "Medicamentos Nacionais (SouCannabis)",
         "Medicamentos Nacionais (ABRACE)",
         "Medicamentos Nacionais (ABECMED)",
         "Quais doenças são tratadas?",
@@ -133,7 +141,69 @@ export function AdvisorChatWidget() {
         "Falar com suporte humano"
       ];
 
-      // Dúvidas sobre ABRACE
+      // Dúvidas sobre Pangaia Biopharmaceuticals
+      if (lowerText.includes("pangaia") || lowerText.includes("maná") || lowerText.includes("mana") || lowerText.includes("táio") || lowerText.includes("taio") || text === "Medicamentos Importados (Pangaia)") {
+        const matchedProd = PANGAIA_PRODUCTS.find(p => {
+          const pNameLower = p.name.toLowerCase();
+          if (lowerText.includes("5%") && pNameLower.includes("5%")) return true;
+          if (lowerText.includes("10%") && pNameLower.includes("10%")) return true;
+          if (lowerText.includes("20%") && pNameLower.includes("20%")) return true;
+          if ((lowerText.includes("delta-8") || lowerText.includes("delta 8")) && pNameLower.includes("delta-8")) return true;
+          if ((lowerText.includes("isolate") || lowerText.includes("isolado")) && pNameLower.includes("isolate")) return true;
+          if ((lowerText.includes("maná") || lowerText.includes("mana")) && pNameLower.includes("maná")) return true;
+          if ((lowerText.includes("táio") || lowerText.includes("taio")) && pNameLower.includes("táio")) return true;
+          if ((lowerText.includes("softgel") || lowerText.includes("cápsula") || lowerText.includes("capsula")) && pNameLower.includes("soft gel")) {
+            if (lowerText.includes("750") && pNameLower.includes("750")) return true;
+            if (lowerText.includes("1500") && pNameLower.includes("1500")) return true;
+            return true;
+          }
+          if (lowerText.includes("goma") || lowerText.includes("gummies")) {
+            if (lowerText.includes("16") && pNameLower.includes("16")) return true;
+            if (lowerText.includes("28") && pNameLower.includes("28")) return true;
+            if (lowerText.includes("delta") && pNameLower.includes("delta-8")) return true;
+            return true;
+          }
+          if (lowerText.includes("cooling") || lowerText.includes("salve")) return pNameLower.includes("cooling");
+          if (lowerText.includes("relief") || lowerText.includes("cream")) return pNameLower.includes("relief");
+          if (lowerText.includes("live rosin") || lowerText.includes("rosin")) return pNameLower.includes("rosin");
+          if (lowerText.includes("diamond") || lowerText.includes("sauce")) return pNameLower.includes("diamond");
+          if (lowerText.includes("bubble hash") || lowerText.includes("hash")) return pNameLower.includes("bubble");
+          if (lowerText.includes("flor") || lowerText.includes("flores")) return pNameLower.includes("flores");
+          return false;
+        });
+
+        if (matchedProd) {
+          botResponse.text = `📋 **Catálogo Oficial Pangaia Biopharmaceuticals — Ficha Técnica cGMP:**\n\n${formatPangaiaStandardOutput(matchedProd)}`;
+          botResponse.options = ["Ver outros produtos Pangaia", "Medicamentos Nacionais (SouCannabis)", "Medicamentos Nacionais (ABRACE)", "Voltar ao início"];
+        } else {
+          botResponse.text = `🌐 **PANGAIA BIOPHARMACEUTICALS & HEALTH (IMPORTAÇÃO ANVISA RDC 660/2022)**\n\nA Pangaia possui mais de 20 anos de pesquisa e colaboração científica pioneira com o Prof. Raphael Mechoulam. Fabricação com certificação farmacêutica **cGMP**, laudos **COA por HPLC e espectrometria de massas** e conta-gotas graduado medicinal de **20 gotas por mL** (~0,05 mL por gota). Conta com a iniciativa **Anvisa Simples** em parceria com a CannaCare para importação rápida.\n\n💧 **1. LINHA PHARMA — ÓLEOS SUBLINGUAIS (30 mL em MCT Orgânico):**\n• Óleo 5% (1500 mg — 50 mg/mL): 2,5 mg CBD/gota | R$ 489,00 (Ansiedade, insônia inicial)\n• Óleo 10% (3000 mg — 100 mg/mL): 5,0 mg CBD/gota | R$ 879,00 (Mais Prescrito — Dores crônicas, TEA, fibromialgia)\n• Óleo 20% (6000 mg — 200 mg/mL): 10,0 mg CBD/gota | R$ 1.099,00 (Alta potência — Parkinson, epilepsia, espasticidade)\n• Óleo Delta-8 THC (2000 mg): ~3,3 mg canabinoides/gota | R$ 599,99 (Náuseas, estímulo de apetite e dor noturna)\n• Óleo CBD Isolate (3000 mg — 0% THC): 5,0 mg CBD/gota | R$ 790,00 (Atletas WADA, policiais e pilotos)\n\n🌿 **2. LINHA PANGAIA AMAZÔNIA (Bioativos Indígenas Sustentáveis):**\n• Óleo Maná 3000 mg (CBD 100 mg/mL + Óleo virgem de Copaíba com Beta-Cariofileno agonista CB2): R$ 440,00\n• Pomada Táio 3375 mg (100g — Andiroba, Arnica, Copaíba & CBD Full Spectrum): R$ 440,00\n\n💊 **3. LINHA CÁPSULAS SOFTGEL (Liberação Estável sem Sabor):**\n• Softgel 750 mg (30 cápsulas de 25 mg CBD): R$ 349,99\n• Softgel 1500 mg (30 cápsulas de 50 mg CBD): R$ 599,00\n\n🍬 **4. LINHA GOMAS / GUMMIES TERAPÊUTICAS:**\n• Gummies Grape Full Spectrum: 16 unids (R$ 199,90) e 28 unids (R$ 247,90) de 25 mg CBD cada\n• Gummies Vegan Delta-8: 16 unids (R$ 259,00) e 28 unids (R$ 389,00) de 25 mg Delta-8 cada\n\n🧴 **5. LINHA TÓPICA & CREMES:**\n• Cooling Salve 500 mg (60g — Cânfora e Mentol crioterápico): R$ 199,90\n• CBD Relief Cream 3000 mg (100 mL — Alta permeação pump airless): R$ 599,00\n\n⚗️ **6. LINHA CONCENTRADOS ELITE (Solventless):**\n• Live Rosin THC-A 1g (70-80% — Resgate analgésico < 2 min): R$ 200,00\n• Diamond Sauce CBD 10g (85% CBD em terpenos vivos): R$ 649,00\n• Bubble Hash CBD 10g (Ice-o-Lator mecânico 55% CBD): R$ 999,00\n\n🌱 **7. LINHA FLOR MEDICINAL SELECIONADA:**\n• Flores CBD High Organics 5g (14% CBD, <0,3% THC): R$ 280,00\n• Flores Balanced 1:1 Organics 5g (~8% CBD / ~8% THC): R$ 320,00\n\n*Nota: Medicamentos importados com prescrição médica emitidos na Guia 2 da receita (Anvisa RDC 660).*`;
+          botResponse.options = ["Óleo Pangaia 10% (3000mg)", "Óleo Pangaia 20% (6000mg)", "Óleo Maná Copaíba", "Pomada Táio 3375mg", "Gummies Grape Pangaia", "Live Rosin THC-A", "Voltar ao início"];
+        }
+      } else // Dúvidas sobre SouCannabis
+      if (lowerText.includes("soucannabis") || lowerText.includes("sou cannabis") || text === "Medicamentos Nacionais (SouCannabis)") {
+        const matchedProd = SOUCANNABIS_PRODUCTS.find(p => {
+          const pNameLower = p.name.toLowerCase();
+          if (lowerText.includes("azul") && pNameLower.includes("azul")) return true;
+          if ((lowerText.includes("lilás") || lowerText.includes("lilas")) && pNameLower.includes("lilás")) return true;
+          if (lowerText.includes("rosa") && pNameLower.includes("rosa")) return true;
+          if (lowerText.includes("laranja") && pNameLower.includes("laranja")) return true;
+          if (lowerText.includes("branco") && pNameLower.includes("branco")) return true;
+          if (lowerText.includes("nasal") && pNameLower.includes("nasal")) return true;
+          if ((lowerText.includes("íntimo") || lowerText.includes("intimo") || lowerText.includes("lubrificante")) && pNameLower.includes("lubrificante")) return true;
+          if (lowerText.includes("pomada") && pNameLower.includes("pomada")) return true;
+          if ((lowerText.includes("supositório") || lowerText.includes("supositorio")) && pNameLower.includes("supositório")) return true;
+          if ((lowerText.includes("extrato") || lowerText.includes("resina") || lowerText.includes("pasta")) && pNameLower.includes("extrato")) return true;
+          return false;
+        });
+
+        if (matchedProd) {
+          botResponse.text = `📋 **Catálogo Oficial SouCannabis — Ficha Técnica HPLC:**\n\n${formatSouCannabisStandardOutput(matchedProd)}`;
+          botResponse.options = ["Ver outros produtos SouCannabis", "Medicamentos Nacionais (ABRACE)", "Medicamentos Nacionais (ABECMED)", "Voltar ao início"];
+        } else {
+          botResponse.text = `🌱 **SOUCANNABIS — ASSOCIAÇÃO BRASILEIRA (CATÁLOGO OFICIAL 2026)**\n\nA SouCannabis padroniza suas formulações com **HPLC (Cromatografia Líquida)** e parcerias universitárias. Seus óleos são veiculados em **óleo MCT puro** (sabor suave e alta absorção) com **calibração de ~26 gotas por mL** e referência de 60% de canabinoides no extrato.\n\n🔵 **1. ÓLEO AZUL (Predominância de THC 5:1):**\n• Concentrações: 2%, 3%, 6%, 10%, 15% e 20% (10 mL e 30 mL)\n• Por gota (2% a 20%): de 0,385 mg a 3,850 mg THC\n• Valores: 10 mL de R$ 120 a R$ 480 | 30 mL de R$ 240 a R$ 955\n\n🟣 **2. ÓLEO LILÁS (Equilibrado 1:1 THC:CBD):**\n• Concentrações: 2%, 3%, 6%, 10%, 15% e 20% (10 mL e 30 mL)\n• Por gota (2% a 20%): de 0,231 mg a 2,310 mg de cada canabinoide\n• Valores: 10 mL de R$ 120 a R$ 480 | 30 mL de R$ 240 a R$ 955\n\n🌸 **3. ÓLEO ROSA (Predominância de CBD 5:1):**\n• Concentrações: 2%, 3%, 6%, 10%, 15% e 20% (10 mL e 30 mL)\n• Por gota (2% a 20%): de 0,385 mg a 3,850 mg CBD (+ THC 0,077 a 0,770 mg)\n• Valores: 10 mL de R$ 110 a R$ 440 | 30 mL de R$ 220 a R$ 880\n\n🟠 **4. ÓLEO LARANJA (Predomínio de CBD 1:10 THC nominal):**\n• Concentrações: 2%, 3%, 6%, 10%, 15% e 20% (10 mL e 30 mL)\n• Por gota (2% a 20%): de 0,424 mg a 4,235 mg CBD (+ traços de THC)\n• Valores: 10 mL de R$ 105 a R$ 385 | 30 mL de R$ 210 a R$ 770\n\n⚪ **5. ÓLEO BRANCO (Broad Spectrum 0% THC Declarado):**\n• Concentrações: 2%, 3%, 6%, 10%, 15% e 20% (10 mL e 30 mL)\n• 0 mg THC por gota declarado (de 0,462 mg a 4,620 mg CBD)\n• Valores: 10 mL de R$ 105 a R$ 385 | 30 mL de R$ 210 a R$ 770\n\n💨 **6. SPRAYS NASAIS (6% / 60 mg/mL):**\n• Azul THC 5:1 (10 mL R$ 200 | 30 mL R$ 395)\n• Laranja CBD 1:10 (10 mL R$ 165 | 30 mL R$ 325)\n\n💧 **7. LUBRIFICANTE ÍNTIMO (1:1 THC:CBD):**\n• 6% (10 mL R$ 200 | 30 mL R$ 395) e 10% (10 mL R$ 280 | 30 mL R$ 555)\n\n🧴 **8. POMADAS TÓPICAS (Dérmico / Articular):**\n• 6% (30g R$ 180 | 50g R$ 290) e 10% (30g R$ 260 | 50g R$ 420)\n\n💊 **9. SUPOSITÓRIOS TRANSMUCOSA PÉLVICA:**\n• 1:1 (30 mg R$ 250 | 50 mg R$ 360) e Azul 5:1 (30 mg R$ 250 | 50 mg R$ 360) com 10 un\n\n⚗️ **10. EXTRATOS CONCENTRADOS (Seringa Dosadora):**\n• 60% (2 mL R$ 320 | 5 mL R$ 680) e 80% (2 mL R$ 420 | 5 mL R$ 890)\n\n*Nota: Medicamentos de associação nacional emitidos exclusivamente na Guia 1 da receita.*`;
+          botResponse.options = ["Óleo Azul (THC 5:1)", "Óleo Lilás (1:1)", "Óleo Rosa (CBD 5:1)", "Óleo Laranja (1:10)", "Óleo Branco (0% THC)", "Spray Nasal SouCannabis", "Lubrificante Íntimo SouCannabis", "Pomada SouCannabis", "Supositórios SouCannabis", "Extrato 60% SouCannabis", "Voltar ao início"];
+        }
+      } else // Dúvidas sobre ABRACE
       if (lowerText.includes("abrace") || text === "Medicamentos Nacionais (ABRACE)") {
         const matchedProd = ABRACE_PRODUCTS.find(p => {
           const pNameLower = p.name.toLowerCase();

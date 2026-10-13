@@ -15,7 +15,7 @@ import {
   Layers,
   ShieldCheck,
   Globe
-, Users, Activity, Stethoscope, TrendingUp, BookOpen, Pill } from 'lucide-react';
+, Users, Activity, Stethoscope, TrendingUp, BookOpen, Pill, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
@@ -116,23 +116,84 @@ export function CBDGuideView() {
     setExpandedCategories(newState);
   };
 
+  const isSearching = searchTerm.trim().length > 0 || diseaseFilter.trim().length > 0;
+
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategoryFilter(catId);
+    setViewMode('categories');
+    setSearchTerm('');
+    setDiseaseFilter('');
+    setExpandedCategories(prev => ({ ...prev, [catId]: true }));
+    setTimeout(() => {
+      const el = document.getElementById(`cbd-category-${catId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
   const filteredData = productCategories
-    .filter(category => selectedCategoryFilter === 'all' || category.id === selectedCategoryFilter)
+    .filter(category => {
+      if (isSearching) {
+        // If user is searching, check across all categories if current filter doesn't yield results
+        if (selectedCategoryFilter === 'all') return true;
+        const term = searchTerm.toLowerCase();
+        // If searching specifically for brand names, prioritize matching that category
+        if (term.includes('pangaia') || term.includes('maná') || term.includes('táio')) {
+          return category.id === 'pangaia_oficial';
+        }
+        if (term.includes('sou') || term.includes('soucannabis')) {
+          return category.id === 'soucannabis_oficial';
+        }
+        if (term.includes('abrace')) {
+          return category.id === 'abrace_oficial';
+        }
+        if (term.includes('abec') || term.includes('abecmed')) {
+          return category.id === 'abecmed_oficial';
+        }
+        if (term.includes('flower') || term.includes('flowermed')) {
+          return category.id === 'flowermed_oficial';
+        }
+        return true;
+      }
+      return selectedCategoryFilter === 'all' || category.id === selectedCategoryFilter;
+    })
     .map(category => {
-      const filteredProducts = category.products.filter(product => 
-        (product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (product.details && product.details.some(d => d.toLowerCase().includes(searchTerm.toLowerCase()))) ||
-        (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))) &&
-        (!diseaseFilter || 
-          (product.indications && product.indications.toLowerCase().includes(diseaseFilter.toLowerCase())) ||
-          category.title.toLowerCase().includes(diseaseFilter.toLowerCase()) ||
-          category.description.toLowerCase().includes(diseaseFilter.toLowerCase()))
-      );
+      const filteredProducts = category.products.filter(product => {
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase().trim();
+        const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
+        const anyP = product as any;
+        return (
+          product.name.toLowerCase().includes(term) ||
+          product.manufacturer.toLowerCase().includes(term) ||
+          product.type.toLowerCase().includes(term) ||
+          (product.origin && product.origin.toLowerCase().includes(term)) ||
+          (product.description && product.description.toLowerCase().includes(term)) ||
+          (product.indications && product.indications.toLowerCase().includes(term)) ||
+          (product.details && product.details.some(d => d.toLowerCase().includes(term))) ||
+          (anyP.productLine && anyP.productLine.toLowerCase().includes(term)) ||
+          (anyP.carrierVehicle && anyP.carrierVehicle.toLowerCase().includes(term)) ||
+          (anyP.ratio && anyP.ratio.toLowerCase().includes(term)) ||
+          (anyP.posologyDetails && anyP.posologyDetails.toLowerCase().includes(term)) ||
+          (anyP.mechanismOfAction && anyP.mechanismOfAction.toLowerCase().includes(term)) ||
+          (enriched.activeIngredients && enriched.activeIngredients.toLowerCase().includes(term)) ||
+          (enriched.concentration && enriched.concentration.toLowerCase().includes(term)) ||
+          (enriched.pharmaceuticalForm && enriched.pharmaceuticalForm.toLowerCase().includes(term))
+        );
+      }).filter(product => {
+        if (!diseaseFilter) return true;
+        const dTerm = diseaseFilter.toLowerCase().trim();
+        return (
+          (product.indications && product.indications.toLowerCase().includes(dTerm)) ||
+          category.title.toLowerCase().includes(dTerm) ||
+          category.description.toLowerCase().includes(dTerm) ||
+          (category.indicationsList && category.indicationsList.some(i => i.toLowerCase().includes(dTerm)))
+        );
+      });
       return { ...category, products: filteredProducts };
     })
-    .filter(category => category.products.length > 0 || (searchTerm === '' && selectedCategoryFilter === category.id));
+    .filter(category => category.products.length > 0 || (!isSearching && selectedCategoryFilter === category.id));
 
   const totalProductsCount = filteredData.reduce((acc, cat) => acc + cat.products.length, 0);
 
@@ -251,31 +312,133 @@ export function CBDGuideView() {
           </div>
         </div>
 
-        {/* Category Pills Filter */}
-        <div id="cbd-category-filters" className="flex items-center gap-2 overflow-x-auto pt-3 pb-1 no-scrollbar text-xs">
-          <button
-            onClick={() => setSelectedCategoryFilter('all')}
-            className={`px-3 py-1 rounded-lg font-medium whitespace-nowrap transition-all ${
-              selectedCategoryFilter === 'all'
-                ? 'bg-mecura-neon text-black font-bold shadow-[0_0_10px_rgba(166,255,0,0.2)]'
-                : 'bg-mecura-surface text-mecura-silver hover:text-white border border-mecura-elevated'
-            }`}
-          >
-            Todas Categorias
-          </button>
-          {productCategories.map(cat => (
+        {/* Association & Laboratory Quick Selection Toolbar */}
+        <div id="cbd-association-quick-select" className="pt-3 pb-1 border-t border-white/5 mt-2">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-bold text-mecura-silver uppercase tracking-wider flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-mecura-neon" />
+              <span>Escolher Associação / Laboratório:</span>
+            </span>
+            {selectedCategoryFilter !== 'all' && (
+              <button
+                onClick={() => setSelectedCategoryFilter('all')}
+                className="text-[11px] text-mecura-neon hover:underline font-semibold"
+              >
+                Limpar filtro (Ver Todas)
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
+            {/* SouCannabis - Requested specifically by the user! */}
             <button
-              key={cat.id}
-              onClick={() => setSelectedCategoryFilter(cat.id)}
-              className={`px-3 py-1 rounded-lg font-medium whitespace-nowrap transition-all ${
-                selectedCategoryFilter === cat.id
-                  ? 'bg-mecura-neon text-black font-bold shadow-[0_0_10px_rgba(166,255,0,0.2)]'
-                  : 'bg-mecura-surface text-mecura-silver hover:text-white border border-mecura-elevated'
+              id="btn-choose-soucannabis"
+              onClick={() => handleSelectCategory('soucannabis_oficial')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border shadow-sm ${
+                selectedCategoryFilter === 'soucannabis_oficial'
+                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.35)] scale-105'
+                  : 'bg-emerald-950/40 text-emerald-300 hover:text-white hover:bg-emerald-900/50 border-emerald-500/40'
               }`}
             >
-              {cat.title} ({cat.products.length})
+              <span>🌱 SouCannabis</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                selectedCategoryFilter === 'soucannabis_oficial' ? 'bg-black text-emerald-300' : 'bg-emerald-500/20 text-emerald-200'
+              }`}>
+                Associação Nacional
+              </span>
             </button>
-          ))}
+
+            {/* Pangaia Biopharmaceuticals */}
+            <button
+              id="btn-choose-pangaia"
+              onClick={() => handleSelectCategory('pangaia_oficial')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border shadow-sm ${
+                selectedCategoryFilter === 'pangaia_oficial'
+                  ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] scale-105'
+                  : 'bg-cyan-950/40 text-cyan-300 hover:text-white hover:bg-cyan-900/50 border-cyan-500/40'
+              }`}
+            >
+              <span>🌐 Pangaia Biopharma</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                selectedCategoryFilter === 'pangaia_oficial' ? 'bg-black text-cyan-300' : 'bg-cyan-500/20 text-cyan-200'
+              }`}>
+                EUA • RDC 660
+              </span>
+            </button>
+
+            {/* ABRACE */}
+            <button
+              id="btn-choose-abrace"
+              onClick={() => handleSelectCategory('abrace_oficial')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
+                selectedCategoryFilter === 'abrace_oficial'
+                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-105'
+                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
+              }`}
+            >
+              <span>🌿 ABRACE Esperança</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-mecura-silver">
+                Associação
+              </span>
+            </button>
+
+            {/* ABECMED */}
+            <button
+              id="btn-choose-abecmed"
+              onClick={() => handleSelectCategory('abecmed_oficial')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
+                selectedCategoryFilter === 'abecmed_oficial'
+                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-105'
+                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
+              }`}
+            >
+              <span>🏢 ABECMED</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-mecura-silver">
+                Associação
+              </span>
+            </button>
+
+            {/* Flowermed */}
+            <button
+              id="btn-choose-flowermed"
+              onClick={() => handleSelectCategory('flowermed_oficial')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
+                selectedCategoryFilter === 'flowermed_oficial'
+                  ? 'bg-sky-400 text-black border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-105'
+                  : 'bg-sky-950/40 text-sky-300 hover:text-white border-sky-500/40'
+              }`}
+            >
+              <span>🌸 Flowermed</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-200">
+                EUA • FDA
+              </span>
+            </button>
+
+            {/* Flores & Extrações */}
+            <button
+              id="btn-choose-flores"
+              onClick={() => handleSelectCategory('flores_extracoes')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
+                selectedCategoryFilter === 'flores_extracoes'
+                  ? 'bg-emerald-400 text-black border-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.35)] scale-105'
+                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
+              }`}
+            >
+              <span>🍃 Flores In Natura & Extrações</span>
+            </button>
+
+            {/* Ver Todas */}
+            <button
+              onClick={() => setSelectedCategoryFilter('all')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border ${
+                selectedCategoryFilter === 'all'
+                  ? 'bg-white/15 text-white border-white/30'
+                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
+              }`}
+            >
+              <span>📋 Ver Todas ({productCategories.length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -423,7 +586,25 @@ export function CBDGuideView() {
             {/* GRID CARD VIEW - Responsive for all screens */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {allProducts
-                .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                .filter(p => {
+                  if (!searchTerm) return true;
+                  const term = searchTerm.toLowerCase().trim();
+                  const anyP = p as any;
+                  return (
+                    p.name.toLowerCase().includes(term) ||
+                    p.manufacturer.toLowerCase().includes(term) ||
+                    p.type.toLowerCase().includes(term) ||
+                    (p.origin && p.origin.toLowerCase().includes(term)) ||
+                    (p.description && p.description.toLowerCase().includes(term)) ||
+                    (p.indications && p.indications.toLowerCase().includes(term)) ||
+                    (p.details && p.details.some((d: string) => d.toLowerCase().includes(term))) ||
+                    (anyP.productLine && anyP.productLine.toLowerCase().includes(term)) ||
+                    (anyP.carrierVehicle && anyP.carrierVehicle.toLowerCase().includes(term)) ||
+                    (anyP.ratio && anyP.ratio.toLowerCase().includes(term)) ||
+                    (anyP.posologyDetails && anyP.posologyDetails.toLowerCase().includes(term)) ||
+                    (anyP.mechanismOfAction && anyP.mechanismOfAction.toLowerCase().includes(term))
+                  );
+                })
                 .filter(p => originFilter === 'all' ? true : (originFilter === 'importado' ? p.origin?.toLowerCase().includes('importado') : !p.origin?.toLowerCase().includes('importado')))
                 .filter(p => {
                   if (!deepSearchTerm) return true;
@@ -434,6 +615,7 @@ export function CBDGuideView() {
                 })
                 .map((product, idx) => {
                   const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
+                  const anyP = product as any;
                   return (
                   <div 
                     key={idx} 
@@ -452,12 +634,17 @@ export function CBDGuideView() {
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${product.origin?.toLowerCase().includes('importado') ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'} uppercase`}>
                             {product.origin?.toLowerCase().includes('importado') ? 'Importado' : 'Nacional'}
                           </span>
+                          {anyP.anvisaRdc && (
+                            <span className="px-2 py-0.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded text-[10px] font-bold">
+                              {anyP.anvisaRdc}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
                         {product.origin?.toLowerCase().includes('importado') ? (
                           <span className="text-sm font-black text-mecura-neon block bg-mecura-neon/10 px-2.5 py-1 rounded-lg border border-mecura-neon/20">
-                            {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2)}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2)}` : 'Consulte')}
+                            {product.priceBRL ? `R$ ${product.priceBRL.toFixed(2).replace('.', ',')}` : (product.priceUSD ? `R$ ${(product.priceUSD * exchangeRate).toFixed(2).replace('.', ',')}` : 'Consulte')}
                           </span>
                         ) : (
                           <span className="text-xs font-bold text-emerald-400 block bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
@@ -466,24 +653,58 @@ export function CBDGuideView() {
                         )}
                       </div>
                     </div>
+
+                    {/* Rich Specs Badges */}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {anyP.mgPerDropCBD !== undefined && (
+                        <span className="bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/25 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                          💧 {anyP.mgPerDropCBD} mg CBD/gota
+                        </span>
+                      )}
+                      {anyP.mgPerDropTHC !== undefined && (
+                        <span className="bg-amber-500/10 text-amber-300 border border-amber-500/25 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                          💧 {anyP.mgPerDropTHC} mg THC/gota
+                        </span>
+                      )}
+                      {anyP.ratio && (
+                        <span className="bg-purple-500/10 text-purple-300 border border-purple-500/25 px-2 py-0.5 rounded-md text-[10px] font-semibold">
+                          ⚖️ {anyP.ratio}
+                        </span>
+                      )}
+                      {anyP.carrierVehicle && (
+                        <span className="bg-white/5 text-mecura-pearl border border-white/10 px-2 py-0.5 rounded-md text-[10px]">
+                          🌱 {anyP.carrierVehicle}
+                        </span>
+                      )}
+                      {anyP.gmpCertified && (
+                        <span className="bg-teal-500/10 text-teal-300 border border-teal-500/25 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                          cGMP
+                        </span>
+                      )}
+                      {anyP.hplcStandardized && (
+                        <span className="bg-sky-500/10 text-sky-300 border border-sky-500/25 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                          HPLC
+                        </span>
+                      )}
+                    </div>
                     
-                    <div className="mb-4">
+                    <div className="mb-3">
                       <span className="inline-block px-2.5 py-1 bg-mecura-neon/5 text-mecura-neon rounded-lg text-[11px] font-semibold border border-mecura-neon/20 mb-2">
                         {product.type}
                       </span>
                       {product.description && (
-                        <p className="text-xs text-mecura-silver leading-relaxed break-words ">
+                        <p className="text-xs text-mecura-silver leading-relaxed break-words line-clamp-2">
                           {product.description}
                         </p>
                       )}
                       
                       {/* Indications / Diseases */}
-                      <div className="mt-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
+                      <div className="mt-2.5 bg-black/20 p-2.5 rounded-lg border border-white/5">
                         <p className="text-[11px] text-mecura-pearl font-bold mb-1 flex items-center gap-1.5">
                           <Activity className="w-3.5 h-3.5 text-mecura-neon" /> 
                           Uso Clínico (Doenças)
                         </p>
-                        <p className="text-[11px] text-mecura-silver leading-relaxed">
+                        <p className="text-[11px] text-mecura-silver leading-relaxed line-clamp-2">
                           {product.indications ? product.indications : (product.categoryIndications && product.categoryIndications.length > 0 ? product.categoryIndications.join(', ') : product.categoryName)}
                         </p>
                       </div>
@@ -498,13 +719,25 @@ export function CBDGuideView() {
                       </p>
                       {enriched.usageInstructions && (
                         <div className="pt-2 mt-2 border-t border-white/5">
-                          <p className="text-[11px] leading-relaxed text-mecura-silver">
+                          <p className="text-[11px] leading-relaxed text-mecura-silver line-clamp-2">
                             <strong className="text-white block mb-0.5">Posologia e Uso:</strong> 
                             {enriched.usageInstructions}
                           </p>
                         </div>
                       )}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedProduct(product);
+                      }}
+                      className="mt-3 w-full py-2 bg-mecura-surface-light hover:bg-mecura-neon hover:text-black text-mecura-neon border border-mecura-neon/30 hover:border-transparent rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Ver Bula Completa & Prescrição</span>
+                    </button>
                   </div>
                 )})}
             </div>
@@ -579,6 +812,237 @@ export function CBDGuideView() {
                 {/* Category Content */}
                 {isExpanded && (
                   <div className="p-4 md:p-6 border-t border-mecura-elevated space-y-4">
+                    {/* SouCannabis Official Association Hub */}
+                    {category.id === 'soucannabis_oficial' && (
+                      <div className="p-5 md:p-6 bg-gradient-to-br from-emerald-950/50 via-black/60 to-[#0A0A0F] border border-emerald-500/40 rounded-2xl mb-6 shadow-2xl space-y-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-emerald-500/25 pb-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs border border-emerald-400/30 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" /> Associação Nacional
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver text-[11px] border border-white/10">
+                                Fundada em 2020 • Acolhimento Humanizado
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300 text-[11px] border border-teal-500/20 font-semibold">
+                                Cromatografia HPLC & Parcerias UFRJ/Unifesp
+                              </span>
+                            </div>
+                            <h4 className="text-lg md:text-xl font-bold text-white tracking-tight">
+                              Catálogo Oficial SouCannabis • Formulações Padronizadas HPLC
+                            </h4>
+                            <p className="text-xs text-mecura-silver mt-1 max-w-3xl leading-relaxed">
+                              A SouCannabis disponibiliza formulações farmacêuticas com controle analítico rigoroso de fitocanabinoides e terpenos. Todos os óleos utilizam veículo em óleo MCT suave de alta biodisponibilidade (~26 gotas/mL), com frascos âmbar protetores e conta-gotas calibrado.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            <a 
+                              href="https://soucannabis.org.br" 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              Site Oficial SouCannabis
+                            </a>
+                            <div className="text-[11px] text-emerald-200/90 bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-500/20 flex items-center gap-1.5">
+                              <span>Instagram: @soucannabisbrasil</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* As 5 Linhas de Cores SouCannabis */}
+                        <div>
+                          <h5 className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                            <Activity className="w-4 h-4" />
+                            Guia das 5 Linhas de Cores & Canabinoides SouCannabis:
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs">
+                            <div className="p-3 bg-blue-950/30 border border-blue-500/30 rounded-xl">
+                              <span className="text-blue-300 font-bold block mb-1">🔵 Linha Azul (5:1 THC:CBD)</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Concentrações: 2%, 3%, 6%, 10%, 15%, 20%</p>
+                              <span className="text-[10px] text-blue-200 mt-1 block">Dor crônica, espasticidade, oncologia</span>
+                            </div>
+                            <div className="p-3 bg-purple-950/30 border border-purple-500/30 rounded-xl">
+                              <span className="text-purple-300 font-bold block mb-1">🟣 Linha Lilás (1:1 THC:CBD)</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Concentrações: 2%, 3%, 6%, 10%</p>
+                              <span className="text-[10px] text-purple-200 mt-1 block">Fibromialgia, artrite, rigidez matinal</span>
+                            </div>
+                            <div className="p-3 bg-pink-950/30 border border-pink-500/30 rounded-xl">
+                              <span className="text-pink-300 font-bold block mb-1">🌸 Linha Rosa (5:1 CBD:THC)</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Concentrações: 2%, 3%, 6%, 10%, 15%, 20%</p>
+                              <span className="text-[10px] text-pink-200 mt-1 block">TEA (Autismo), ansiedade, neuroinflamação</span>
+                            </div>
+                            <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-xl">
+                              <span className="text-amber-300 font-bold block mb-1">🟠 Linha Laranja (1:10 CBD)</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Concentrações: 2%, 3%, 6%, 10%, 15%, 20%</p>
+                              <span className="text-[10px] text-amber-200 mt-1 block">Estresse, burnout, sensibilidade a THC</span>
+                            </div>
+                            <div className="p-3 bg-slate-900 border border-white/20 rounded-xl">
+                              <span className="text-white font-bold block mb-1">⚪ Linha Branco (0% THC)</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Concentrações: 2%, 3%, 6%, 10%</p>
+                              <span className="text-[10px] text-mecura-pearl mt-1 block">Atletas WADA, pilotos, policiais sob antidoping</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Formas Farmacêuticas Especiais */}
+                        <div>
+                          <h5 className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2">
+                            Formas Farmacêuticas Especiais & Inovadoras:
+                          </h5>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <span className="px-3 py-1.5 bg-white/5 border border-emerald-500/20 text-white rounded-lg font-medium">
+                              💨 <strong>Sprays Nasais 6%:</strong> Resgate rápido de crises de pânico e dor intensa
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-emerald-500/20 text-white rounded-lg font-medium">
+                              💧 <strong>Lubrificante Íntimo 1:1:</strong> 30 mL para endometriose e dispareunia
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-emerald-500/20 text-white rounded-lg font-medium">
+                              🧴 <strong>Pomadas Tópicas (6% e 10%):</strong> Alívio localizado articular e muscular
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-emerald-500/20 text-white rounded-lg font-medium">
+                              💊 <strong>Supositórios Pélvicos (30mg e 50mg):</strong> Ação direta retal/vaginal sem efeito hepático
+                            </span>
+                            <span className="px-3 py-1.5 bg-white/5 border border-emerald-500/20 text-white rounded-lg font-medium">
+                              ⚗️ <strong>Extratos Concentrados em Seringa (60% e 80%):</strong> Microdosagem para patologias refratárias
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Fluxo de Acesso SouCannabis em 4 Passos */}
+                        <div>
+                          <h5 className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2.5">
+                            Fluxo de Prescrição & Acolhimento SouCannabis (4 Passos):
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-emerald-500/30">1</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Receita Médica Nacional</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Prescrição em receituário simples ou especial com indicação clara da linha.</p>
+                            </div>
+                            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-emerald-500/30">2</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Cadastro do Paciente</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Inscrição na associação pelo portal soucannabis.org.br com envio do laudo.</p>
+                            </div>
+                            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-emerald-500/30">3</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Acolhimento Farmacêutico</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Orientação individualizada com farmacêutico sobre administração e desmame.</p>
+                            </div>
+                            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-emerald-500/30">4</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Envio & Acompanhamento</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Despacho seguro para todo o território nacional com suporte clínico contínuo.</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pangaia Official Biopharmaceuticals Hub */}
+                    {category.id === 'pangaia_oficial' && (
+                      <div className="p-5 md:p-6 bg-gradient-to-br from-cyan-950/50 via-black/60 to-[#0A0A0F] border border-cyan-500/40 rounded-2xl mb-6 shadow-2xl space-y-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-cyan-500/25 pb-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold text-xs border border-cyan-400/30 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" /> Laboratório Biotecnológico Internacional
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver text-[11px] border border-white/10">
+                                +20 Anos de Pesquisa • Parceria Prof. Raphael Mechoulam
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 text-[11px] border border-purple-500/20 font-semibold">
+                                Padrão Farmacêutico cGMP • Anvisa RDC 660/2022
+                              </span>
+                            </div>
+                            <h4 className="text-lg md:text-xl font-bold text-white tracking-tight">
+                              Catálogo Oficial Pangaia Biopharmaceuticals & Health
+                            </h4>
+                            <p className="text-xs text-mecura-silver mt-1 max-w-3xl leading-relaxed">
+                              A Pangaia formula todos os seus produtos em instalações farmacêuticas cGMP nos Estados Unidos com testes laboratoriais COA por HPLC e espectrometria de massas lote a lote. Conta com a iniciativa <strong>Anvisa Simples</strong> em parceria com a CannaCare para agilizar o processo de autorização de importação legal no Brasil.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            <a 
+                              href="https://pangaiacbd.com" 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="px-3.5 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              Site Oficial Pangaia
+                            </a>
+                            <div className="text-[11px] text-cyan-200/90 bg-cyan-500/10 px-3 py-2 rounded-xl border border-cyan-500/20">
+                              Instagram: @pangaiacbd
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* As 7 Sublinhas Pangaia */}
+                        <div>
+                          <h5 className="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                            <Activity className="w-4 h-4" />
+                            As 7 Linhas de Produtos Farmacêuticos Pangaia:
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+                            <div className="p-3 bg-cyan-950/30 border border-cyan-500/30 rounded-xl">
+                              <span className="text-cyan-300 font-bold block mb-1">💧 Linha Pharma Óleos (30 mL)</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">5% (1500mg), 10% (3000mg), 20% (6000mg), Delta-8 THC (2000mg), Isolate 0% THC (3000mg)</p>
+                              <span className="text-[10px] text-cyan-200 mt-1 block">Calibrado a 20 gotas/mL (~0,05 mL/gota)</span>
+                            </div>
+                            <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl">
+                              <span className="text-emerald-300 font-bold block mb-1">🌿 Linha Pangaia Amazônia</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Óleo Maná 3000mg (Copaíba com Beta-Cariofileno) & Pomada Táio 3375mg (Andiroba/Arnica/Copaíba)</p>
+                              <span className="text-[10px] text-emerald-200 mt-1 block">Parceria com comunidades indígenas sustentáveis</span>
+                            </div>
+                            <div className="p-3 bg-purple-950/30 border border-purple-500/30 rounded-xl">
+                              <span className="text-purple-300 font-bold block mb-1">💊 Cápsulas Softgel & Gummies</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Softgel 750mg e 1500mg | Gummies Grape Full Spectrum (16 e 28 un) e Gummies Vegan Delta-8</p>
+                              <span className="text-[10px] text-purple-200 mt-1 block">Liberação gastro-resistente sem sabor</span>
+                            </div>
+                            <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-xl">
+                              <span className="text-amber-300 font-bold block mb-1">⚗️ Tópicos & Concentrados Elite</span>
+                              <p className="text-[11px] text-mecura-silver leading-snug">Cooling Salve 500mg, Relief Cream 3000mg, Live Rosin THC-A 1g, Diamond Sauce CBD 10g, Bubble Hash 10g</p>
+                              <span className="text-[10px] text-amber-200 mt-1 block">Extrações Solventless de pureza extrema</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Fluxo Anvisa Simples em 4 Passos */}
+                        <div>
+                          <h5 className="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-2.5">
+                            Como Prescrever & Importar Pangaia (Fluxo Anvisa Simples RDC 660):
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-cyan-500/30">1</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Prescrição Médica na Guia 2</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Emissão de receita para medicamentos importados via RDC 660 com posologia clara.</p>
+                            </div>
+                            <div className="p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-cyan-500/30">2</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Deferimento Anvisa Simples</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Parceria CannaCare para deferimento automático da licença de importação no Gov.br.</p>
+                            </div>
+                            <div className="p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-cyan-500/30">3</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Envio dos EUA (FedEx/DHL)</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Despacho direto dos laboratórios certificados cGMP nos Estados Unidos com rastreio total.</p>
+                            </div>
+                            <div className="p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-xl">
+                              <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[11px] font-bold mb-1.5 border border-cyan-500/30">4</span>
+                              <h6 className="text-xs font-bold text-white mb-0.5">Desembaraço & Entrega</h6>
+                              <p className="text-[11px] text-mecura-silver leading-relaxed">Liberação alfandegária prioritária Anvisa e entrega na residência do paciente.</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Flowermed Official Company Hub & Access Guide */}
                     {category.id === 'flowermed_oficial' && (
                       <div className="p-5 md:p-6 bg-gradient-to-br from-sky-950/40 via-black/50 to-[#0A0A0F] border border-sky-500/30 rounded-2xl mb-6 shadow-xl space-y-5">
@@ -905,23 +1369,57 @@ export function CBDGuideView() {
                           {/* Rich Details */}
                           {(() => {
                             const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
+                            const anyP = product as any;
                             return (
-                              <div className="mt-2 space-y-1 p-2.5 bg-black/20 border border-white/5 rounded-lg">
+                              <div className="mt-2 space-y-1.5 p-2.5 bg-black/20 border border-white/5 rounded-lg">
+                                {/* Badges */}
+                                <div className="flex flex-wrap gap-1 mb-1">
+                                  {anyP.mgPerDropCBD !== undefined && (
+                                    <span className="bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/25 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      💧 {anyP.mgPerDropCBD} mg CBD/gota
+                                    </span>
+                                  )}
+                                  {anyP.mgPerDropTHC !== undefined && (
+                                    <span className="bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      💧 {anyP.mgPerDropTHC} mg THC/gota
+                                    </span>
+                                  )}
+                                  {anyP.ratio && (
+                                    <span className="bg-purple-500/10 text-purple-300 border border-purple-500/25 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                      ⚖️ {anyP.ratio}
+                                    </span>
+                                  )}
+                                  {anyP.carrierVehicle && (
+                                    <span className="bg-white/5 text-mecura-pearl border border-white/10 px-1.5 py-0.5 rounded text-[10px]">
+                                      🌱 {anyP.carrierVehicle}
+                                    </span>
+                                  )}
+                                  {anyP.gmpCertified && (
+                                    <span className="bg-teal-500/10 text-teal-300 border border-teal-500/25 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      cGMP
+                                    </span>
+                                  )}
+                                  {anyP.hplcStandardized && (
+                                    <span className="bg-sky-500/10 text-sky-300 border border-sky-500/25 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      HPLC
+                                    </span>
+                                  )}
+                                </div>
+
                                 <p className="text-[10px] leading-relaxed text-mecura-silver">
-                                  <strong className="text-mecura-pearl">Princípio Ativo:</strong> {enriched.activeIngredients} - {enriched.concentration} - {enriched.concentration}
+                                  <strong className="text-mecura-pearl">Princípio Ativo:</strong> {enriched.activeIngredients}
                                 </p>
                                 <p className="text-[10px] leading-relaxed text-mecura-silver">
-                                  <strong className="text-mecura-pearl">Apresentação & Via:</strong> {enriched.pharmaceuticalForm} • Qtd: {enriched.quantity} • {enriched.administrationRoute}
+                                  <strong className="text-mecura-pearl">Apresentação & Via:</strong> {enriched.pharmaceuticalForm} • Qtd: {enriched.quantity} • Via {enriched.administrationRoute}
                                 </p>
                                 {enriched.usageInstructions && (
                                   <div className="pt-1.5 mt-1.5 border-t border-white/5">
-                                    <p className="text-[10px] leading-relaxed text-mecura-silver">
+                                    <p className="text-[10px] leading-relaxed text-mecura-silver line-clamp-2">
                                       <strong className="text-mecura-pearl block mb-0.5">Posologia e Modo de Uso:</strong> 
                                       {enriched.usageInstructions}
                                     </p>
                                   </div>
                                 )}
-                                
                               </div>
                             );
                           })()}
@@ -1042,17 +1540,68 @@ export function CBDGuideView() {
                                 </span>
                               </td>
                               <td className="py-3.5 px-4 text-mecura-silver text-xs align-top">
-                                {product.details && product.details.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {product.details.map((d, dIdx) => (
-                                      <span key={dIdx} className="bg-white/5 px-2 py-0.5 rounded text-[11px] text-mecura-silver border border-white/5">
-                                        {d}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  '-'
-                                )}
+                                {(() => {
+                                  const anyP = product as any;
+                                  return (
+                                    <div className="space-y-1.5">
+                                      {/* Rich Badges */}
+                                      <div className="flex flex-wrap gap-1">
+                                        {anyP.mgPerDropCBD !== undefined && (
+                                          <span className="bg-mecura-neon/10 text-mecura-neon border border-mecura-neon/20 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                            💧 {anyP.mgPerDropCBD} mg CBD/gota
+                                          </span>
+                                        )}
+                                        {anyP.mgPerDropTHC !== undefined && (
+                                          <span className="bg-amber-500/10 text-amber-300 border border-amber-500/20 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                            💧 {anyP.mgPerDropTHC} mg THC/gota
+                                          </span>
+                                        )}
+                                        {anyP.ratio && (
+                                          <span className="bg-purple-500/10 text-purple-300 border border-purple-500/20 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                            ⚖️ {anyP.ratio}
+                                          </span>
+                                        )}
+                                        {anyP.carrierVehicle && (
+                                          <span className="bg-white/5 text-mecura-pearl border border-white/10 px-1.5 py-0.5 rounded text-[10px]">
+                                            🌱 {anyP.carrierVehicle}
+                                          </span>
+                                        )}
+                                        {anyP.gmpCertified && (
+                                          <span className="bg-teal-500/10 text-teal-300 border border-teal-500/20 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                            cGMP
+                                          </span>
+                                        )}
+                                        {anyP.hplcStandardized && (
+                                          <span className="bg-sky-500/10 text-sky-300 border border-sky-500/20 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                            HPLC
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Details Tags */}
+                                      {product.details && product.details.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                          {product.details.map((d, dIdx) => (
+                                            <span key={dIdx} className="bg-white/5 px-1.5 py-0.5 rounded text-[10px] text-mecura-silver border border-white/5">
+                                              {d}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] });
+                                        }}
+                                        className="text-[11px] text-mecura-neon hover:underline font-semibold flex items-center gap-1 pt-1"
+                                      >
+                                        <FileText className="w-3 h-3" /> Ver Bula & Prescrição
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td className="py-3.5 px-4 text-right align-top">
                                 {product.origin?.toLowerCase().includes('importado') ? (
@@ -1404,149 +1953,14 @@ export function CBDGuideView() {
         )}
       </AnimatePresence>
 
-      {/* Product Detail Modal */}
-      <AnimatePresence>
-        {selectedProduct && (() => {
-          const enriched = enrichMedicationDetails(
-            selectedProduct.name,
-            selectedProduct.manufacturer,
-            selectedProduct.origin,
-            selectedProduct.type,
-            selectedProduct
-          );
-          const isImported = (selectedProduct.origin || '').toLowerCase().includes('importado');
-
-          return (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-              onClick={() => setSelectedProduct(null)}
-            >
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-[#12121A] border border-mecura-elevated rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="p-6 border-b border-mecura-elevated bg-[#161622] flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                        isImported
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                      }`}>
-                        {selectedProduct.origin || 'Nacional'}
-                      </span>
-                      <span className="text-xs text-mecura-silver">
-                        {selectedProduct.manufacturer}
-                      </span>
-                    </div>
-                    <h2 className="text-xl font-bold text-white leading-snug">
-                      {selectedProduct.name}
-                    </h2>
-                  </div>
-                  <button
-                    onClick={() => setSelectedProduct(null)}
-                    className="p-2 hover:bg-white/5 rounded-full text-mecura-silver transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar text-sm">
-                  {/* Grid details */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
-                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                        Princípio Ativo
-                      </span>
-                      <p className="text-white font-medium">{enriched.activeIngredients}</p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
-                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                        Concentração & Volume
-                      </span>
-                      <p className="text-mecura-neon font-mono font-medium">
-                        {selectedProduct.concentration || enriched.concentration}
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
-                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                        Apresentação / Forma
-                      </span>
-                      <p className="text-white">
-                        {enriched.pharmaceuticalForm} {enriched.quantity ? `• ${enriched.quantity}` : ''}
-                      </p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-[#0A0A0F] border border-white/5">
-                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                        Via de Administração
-                      </span>
-                      <p className="text-white">{enriched.administrationRoute || 'Via Sublingual / Oral'}</p>
-                    </div>
-                  </div>
-
-                  {/* Posologia Recomendada */}
-                  {(selectedProduct.usageInstructions || enriched.usageInstructions) && (
-                    <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.15)]">
-                      <div className="flex items-center gap-2 mb-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
-                        <Pill className="w-4 h-4 text-indigo-400" />
-                        <span>Posologia Padrão & Titulação Recomendada</span>
-                      </div>
-                      <p className="text-white text-xs leading-relaxed whitespace-pre-wrap font-sans">
-                        {selectedProduct.usageInstructions || enriched.usageInstructions}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Indicações */}
-                  {(selectedProduct.indications || selectedProduct.categoryIndications) && (
-                    <div className="p-3.5 rounded-xl bg-[#0A0A0F] border border-white/5">
-                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1.5">
-                        Indicações Clínicas Sugeridas
-                      </span>
-                      <p className="text-mecura-silver text-xs leading-relaxed">
-                        {selectedProduct.indications || (selectedProduct.categoryIndications || []).join(', ')}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Descrição */}
-                  {(selectedProduct.description || enriched.description) && (
-                    <div className="p-3.5 rounded-xl bg-[#0A0A0F] border border-white/5">
-                      <span className="text-[10px] text-mecura-silver uppercase font-bold block mb-1.5">
-                        Descrição Farmacológica
-                      </span>
-                      <p className="text-mecura-silver text-xs leading-relaxed">
-                        {selectedProduct.description || enriched.description}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-mecura-elevated bg-[#0A0A0F] flex justify-end">
-                  <button
-                    onClick={() => setSelectedProduct(null)}
-                    className="px-6 py-2 bg-mecura-neon text-black font-bold rounded-xl hover:bg-mecura-neon/90 transition-colors text-sm"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
+      {/* Product Detail & Full Clinical Bula Modal */}
+      {selectedProduct && (
+        <ProductBulaModal 
+          product={selectedProduct} 
+          onClose={() => setSelectedProduct(null)} 
+          exchangeRate={exchangeRate} 
+        />
+      )}
     </div>
   );
 }

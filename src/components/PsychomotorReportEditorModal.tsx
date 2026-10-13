@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, Download, Eye, Edit3, User, Calendar, ClipboardList, Send } from 'lucide-react';
+import { X, ShieldCheck, Download, Eye, Edit3, User, Calendar, ClipboardList, Send, Save, Check } from 'lucide-react';
 
 interface PsychomotorReportEditorModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ interface PsychomotorReportEditorModalProps {
   setPsychomotorText: (val: string) => void;
   onDownloadPDF: () => void;
   onSendToChat?: () => Promise<void> | void;
+  onSave?: (savedText: string) => void;
   isSendingToChat?: boolean;
 }
 
@@ -47,10 +48,13 @@ export function PsychomotorReportEditorModal({
   setPsychomotorText: propSetPsychomotorText,
   onDownloadPDF,
   onSendToChat,
+  onSave,
   isSendingToChat = false
 }: PsychomotorReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavedFeedback, setIsSavedFeedback] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
   // Local state for instant typing without re-rendering parent Dashboard
   const [patientName, setPatientName] = useState(propPatientName);
@@ -113,6 +117,17 @@ export function PsychomotorReportEditorModal({
     onClose();
   };
 
+  const handleSaveChanges = () => {
+    syncToParent();
+    if (onSave) {
+      onSave(psychomotorText);
+    }
+    setIsSavedFeedback(true);
+    const now = new Date();
+    setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    setTimeout(() => setIsSavedFeedback(false), 2500);
+  };
+
   const handleDownload = () => {
     syncToParent();
     setIsGenerating(true);
@@ -157,6 +172,11 @@ export function PsychomotorReportEditorModal({
                   <span className="text-[10px] bg-purple-500/20 text-purple-300 font-bold px-2 py-0.5 rounded border border-purple-500/30">
                     Visualizar & Editar
                   </span>
+                  {lastSavedTime && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      <Check className="w-3 h-3" /> Salvo às {lastSavedTime}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-mecura-silver">
                   Documento de aptidão e avaliação de capacidade psicomotora
@@ -164,8 +184,8 @@ export function PsychomotorReportEditorModal({
               </div>
             </div>
 
-            {/* Tab Switcher & Close */}
-            <div className="flex items-center gap-3">
+            {/* Tab Switcher & Actions */}
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="bg-mecura-surface border border-mecura-elevated rounded-xl p-1 flex items-center gap-1">
                 <button
                   type="button"
@@ -191,16 +211,40 @@ export function PsychomotorReportEditorModal({
                 </button>
               </div>
 
+              {/* Botão de Salvar Alterações no Header */}
+              <button
+                type="button"
+                onClick={handleSaveChanges}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black shadow-emerald-500/30 ring-2 ring-emerald-400'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95'
+                }`}
+                title="Salvar alterações do laudo psicomotor"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvo!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
+              </button>
+
               {/* Botão de Fechar / Sair sem Enviar com X bem visível */}
               <button
                 type="button"
                 onClick={onClose}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group cursor-pointer"
                 title="Fechar e sair sem enviar o laudo"
                 aria-label="Fechar laudo"
               >
                 <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span className="hidden sm:inline">Fechar (Sair)</span>
+                <span className="hidden sm:inline">Fechar</span>
               </button>
             </div>
           </div>
@@ -374,6 +418,30 @@ export function PsychomotorReportEditorModal({
               <span>Sair sem Enviar</span>
             </button>
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              {/* Botão de Salvar Alterações no Footer */}
+              <button
+                type="button"
+                onClick={handleSaveChanges}
+                className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black ring-2 ring-emerald-400 shadow-emerald-500/30'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95'
+                }`}
+                title="Salvar todas as alterações feitas no laudo psicomotor"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>✓ Alterações Salvas!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={handleDownload}

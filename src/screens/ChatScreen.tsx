@@ -589,13 +589,11 @@ export function ChatScreen() {
                           </li>
                         ))}
                       </ul>
-                      {msg.productData.origin !== 'Nacional' && !(msg.productData.brand || '').toLowerCase().includes('associação') && (
-                        <div className="mt-1">
-                          <span className="text-xs font-bold text-[#1e3a8a] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                            R$ {(((msg.productData.priceUSD || (msg.productData.priceBRL ? msg.productData.priceBRL / 5.0 : 80.00))) * (exchangeRate || 5.8)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      )}
+                      <div className="mt-1">
+                        <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                          Medicamento Prescrito
+                        </span>
+                      </div>
                     </div>
                   </div>
 

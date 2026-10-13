@@ -1,4 +1,4 @@
-import { CBDCategory, CBDProduct, cbdGuideData } from '../data/cbdGuide';
+import { CBDCategory, CBDProduct, cbdGuideData, PANGAIA_PRODUCTS, SOUCANNABIS_PRODUCTS } from '../data/cbdGuide';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
@@ -42,7 +42,7 @@ export function mergeProductCatalogs(
               target.products.push({ ...p });
               targetProductNames.add(cleanName);
             } else {
-              // Update existing product with newer properties
+              // Update existing product with newer properties without erasing rich base fields
               const idx = target.products.findIndex(ep => (ep.name || '').trim().toLowerCase() === cleanName);
               if (idx !== -1) {
                 target.products[idx] = { ...target.products[idx], ...p };
@@ -71,6 +71,41 @@ export function mergeProductCatalogs(
 
   // 3. Merge cloud Firestore categories
   mergeList(cloudCategories);
+
+  // 4. Guarantee all 20 Pangaia products and all SouCannabis products are fully present and enriched with all clinical properties
+  const pangaiaCat = categoryMap.get('pangaia_oficial');
+  if (pangaiaCat) {
+    const existingNames = new Set(pangaiaCat.products.map(p => (p.name || '').trim().toLowerCase()));
+    PANGAIA_PRODUCTS.forEach(baseProd => {
+      const bName = baseProd.name.trim().toLowerCase();
+      if (!existingNames.has(bName)) {
+        pangaiaCat.products.push({ ...baseProd });
+        existingNames.add(bName);
+      } else {
+        const pIdx = pangaiaCat.products.findIndex(p => (p.name || '').trim().toLowerCase() === bName);
+        if (pIdx !== -1) {
+          pangaiaCat.products[pIdx] = { ...baseProd, ...pangaiaCat.products[pIdx] };
+        }
+      }
+    });
+  }
+
+  const souCat = categoryMap.get('soucannabis_oficial');
+  if (souCat) {
+    const existingNames = new Set(souCat.products.map(p => (p.name || '').trim().toLowerCase()));
+    SOUCANNABIS_PRODUCTS.forEach(baseProd => {
+      const bName = baseProd.name.trim().toLowerCase();
+      if (!existingNames.has(bName)) {
+        souCat.products.push({ ...baseProd });
+        existingNames.add(bName);
+      } else {
+        const pIdx = souCat.products.findIndex(p => (p.name || '').trim().toLowerCase() === bName);
+        if (pIdx !== -1) {
+          souCat.products[pIdx] = { ...baseProd, ...souCat.products[pIdx] };
+        }
+      }
+    });
+  }
 
   return Array.from(categoryMap.values());
 }

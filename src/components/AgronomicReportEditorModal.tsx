@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Eye, Edit3, User, Sprout, Send, Copy, Check } from 'lucide-react';
+import { X, Download, Eye, Edit3, User, Sprout, Send, Copy, Check, Save } from 'lucide-react';
 
 interface AgronomicReportEditorModalProps {
   isOpen: boolean;
@@ -25,6 +25,7 @@ interface AgronomicReportEditorModalProps {
   setAgronomicText: (val: string) => void;
   onDownloadPDF: () => void;
   onSendToChat?: () => void;
+  onSave?: (savedData: any) => void;
   isSendingToChat?: boolean;
 }
 
@@ -51,11 +52,14 @@ export function AgronomicReportEditorModal({
   setAgronomicText: propSetAgronomicText,
   onDownloadPDF,
   onSendToChat,
+  onSave,
   isSendingToChat = false
 }: AgronomicReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isSavedFeedback, setIsSavedFeedback] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
   // Local state for smooth lag-free editing
   const [patientName, setPatientName] = useState(propPatientName);
@@ -200,6 +204,27 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSaveChanges = () => {
+    syncToParent();
+    if (onSave) {
+      onSave({
+        patientName,
+        cpf,
+        emissionDate,
+        agronomistName,
+        agronomistCrea,
+        diagnosis,
+        dailyDoseMg,
+        targetPlants,
+        agronomicText
+      });
+    }
+    setIsSavedFeedback(true);
+    const now = new Date();
+    setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    setTimeout(() => setIsSavedFeedback(false), 2500);
+  };
+
   return (
     <AnimatePresence>
       <div 
@@ -262,16 +287,40 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                 </button>
               </div>
 
+              {/* Botão de Salvar Alterações Header */}
+              <button
+                type="button"
+                onClick={handleSaveChanges}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black shadow-emerald-500/30 ring-2 ring-emerald-400'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95'
+                }`}
+                title="Salvar alterações do parecer agronômico"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvo!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
+              </button>
+
               {/* Botão de Fechar / Sair sem Enviar com X bem visível */}
               <button
                 type="button"
                 onClick={onClose}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group cursor-pointer"
                 title="Fechar e sair sem enviar o laudo para o paciente"
                 aria-label="Fechar laudo sem enviar"
               >
                 <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span className="hidden sm:inline">Fechar (Sair)</span>
+                <span className="hidden sm:inline">Fechar</span>
               </button>
             </div>
           </div>
@@ -828,6 +877,30 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                   )}
                 </button>
               )}
+
+              {/* Botão de Salvar Alterações Footer */}
+              <button
+                type="button"
+                onClick={handleSaveChanges}
+                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black ring-2 ring-emerald-400 shadow-emerald-500/30'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95'
+                }`}
+                title="Salvar todas as alterações feitas no parecer agronômico"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>✓ Alterações Salvas!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
+              </button>
 
               <button
                 type="button"

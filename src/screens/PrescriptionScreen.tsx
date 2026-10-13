@@ -69,7 +69,9 @@ export function PrescriptionScreen() {
           <p className="text-sm text-gray-400 mb-4">Frasco 30ml • Importação Legal</p>
           
           <div className="flex items-center justify-between mb-4">
-            <span className="text-2xl font-semibold text-mecura-gold">R$ 450,00</span>
+            <span className="text-sm font-semibold text-mecura-gold bg-mecura-gold/10 px-3 py-1 rounded-md border border-mecura-gold/20">
+              Medicamento Prescrito
+            </span>
             <span className="text-xs text-mecura-green bg-mecura-green/10 px-2 py-1 rounded-md flex items-center gap-1">
               <ShieldCheck className="w-3 h-3" /> ANVISA
             </span>

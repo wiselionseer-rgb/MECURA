@@ -18,6 +18,20 @@ import {
   formatAbraceStandardOutput,
   AbraceProduct
 } from './abraceCatalog';
+import {
+  SOUCANNABIS_PRODUCTS,
+  SOUCANNABIS_COMPANY_INFO,
+  SOUCANNABIS_AGENT_SYSTEM_PROMPT,
+  formatSouCannabisStandardOutput,
+  SouCannabisProduct
+} from './soucannabisCatalog';
+import {
+  PANGAIA_PRODUCTS,
+  PANGAIA_COMPANY_INFO,
+  PANGAIA_AGENT_SYSTEM_PROMPT,
+  formatPangaiaStandardOutput,
+  PangaiaProduct
+} from './pangaiaCatalog';
 
 export { 
   FLOWERMED_PRODUCTS, 
@@ -35,9 +49,17 @@ export {
   ABRACE_PRODUCTS,
   ABRACE_COMPANY_INFO,
   ABRACE_AGENT_SYSTEM_PROMPT,
-  formatAbraceStandardOutput
+  formatAbraceStandardOutput,
+  SOUCANNABIS_PRODUCTS,
+  SOUCANNABIS_COMPANY_INFO,
+  SOUCANNABIS_AGENT_SYSTEM_PROMPT,
+  formatSouCannabisStandardOutput,
+  PANGAIA_PRODUCTS,
+  PANGAIA_COMPANY_INFO,
+  PANGAIA_AGENT_SYSTEM_PROMPT,
+  formatPangaiaStandardOutput
 };
-export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct, AbraceProduct };
+export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct, AbraceProduct, SouCannabisProduct, PangaiaProduct };
 
 export interface CBDProduct {
   name: string;
@@ -417,6 +439,7 @@ export const NATIONAL_FULL_SPECTRUM_PRODUCTS: CBDProduct[] = [
 
 export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
   ...NATIONAL_FULL_SPECTRUM_PRODUCTS,
+  ...SOUCANNABIS_PRODUCTS,
   {
     name: "Broad Spectrum Alta Concentração (100 mg/mL — 10%)",
     manufacturer: "Associação Brasileira",
@@ -652,6 +675,46 @@ export const cbdGuideData: CBDCategory[] = [
     ],
     dosageGuidance: "Administração conforme prescrição médica individualizada. Uso sublingual para óleos e spray, inalatório sem combustão para flores, mastigável para gomas e tópico para pomadas.",
     products: ABRACE_PRODUCTS
+  },
+  {
+    id: "soucannabis_oficial",
+    title: "SOUCANNABIS — ASSOCIAÇÃO BRASILEIRA (CATÁLOGO OFICIAL 2026)",
+    description: "Catálogo Oficial da SouCannabis (Associação Brasileira). Formulações padronizadas por cromatografia HPLC e parcerias universitárias. Óleos sublinguais veiculados em MCT suave (~26 gotas/mL) nas concentrações 2%, 3%, 6%, 10%, 15% e 20% (Óleo Azul THC 5:1, Óleo Lilás 1:1, Óleo Rosa CBD 5:1, Óleo Laranja CBD 1:10 e Óleo Branco Broad Spectrum sem THC). Inclui Sprays Nasais 6%, Lubrificante Íntimo 1:1, Pomadas Tópicas dérmicas (6% e 10%), Supositórios transmucosa pélvica (30 mg e 50 mg) e Extratos Concentrados em seringa (60% e 80%).",
+    indicationsList: [
+      "Dor Neuropática, Oncológica & Espasticidade (Óleo Azul THC 5:1)",
+      "Fibromialgia, Artrite & Equilíbrio Álgico (Óleo Lilás THC:CBD 1:1)",
+      "Ansiedade, Autismo (TEA) & Neuroinflamação (Óleo Rosa CBD 5:1)",
+      "Estresse, Burnout & Sensibilidade ao THC (Óleo Laranja CBD 1:10)",
+      "Atletas, Profissionais sob Testagem & 0% THC (Óleo Branco Broad Spectrum)",
+      "Resgate de Crises Álgicas e Crises de Pânico (Sprays Nasais Azul e Laranja)",
+      "Endometriose, Dispareunia & Vaginismo (Lubrificante Íntimo 1:1 e Supositórios)",
+      "Dores Articulares, Tendinites & Contraturas (Pomadas Tópicas 6% e 10%)",
+      "Condições Clínicas Refratárias & Cuidados Paliativos (Extratos Concentrados 60% e 80%)"
+    ],
+    dosageGuidance: "Prescrição individualizada. Média de 26 gotas por mL para óleos em MCT. Sprays nasais acionados por jato transmucoso. Supositórios por via retal/vaginal. Extratos concentrados por microdosagem graduada.",
+    products: SOUCANNABIS_PRODUCTS
+  },
+  {
+    id: "pangaia_oficial",
+    title: "PANGAIA — BIOPHARMACEUTICALS & HEALTH (CATÁLOGO OFICIAL ANVISA RDC 660)",
+    description: "Catálogo Oficial Pangaia Biopharmaceuticals (EUA • Anvisa RDC 660/2022). Mais de 20 anos de pesquisa e colaboração histórica com o Prof. Raphael Mechoulam. Fabricação com certificação farmacêutica cGMP e testes por HPLC e espectrometria de massas lote a lote. Linha Pharma com óleos Full Spectrum (5%, 10%, 20%, Delta-8 e Isolate 0% THC em frascos de 30 mL com ~20 gotas/mL), Linha Pangaia Amazônia em parceria sustentável indígena (Óleo Maná 3000 mg com Copaíba e Pomada Táio 3375 mg com Andiroba/Arnica/Copaíba), Cápsulas Softgel (750 mg e 1500 mg), Gomas Terapêuticas mastigáveis (Grape 16 e 28 un, e Vegan Delta-8), Linha Tópica dérmica (Cooling Salve 500 mg e Relief Cream 3000 mg), Concentrados Elite Solventless (Live Rosin THC-A, Diamond Sauce CBD, Bubble Hash) e Flores Medicinais selecionadas.",
+    indicationsList: [
+      "Ansiedade Leve a Moderada & Início de Titulação (Óleo 5% 1500 mg)",
+      "Dores Crônicas, Fibromialgia, TAG & Enxaqueca (Óleo 10% 3000 mg — Mais Prescrito)",
+      "Epilepsia Refratária, Parkinson & Espasticidade Severa (Óleo 20% 6000 mg)",
+      "Náuseas Quimioterápicas, Apetite & Dor Noturna (Óleo Delta-8 THC 2000 mg)",
+      "Atletas WADA, Pilotos & Intolerância a THC (Óleo CBD Isolate 3000 mg — 0% THC)",
+      "Inflamações Graves, Doença de Crohn & Artrite (Óleo Maná 3000 mg com Copaíba)",
+      "Dores Osteoarticulares, Lombalgia & Tendinites (Pomada Táio 3375 mg)",
+      "Praticidade Posológica sem Sabor (Cápsulas Softgel 750 mg e 1500 mg)",
+      "Crises de Ansiedade Aguda & Alívio Imediato (Gummies Grape e Vegan Delta-8)",
+      "Recuperação Esportiva & Efeito Crioterápico (Cooling Salve 500 mg)",
+      "Osteoartrite Severa & Dores Crônicas Articulares (CBD Relief Cream 3000 mg)",
+      "Resgate Ultrarrápido de Crises Álgicas Intratáveis (Live Rosin THC-A & Diamond Sauce)",
+      "Terapia Inalatória Medicinal sem Combustão (Flores Medicinais Pangaia Organics)"
+    ],
+    dosageGuidance: "Prescrição individualizada sob a RDC 660/2022 da Anvisa. Óleos sublinguais calibrados a 20 gotas/mL (0,05 mL/gota). Gomas e cápsulas administradas por via oral. Pomadas e cremes aplicados na área dolorida 2 a 3x/dia. Resgates inalatórios restritos a vaporizadores medicinais homologados.",
+    products: PANGAIA_PRODUCTS
   },
   {
     id: "flowermed_oficial",
@@ -1852,6 +1915,112 @@ function _enrichMedicationDetails(
       type: abraceMatch.type || 'Produto de Associação Nacional ABRACE',
       description: abraceMatch.description || 'Produto oficial da ABRACE (Associação Brasileira de Apoio Cannabis Esperança).',
       usageInstructions: abraceMatch.usageInstructions || '• Administrar conforme posologia estabelecida pelo médico assistente.'
+    };
+  }
+
+  // Check if product is from SouCannabis official catalog (Nacional)
+  const souCannabisMatch = SOUCANNABIS_PRODUCTS.find(p => {
+    const pLower = p.name.toLowerCase().trim();
+    if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
+    if (nameLower.includes('soucannabis') || nameLower.includes('sou cannabis')) {
+      if (nameLower.includes('azul') && p.name.includes('Azul')) {
+        if (nameLower.includes('2%') && p.name.includes('2%')) return true;
+        if (nameLower.includes('3%') && p.name.includes('3%')) return true;
+        if (nameLower.includes('6%') && p.name.includes('6%')) return true;
+        if (nameLower.includes('10%') && p.name.includes('10%')) return true;
+        if (nameLower.includes('15%') && p.name.includes('15%')) return true;
+        if (nameLower.includes('20%') && p.name.includes('20%')) return true;
+        return true;
+      }
+      if (nameLower.includes('lilás') || nameLower.includes('lilas')) {
+        if (p.name.includes('Lilás')) return true;
+      }
+      if (nameLower.includes('rosa') && p.name.includes('Rosa')) return true;
+      if (nameLower.includes('laranja') && p.name.includes('Laranja')) return true;
+      if (nameLower.includes('branco') && p.name.includes('Branco')) return true;
+      if (nameLower.includes('nasal') && p.name.includes('Nasal')) return true;
+      if ((nameLower.includes('íntimo') || nameLower.includes('intimo') || nameLower.includes('lubrificante')) && p.name.includes('Lubrificante')) return true;
+      if (nameLower.includes('pomada') && p.name.includes('Pomada')) return true;
+      if ((nameLower.includes('supositório') || nameLower.includes('supositorio')) && p.name.includes('Supositório')) return true;
+      if ((nameLower.includes('extrato') || nameLower.includes('resina') || nameLower.includes('pasta')) && p.name.includes('Extrato')) return true;
+    }
+    return false;
+  });
+
+  if (souCannabisMatch) {
+    return {
+      name: souCannabisMatch.name,
+      activeIngredients: souCannabisMatch.activeIngredients || 'Extrato padronizado de Cannabis (SouCannabis HPLC)',
+      concentration: souCannabisMatch.concentration || 'Concentração padronizada',
+      pharmaceuticalForm: souCannabisMatch.pharmaceuticalForm || 'Forma farmacêutica padronizada',
+      quantity: souCannabisMatch.quantity || '01 Frasco / Unidade',
+      administrationRoute: souCannabisMatch.administrationRoute || 'Conforme orientação médica',
+      brand: 'SouCannabis',
+      origin: 'Nacional',
+      type: souCannabisMatch.type || 'Produto de Associação Nacional SouCannabis',
+      description: souCannabisMatch.description || 'Produto oficial da SouCannabis (Associação Brasileira de Cannabis Medicinal).',
+      usageInstructions: souCannabisMatch.usageInstructions || '• Administrar conforme posologia estabelecida pelo médico assistente.'
+    };
+  }
+
+  // Check if product is from Pangaia official catalog (Importado — EUA / Anvisa RDC 660)
+  const pangaiaMatch = PANGAIA_PRODUCTS.find(p => {
+    const pLower = p.name.toLowerCase().trim();
+    if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
+    if (nameLower.includes('pangaia')) {
+      if (nameLower.includes('5%') && p.name.includes('5%')) return true;
+      if (nameLower.includes('10%') && p.name.includes('10%')) return true;
+      if (nameLower.includes('20%') && p.name.includes('20%')) return true;
+      if ((nameLower.includes('delta-8') || nameLower.includes('delta 8')) && (p.name.includes('Delta-8') || p.name.includes('Delta 8'))) return true;
+      if ((nameLower.includes('isolate') || nameLower.includes('isolado')) && p.name.includes('Isolate')) return true;
+      if ((nameLower.includes('maná') || nameLower.includes('mana')) && p.name.includes('Maná')) return true;
+      if ((nameLower.includes('táio') || nameLower.includes('taio')) && p.name.includes('Táio')) return true;
+      if ((nameLower.includes('softgel') || nameLower.includes('soft gel') || nameLower.includes('cápsula') || nameLower.includes('capsula'))) {
+        if (nameLower.includes('750') && p.name.includes('750')) return true;
+        if (nameLower.includes('1500') && p.name.includes('1500')) return true;
+        return true;
+      }
+      if (nameLower.includes('goma') || nameLower.includes('gummies') || nameLower.includes('gummy')) {
+        if (nameLower.includes('16') && p.name.includes('16')) return true;
+        if (nameLower.includes('28') && p.name.includes('28')) return true;
+        if (nameLower.includes('delta') && p.name.includes('Delta-8')) return true;
+        return true;
+      }
+      if (nameLower.includes('cooling') || nameLower.includes('salve')) return p.name.includes('Cooling Salve');
+      if (nameLower.includes('relief') || nameLower.includes('cream')) return p.name.includes('Relief Cream');
+      if (nameLower.includes('live rosin') || nameLower.includes('rosin')) return p.name.includes('Live Rosin');
+      if (nameLower.includes('diamond') || nameLower.includes('sauce')) return p.name.includes('Diamond Sauce');
+      if (nameLower.includes('bubble hash') || nameLower.includes('hash')) return p.name.includes('Bubble Hash');
+      if (nameLower.includes('flor') || nameLower.includes('flores')) {
+        if (nameLower.includes('1:1') || nameLower.includes('balanced')) return p.name.includes('1:1');
+        return p.name.includes('CBD High');
+      }
+      return true;
+    }
+    // Specific lines without explicit "pangaia" in search string
+    if ((nameLower.includes('óleo maná') || nameLower.includes('oleo mana')) && p.name.includes('Maná')) return true;
+    if ((nameLower.includes('pomada táio') || nameLower.includes('pomada taio')) && p.name.includes('Táio')) return true;
+    if (nameLower.includes('cooling salve') && p.name.includes('Cooling Salve')) return true;
+    if (nameLower.includes('cbd relief cream') && p.name.includes('Relief Cream')) return true;
+    if (nameLower.includes('live rosin thc-a') && p.name.includes('Live Rosin')) return true;
+    if (nameLower.includes('diamond sauce cbd') && p.name.includes('Diamond Sauce')) return true;
+    if (nameLower.includes('bubble hash cbd') && p.name.includes('Bubble Hash')) return true;
+    return false;
+  });
+
+  if (pangaiaMatch) {
+    return {
+      name: pangaiaMatch.name,
+      activeIngredients: pangaiaMatch.activeIngredients || 'Fitocanabinoides padronizados Pangaia Biopharmaceuticals cGMP',
+      concentration: pangaiaMatch.concentration || 'Concentração padronizada farmacêutica',
+      pharmaceuticalForm: pangaiaMatch.pharmaceuticalForm || 'Forma farmacêutica padronizada',
+      quantity: pangaiaMatch.quantity || '01 Frasco / Unidade',
+      administrationRoute: pangaiaMatch.administrationRoute || 'Via Sublingual / Oral',
+      brand: 'Pangaia',
+      origin: 'Importado',
+      type: pangaiaMatch.type || 'Medicamento Canabinoide Importado (Anvisa RDC 660)',
+      description: pangaiaMatch.description || 'Produto oficial da Pangaia Biopharmaceuticals (Importação Anvisa RDC 660/2022).',
+      usageInstructions: pangaiaMatch.usageInstructions || '• Administrar conforme posologia estabelecida pelo médico assistente sob RDC 660/2022.'
     };
   }
 

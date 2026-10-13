@@ -85,7 +85,7 @@ import {
 } from 'recharts';
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
-import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT, ABRACE_PRODUCTS, ABRACE_COMPANY_INFO, ABRACE_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
+import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT, ABRACE_PRODUCTS, ABRACE_COMPANY_INFO, ABRACE_AGENT_SYSTEM_PROMPT, SOUCANNABIS_PRODUCTS, SOUCANNABIS_COMPANY_INFO, SOUCANNABIS_AGENT_SYSTEM_PROMPT, PANGAIA_PRODUCTS, PANGAIA_COMPANY_INFO, PANGAIA_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases } from '../utils/productCatalog';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
@@ -260,8 +260,10 @@ export function DoctorDashboardScreen() {
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [brandPreference, setBrandPreference] = useState<'flowermed' | 'greenbudz' | 'both'>('both');
   const [expandAnalysis, setExpandAnalysis] = useState(false);
+  const [brandPreference, setBrandPreference] = useState<'flowermed' | 'greenbudz' | 'soucannabis' | 'abrace' | 'abecmed' | 'pangaia' | 'both'>('both');
+  const [nationalPreference, setNationalPreference] = useState<'soucannabis' | 'abrace' | 'abecmed' | 'all'>('soucannabis');
+  const [importedPreference, setImportedPreference] = useState<'pangaia' | 'flowermed' | 'greenbudz' | 'all'>('pangaia');
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [addedMedications, setAddedMedications] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<'chat' | 'guide' | 'analytics'>('chat');
@@ -546,6 +548,82 @@ export function DoctorDashboardScreen() {
   const [reportTreatmentPlan, setReportTreatmentPlan] = useState('');
   const [reportMonitoring, setReportMonitoring] = useState('');
 
+  // Helpers to persist and load customized reports per patient so doctor edits are never lost
+  const getPatientReportKey = (pId?: string | null, pName?: string | null) => {
+    return (pId || pName || currentPatient?.id || currentPatient?.patientName || userName || 'paciente_atual').trim().toLowerCase();
+  };
+
+  const loadSavedReport = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor') => {
+    try {
+      const raw = localStorage.getItem('mecura_saved_reports_v2');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.[patientKey]?.[type] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveReportToStorage = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor', data: any) => {
+    try {
+      const raw = localStorage.getItem('mecura_saved_reports_v2');
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (!parsed[patientKey]) parsed[patientKey] = {};
+      parsed[patientKey][type] = {
+        ...data,
+        updatedAt: new Date().toISOString()
+      };
+      localStorage.setItem('mecura_saved_reports_v2', JSON.stringify(parsed));
+    } catch (e) {
+      console.warn("Could not save report to localStorage:", e);
+    }
+  };
+
+  const handleSaveMedicalReport = (savedData: {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+  }) => {
+    const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, savedData.patientName || reportPatientName);
+    saveReportToStorage(key, medicalReportType, savedData);
+    setReportDiagnosis(savedData.diagnosis);
+    setReportRationale(savedData.rationale);
+    setReportTreatmentPlan(savedData.treatmentPlan);
+    setReportMonitoring(savedData.monitoring);
+    setReportPatientName(savedData.patientName);
+    setReportBirthDate(savedData.birthDate);
+    setReportCpf(savedData.cpf);
+    setReportEmissionDate(savedData.emissionDate);
+    setReportDoctorName(savedData.doctorName);
+    setReportDoctorCrm(savedData.doctorCrm);
+    setReportDoctorSpecialty(savedData.doctorSpecialty);
+    showActionToast(`Alterações do ${medicalReportType === 'evolutivo' ? 'Laudo Evolutivo' : 'Laudo Inicial'} salvas com sucesso!`);
+  };
+
+  const handleSavePsychomotorReport = (text: string) => {
+    const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, reportPatientName);
+    saveReportToStorage(key, 'psicomotor', { 
+      text,
+      patientName: reportPatientName,
+      birthDate: reportBirthDate,
+      cpf: reportCpf,
+      emissionDate: reportEmissionDate,
+      doctorName: reportDoctorName,
+      doctorCrm: reportDoctorCrm,
+      doctorSpecialty: reportDoctorSpecialty
+    });
+    setPsychomotorReportText(text);
+    showActionToast('Alterações do Laudo Psicomotor salvas com sucesso!');
+  };
+
   // Prescription (Receita Médica) Editor & Preview States
   const [showPrescriptionEditorModal, setShowPrescriptionEditorModal] = useState(false);
   const [showDocMenu, setShowDocMenu] = useState(false);
@@ -583,16 +661,21 @@ export function DoctorDashboardScreen() {
 
   const handleLaunchStandaloneMedicalReport = (patientData: StandalonePatientData, reportType: 'inicial' | 'evolutivo') => {
     setStandaloneTargetPatientId(patientData.id || null);
-    setReportPatientName(patientData.name);
-    setReportCpf(patientData.cpf);
-    setReportBirthDate(patientData.birthDate);
-    setReportEmissionDate(patientData.emissionDate);
-    setReportDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
-    setReportDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
-    setReportDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    const patientKey = getPatientReportKey(patientData.id, patientData.name);
+    const saved = loadSavedReport(patientKey, reportType);
+
+    setReportPatientName(saved?.patientName || patientData.name);
+    setReportCpf(saved?.cpf || patientData.cpf);
+    setReportBirthDate(saved?.birthDate || patientData.birthDate);
+    setReportEmissionDate(saved?.emissionDate || patientData.emissionDate);
+    setReportDoctorName(saved?.doctorName || patientData.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(saved?.doctorCrm || patientData.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(saved?.doctorSpecialty || patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
     setMedicalReportType(reportType);
 
-    if (patientData.diagnosis) {
+    if (saved?.diagnosis) {
+      setReportDiagnosis(saved.diagnosis);
+    } else if (patientData.diagnosis) {
       setReportDiagnosis(patientData.diagnosis);
     } else {
       setReportDiagnosis("Quadro clínico crônico com indicação precisa de terapia fitocanabinoide individualizada para modulação homeostática.");
@@ -620,13 +703,27 @@ export function DoctorDashboardScreen() {
       }).join('\n\n');
     }
 
-    if (reportType === 'evolutivo') {
+    if (saved?.rationale) {
+      setReportRationale(saved.rationale);
+    } else if (reportType === 'evolutivo') {
       setReportRationale("Em reavaliação clínica e evolução do tratamento com derivados de Cannabis sativa L., o(a) paciente relata melhora sustentada dos sintomas primários, com redução relevante em escalas de dor, estabilização dos ciclos de sono e atenuação dos níveis de estresse e ansiedade.");
-      setReportTreatmentPlan(calculatedTreatmentPlan || "Manutenção e ajuste fino da terapia canabinoide associativa. Continuidade do uso de formulações em espectro integral (Full Spectrum) com titulação individualizada conforme tolerância clínica.");
-      setReportMonitoring("Acompanhamento médico continuado a cada 60 a 90 dias para reavaliação de dosagens basais e exames de rotina.");
     } else {
       setReportRationale("Indicação fundamentada na fisiopatologia e modulação do Sistema Endocanabinoide (SEC). Fitocanabinoides de espectro integral atuam sobre receptores CB1 e CB2 promovendo analgesia, regulação do humor e modulação inflamatória sem tolerância abrupta.");
+    }
+
+    if (saved?.treatmentPlan) {
+      setReportTreatmentPlan(saved.treatmentPlan);
+    } else if (reportType === 'evolutivo') {
+      setReportTreatmentPlan(calculatedTreatmentPlan || "Manutenção e ajuste fino da terapia canabinoide associativa. Continuidade do uso de formulações em espectro integral (Full Spectrum) com titulação individualizada conforme tolerância clínica.");
+    } else {
       setReportTreatmentPlan(calculatedTreatmentPlan || "Início de terapia canabinoide individualizada em formulação integral (Full Spectrum), associando via sublingual contínua sob titulação progressiva e acompanhamento médico periódico.");
+    }
+
+    if (saved?.monitoring) {
+      setReportMonitoring(saved.monitoring);
+    } else if (reportType === 'evolutivo') {
+      setReportMonitoring("Acompanhamento médico continuado a cada 60 a 90 dias para reavaliação de dosagens basais e exames de rotina.");
+    } else {
       setReportMonitoring("Retorno ambulatorial agendado em 30 a 45 dias para avaliação de tolerabilidade, ajuste de posologia e monitoramento de segurança clínica.");
     }
 
@@ -635,6 +732,9 @@ export function DoctorDashboardScreen() {
 
   const handleLaunchStandalonePsychomotorReport = (patientData: StandalonePatientData) => {
     setStandaloneTargetPatientId(patientData.id || null);
+    const patientKey = getPatientReportKey(patientData.id, patientData.name);
+    const saved = loadSavedReport(patientKey, 'psicomotor');
+
     setReportPatientName(patientData.name);
     setReportCpf(patientData.cpf);
     setReportBirthDate(patientData.birthDate);
@@ -642,6 +742,18 @@ export function DoctorDashboardScreen() {
     setReportDoctorName(patientData.doctorName || 'Dr. Guilherme Taveira Dias');
     setReportDoctorCrm(patientData.doctorCrm || 'CRM/MT 17259');
     setReportDoctorSpecialty(patientData.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+
+    if (saved?.text) {
+      setPsychomotorReportText(saved.text);
+    } else {
+      const personalized = generatePersonalizedClinicalReport({
+        patientName: patientData.name,
+        birthDate: patientData.birthDate,
+        cpf: patientData.cpf,
+        objectives: ['Ansiedade', 'Estresse crônico', 'Dores']
+      }, 'evolutivo');
+      setPsychomotorReportText(personalized.psychomotor.text);
+    }
     setShowPsychomotorReportEditorModal(true);
   };
 
@@ -1790,6 +1902,9 @@ export function DoctorDashboardScreen() {
           if (!foundCatProd) {
             foundCatProd = ABRACE_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
           }
+          if (!foundCatProd) {
+            foundCatProd = SOUCANNABIS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          }
 
           const enriched = enrichMedicationDetails(
             item.name, 
@@ -1945,6 +2060,7 @@ export function DoctorDashboardScreen() {
   };
 
   const handleOpenMedicalReportEditor = (type: 'inicial' | 'evolutivo' = 'inicial') => {
+    setStandaloneTargetPatientId(null);
     setMedicalReportType(type);
     const patientAnswers = currentPatient?.answers || answers;
     const pName = currentPatient?.patientName || userName || 'Paciente';
@@ -2067,57 +2183,68 @@ export function DoctorDashboardScreen() {
 
     const defaultMonitoringText = personalized.monitoringText;
 
-    setReportPatientName(pName);
-    setReportBirthDate(pBirthDate);
-    setReportCpf(pCpf);
-    setReportEmissionDate(format(new Date(), 'dd/MM/yyyy'));
-    setReportDoctorName('Dr. Guilherme Taveira Dias');
-    setReportDoctorCrm('CRM/MT 17259');
-    setReportDoctorSpecialty('Especialista em Medicina Canabinoide');
-    setReportDiagnosis(defaultClinicalSummary);
-    setReportRationale(defaultTherapeuticRationale);
-    setReportTreatmentPlan(defaultTreatmentPlan);
-    setReportMonitoring(defaultMonitoringText);
+    const patientKey = getPatientReportKey(currentPatient?.id, pName);
+    const saved = loadSavedReport(patientKey, type);
+
+    setReportPatientName(saved?.patientName || pName);
+    setReportBirthDate(saved?.birthDate || pBirthDate);
+    setReportCpf(saved?.cpf || pCpf);
+    setReportEmissionDate(saved?.emissionDate || format(new Date(), 'dd/MM/yyyy'));
+    setReportDoctorName(saved?.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(saved?.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(saved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setReportDiagnosis(saved?.diagnosis || defaultClinicalSummary);
+    setReportRationale(saved?.rationale || defaultTherapeuticRationale);
+    setReportTreatmentPlan(saved?.treatmentPlan || defaultTreatmentPlan);
+    setReportMonitoring(saved?.monitoring || defaultMonitoringText);
     setMedicalReportTab('edit');
     setShowMedicalReportEditorModal(true);
   };
 
   
   const handleOpenPsychomotorReportEditor = () => {
+    setStandaloneTargetPatientId(null);
     const pName = currentPatient?.patientName || userName || 'Paciente';
     const patientAnswers = currentPatient?.answers || answers;
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
     
-    setReportPatientName(pName);
-    setReportBirthDate(pBirthDate);
-    setReportCpf(pCpf);
-    setReportEmissionDate(new Date().toLocaleDateString('pt-BR'));
-    setReportDoctorName('Dr. Guilherme Taveira Dias');
-    setReportDoctorCrm('CRM/MT 17259');
-    setReportDoctorSpecialty('Especialista em Medicina Canabinoide');
+    const patientKey = getPatientReportKey(currentPatient?.id, pName);
+    const saved = loadSavedReport(patientKey, 'psicomotor');
 
-    const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
-    const personalized = generatePersonalizedClinicalReport({
-      patientName: pName,
-      birthDate: pBirthDate,
-      cpf: pCpf,
-      objectives: objectivesArray,
-      intensity: patientAnswers?.intensity,
-      duration: patientAnswers?.duration,
-      description: patientAnswers?.description,
-      diseaseOrigin: patientAnswers?.diseaseOrigin,
-      remedios: patientAnswers?.remedios,
-      remedios_details: patientAnswers?.remedios_details,
-      doenca_cronica: patientAnswers?.doenca_cronica,
-      doenca_cronica_details: patientAnswers?.doenca_cronica_details,
-      digestivo: patientAnswers?.digestivo,
-      digestivo_details: patientAnswers?.digestivo_details,
-      mainSymptoms: patientAnswers?.mainSymptoms,
-      pathology: patientAnswers?.pathology
-    }, 'evolutivo');
+    setReportPatientName(saved?.patientName || pName);
+    setReportBirthDate(saved?.birthDate || pBirthDate);
+    setReportCpf(saved?.cpf || pCpf);
+    setReportEmissionDate(saved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
+    setReportDoctorName(saved?.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(saved?.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(saved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
 
-    setPsychomotorReportText(personalized.psychomotor.text);
+    if (saved?.text) {
+      setPsychomotorReportText(saved.text);
+    } else {
+      const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
+      const personalized = generatePersonalizedClinicalReport({
+        patientName: pName,
+        birthDate: pBirthDate,
+        cpf: pCpf,
+        objectives: objectivesArray,
+        intensity: patientAnswers?.intensity,
+        duration: patientAnswers?.duration,
+        description: patientAnswers?.description,
+        diseaseOrigin: patientAnswers?.diseaseOrigin,
+        remedios: patientAnswers?.remedios,
+        remedios_details: patientAnswers?.remedios_details,
+        doenca_cronica: patientAnswers?.doenca_cronica,
+        doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+        digestivo: patientAnswers?.digestivo,
+        digestivo_details: patientAnswers?.digestivo_details,
+        mainSymptoms: patientAnswers?.mainSymptoms,
+        pathology: patientAnswers?.pathology
+      }, 'evolutivo');
+
+      setPsychomotorReportText(personalized.psychomotor.text);
+    }
     setShowPsychomotorReportEditorModal(true);
   };
 
@@ -2598,34 +2725,68 @@ export function DoctorDashboardScreen() {
 
   const handleGenerateAnalysis = async (
     force: boolean = false,
-    selectedBrand: 'flowermed' | 'greenbudz' | 'both' = brandPreference
+    selectedBrand: 'flowermed' | 'greenbudz' | 'soucannabis' | 'abrace' | 'abecmed' | 'pangaia' | 'both' = brandPreference,
+    selectedNational: 'soucannabis' | 'abrace' | 'abecmed' | 'all' = nationalPreference,
+    selectedImported: 'pangaia' | 'flowermed' | 'greenbudz' | 'all' = importedPreference
   ) => {
     setExpandAnalysis(true);
     if (selectedBrand !== brandPreference) {
       setBrandPreference(selectedBrand);
     }
-    if (analysisResult && !force && selectedBrand === brandPreference) return; // Already generated and not forced
+    if (selectedNational !== nationalPreference) {
+      setNationalPreference(selectedNational);
+    }
+    if (selectedImported !== importedPreference) {
+      setImportedPreference(selectedImported);
+    }
+    if (analysisResult && !force && selectedBrand === brandPreference && selectedNational === nationalPreference && selectedImported === importedPreference) return;
     
     const patientAnswers = currentPatient?.answers || answers;
     
     setIsAnalyzing(true);
     if (force) setAnalysisResult(null);
     try {
-      const brandDirective = selectedBrand === 'flowermed'
-        ? `PREFERÊNCIA DE MARCA SELECIONADA PELO MÉDICO/PACIENTE: **LINHA FLOWERMED** (EUA e Flores In Natura / Extrações parceiras).
-Priorize ESTRITAMENTE as opções de importados da FLOWERMED (óleos, gomas, Broad/Full Spectrum, CBG, CBN, THCV) e Flores In Natura / Extrações (14g & concentrados: Sour Lifter, Lemon Octane, Forbidden Fruit, Gellato, Glitter Bomb, Astro Candy, Strawpicana, Superglue, Zoap, Trop Banana, Girl Cookies, Syringes e Budders). NÃO prescreva produtos da GreenBudzCBD.`
-        : selectedBrand === 'greenbudz'
-        ? `PREFERÊNCIA DE MARCA SELECIONADA PELO MÉDICO/PACIENTE: **LINHA GREENBUDZCBD** (EUA).
-Priorize ESTRITAMENTE as opções de importados da marca GREENBUDZCBD (GreenBudz Calm Vibe Oil 6000mg, GreenBudz Full Balance Oil 3000mg, Drops By GreenBudz CBD+CBN, Drops By GreenBudz CBD+THC, Drops By GreenBudz Goma Nightshade, GreenBudz Isolate CBD Hemp Formula). NÃO prescreva produtos da Flowermed.`
-        : `PREFERÊNCIA DE MARCA SELECIONADA PELO MÉDICO/PACIENTE: **AMBAS AS MARCAS (Flowermed e GreenBudzCBD)**.
-Apresente as opções de tratamento comparando e integrando tanto o catálogo Flowermed quanto o da GreenBudzCBD, para que o médico e o paciente possam escolher entre as alternativas importadas de acordo com a patologia e perfil de preferência.`;
+      let nationalDirective = '';
+      if (selectedNational === 'soucannabis' || selectedBrand === 'soucannabis') {
+        nationalDirective = `ASSOCIAÇÃO NACIONAL ESCOLHIDA: **ASSOCIAÇÃO SOUCANNABIS (BRASIL — LAUDOS HPLC CERTIFICADOS)**.
+Priorize estritamente formulações oficiais da ASSOCIAÇÃO SOUCANNABIS:
+- Óleos Sublinguais com base MCT medicinal testados por HPLC: Óleo Lilás (1:1 THC:CBD, 6%), Óleo Azul (THC 5:1, 6%), Óleo Rosa (CBD 5:1, 6%), Óleo Laranja (CBD 1:10, 6%) e Óleo Branco (Broad Spectrum 0% THC, 6%);
+- Extrações Concentradas e Resgates: Extrato Concentrado SouCannabis 60% e 80% em seringa dosadora para microdosagem, Sprays Nasais (Azul e Laranja 60 mg/mL), Pomadas Tópicas (6% e 10% 50g), Supositórios Pélvicos 1:1 e Flores in natura Associação SouCannabis 15g.`;
+      } else if (selectedNational === 'abrace' || selectedBrand === 'abrace') {
+        nationalDirective = `ASSOCIAÇÃO NACIONAL ESCOLHIDA: **ABRACE ESPERANÇA (ASSOCIAÇÃO BRASILEIRA DE APOIO CANNABIS ESPERANÇA — JOÃO PESSOA/PB)**.
+Priorize estritamente formulações oficiais da ABRACE:
+- Linha de Óleos por Cores: Óleo Laranja CBD (20 ou 30 mg/mL), Óleo Vermelho CBD Forte (50 ou 100 mg/mL), Óleo Preto THC 30 mg/mL, Óleo Azul CBD:THC 1:1 (30 mg/mL) e Óleo Roxo CBD:THC 1:1 Forte (60 mg/mL);
+- Formas Farmacêuticas Especiais e Resgates: Spray Resgate THC 5 mg/mL (25 mL com absorção imediata), Gomas de CBD, THC e 1:1 (10 mg/goma, 30 un), Pomadas Full Spectrum CBD (30 mg/g) e THC (20 mg/g) em pote de 100g e Flores In Natura ABRACE 10g.`;
+      } else if (selectedNational === 'abecmed' || selectedBrand === 'abecmed') {
+        nationalDirective = `ASSOCIAÇÃO NACIONAL ESCOLHIDA: **ABECMED (ASSOCIAÇÃO BRASILEIRA DE ESTUDOS DA CANNABIS)**.
+Priorize estritamente formulações oficiais da ABECMED:
+- Óleos Full Spectrum RSO em MCT: Linha Laranja CBD (20 a 50 mg/mL), Linha Azul CBD:THC 1:1, Linha Verde THC;
+- Extrações e Flores: Extração Sem Solvente ABEC rica em THC 30%-50%, Extrato Peneirado Dry Sift Full Spectrum e Inflorescências ABEC 10g ricas em THC ou CBD.`;
+      } else {
+        nationalDirective = `ASSOCIAÇÃO NACIONAL ESCOLHIDA: **ASSOCIAÇÕES BRASILEIRAS (SouCannabis, ABRACE e ABECMED)**. Integre opções equilibradas das principais associações brasileiras de pacientes.`;
+      }
+
+      let importedDirective = '';
+      if (selectedImported === 'pangaia' || selectedBrand === 'pangaia') {
+        importedDirective = `MARCA IMPORTADA ESCOLHIDA: **PANGAIA BIOPHARMACEUTICALS (EUA • ANVISA RDC 660/2022)**.
+Priorize o portfólio oficial da Pangaia: Óleo CBD Full Spectrum 5%, 10% (3000 mg) e 20%, Óleo Delta-8 THC 2000 mg, Óleo CBD Isolate 3000 mg, Óleo Maná 3000 mg com Óleo de Copaíba, Pomada Táio 3375 mg com Andiroba/Copaíba, Cápsulas Softgel, Gummies Grape e Pangaia Live Rosin THC-A Solventless 1g.`;
+      } else if (selectedImported === 'flowermed' || selectedBrand === 'flowermed') {
+        importedDirective = `MARCA IMPORTADA ESCOLHIDA: **LINHA FLOWERMED & FLORES/EXTRAÇÕES (EUA • RDC 660)**.
+Priorize opções Flowermed (Óleos CBG 3000mg, CBN 300mg + CBD 900mg, THCV, Gummies) e Flores In Natura / Extrações (Superglue THCA 14g, Glitter Bomb 14g, Forbidden Fruit D8 14g, Syringe Gelato 71,6% THCA e Gold Budder 5g).`;
+      } else if (selectedImported === 'greenbudz' || selectedBrand === 'greenbudz') {
+        importedDirective = `MARCA IMPORTADA ESCOLHIDA: **LINHA GREENBUDZCBD (EUA)**.
+Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, Drops By GreenBudz CBD+CBN, Drops By GreenBudz CBD+THC, Goma Nightshade e Isolate CBD Hemp Formula).`;
+      } else {
+        importedDirective = `MARCA IMPORTADA ESCOLHIDA: **CATÁLOGOS IMPORTADOS (Pangaia, Flowermed, GreenBudzCBD)**.`;
+      }
 
       const prompt = `
         Atue como um Especialista Sênior em Medicina Canabinoide e Prescrição Médica de Alto Nível.
         Sua missão é fornecer uma análise clínica com PRECISÃO MÁXIMA, baseada em protocolos rigorosos e literatura médica atualizada, indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
         
-        FILTRO OBRIGATÓRIO DE MARCA ESCOLHIDA:
-        ${brandDirective}
+        FILTRO OBRIGATÓRIO DE PRESCRIÇÃO COMBINADA (1 NACIONAL + 1 IMPORTADO):
+        - ${nationalDirective}
+        - ${importedDirective}
         
         Dados Clínicos do Paciente:
         - Queixa Principal / Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
@@ -2651,40 +2812,48 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         
         DIRETRIZ DE PRESCRIÇÃO E EQUIVALÊNCIA (IMPORTADOS E NACIONAIS):
         Você DEVE sugerir DUAS frentes de tratamento INDEPENDENTES E COMPLETAS para o médico prescrever e o paciente escolher:
-        1. Opção de Importados (Catálogo Oficial da marca selecionada: ${selectedBrand.toUpperCase()}): monte um tratamento completo e equilibrado cobrindo diferentes vias farmacoterapêuticas de acordo com as queixas do paciente:
-           - ÓLEO SUBLINGUAL (para homeostase basal e uso contínuo diário, ex: Hemp Oil 3000mg, Sphera, Calm Vibe 6000mg, Full Balance 3000mg);
-           - GOMAS / GUMMIES ou NANO SYRUP (forma farmacêutica oral prática com liberação prolongada de 4 a 6 horas, ex: CBN Sleep Gummies, Gummies D9, Drops By GreenBudz Goma Nightshade, Chill Vibe Gummies, Evergreen ou D9 Nano Syrup 500mg);
-           - FLORES RICAS EM THC/THCA e/ou EXTRAÇÕES COM THC (para resgate rápido inalatório em crises álgicas, ansiedade aguda, espasmos ou indução rápida de sono sem combustão, ex: Flor In Natura Superglue (THCA) 14g, Flor In Natura Glitter Bomb (THCA) 14g, Flor In Natura Forbidden Fruit (D8 THC) 14g, Hemp Oil Syringe Gelato 2ml (71,6% THCA), Hemp Oil Gold Budder 5g (Versão THCA)). Salvo contraindicação expressa (psicose/esquizofrenia), é MANDATÓRIO incluir flores ricas em THC/THCA e extrações com THC para garantir a cobertura completa de resgate agudo.
-        2. Opção de Associações Nacionais: monte um tratamento equivalente completo com formulações padronizadas de Associações Brasileiras.
+        1. Opção de Importados (Catálogo Oficial da marca selecionada): monte um tratamento completo e equilibrado cobrindo diferentes vias farmacoterapêuticas de acordo com as queixas do paciente:
+           - ÓLEO SUBLINGUAL (para homeostase basal e uso contínuo diário);
+           - GOMAS / GUMMIES ou FORMA ORAL SÓLIDA (forma farmacêutica oral prática com liberação prolongada de 4 a 6 horas);
+           - FLORES RICAS EM THC/THCA e/ou EXTRAÇÕES COM THC (para resgate rápido inalatório em crises álgicas, ansiedade aguda, espasmos ou indução rápida de sono sem combustão).
+        2. Opção de Associações Nacionais: monte um tratamento equivalente completo com formulações padronizadas da Associação Brasileira selecionada (${selectedNational === 'abrace' ? 'ABRACE Esperança' : selectedNational === 'abecmed' ? 'ABECMED' : 'SouCannabis'}).
 
         REGRA OBRIGATÓRIA E INEGOCIÁVEL PARA MEDICAMENTOS NACIONAIS:
-        INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS (FLOWERMED, GREENBUDZCBD OU AMBOS), A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE E OBRIGATORIAMENTE A TRÍADE COMPLETA:
-        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal, ex: Linha ABRACE [Óleo Laranja CBD 20 ou 30 mg/mL, Óleo Vermelho CBD 100 mg/mL, Óleo Cinza/Prata CBD 200 mg/mL, Óleo Preto THC 30 mg/mL, Óleo Azul CBD+THC 1:1 15mg/mL, Óleo Roxo CBD+THC 1:1 30mg/mL], Linha ABECMED Full Spectrum RSO em MCT [Laranja CBD, Azul CBD:THC, Verde THC, Vermelho CBG, Limão CBD:CBN, Lilás CBD:CBG], Linha ALTO CBD Full SPECTRUM [CBD 5:1 THC, CBD 10:1 THC ou CBD 20:1 THC], ou Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1, Óleo Integral CBD 100mg/ml ou THC/CBD 100mg/ml - Associação Nacional);
-        - 2. EXTRAÇÃO / FORMA COMPLEMENTAR (Pomada Full Rica em CBD 30 mg/g 100g — ABRACE, Pomada Full Rica em THC 20 mg/g 100g — ABRACE, Gomas de Canabinoides ABRACE [CBD 10mg, THC 10mg ou CBD+THC 10mg], Spray Resgate THC 5 mg/mL (25 mL) — ABRACE, Extração Sem Solvente ABEC rica em THC 30%-50%, Extrato Peneirado Dry Sift Full Spectrum ABEC, ou Pomada Canábica Terapêutica 500mg - Associação Nacional para alívio complementar, ação tópica direta ou espasmos);
-        - 3. FLORES (Flores In Natura ABRACE [Ricas em CBD 10g, Ricas em THC 10g ou Ricas em CBD+THC 10g], Inflorescências ABEC ricas em THC 15%-30% ou ricas em CBD 8%-18% em embalagens de 5g a 25g, ou Flores in natura de cannabis sp 15g - Associação Nacional para resgate inalatório rápido em picos de sintomas via vaporizador térmico medicinal a 175°C-185°C).
-        Desta forma, fica estritamente a critério e autonomia do paciente escolher se prefere seguir com o tratamento completo de medicamentos nacionais ou com os importados.
+        INDEPENDENTE DA MARCA SELECIONADA PARA OS IMPORTADOS, A PRESCRIÇÃO DAS OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS) DEVE CONTER SEMPRE A COBERTURA COMPLETA EQUIVALENTE DE 4 VIAS FARMACOLÓGICAS (ÓLEO, EXTRAÇÃO CONCENTRADA, FORMA TÓPICA E FLOR IN NATURA):
+        - 1. ÓLEO (Óleo sublingual contínuo para equilíbrio e homeostase basal diária, ex: Linha SouCannabis [Óleo Lilás 1:1, Óleo Azul 5:1, Óleo Rosa 5:1], Linha ABRACE [Laranja, Vermelho, Preto, Azul ou Roxo], ou Linha ABECMED Full Spectrum RSO em MCT);
+        - 2. EXTRAÇÃO CONCENTRADA DE RESGATE (Extrato Concentrado SouCannabis 60% ou 80% em Seringa Dosadora, Spray Resgate THC 5 mg/mL ABRACE, Extração Sem Solvente ABEC rica em THC 30%-50%, ou Extrato Dry Sift);
+        - 3. FORMA COMPLEMENTAR TÓPICA (Pomada Tópica SouCannabis 6% ou 10% 50g, Pomada Full Rica em CBD/THC ABRACE 100g, ou Pomada ABEC Tópica Full Spectrum);
+        - 4. FLORES (Flor in natura Associação SouCannabis 15g, Flores In Natura ABRACE [CBD, THC ou Balanceadas 10g], ou Inflorescências ABEC ricas em THC 15%-30% ou CBD 8%-18%).
+        Desta forma, o paciente dispõe de equivalência terapêutica idêntica entre as 4 vias dos importados e as 4 formulações padronizadas das associações nacionais.
 
         CRITÉRIOS CLÍNICOS CRÍTICOS DE SEGURANÇA E PERSONALIZAÇÃO CASO A CASO:
-        - SE o paciente tem histórico de psicose ou esquizofrenia: É ESTRITAMENTE CONTRAINDICADO o uso de formulações com THC ou THCA em doses psicoativas. Você DEVE prescrever exclusivamente formulações de Canabidiol Broad Spectrum (ex: Sphera 10% ou 20% Broad Spectrum), CBG Isolado (Flowermed CBG Isolado 3.000 mg) ou flores de CBD isoladas (Sour Lifter CBD) ou GreenBudz Isolate CBD.
-        - SE o paciente dirige ou opera maquinário: produtos com THC/THCA devem ser restritos ao uso noturno (mínimo de 8h antes da direção); no período diurno, utilize formulações não-intoxicantes (CBD, CBG ou Broad Spectrum).
-        - SE o paciente apresenta dor intensa/aguda (intensidade >= 7): considere a indicação de uma via de resgate inalatório rápido por vaporização medicinal (Flor Lemon Octane CBD, Superglue THCA, Syringe Gelato 71,6% THCA ou Budder) ou D9 Nano Syrup, além do óleo contínuo.
-        - SE o paciente tem queixa primária de insônia: considere o fitocanabinoide CBN (Flowermed CBN 300mg + CBD 900mg, CBN Sleep Gummies, Drops By GreenBudz CBD+CBN, Drops By GreenBudz Goma Nightshade ou Flor Forbidden Fruit D8 THC).
-        - SE o paciente tem TDAH, fadiga ou déficit de foco: priorize Flowermed THCV 300mg + CBD 900mg, Flowermed CBG Isolado 3.000mg, GreenBudz Full Balance Oil, Flor Sour Lifter ou Trop Banana.
+        - SE o paciente tem histórico de psicose ou esquizofrenia: É ESTRITAMENTE CONTRAINDICADO o uso de formulações com THC ou THCA em doses psicoativas. Você DEVE prescrever exclusivamente formulações de Canabidiol Broad Spectrum, CBG Isolado ou flores de CBD isoladas.
+        - SE o paciente dirige ou opera maquinário: produtos com THC/THCA devem ser restritos ao uso noturno (mínimo de 8h antes da direção); no período diurno, utilize formulações não-intoxicantes.
+        - SE o paciente apresenta dor intensa/aguda (intensidade >= 7): considere a indicação de uma via de resgate inalatório rápido por vaporização medicinal ou Extrato Concentrado em Seringa, além do óleo contínuo.
+        - SE o paciente tem queixa primária de insônia: considere produtos ricos em CBN ou formulações noturnas com THC moderado.
         - SE o paciente toma fármacos contínuos: avalie potenciais interações no citocromo P450 (CYP3A4, CYP2C19, CYP2C9) e oriente espaçamento de 2 horas.
 
-        CATÁLOGO OFICIAL DE IMPORTADOS DISPONÍVEIS:
-        ${selectedBrand === 'flowermed' || selectedBrand === 'both' ? `[LINHA FLOWERMED (EUA - Padrão FDA / RDC 660)]:
-        ${FLOWERMED_PRODUCTS.map(p => `- ${p.name} (${p.line}): R$ ${p.priceBRL} • ${p.activeIngredients} (${p.concentration || ''}). ${p.indications || ''}. Posologia: ${p.usageInstructions || ''}`).join('\n')}` : ''}
+        CATÁLOGOS DISPONÍVEIS:
+        ${selectedImported === 'flowermed' || selectedImported === 'all' ? `[LINHA FLOWERMED (EUA - Padrão FDA / RDC 660)]:
+        ${FLOWERMED_PRODUCTS.map(p => `- ${p.name} (${p.line}): R$ ${p.priceBRL} • ${p.activeIngredients} (${p.concentration || ''}). ${p.indications || ''}. Posologia: ${p.usageInstructions || ''}`).join('\n')}
+        [LINHA FLORES IN NATURA E EXTRAÇÕES IMPORTADAS]:
+        ${FLOWER_EXTRACTIONS_PRODUCTS.map(p => `- ${p.name} (${p.subLine}): R$ ${p.priceBRL} • Perfil: ${p.strainProfile} • Momento: ${p.usageMoment}. ${p.indications || ''}.`).join('\n')}` : ''}
 
-        [LINHA FLORES IN NATURA E EXTRAÇÕES IMPORTADAS (14g & Concentrados)]:
-        ${FLOWER_EXTRACTIONS_PRODUCTS.map(p => `- ${p.name} (${p.subLine}): R$ ${p.priceBRL} • Perfil: ${p.strainProfile} • Terpenos: ${p.terpenes.join(', ')} • Momento: ${p.usageMoment}. ${p.indications || ''}. Via: ${p.administrationRoute || 'Inalatória / Vaporização'}.`).join('\n')}
-
-        ${selectedBrand === 'greenbudz' || selectedBrand === 'both' ? `[LINHA GREENBUDZCBD (EUA)]:
+        ${selectedImported === 'greenbudz' || selectedImported === 'all' ? `[LINHA GREENBUDZCBD (EUA)]:
         ${productCategories.flatMap(c => c.products.filter(p => p.manufacturer === 'GreenBudzCBD')).map(p => `- ${p.name} (${p.type}): R$ ${p.priceBRL}. ${p.indications || p.description || ''}`).join('\n')}` : ''}
 
-        CATÁLOGO OFICIAL DE ASSOCIAÇÕES NACIONAIS (BRASIL) (SEM PREÇO/VALOR):
-        ${productCategories.flatMap(c => c.products.filter(p => p.origin === 'Nacional')).map(p => `- ${p.name} (${p.type}): ${p.indications || p.description || ''}`).join('\n')}
-        
+        ${selectedImported === 'pangaia' || selectedImported === 'all' ? `[LINHA PANGAIA BIOPHARMACEUTICALS (EUA / RDC 660)]:
+        ${PANGAIA_PRODUCTS.map(p => `- ${p.name} (${p.productLine || p.type}): R$ ${p.priceBRL} • ${p.concentration || ''}. ${p.indications || ''}. Posologia: ${p.posologyDetails || p.usageInstructions || ''}`).join('\n')}` : ''}
+
+        ${selectedNational === 'soucannabis' || selectedNational === 'all' ? `[CATÁLOGO OFICIAL SOUCANNABIS (ASSOCIAÇÃO NACIONAL - HPLC)]:
+        ${SOUCANNABIS_PRODUCTS.map(p => `- ${p.name} (${p.type}): ${p.concentration || ''}. ${p.indications || ''}. Modo de uso: ${p.usageInstructions || ''}`).join('\n')}` : ''}
+
+        ${selectedNational === 'abrace' || selectedNational === 'all' ? `[CATÁLOGO OFICIAL ABRACE ESPERANÇA (ASSOCIAÇÃO NACIONAL)]:
+        ${ABRACE_PRODUCTS.map(p => `- ${p.name} (${p.type}): ${p.concentration || ''}. ${p.indications || ''}. Modo de uso: ${p.prescriptionExample || p.usageInstructions || ''}`).join('\n')}` : ''}
+
+        ${selectedNational === 'abecmed' || selectedNational === 'all' ? `[CATÁLOGO OFICIAL ABECMED (ASSOCIAÇÃO NACIONAL)]:
+        ${ABECMED_PRODUCTS.map(p => `- ${p.name} (${p.type}): ${p.concentration || ''}. ${p.indications || ''}. Modo de uso: ${p.prescriptionExample || p.usageInstructions || ''}`).join('\n')}` : ''}
+
         REGRA RIGOROSA DE PREÇOS:
         - JAMAIS inclua valores ou preços (R$) para medicamentos de Associação Nacional. Os medicamentos de associações devem ser apresentados sem valores.
         - Valores e preços (R$) são permitidos APENAS para os medicamentos IMPORTADOS.
@@ -2692,41 +2861,27 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         Formato de Saída Exigido (Markdown estruturado e clínico):
         1. Diagnóstico Sindrômico e Avaliação Clínica
         2. Racional Terapêutico Fisiopatológico (Interação com o Sistema Endocanabinoide)
-        3. Protocolo de Titulação e Posologia Sugerida (com foco na marca ${selectedBrand === 'flowermed' ? 'Flowermed' : selectedBrand === 'greenbudz' ? 'GreenBudzCBD' : 'Flowermed / GreenBudzCBD'})
+        3. Protocolo de Titulação e Posologia Sugerida (com foco na combinação: ${selectedNational.toUpperCase()} + ${selectedImported.toUpperCase()})
         4. Medicina Baseada em Evidências (Citações estruturadas de estudos reais)
         5. Manejo de Riscos, Contraindicações e Interações Farmacológicas
         
-        6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita com a palavra "Medicamento:" no início de cada produto para que o médico possa adicionar à receita):
+        6. **RESUMO DE PRESCRIÇÃO SUGERIDA** (Lista estrita com a palavra "Medicamento:" no início de cada produto):
            
-           **OPÇÕES IMPORTADAS (${selectedBrand === 'flowermed' ? 'LINHA FLOWERMED' : selectedBrand === 'greenbudz' ? 'LINHA GREENBUDZCBD' : 'LINHAS FLOWERMED E GREENBUDZCBD'}):**
-           (Gere o tratamento completo utilizando os nomes fiéis do catálogo de importados acima, integrando obrigatoriamente:
-            1. Óleo contínuo sublingual (ex: Hemp Oil 3000mg ou Sphera 1:1 / Full Spectrum);
-            2. Gomas/Gummies ou Syrup (ex: Gummies D9 10mg, CBN Sleep Gummies ou D9 Nano Syrup);
-            3. Flor rica em THC/THCA (ex: Flor In Natura Superglue (THCA) 14g, Glitter Bomb (THCA) 14g ou Forbidden Fruit (D8 THC) 14g);
-            4. Extração concentrada com THC (ex: Hemp Oil Syringe Gelato 2ml (71,6% THCA) ou Hemp Oil Gold Budder 5g (Versão THCA)) para resgate agudo/noturno)
+           **OPÇÕES IMPORTADAS (${selectedImported === 'flowermed' ? 'LINHA FLOWERMED' : selectedImported === 'greenbudz' ? 'LINHA GREENBUDZCBD' : selectedImported === 'pangaia' ? 'LINHA PANGAIA' : 'LINHAS IMPORTADAS'}):**
+           (Gere o tratamento completo utilizando os nomes fiéis do catálogo de importados acima)
            Medicamento: (Nome fiel ao catálogo)
            Indicação: (Condição primária alvo)
            Modo de Uso: (Posologia, via e titulação)
            Observações: (Dicas de administração)
 
-           **OPÇÕES NACIONAIS (ASSOCIAÇÕES BRASILEIRAS - TRÍADE COMPLETA: ÓLEO, EXTRAÇÃO E FLOR):**
-           (OBRIGATÓRIO: Gerar SEMPRE e INDEPENDENTE da marca de importados os 3 medicamentos nacionais abaixo: 1 ÓLEO, 1 EXTRAÇÃO e 1 FLOR IN NATURA)
-           Medicamento: (Óleo Rico em CBD ISOLADO 100mg/ml ou 200mg/ml, Óleo Balanceado CBD/THC 1:1, 2:1, 3:1, 5:1 ou Óleo Integral THC/CBD 100mg/ml - Associação Nacional)
+           **OPÇÕES NACIONAIS (${selectedNational === 'abrace' ? 'ASSOCIAÇÃO ABRACE ESPERANÇA' : selectedNational === 'abecmed' ? 'ASSOCIAÇÃO ABECMED' : 'ASSOCIAÇÃO SOUCANNABIS'} - COBERTURA COMPLETA: ÓLEO, EXTRAÇÃO, TÓPICO E FLOR):**
+           (OBRIGATÓRIO: Gerar com equivalência total os 4 medicamentos da associação nacional: 1 ÓLEO, 1 EXTRAÇÃO/SPRAY, 1 FORMA TÓPICA e 1 FLOR)
+           Medicamento: (Nome do medicamento oficial da associação)
            Indicação: (Condição primária alvo e homeostase basal contínua)
-           Modo de Uso: (Posologia, via sublingual e titulação gradual. Padrão: Aproximadamente 25 gotas por mL)
-           Observações: (Reter 60 a 90 segundos sublingual. Padrão: Aproximadamente 25 gotas por mL)
+           Modo de Uso: (Posologia, via sublingual e titulação gradual)
+           Observações: (Orientações de administração)
 
-           Medicamento: (Pomada Canábica Terapêutica 500mg ou Extrato Concentrado RSO - Associação Nacional)
-           Indicação: (Extração terapêutica para analgesia localizada, espasmos ou alívio de tensões somatizadas)
-           Modo de Uso: (Posologia e aplicação tópica/mucosa)
-           Observações: (Ação periférica direta em receptores CB2 cutâneos)
-
-           Medicamento: (Flor in natura PREDOMINANTE THC (Para Vaporização) 15g ou Flores in natura de cannabis sp 15g - Associação Nacional)
-           Indicação: (Resgate inalatório rápido para crises álgicas, ansiedade aguda ou indução noturna)
-           Modo de Uso: (Vaporizar 0,1g a 0,15g em vaporizador térmico medicinal a 175°C-185°C. Proibida a combustão)
-           Observações: (Início de ação imediato em 1 a 3 minutos)
-
-        IMPORTANTE: Destaque em **negrito** todos os fármacos, diagnósticos, enzimas (ex: CYP3A4) e dosagens para escaneabilidade médica de alto rendimento. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
+        IMPORTANTE: Destaque em **negrito** todos os fármacos, diagnósticos e dosagens. NÃO USE TABELAS MARKDOWN PARA OS MEDICAMENTOS.
       `;
 
       let responseText = null;
@@ -2735,7 +2890,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         const response = await fetch('/api/analyze-clinical', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, patientAnswers, brandPreference: selectedBrand })
+          body: JSON.stringify({ prompt, patientAnswers, brandPreference: selectedBrand, nationalPreference: selectedNational, importedPreference: selectedImported })
         });
 
         if (response.ok) {
@@ -2750,7 +2905,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
       if (!responseText) {
         const { generateClinicalAnalysisFallback } = await import('../utils/aiAnalysisFallback');
-        responseText = generateClinicalAnalysisFallback(prompt, patientAnswers, selectedBrand);
+        responseText = generateClinicalAnalysisFallback(prompt, patientAnswers, selectedBrand, selectedNational, selectedImported);
       }
 
       if (responseText) {
@@ -2824,7 +2979,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
             rawName = rawName.substring(0, 150) + "...";
           }
           
-          const isExplicitlyNat = /associação|associacao|cannabis sp 15g|associação brasileira|associação nacional|abrace|abec/i.test(rawName);
+          const isExplicitlyNat = /associação|associacao|cannabis sp 15g|associação brasileira|associação nacional|abrace|abec|soucannabis|sou cannabis/i.test(rawName);
           const isExplicitlyImp = /flowermed|greenbudz|sphera|sour lifter|lemon octane|forbidden fruit|gellato|gelato|glitter bomb|astro candy|strawpicana|superglue|zoap|trop banana|girl cookies|syringe|budder|gummies d9|nano syrup|hemp oil|broad spectrum|cbg|cbn|drops by/i.test(rawName);
 
           const finalOrigin: 'Importado' | 'Nacional' = isExplicitlyImp 
@@ -2882,8 +3037,20 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
     // Find product across catalogs
     let foundProduct: any = null;
 
-    // Check ABRACE first if explicitly ABRACE or national
-    if (cleanMedName.includes('abrace') || isExplicitlyNational) {
+    // Check SouCannabis if explicitly SouCannabis or national
+    if (!foundProduct && (cleanMedName.includes('soucannabis') || cleanMedName.includes('sou cannabis') || isExplicitlyNational)) {
+      const sou = SOUCANNABIS_PRODUCTS.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
+      if (sou) {
+        foundProduct = { ...sou, manufacturer: 'SouCannabis', origin: 'Nacional' };
+      }
+    }
+
+    // Check ABRACE if explicitly ABRACE or national
+    if (!foundProduct && (cleanMedName.includes('abrace') || isExplicitlyNational)) {
       const abrace = ABRACE_PRODUCTS.find(p => 
         p.name.toLowerCase() === cleanMedName ||
         p.name.toLowerCase().includes(cleanMedName) ||
@@ -2903,6 +3070,18 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       );
       if (abec) {
         foundProduct = { ...abec, manufacturer: 'ABECMED', origin: 'Nacional' };
+      }
+    }
+
+    // Check Pangaia Biopharmaceuticals if explicitly Pangaia or imported
+    if (!foundProduct && (cleanMedName.includes('pangaia') || cleanMedName.includes('maná') || cleanMedName.includes('táio') || cleanMedName.includes('cooling salve') || cleanMedName.includes('relief cream') || !isExplicitlyNational)) {
+      const pangaia = PANGAIA_PRODUCTS.find(p => 
+        p.name.toLowerCase() === cleanMedName ||
+        p.name.toLowerCase().includes(cleanMedName) ||
+        cleanMedName.includes(p.name.toLowerCase())
+      );
+      if (pangaia) {
+        foundProduct = { ...pangaia, manufacturer: 'Pangaia Biopharmaceuticals', origin: 'Importado' };
       }
     }
 
@@ -2949,9 +3128,13 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
       ? 'ABRACE'
       : (cleanMedName.includes('abec') || cleanMedName.includes('abecmed'))
       ? 'ABECMED'
+      : (cleanMedName.includes('soucannabis') || cleanMedName.includes('sou cannabis'))
+      ? 'SouCannabis'
+      : (cleanMedName.includes('pangaia') || cleanMedName.includes('maná') || cleanMedName.includes('táio'))
+      ? 'Pangaia Biopharmaceuticals (EUA)'
       : isNational 
       ? 'Associação Brasileira' 
-      : (/flowermed|sphera|gummies d9|nano syrup|broad spectrum|cbg|cbn/i.test(med.name) ? 'Flowermed (EUA)' : (/sour lifter|lemon octane|forbidden|gellato|gelato|glitter|astro|strawpicana|superglue|zoap|trop|girl cookies|syringe|budder/i.test(med.name) ? 'Importado (Folheto Especial)' : 'GreenBudzCBD'));
+      : (/flowermed|sphera|gummies d9|nano syrup|broad spectrum|cbg|cbn/i.test(med.name) ? 'Flowermed (EUA)' : (/sour lifter|lemon octane|forbidden|gellato|gelato|glitter|astro|strawpicana|superglue|zoap|trop|girl cookies|syringe|budder/i.test(med.name) ? 'Importado (Folheto Especial)' : 'Pangaia Biopharmaceuticals'));
 
     const enriched = enrichMedicationDetails(
       foundProduct ? foundProduct.name : med.name,
@@ -4727,123 +4910,364 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 custom-scrollbar min-h-0">
           {/* AI Analysis & Brand Filter */}
           <div className="space-y-3">
-            {/* 3 Brand Selection Buttons */}
-            <div className="bg-mecura-surface/60 border border-mecura-elevated rounded-2xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold text-mecura-silver uppercase tracking-wider flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-mecura-neon" />
-                  Marca para Prescrição IA:
-                </span>
-                <span className="text-[10px] font-semibold text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded-full border border-mecura-neon/20">
-                  {brandPreference === 'flowermed' ? 'Flowermed' : brandPreference === 'greenbudz' ? 'GreenBudzCBD' : 'Ambas as Marcas'}
+          {/* Central de Prescrição Clínica IA & Associações */}
+          <div className="bg-mecura-surface/60 border border-mecura-elevated rounded-2xl p-3.5 space-y-3 shadow-lg">
+            {/* Header com Origens / Status Ativo Combinado */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-mecura-elevated/60">
+              <div className="flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-mecura-neon flex-shrink-0" />
+                <span className="text-[11px] font-bold text-mecura-silver uppercase tracking-wider">
+                  Prescrição Combinada:
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-400/30 flex items-center gap-1">
+                  <span>🇧🇷</span>
+                  {nationalPreference === 'soucannabis'
+                    ? 'SouCannabis'
+                    : nationalPreference === 'abrace'
+                    ? 'ABRACE'
+                    : nationalPreference === 'abecmed'
+                    ? 'ABECMED'
+                    : 'Todas Associações'}
+                </span>
+                <span className="text-[10px] text-mecura-silver font-bold">+</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-cyan-500/15 text-cyan-300 border-cyan-400/30 flex items-center gap-1">
+                  <span>🌐</span>
+                  {importedPreference === 'pangaia'
+                    ? 'Pangaia'
+                    : importedPreference === 'flowermed'
+                    ? 'Flowermed'
+                    : importedPreference === 'greenbudz'
+                    ? 'GreenBudz'
+                    : 'Todos Importados'}
+                </span>
+              </div>
+            </div>
+            
+            {/* Linha 1: 🇧🇷 Associações Brasileiras (Nacionais) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <span>🇧🇷</span> 1. Associação Nacional:
+                </span>
+                <span className="text-[9px] text-emerald-400/70">Escolha uma associação</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setBrandPreference('flowermed');
-                    handleGenerateAnalysis(true, 'flowermed');
+                    setNationalPreference('soucannabis');
+                    setBrandPreference('soucannabis');
                   }}
-                  className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
-                    brandPreference === 'flowermed'
-                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
-                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white hover:border-mecura-silver/40'
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    nationalPreference === 'soucannabis'
+                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
+                      : 'bg-[#0A1612] text-emerald-300 border-emerald-500/30 hover:border-emerald-400/60 hover:text-white'
                   }`}
+                  title="SouCannabis: laudos HPLC, óleos MCT, sprays nasais e extrações 60%/80%"
                 >
-                  <span className="leading-tight">Flowermed</span>
-                  <span className={`text-[9px] font-normal leading-none ${brandPreference === 'flowermed' ? 'text-black/75' : 'text-mecura-silver/60'}`}>
-                    EUA • Flores 14g
-                  </span>
+                  <span>🌱</span> SouCannabis
                 </button>
 
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setBrandPreference('greenbudz');
-                    handleGenerateAnalysis(true, 'greenbudz');
+                    setNationalPreference('abrace');
+                    setBrandPreference('abrace');
                   }}
-                  className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
-                    brandPreference === 'greenbudz'
-                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
-                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white hover:border-mecura-silver/40'
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    nationalPreference === 'abrace'
+                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
+                      : 'bg-[#0A1612] text-emerald-300 border-emerald-500/30 hover:border-emerald-400/60 hover:text-white'
                   }`}
+                  title="ABRACE: pioneira nacional, óleos coloridos, gomas, pomadas 100g e spray resgate"
                 >
-                  <span className="leading-tight">GreenBudzCBD</span>
-                  <span className={`text-[9px] font-normal leading-none ${brandPreference === 'greenbudz' ? 'text-black/75' : 'text-mecura-silver/60'}`}>
-                    EUA Concentrado
-                  </span>
+                  <span>🌿</span> ABRACE Esperança
                 </button>
 
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setNationalPreference('abecmed');
+                    setBrandPreference('abecmed');
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    nationalPreference === 'abecmed'
+                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
+                      : 'bg-[#0A1612] text-emerald-300 border-emerald-500/30 hover:border-emerald-400/60 hover:text-white'
+                  }`}
+                  title="ABECMED: RSO em MCT, extrações sem solvente e inflorescências autorizadas"
+                >
+                  <span>🍃</span> ABECMED
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setNationalPreference('all');
                     setBrandPreference('both');
-                    handleGenerateAnalysis(true, 'both');
                   }}
-                  className={`py-2 px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 border ${
-                    brandPreference === 'both'
-                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
-                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white hover:border-mecura-silver/40'
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    nationalPreference === 'all'
+                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
+                      : 'bg-mecura-surface/40 text-emerald-400/70 border-mecura-elevated hover:text-white'
                   }`}
+                  title="Todas as associações brasileiras integradas"
                 >
-                  <span className="leading-tight">Ambos</span>
-                  <span className={`text-[9px] font-normal leading-none ${brandPreference === 'both' ? 'text-black/75' : 'text-mecura-silver/60'}`}>
-                    Todas as Marcas
-                  </span>
+                  <span>🌐</span> Todas Associações
                 </button>
               </div>
             </div>
 
-            <div 
-              onClick={() => handleGenerateAnalysis(false, brandPreference)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && handleGenerateAnalysis(false, brandPreference)}
-              className={`w-full cursor-pointer relative overflow-hidden group bg-gradient-to-r from-mecura-surface to-mecura-surface-light border rounded-2xl p-4 flex items-center gap-4 transition-all shadow-[0_4px_20px_rgba(166,255,0,0.05)] hover:shadow-[0_4px_25px_rgba(166,255,0,0.15)] ${expandAnalysis ? 'border-mecura-neon' : 'border-mecura-neon/30 hover:border-mecura-neon'}`}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/5 to-mecura-neon/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-              <div className="w-12 h-12 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20 flex-shrink-0">
-                <BrainCircuit className="w-6 h-6 text-mecura-neon" />
+            {/* Linha 2: 🌐 Marcas Importadas */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                  <span>🌐</span> 2. Marca Importada:
+                </span>
+                <span className="text-[9px] text-cyan-400/70">Escolha um importado</span>
               </div>
-              <div className="text-left flex-1">
-                <h3 className="text-white font-bold text-base mb-0.5">Análise Clínica IA</h3>
-                <p className="text-mecura-silver text-sm">Sugestões de tratamento baseadas em evidências</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {analysisResult && (
-                  <>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleGenerateAnalysis(true, brandPreference);
-                      }}
-                      disabled={isAnalyzing}
-                      className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
-                      title="Re-gerar Análise (Importados e Nacionais)"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin text-mecura-neon' : ''}`} />
-                    </button>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowAnalysisModal(true);
-                      }}
-                      className="p-2 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
-                      title="Expandir Análise"
-                    >
-                      <Maximize2 className="w-5 h-5" />
-                    </button>
-                  </>
-                )}
-                {analysisResult && (
-                  <ChevronDown className={`w-6 h-6 text-mecura-silver transition-transform duration-300 ${expandAnalysis ? 'rotate-180' : ''}`} />
-                )}
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImportedPreference('pangaia');
+                    setBrandPreference('pangaia');
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    importedPreference === 'pangaia'
+                      ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.35)] font-black'
+                      : 'bg-mecura-surface/40 text-cyan-300 border-cyan-500/30 hover:border-cyan-400/60 hover:text-white'
+                  }`}
+                  title="Pangaia Biopharmaceuticals (EUA • ANVISA RDC 660)"
+                >
+                  <span>🌿</span> Pangaia
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImportedPreference('flowermed');
+                    setBrandPreference('flowermed');
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    importedPreference === 'flowermed'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.3)] font-black'
+                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white'
+                  }`}
+                  title="Flowermed (EUA) e Flores/Extrações"
+                >
+                  <span>🌸</span> Flowermed
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImportedPreference('greenbudz');
+                    setBrandPreference('greenbudz');
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    importedPreference === 'greenbudz'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.3)] font-black'
+                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white'
+                  }`}
+                  title="GreenBudzCBD (EUA)"
+                >
+                  <span>🌲</span> GreenBudz
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImportedPreference('all');
+                    setBrandPreference('both');
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
+                    importedPreference === 'all'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.3)] font-black'
+                      : 'bg-mecura-surface/40 text-mecura-silver border-mecura-elevated hover:text-white'
+                  }`}
+                  title="Todos os catálogos importados"
+                >
+                  <span>🌐</span> Todos Importados
+                </button>
               </div>
             </div>
+
+            {/* Ações Principais (Largura Total, Espaçosos e Sem Sobreposição) */}
+            <div className="space-y-2 pt-1">
+              {/* Botão 1: Análise Clínica IA (Gera com o Combo 1 Nacional + 1 Importado) */}
+              <div
+                onClick={() => handleGenerateAnalysis(false, 'both', nationalPreference, importedPreference)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && handleGenerateAnalysis(false, 'both', nationalPreference, importedPreference)}
+                className={`w-full cursor-pointer relative overflow-hidden group bg-gradient-to-r from-mecura-surface to-mecura-surface-light border rounded-xl p-3 flex items-center justify-between gap-3 transition-all shadow-[0_4px_15px_rgba(166,255,0,0.05)] hover:shadow-[0_4px_20px_rgba(166,255,0,0.18)] ${
+                  expandAnalysis ? 'border-mecura-neon ring-1 ring-mecura-neon/30' : 'border-mecura-neon/30 hover:border-mecura-neon'
+                }`}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/0 via-mecura-neon/5 to-mecura-neon/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 flex items-center justify-center border border-mecura-neon/20 flex-shrink-0">
+                    <BrainCircuit className="w-5 h-5 text-mecura-neon" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <h3 className="text-white font-bold text-sm leading-tight truncate">Análise Clínica IA</h3>
+                    <p className="text-mecura-silver text-xs leading-tight truncate mt-0.5">
+                      Prescrever {
+                        nationalPreference === 'soucannabis' ? 'SouCannabis' : nationalPreference === 'abrace' ? 'ABRACE' : nationalPreference === 'abecmed' ? 'ABECMED' : 'Associações'
+                      } + {
+                        importedPreference === 'pangaia' ? 'Pangaia' : importedPreference === 'flowermed' ? 'Flowermed' : importedPreference === 'greenbudz' ? 'GreenBudz' : 'Importados'
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {analysisResult ? (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGenerateAnalysis(true, 'both', nationalPreference, importedPreference);
+                        }}
+                        disabled={isAnalyzing}
+                        className="p-1.5 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
+                        title="Re-gerar Análise"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin text-mecura-neon' : ''}`} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAnalysisModal(true);
+                        }}
+                        className="p-1.5 hover:bg-white/10 rounded-lg text-mecura-silver hover:text-mecura-neon transition-colors"
+                        title="Expandir Modal"
+                      >
+                        <Maximize2 className="w-4 h-4" />
+                      </button>
+                      <ChevronDown className={`w-4 h-4 text-mecura-silver transition-transform duration-300 ${expandAnalysis ? 'rotate-180' : ''}`} />
+                    </>
+                  ) : (
+                    <span className="text-xs font-bold text-mecura-neon bg-mecura-neon/15 px-2.5 py-1 rounded-full border border-mecura-neon/30 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" /> Gerar 1+1
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Botão 2: Painel de Associações Brasileiras (SouCannabis, ABRACE e ABECMED) */}
+              <div className="bg-gradient-to-r from-emerald-950/70 via-[#0A1612] to-emerald-950/70 border border-emerald-500/40 rounded-xl p-3 space-y-2.5 shadow-[0_0_15px_rgba(16,185,129,0.12)]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm">🇧🇷</span>
+                    <span className="text-xs font-black text-emerald-300 uppercase tracking-wider truncate">
+                      Associações Brasileiras (Nacional)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-emerald-300 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex-shrink-0">
+                    Entrada Acessível
+                  </span>
+                </div>
+
+                {/* Seletores Rápidos das 3 Associações */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNationalPreference('soucannabis');
+                      setBrandPreference('soucannabis');
+                      handleGenerateAnalysis(true, 'soucannabis', 'soucannabis', importedPreference);
+                    }}
+                    className={`p-2 rounded-lg text-left transition-all border cursor-pointer ${
+                      nationalPreference === 'soucannabis'
+                        ? 'bg-emerald-400 text-black border-emerald-400 font-black shadow-sm'
+                        : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400 hover:text-white'
+                    }`}
+                    title="SouCannabis: laudos HPLC, extrações 60%/80% em seringa e óleos padronizados"
+                  >
+                    <div className="text-xs font-bold leading-tight">🌱 SouCannabis</div>
+                    <div className={`text-[9px] truncate ${nationalPreference === 'soucannabis' ? 'text-black/80 font-bold' : 'text-emerald-400/70'}`}>
+                      HPLC • Extrações
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNationalPreference('abrace');
+                      setBrandPreference('abrace');
+                      handleGenerateAnalysis(true, 'abrace', 'abrace', importedPreference);
+                    }}
+                    className={`p-2 rounded-lg text-left transition-all border cursor-pointer ${
+                      nationalPreference === 'abrace'
+                        ? 'bg-emerald-400 text-black border-emerald-400 font-black shadow-sm'
+                        : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400 hover:text-white'
+                    }`}
+                    title="ABRACE Esperança: pioneira nacional, óleos coloridos, pomadas, gomas e spray resgate"
+                  >
+                    <div className="text-xs font-bold leading-tight">🌿 ABRACE</div>
+                    <div className={`text-[9px] truncate ${nationalPreference === 'abrace' ? 'text-black/80 font-bold' : 'text-emerald-400/70'}`}>
+                      Óleos • Gomas
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNationalPreference('abecmed');
+                      setBrandPreference('abecmed');
+                      handleGenerateAnalysis(true, 'abecmed', 'abecmed', importedPreference);
+                    }}
+                    className={`p-2 rounded-lg text-left transition-all border cursor-pointer ${
+                      nationalPreference === 'abecmed'
+                        ? 'bg-emerald-400 text-black border-emerald-400 font-black shadow-sm'
+                        : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400 hover:text-white'
+                    }`}
+                    title="ABECMED: RSO em MCT, extrações solventless e inflorescências"
+                  >
+                    <div className="text-xs font-bold leading-tight">🍃 ABECMED</div>
+                    <div className={`text-[9px] truncate ${nationalPreference === 'abecmed' ? 'text-black/80 font-bold' : 'text-emerald-400/70'}`}>
+                      RSO • Flores
+                    </div>
+                  </button>
+                </div>
+
+                {/* Botão de Disparo Direto com a Associação Ativa */}
+                <button
+                  type="button"
+                  id="btn-choose-association-active"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleGenerateAnalysis(true, 'both', nationalPreference, importedPreference);
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold transition-all flex items-center justify-between gap-2 cursor-pointer shadow-sm"
+                  title="Gerar prescrição priorizando a associação selecionada"
+                >
+                  <span className="truncate flex items-center gap-1.5">
+                    <span>⚡</span>
+                    Gerar com {nationalPreference === 'soucannabis' ? '🌱 SouCannabis' : nationalPreference === 'abrace' ? '🌿 ABRACE Esperança' : nationalPreference === 'abecmed' ? '🍃 ABECMED' : 'Associações'}
+                  </span>
+                  <span className="text-[10px] bg-emerald-400 text-black px-2 py-0.5 rounded font-black flex-shrink-0">
+                    Ativar
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
 
             {expandAnalysis && (
               <div className="bg-mecura-surface/30 border border-mecura-elevated rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
@@ -4921,7 +5345,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                         ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
                                         : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                     }`}>
-                                      {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
+                                      {isNational 
+                                        ? (med.name.toLowerCase().includes('abrace') ? '🇧🇷 ABRACE Esperança' : med.name.toLowerCase().includes('abec') ? '🇧🇷 Associação ABECMED' : med.name.toLowerCase().includes('soucannabis') ? '🇧🇷 Associação SouCannabis' : '🇧🇷 Associação Nacional')
+                                        : (med.name.toLowerCase().includes('pangaia') ? '🌐 Pangaia Biopharma' : med.name.toLowerCase().includes('flowermed') ? '🌐 Flowermed' : med.name.toLowerCase().includes('greenbudz') ? '🌐 GreenBudzCBD' : '🌐 Importado')}
                                     </span>
                                   </div>
                                   <h5 className={`font-bold text-xs mb-0.5 transition-colors ${
@@ -4934,6 +5360,30 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
                             return (
                               <>
+                                {/* Prescrição Híbrida 1+1 (1 Nacional + 1 Importado) */}
+                                {importedMeds.length > 0 && nationalMeds.length > 0 && (
+                                  <div className="p-3 bg-gradient-to-r from-emerald-950/50 via-mecura-surface to-blue-950/50 border border-mecura-neon/40 rounded-xl flex items-center justify-between gap-3 shadow-md mb-2">
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                                        <Sparkles className="w-3.5 h-3.5 text-mecura-neon flex-shrink-0" />
+                                        <span className="truncate">Prescrição Híbrida (1 Nacional + 1 Importado)</span>
+                                      </div>
+                                      <p className="text-[10px] text-mecura-silver leading-tight truncate mt-0.5">
+                                        1 Importado ({importedMeds[0]?.name?.split('(')[0]?.trim()}) + 1 Nacional ({nationalMeds[0]?.name?.split('(')[0]?.trim()})
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (importedMeds[0]) addPrescribedMedication(importedMeds[0]);
+                                        if (nationalMeds[0]) addPrescribedMedication(nationalMeds[0]);
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-mecura-neon text-black font-extrabold text-xs whitespace-nowrap hover:shadow-[0_0_12px_rgba(166,255,0,0.4)] transition-all flex items-center gap-1 flex-shrink-0 cursor-pointer"
+                                    >
+                                      <span>⚡</span> Prescrever 1+1
+                                    </button>
+                                  </div>
+                                )}
                                 {importedMeds.length > 0 && (
                                   <div className="space-y-2.5">
                                     <div className="flex items-center justify-between border-b border-blue-500/20 pb-1">
@@ -4953,14 +5403,14 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                   <div className="space-y-2.5 mt-4">
                                     <div className="border-b border-emerald-500/20 pb-1 flex items-center justify-between">
                                       <h5 className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                                        <span>🇧🇷 Tratamento Nacional (Tríade)</span>
+                                        <span>🇧🇷 Tratamento Nacional (Associações Brasileiras)</span>
                                       </h5>
                                       <button
                                         type="button"
                                         onClick={() => nationalMeds.forEach(m => addPrescribedMedication(m))}
                                         className="text-[10px] font-bold text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 px-2 py-0.5 rounded border border-emerald-500/40 transition-colors"
                                       >
-                                        + Prescrever Tríade Nacional
+                                        + Prescrever Todos Nacionais
                                       </button>
                                     </div>
                                     {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
@@ -5345,54 +5795,113 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                   </div>
                 </div>
 
-                {/* 3 Brand Buttons in Modal Header */}
-                <div className="flex items-center gap-1.5 bg-[#0F1017] p-1.5 rounded-2xl border border-mecura-elevated">
-                  <span className="text-[10px] font-bold text-mecura-silver uppercase tracking-wider px-2 flex items-center gap-1">
-                    <Sliders className="w-3 h-3 text-mecura-neon" />
-                    Marca:
-                  </span>
-                  <button
-                    onClick={() => {
-                      setBrandPreference('flowermed');
-                      handleGenerateAnalysis(true, 'flowermed');
-                    }}
-                    disabled={isAnalyzing}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      brandPreference === 'flowermed'
-                        ? 'bg-mecura-neon text-black shadow-[0_0_12px_rgba(166,255,0,0.3)]'
-                        : 'text-mecura-silver hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    Flowermed
-                  </button>
-                  <button
-                    onClick={() => {
-                      setBrandPreference('greenbudz');
-                      handleGenerateAnalysis(true, 'greenbudz');
-                    }}
-                    disabled={isAnalyzing}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      brandPreference === 'greenbudz'
-                        ? 'bg-mecura-neon text-black shadow-[0_0_12px_rgba(166,255,0,0.3)]'
-                        : 'text-mecura-silver hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    GreenBudzCBD
-                  </button>
-                  <button
-                    onClick={() => {
-                      setBrandPreference('both');
-                      handleGenerateAnalysis(true, 'both');
-                    }}
-                    disabled={isAnalyzing}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      brandPreference === 'both'
-                        ? 'bg-mecura-neon text-black shadow-[0_0_12px_rgba(166,255,0,0.3)]'
-                        : 'text-mecura-silver hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    Ambos
-                  </button>
+                {/* Brand & Association Buttons in Modal Header */}
+                <div className="flex items-center gap-2 bg-[#0F1017] p-2 rounded-2xl border border-mecura-elevated flex-wrap">
+                  {/* Associações Nacionais */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider px-1">
+                      🇧🇷 Nacional:
+                    </span>
+                    <button
+                      onClick={() => {
+                        setNationalPreference('soucannabis');
+                        setBrandPreference('soucannabis');
+                        handleGenerateAnalysis(true, 'both', 'soucannabis', importedPreference);
+                      }}
+                      disabled={isAnalyzing}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        nationalPreference === 'soucannabis'
+                          ? 'bg-emerald-500 text-black font-black shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                          : 'text-emerald-300 hover:text-white hover:bg-emerald-500/10'
+                      }`}
+                    >
+                      🌱 SouCannabis
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNationalPreference('abrace');
+                        setBrandPreference('abrace');
+                        handleGenerateAnalysis(true, 'both', 'abrace', importedPreference);
+                      }}
+                      disabled={isAnalyzing}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        nationalPreference === 'abrace'
+                          ? 'bg-emerald-500 text-black font-black shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                          : 'text-emerald-300 hover:text-white hover:bg-emerald-500/10'
+                      }`}
+                    >
+                      🌿 ABRACE
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNationalPreference('abecmed');
+                        setBrandPreference('abecmed');
+                        handleGenerateAnalysis(true, 'both', 'abecmed', importedPreference);
+                      }}
+                      disabled={isAnalyzing}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        nationalPreference === 'abecmed'
+                          ? 'bg-emerald-500 text-black font-black shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                          : 'text-emerald-300 hover:text-white hover:bg-emerald-500/10'
+                      }`}
+                    >
+                      🍃 ABECMED
+                    </button>
+                  </div>
+
+                  <div className="h-4 w-px bg-mecura-elevated hidden sm:block" />
+
+                  {/* Marcas Importadas */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider px-1">
+                      🌐 Importado:
+                    </span>
+                    <button
+                      onClick={() => {
+                        setImportedPreference('pangaia');
+                        setBrandPreference('pangaia');
+                        handleGenerateAnalysis(true, 'both', nationalPreference, 'pangaia');
+                      }}
+                      disabled={isAnalyzing}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        importedPreference === 'pangaia'
+                          ? 'bg-cyan-400 text-black font-black shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                          : 'text-cyan-300 hover:text-white hover:bg-cyan-500/10'
+                      }`}
+                    >
+                      🌿 Pangaia
+                    </button>
+                    <button
+                      onClick={() => {
+                        setImportedPreference('flowermed');
+                        setBrandPreference('flowermed');
+                        handleGenerateAnalysis(true, 'both', nationalPreference, 'flowermed');
+                      }}
+                      disabled={isAnalyzing}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        importedPreference === 'flowermed'
+                          ? 'bg-mecura-neon text-black font-black shadow-[0_0_10px_rgba(166,255,0,0.3)]'
+                          : 'text-mecura-silver hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      🌸 Flowermed
+                    </button>
+                    <button
+                      onClick={() => {
+                        setImportedPreference('greenbudz');
+                        setBrandPreference('greenbudz');
+                        handleGenerateAnalysis(true, 'both', nationalPreference, 'greenbudz');
+                      }}
+                      disabled={isAnalyzing}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        importedPreference === 'greenbudz'
+                          ? 'bg-mecura-neon text-black font-black shadow-[0_0_10px_rgba(166,255,0,0.3)]'
+                          : 'text-mecura-silver hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      🌲 GreenBudz
+                    </button>
+                  </div>
                 </div>
 
                 <button 
@@ -5472,7 +5981,9 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
                                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
                                     : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                 }`}>
-                                  {isNational ? '🇧🇷 Associação Nacional' : '🌐 Importado'}
+                                  {isNational 
+                                    ? (med.name.toLowerCase().includes('abrace') ? '🇧🇷 ABRACE Esperança' : med.name.toLowerCase().includes('abec') ? '🇧🇷 Associação ABECMED' : med.name.toLowerCase().includes('soucannabis') ? '🇧🇷 Associação SouCannabis' : '🇧🇷 Associação Nacional')
+                                    : (med.name.toLowerCase().includes('pangaia') ? '🌐 Pangaia Biopharma' : med.name.toLowerCase().includes('flowermed') ? '🌐 Flowermed' : med.name.toLowerCase().includes('greenbudz') ? '🌐 GreenBudzCBD' : '🌐 Importado')}
                                 </span>
                               </div>
                               <h4 className={`font-bold mb-1 transition-colors ${
@@ -5488,6 +5999,30 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
 
                         return (
                           <>
+                            {/* Prescrição Híbrida 1+1 (1 Nacional + 1 Importado) */}
+                            {importedMeds.length > 0 && nationalMeds.length > 0 && (
+                              <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-mecura-surface to-blue-950/60 border border-mecura-neon/40 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg mb-6">
+                                <div>
+                                  <div className="flex items-center gap-2 text-sm font-bold text-white">
+                                    <Sparkles className="w-4 h-4 text-mecura-neon flex-shrink-0" />
+                                    <span>Prescrever Protocolo Híbrido: 1 Nacional + 1 Importado</span>
+                                  </div>
+                                  <p className="text-xs text-mecura-silver mt-1">
+                                    Sinergia clínica ideal: combina o principal fitocanabinoide importado ({importedMeds[0]?.name?.split('(')[0]?.trim()}) com formulação acessível de associação nacional ({nationalMeds[0]?.name?.split('(')[0]?.trim()}).
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (importedMeds[0]) addPrescribedMedication(importedMeds[0]);
+                                    if (nationalMeds[0]) addPrescribedMedication(nationalMeds[0]);
+                                  }}
+                                  className="px-4 py-2 rounded-xl bg-mecura-neon text-black font-extrabold text-xs whitespace-nowrap hover:shadow-[0_0_15px_rgba(166,255,0,0.5)] transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+                                >
+                                  <span>⚡</span> Prescrever 1+1 Agora
+                                </button>
+                              </div>
+                            )}
                             {importedMeds.length > 0 && (
                               <div>
                                 <div className="flex items-center justify-between mb-4 border-b border-blue-500/20 pb-2">
@@ -7274,6 +7809,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         setMonitoring={setReportMonitoring}
         onDownloadPDF={handleDownloadMedicalReportFromEditor}
         onSendToChat={handleSendMedicalReportToChat}
+        onSave={handleSaveMedicalReport}
         isSendingToChat={isSendingReportToChat}
         reportType={medicalReportType}
         prescribedItems={prescItems}
@@ -7301,6 +7837,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         setPsychomotorText={setPsychomotorReportText}
         onDownloadPDF={handleDownloadPsychomotorReportFromEditor}
         onSendToChat={handleSendPsychomotorReportToChat}
+        onSave={handleSavePsychomotorReport}
         isSendingToChat={isSendingPsychomotorToChat}
       />
 
@@ -7328,6 +7865,7 @@ Apresente as opções de tratamento comparando e integrando tanto o catálogo Fl
         setAgronomicText={setAgronomicText}
         onDownloadPDF={handleDownloadAgronomicReportFromEditor}
         onSendToChat={handleSendAgronomicReportToChat}
+        onSave={() => showActionToast('Alterações do Parecer Agronômico salvas com sucesso!')}
         isSendingToChat={isSendingAgronomicToChat}
       />
 

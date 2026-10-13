@@ -39,10 +39,25 @@ export interface PatientClinicalAnswers {
 export function generateClinicalAnalysisFallback(
   promptText: string, 
   patientData?: PatientClinicalAnswers,
-  brandPreference: 'flowermed' | 'greenbudz' | 'both' = 'both'
+  brandPreference: 'flowermed' | 'greenbudz' | 'soucannabis' | 'abrace' | 'abecmed' | 'pangaia' | 'both' = 'both',
+  nationalPreference?: 'soucannabis' | 'abrace' | 'abecmed' | 'both' | 'all',
+  importedPreference?: 'pangaia' | 'flowermed' | 'greenbudz' | 'both' | 'all'
 ): string {
   // Extract or receive patient data
   const textToScan = promptText || '';
+  
+  // Resolve effective preferences
+  const effNational = nationalPreference && nationalPreference !== 'all' && nationalPreference !== 'both'
+    ? nationalPreference 
+    : (brandPreference === 'soucannabis' || brandPreference === 'abrace' || brandPreference === 'abecmed') 
+      ? brandPreference 
+      : (/abrace/i.test(textToScan) ? 'abrace' : /abec/i.test(textToScan) ? 'abecmed' : 'soucannabis');
+
+  const effImported = importedPreference && importedPreference !== 'all' && importedPreference !== 'both'
+    ? importedPreference
+    : (brandPreference === 'pangaia' || brandPreference === 'flowermed' || brandPreference === 'greenbudz')
+      ? brandPreference
+      : (/pangaia/i.test(textToScan) ? 'pangaia' : /greenbudz/i.test(textToScan) ? 'greenbudz' : 'flowermed');
   
   // Extract info from promptText if patientData is not fully supplied
   const objectives = patientData?.objectives || extractListFromPrompt(textToScan, 'Queixa Principal / Objetivos:');
@@ -200,6 +215,12 @@ export function generateClinicalAnalysisFallback(
       notes: "01 Frasco 30mL - Associação Nacional. Proporção áurea equilibrada 1:1 com alta sinergia analgésica."
     });
     nationalList.push({
+      name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+      indication: "Extração Concentrada de Resgate para Picos Álgicos Severos e Espasmos Refratários",
+      usage: "Microdosagem em seringa dosadora: aplicar quantidade equivalente a meio grão de arroz (0,05 mL) sob a mucosa sublingual ou em vaporizador de concentrados no pico da dor.",
+      notes: "Extração de alta pureza sem solventes residuais (600 mg/mL de fitocanabinoides) padronizada por HPLC da Associação SouCannabis."
+    });
+    nationalList.push({
       name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
       indication: "Alívio Tópico Localizado Direcionado para Músculos e Articulações",
       usage: "Aplicar fina camada sobre a região dolorosa **2 a 3 vezes ao dia**, massageando suavemente.",
@@ -248,10 +269,10 @@ export function generateClinicalAnalysisFallback(
       notes: "01 Frasco de 15mL - Associação Nacional. Extrato Broad Spectrum combinando Canabidiol (CBD) e Canabinol (CBN) totalizando 1065mg, livre de THC."
     });
     nationalList.push({
-      name: "ÓLEO INTEGRAL PREDOMINANTE THC 100mg/ml - Associação Nacional",
-      indication: "Indução do Sono Reparador e Desligamento Mental Noturno",
-      usage: "Tomar **04 a 06 gotas** sublinguais 30 a 45 minutos antes de dormir.",
-      notes: "01 Frasco de 30mL - Associação Brasileira. Facilita o adormecer e reduz a latência do sono."
+      name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+      indication: "Extração Concentrada para Indução e Manutenção do Sono Profundo em Casos Refratários",
+      usage: "Microdosagem em seringa dosadora: aplicar quantidade equivalente a meio grão de arroz (0,05 mL) sob a mucosa sublingual 45 minutos antes de deitar.",
+      notes: "Extrato puro solventless com 600 mg/mL de fitocanabinoides e terpenos miorrelaxantes padronizado por HPLC da Associação SouCannabis."
     });
     nationalList.push({
       name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
@@ -306,6 +327,12 @@ export function generateClinicalAnalysisFallback(
       indication: "Atenção Sustentada, Foco e Equilíbrio Sem Sedação",
       usage: "Tomar **05 gotas** pela manhã e **05 gotas** ao meio-dia.",
       notes: "01 Frasco de 30mL - Associação Brasileira. Estimula o foco e alívio de fadiga física/mental."
+    });
+    nationalList.push({
+      name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+      indication: "Extração Concentrada de Resgate para Clareza Mental e Atenção Sustentada",
+      usage: "Microdosagem em seringa dosadora: aplicar 0,05 mL sublingual pela manhã nos períodos de alta exigência cognitiva.",
+      notes: "Extrato concentrado puro sem solventes da Associação SouCannabis padronizado por HPLC."
     });
     nationalList.push({
       name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
@@ -384,10 +411,10 @@ export function generateClinicalAnalysisFallback(
       notes: "01 Frasco de 15mL - Associação Nacional. Canabidiol Broad Spectrum + Canabinol (CBN) 1065mg sem efeitos psicoativos."
     });
     nationalList.push({
-      name: "Óleo Rico em CBD ISOLADO 100mg/ml - Associação Nacional",
-      indication: "Controle da Ansiedade, Estresse e Equilíbrio Neuroquímico (0% THC)",
-      usage: "Tomar **04 a 06 gotas** pela manhã e **04 a 06 gotas** à tarde sublingual.",
-      notes: "01 Frasco de 30mL - Associação Nacional. Canabidiol isolado de alta pureza livre de psicoatividade."
+      name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+      indication: "Extração Concentrada para Resgate de Picos Agudos de Ansiedade, Tensão ou Pânico",
+      usage: "Microdosagem em seringa dosadora: aplicar 0,05 mL sob a mucosa sublingual no início da crise aguda para alívio rápido.",
+      notes: "Extrato concentrado puro sem solventes padronizado por HPLC da Associação SouCannabis."
     });
     nationalList.push({
       name: "Pomada Canábica Terapêutica 500mg (50g) - Associação Nacional",
@@ -639,6 +666,373 @@ export function generateClinicalAnalysisFallback(
           indication: "Extração Concentrada para Resgate Rápido de Fadiga Mental Aguda",
           usage: "Microdosagem em vaporizador de concentrados térmico sob demanda.",
           notes: "Extrato com alta fração terpênica e fitocanabinoides."
+        }
+      ];
+    }
+  }
+
+  // ========================================================
+  // APLICAÇÃO DE PREFERÊNCIA DE IMPORTADOS (SELECIONADO)
+  // ========================================================
+  if (effImported === 'pangaia') {
+    // Portfólio oficial da Pangaia Biopharmaceuticals (EUA • Anvisa RDC 660/2022)
+    if (isPain) {
+      importedList = [
+        {
+          name: "Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)",
+          indication: "Analgesia Sistêmica, Dor Crônica, Fibromialgia e Modulação Neuroinflamatória",
+          usage: "Iniciar com **02 gotas** (10 mg) sublinguais a cada 12 horas. Reter por 60 a 90 segundos antes de engolir. Aumentar 1 gota a cada 5 dias.",
+          notes: "Padrão ouro Pangaia Biopharmaceuticals (EUA). 100 mg/mL (5,0 mg CBD/gota). Frasco de 30 mL com conta-gotas graduado medicinal de 20 gotas/mL."
+        },
+        {
+          name: "Pomada Táio Pangaia Amazônia 3375 mg (60g)",
+          indication: "Alívio Potente de Dores Osteoarticulares, Lombalgia e Tendinites com Bioativos Nativos",
+          usage: "Aplicar na área dolorida **2 a 3 vezes ao dia**, massageando suavemente até completa absorção.",
+          notes: "Linha Amazônia Pangaia com Óleo de Andiroba e Copaíba orgânicos combinados a 3375 mg de canabinoides. Ação sinérgica dérmica profunda."
+        },
+        {
+          name: "Gummies Pangaia Vegan Delta-8 THC 25 mg (28 unids)",
+          indication: "Alívio Analgésico Prolongado de 4 a 6 Horas e Relaxamento Corporal Noturno",
+          usage: "Ingerir **01 goma mastigável** ao final do dia ou no momento de dor persistente.",
+          notes: "Gomas veganas com 25 mg de Delta-8 THC por unidade para relaxamento muscular e atenuação álgica sustentada."
+        },
+        {
+          name: "Pangaia Live Rosin THC-A Solventless 1g",
+          indication: "Resgate Ultrarrápido de Crises Álgicas Intratáveis e Espasmos Agudos",
+          usage: "Microdosagem em vaporizador medicinal térmico de concentrados (180°C a 200°C) sob demanda.",
+          notes: "Extrato puro solventless com perfil integral de terpenos e alta pureza analítica cGMP."
+        }
+      ];
+    } else if (isInsomnia) {
+      importedList = [
+        {
+          name: "Óleo Delta-8 THC Pangaia 2000 mg (30 mL)",
+          indication: "Indução do Sono Reparador, Desligamento Mental e Relaxamento Noturno",
+          usage: "Tomar **04 a 06 gotas** sublinguais 40 minutos antes do repouso noturno (reter 60 a 90 segundos).",
+          notes: "Formulação farmacêutica Pangaia com Delta-8 THC para relaxamento profundo sem ansiedade rebote. 3,3 mg D8 por gota."
+        },
+        {
+          name: "Pangaia Gummies CBD Grape 25 mg (28 unids)",
+          indication: "Manutenção do Sono Contínuo e Prevenção de Despertares Madrugadores",
+          usage: "Mastigar **01 goma** 45 minutos antes de deitar nos dias de maior agitação mental.",
+          notes: "Gomas terapêuticas mastigáveis de liberação controlada para tranquilidade durante toda a noite."
+        },
+        {
+          name: "Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)",
+          indication: "Equilíbrio do Ritmo Circadiano e Homeostase Noturna",
+          usage: "Tomar **04 gotas** ao anoitecer para desaceleração basal.",
+          notes: "Veículo em óleo MCT orgânico premium de alta biodisponibilidade. Pangaia Biopharmaceuticals."
+        }
+      ];
+    } else if (isADHD || (isDepression && !isAnxiety)) {
+      importedList = [
+        {
+          name: "Óleo CBD Isolate Pangaia 3000 mg — 0% THC (30 mL)",
+          indication: "Clareza Mental, Atenção Sustentada e Foco Cognitivo sem Sedação (Zero THC)",
+          usage: "Tomar **04 gotas** (10 mg) pela manhã e **04 gotas** no início da tarde.",
+          notes: "CBD isolado de máxima pureza (100 mg/mL, 5,0 mg CBD/gota). Isento de THC, ideal para desempenho profissional e esportivo (WADA compliant)."
+        },
+        {
+          name: "Cápsulas Softgel Pangaia CBD 750 mg (30 cápsulas)",
+          indication: "Praticidade Posológica Diurna e Liberação Gradual para Foco Contínuo",
+          usage: "Ingerir **01 cápsula** pela manhã junto com a refeição.",
+          notes: "25 mg de CBD por cápsula em veículo lipídico otimizado sem sabor."
+        },
+        {
+          name: "Óleo Maná Pangaia Amazônia 3000 mg (30 mL)",
+          indication: "Modulação Anti-inflamatória e Equilíbrio Físico com Copaíba Nativa",
+          usage: "Tomar **04 gotas** sublinguais pela manhã.",
+          notes: "Bioativos amazônicos de Copaíba ricos em Beta-Cariofileno em sinergia com Canabidiol puro."
+        }
+      ];
+    } else {
+      importedList = [
+        {
+          name: "Óleo CBD Full Spectrum Pangaia 5% — 1500 mg (30 mL)",
+          indication: "Transtorno de Ansiedade Leve a Moderada, Início de Titulação e Estresse",
+          usage: "Iniciar com **03 gotas** (7,5 mg) 2 vezes ao dia (manhã e noite), retendo 60 segundos sob a língua. Titular 1 gota a cada 4 dias.",
+          notes: "50 mg/mL de CBD (2,5 mg por gota) em frasco de 30 mL com conta-gotas graduado. Pangaia Biopharmaceuticals."
+        },
+        {
+          name: "Óleo Maná Pangaia Amazônia 3000 mg com Óleo de Copaíba (30 mL)",
+          indication: "Sinergia Neuroimune e Ansiólise Potencializada por Beta-Cariofileno",
+          usage: "Tomar **04 gotas** sublinguais de 12 em 12 horas após refeições.",
+          notes: "Parceria sustentável com comunidades amazônicas. Rico em terpenos nativos para modulação do eixo HPA."
+        },
+        {
+          name: "Pangaia Gummies CBD Grape 25 mg (16 unids)",
+          indication: "Alívio Rápido e Prático para Picos Diurnos de Ansiedade e Tensão",
+          usage: "Mastigar **01 goma** em situações de sobrecarga ou estresse agudo.",
+          notes: "Gomas sabor uva com 25 mg de CBD puro para resposta ansiolítica prática sem necessidade de água ou conta-gotas."
+        },
+        {
+          name: "Pangaia CBD Relief Cream 3000 mg (100 mL)",
+          indication: "Alívio Tópico Imediato de Tensões Musculares e Estresse Somatizado",
+          usage: "Aplicar nas têmporas, trapézio e cervical massageando delicadamente.",
+          notes: "Creme de alta absorção dérmica com canabinoides e mentol para relaxamento refrescante."
+        }
+      ];
+    }
+  }
+
+  // ========================================================
+  // APLICAÇÃO DE PREFERÊNCIA DE ASSOCIAÇÃO NACIONAL
+  // ========================================================
+  if (effNational === 'soucannabis') {
+    // Priority on SouCannabis official medications (Associação Nacional com laudos HPLC)
+    if (isPain) {
+      nationalList = [
+        {
+          name: "Óleo Lilás SouCannabis THC:CBD 1:1 — 6% (30 mL)",
+          indication: "Analgesia Sistêmica Equilibrada, Dor Neuropática e Espasticidade",
+          usage: "Iniciar com **03 gotas** sublinguais de 12 em 12 horas. Reter 60 segundos antes de engolir. Titular 1 gota a cada 4 dias.",
+          notes: "Veículo MCT medicinal com 0,693 mg THC + 0,693 mg CBD por gota (HPLC certificado). Associação SouCannabis."
+        },
+        {
+          name: "Pomada Tópica SouCannabis 10% (50g)",
+          indication: "Alívio Tópico de Dores Articulares, Tendinites e Contraturas Musculares",
+          usage: "Aplicar quantidade suficiente na região dolorida **2 a 3 vezes ao dia**, massageando suavemente até absorção.",
+          notes: "Formula dérmica concentrada da Associação SouCannabis para atuação direta em receptores periféricos CB2."
+        },
+        {
+          name: "Spray Nasal SouCannabis Azul THC 5:1 (10 mL)",
+          indication: "Resgate Rápido Transmucoso em Picos de Crise Álgica Severa",
+          usage: "Aplicar **01 borrifada** em cada narina durante episódios agudos de dor (máximo 4 borrifadas/dia).",
+          notes: "60 mg/mL (absorção transmucosa nasal ultrarrápida em 3 a 5 minutos sem combustão). Associação SouCannabis."
+        },
+        {
+          name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+          indication: "Condições Clínicas Refratárias e Resgate Analgésico Noturno",
+          usage: "Microdosagem com seringa dosadora: aplicar o tamanho de um grão de arroz por via sublingual ao deitar.",
+          notes: "Extrato concentrado puro padronizado por HPLC em seringa graduada. Associação SouCannabis."
+        }
+      ];
+    } else if (isInsomnia) {
+      nationalList = [
+        {
+          name: "Óleo Azul SouCannabis THC 5:1 — 6% (30 mL)",
+          indication: "Indução do Sono Profundo, Desligamento Mental e Redução de Despertares Noturnos",
+          usage: "Tomar **05 a 08 gotas** sublinguais 45 minutos antes de deitar (reter sob a língua por 60 segundos).",
+          notes: "Rico em THC com 1,155 mg THC por gota. Potente efeito sedativo e miorrelaxante noturno. Associação SouCannabis."
+        },
+        {
+          name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+          indication: "Extração Concentrada para Indução Rápida do Sono Profundo em Casos Refratários",
+          usage: "Microdosagem em seringa dosadora: aplicar meio grão de arroz (0,05 mL) sublingual 40 minutos antes do repouso noturno.",
+          notes: "Extrato puro solventless com 600 mg/mL de fitocanabinoides e terpenos miorrelaxantes padronizado por HPLC da Associação SouCannabis."
+        },
+        {
+          name: "Supositório SouCannabis Transmucosa Pélvica 1:1 (30 mg - 10 un)",
+          indication: "Relaxamento Pélvico Noturno, Insônia Refratária com Dores Abdominais/Lombares",
+          usage: "Introduzir **01 unidade** por via retal ou vaginal 30 minutos antes de repousar nos dias de desconforto intenso.",
+          notes: "Absorção transmucosa pélvica de alta biodisponibilidade sem primeira passagem hepática. Associação SouCannabis."
+        },
+        {
+          name: "Spray Nasal SouCannabis Laranja CBD 1:10 (10 mL)",
+          indication: "Relaxamento Muscular e Indução Suave do Sono sem Inebriação",
+          usage: "Aplicar **01 borrifada** em cada narina 20 minutos antes de dormir.",
+          notes: "Spray transmucoso rápido para desaceleração do sistema nervoso autônomo. Associação SouCannabis."
+        }
+      ];
+    } else if (isADHD || (isDepression && !isAnxiety)) {
+      nationalList = [
+        {
+          name: "Óleo Laranja SouCannabis CBD:THC 1:10 — 6% (30 mL)",
+          indication: "Foco Sustentado, Clareza Mental e Alívio da Fadiga Crônica",
+          usage: "Tomar **04 gotas** pela manhã e **04 gotas** ao meio-dia sublingual.",
+          notes: "Predominância de CBD com traços sinérgicos de THC (1,271 mg CBD por gota). Associação SouCannabis."
+        },
+        {
+          name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+          indication: "Extração Concentrada de Resgate para Clareza Mental e Foco Cognitivo Sustentado",
+          usage: "Microdosagem em seringa dosadora: aplicar 0,05 mL sublingual pela manhã nos dias de alta demanda cognitiva.",
+          notes: "Extrato concentrado puro sem solventes da Associação SouCannabis padronizado por HPLC."
+        },
+        {
+          name: "Óleo Rosa SouCannabis CBD:THC 5:1 — 3% (30 mL)",
+          indication: "Estabilidade Emocional, Disposição e Atenção Plena",
+          usage: "Tomar **05 gotas** pela manhã após desjejum.",
+          notes: "Perfil balanceado suave para início de tratamento neurofuncional. Associação SouCannabis."
+        },
+        {
+          name: "Pomada Tópica SouCannabis 6% (30g)",
+          indication: "Descompressão Tensional em Cervical e Ombros por Carga Cognitiva",
+          usage: "Aplicar e massagear na região cervical e trapézios 1 a 2x ao dia.",
+          notes: "Ação relaxante tópica sem efeito sistêmico inebriante. Associação SouCannabis."
+        }
+      ];
+    } else {
+      nationalList = [
+        {
+          name: "Óleo Rosa SouCannabis CBD:THC 5:1 — 6% (30 mL)",
+          indication: "Ansiólise Sistêmica, Equilíbrio Emocional e Redução do Estresse",
+          usage: "Tomar **04 gotas** pela manhã e **06 gotas** ao entardecer (reter 60 segundos sublingual). Titular 1 gota a cada 5 dias.",
+          notes: "Cada gota fornece 1,155 mg de CBD e 0,231 mg de THC (veículo MCT). Testado lote a lote por HPLC. Associação SouCannabis."
+        },
+        {
+          name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+          indication: "Extração Concentrada para Resgate Imediato de Crises Agudas de Tensão, Ansiedade ou Pânico",
+          usage: "Microdosagem em seringa dosadora: aplicar 0,05 mL sob a mucosa sublingual no início do episódio agudo.",
+          notes: "Extrato concentrado de altíssima pureza (600 mg/mL) padronizado por HPLC da Associação SouCannabis para alívio rápido."
+        },
+        {
+          name: "Óleo Branco SouCannabis Broad Spectrum 0% THC — 6% (30 mL)",
+          indication: "Controle da Ansiedade Diurna com 0% THC (Seguro para Dirigir ou Trabalho de Precisão)",
+          usage: "Tomar **05 gotas** pela manhã e **05 gotas** à tarde.",
+          notes: "Broad Spectrum livre de THC para pacientes sensíveis ou que realizam atividades psicomotoras. Associação SouCannabis."
+        },
+        {
+          name: "Spray Nasal SouCannabis Laranja CBD 1:10 (10 mL)",
+          indication: "Resgate Imediato para Picos de Tensão, Crises de Ansiedade ou Pânico",
+          usage: "Aplicar **01 a 02 borrifadas** nasais no início do pico de ansiedade.",
+          notes: "Via transmucosa nasal com início de ação em 3 a 5 minutos. Associação SouCannabis."
+        },
+        {
+          name: "Pomada Tópica SouCannabis 6% (30g)",
+          indication: "Alívio Tópico de Tensões e Dores Musculares Decorrentes de Estresse Somatizado",
+          usage: "Aplicar nas têmporas, trapézio ou peito 1 a 2x ao dia conforme necessidade.",
+          notes: "Veículo dérmico de alta penetração em receptores canabinoides periféricos. Associação SouCannabis."
+        }
+      ];
+    }
+  } else if (effNational === 'abrace') {
+    // Priority on ABRACE Esperança official catalog (João Pessoa/PB)
+    if (isPain) {
+      nationalList = [
+        {
+          name: "Óleo Azul CBD:THC 1:1 (30 mg/mL) — ABRACE (30 mL)",
+          indication: "Analgesia Sistêmica Equilibrada, Dor Neuropática e Fibromialgia",
+          usage: "Iniciar com **03 gotas** sublinguais de 12/12h após refeições. Titular 1 gota a cada 4 dias.",
+          notes: "Linha Azul ABRACE. 30 mg/mL de fitocanabinoides totais com proporção equilibrada 1:1."
+        },
+        {
+          name: "Spray Resgate THC 5 mg/mL — ABRACE (25 mL)",
+          indication: "Resgate Álgico Agudo e Quebra de Crises Espasmódicas e Neuropáticas",
+          usage: "Aplicar **01 a 02 borrifadas** orais sob a língua durante crises agudas de dor (reter 60s).",
+          notes: "Válvula dosadora de alta precisão com absorção transmucosa imediata. Associação ABRACE."
+        },
+        {
+          name: "Pomada Full Rica em THC 20 mg/g — ABRACE (100 g)",
+          indication: "Alívio Tópico de Contraturas, Espasmos e Dores Musculoesqueléticas Profundas",
+          usage: "Aplicar camada fina sobre a região dolorosa **2 a 3 vezes ao dia**, massageando suavemente.",
+          notes: "Pote de 100g de alta concentração (20 mg/g THC) com ação periférica em receptores CB2 cutâneos. ABRACE."
+        },
+        {
+          name: "Flores de Cannabis In Natura Ricas em THC — ABRACE (10 g)",
+          indication: "Resgate Inalatório Analgésico via Vaporizador Medicinal sem Combustão",
+          usage: "Vaporizar **0,1g a 0,15g** em vaporizador térmico medicinal a 180°C nos picos álgicos.",
+          notes: "Inflorescências padronizadas para alívio imediato em 1 a 3 minutos. Associação ABRACE Esperança."
+        }
+      ];
+    } else if (isInsomnia) {
+      nationalList = [
+        {
+          name: "Óleo Preto THC 30 mg/mL — ABRACE (30 mL)",
+          indication: "Indução do Sono Profundo, Desligamento Mental e Relaxamento Neuromuscular",
+          usage: "Tomar **04 a 06 gotas** sublinguais 45 minutos antes de deitar (reter sob a língua por 60s).",
+          notes: "Linha Preta ABRACE de alta concentração em THC (900 mg totais) indicada para insônia crônica."
+        },
+        {
+          name: "Gomas de THC 10 mg/goma — ABRACE (30 un)",
+          indication: "Manutenção do Sono Prolongado e Prevenção de Despertares Precoces",
+          usage: "Mastigar **01 goma** 1 hora antes de dormir.",
+          notes: "Liberação entérica sustentada de 6 a 8 horas através de metabolização hepática. ABRACE."
+        },
+        {
+          name: "Pomada Full Rica em CBD 30 mg/g — ABRACE (100 g)",
+          indication: "Relaxamento Corporal, Descompressão Tensional e Conforto Noturno",
+          usage: "Aplicar na cervical, ombros ou têmporas antes de se recolher.",
+          notes: "Pote econômico de 100g com 3.000 mg de CBD da ABRACE para indução de tranquilidade somática."
+        },
+        {
+          name: "Flores de Cannabis In Natura Balanceadas CBD:THC — ABRACE (10 g)",
+          indication: "Indução Inalatória Suave e Desaceleração Mental Noturna",
+          usage: "Vaporizar **0,1g** a 175°C cerca de 20 minutos antes de deitar.",
+          notes: "Flores balanceadas com ação rápida sem inebriação excessiva. ABRACE Esperança."
+        }
+      ];
+    } else {
+      nationalList = [
+        {
+          name: "Óleo Laranja CBD 30 mg/mL — ABRACE (30 mL)",
+          indication: "Ansiólise Sistêmica Contínua, Equilíbrio Emocional e Redução do Estresse Diurno",
+          usage: "Tomar **05 gotas** sublinguais pela manhã e **05 gotas** ao entardecer (reter 60s sob a língua).",
+          notes: "Linha Laranja ABRACE integral (900 mg CBD) para homeostase e modulação do eixo HPA sem sedação."
+        },
+        {
+          name: "Gomas de CBD 10 mg/goma — ABRACE (30 un)",
+          indication: "Praticidade Posológica para Picos Diurnos de Ansiedade e Tensão",
+          usage: "Mastigar **01 goma** em situações de sobrecarga mental ou estresse de trabalho.",
+          notes: "Gomas mastigáveis práticas sem THC (10 mg CBD/unidade) da Associação ABRACE."
+        },
+        {
+          name: "Spray Resgate THC 5 mg/mL — ABRACE (25 mL)",
+          indication: "Resgate Rápido de Pânico, Angústia ou Crises Agudas",
+          usage: "Aplicar **01 borrifada** sublingual durante picos paroxísticos.",
+          notes: "Início de ação transmucoso em 3 a 5 minutos. Associação ABRACE."
+        },
+        {
+          name: "Flores de Cannabis In Natura Ricas em CBD — ABRACE (10 g)",
+          indication: "Resgate Inalatório Diurno Não-Intoxicante para Clareza Mental e Serenidade",
+          usage: "Vaporizar **0,1g** a 175°C sob demanda.",
+          notes: "Flores padronizadas com predomínio de Canabidiol para tranquilidade imediata. ABRACE."
+        }
+      ];
+    }
+  } else if (effNational === 'abecmed') {
+    // Priority on ABECMED official catalog
+    if (isPain) {
+      nationalList = [
+        {
+          name: "Óleo ABEC CBD:THC Balanceado 1:1 (30 mL)",
+          indication: "Analgesia Sistêmica Equilibrada, Dor Neuromuscular e Anti-inflamação",
+          usage: "Iniciar com **03 gotas** sublinguais 12/12h após alimentação. Reter 60s antes de engolir.",
+          notes: "Extração RSO pura diluída em MCT farmacêutico de alta absorção. Linha Azul ABECMED."
+        },
+        {
+          name: "Extração Sem Solvente ABEC rica em THC 30%-50%",
+          indication: "Resgate Concentrado de Alta Potência para Picos Severos de Dor",
+          usage: "Microdosagem em vaporizador térmico de concentrados ou sublingual na intensidade álgica máxima.",
+          notes: "Extração nacional solventless da ABECMED com laudo técnico para alívio imediato."
+        },
+        {
+          name: "Pomada ABEC Tópica Full Spectrum",
+          indication: "Alívio Direto de Dores Articulares, Tendinites e Músculos Fadigados",
+          usage: "Aplicar sobre a área dolorosa **2 a 3 vezes ao dia**, massageando bem.",
+          notes: "Ação nos receptores CB2 periféricos cutâneos sem efeito psicoativo. ABECMED."
+        },
+        {
+          name: "Inflorescências ABEC ricas em THC 15%-30% (10 g)",
+          indication: "Resgate Inalatório Rápido via Vaporizador Medicinal sem Combustão",
+          usage: "Vaporizar **0,1g** a 180°C nos momentos de dor intensa.",
+          notes: "Flores medicinais de cultivo autorizado da ABECMED para quebra de ciclos dolorosos."
+        }
+      ];
+    } else {
+      nationalList = [
+        {
+          name: "Óleo ABEC CBD Full Spectrum 5% (50 mg/mL — 1.500 mg)",
+          indication: "Ansiólise Sistêmica, Equilíbrio Emocional e Modulação do Estresse",
+          usage: "Tomar **04 gotas** pela manhã e **04 gotas** ao final da tarde.",
+          notes: "Linha Laranja ABECMED. Extração RSO em MCT medicinal rica em CBD integral."
+        },
+        {
+          name: "Extrato Peneirado Dry Sift Full Spectrum ABEC",
+          indication: "Resgate Rápido para Crises de Tensão ou Agitação Noturna",
+          usage: "Microdosagem vaporizada a 175°C sob demanda.",
+          notes: "Concentrado terpênico puro sem solventes químicos da ABECMED."
+        },
+        {
+          name: "Óleo ABEC CBD:THC Balanceado 1:1 (30 mL)",
+          indication: "Homeostase Global e Suporte ao Relaxamento Noturno",
+          usage: "Tomar **03 a 05 gotas** antes de deitar.",
+          notes: "Sinergia equilibrada 1:1 para relaxamento físico e mental. ABECMED."
+        },
+        {
+          name: "Inflorescências ABEC ricas em CBD 8%-18% (10 g)",
+          indication: "Resgate Inalatório Diurno Não-Intoxicante para Serenidade e Foco",
+          usage: "Vaporizar **0,1g** a 175°C nos momentos de ansiedade.",
+          notes: "Inflorescências da ABECMED ricas em Canabidiol para modulação imediata."
         }
       ];
     }

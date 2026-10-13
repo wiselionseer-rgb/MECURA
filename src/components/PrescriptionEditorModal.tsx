@@ -24,7 +24,7 @@ import {
   Layers
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, ABECMED_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct } from '../data/cbdGuide';
+import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 import { useAdminStore } from '../store/useAdminStore';
@@ -207,6 +207,16 @@ export function PrescriptionEditorModal({
       addProd(p, 'ABRACE Esperança (Associação Nacional)', 'ABRACE');
     }
 
+    // 8. From SouCannabis Official National Catalog (Brasil)
+    for (const p of SOUCANNABIS_PRODUCTS) {
+      addProd(p, 'SouCannabis (Associação Nacional)', 'SouCannabis');
+    }
+
+    // 9. From Pangaia Biopharmaceuticals Official Catalog (Importado — EUA / Anvisa RDC 660)
+    for (const p of PANGAIA_PRODUCTS) {
+      addProd(p, 'Pangaia Biopharmaceuticals (Importado)', 'Pangaia');
+    }
+
     return list;
   }, [productCategories]);
 
@@ -215,7 +225,21 @@ export function PrescriptionEditorModal({
     let result = allLibraryProducts;
 
     if (librarySelectedCategory !== 'all') {
-      if (librarySelectedCategory === 'abecmed') {
+      if (librarySelectedCategory === 'pangaia') {
+        result = result.filter(p => 
+          (p.manufacturer || '').toLowerCase().includes('pangaia') || 
+          (p.sourceCatalog || '').toLowerCase().includes('pangaia') || 
+          (p.name || '').toLowerCase().includes('pangaia') ||
+          (p.name || '').toLowerCase().includes('maná') ||
+          (p.name || '').toLowerCase().includes('táio')
+        );
+      } else if (librarySelectedCategory === 'soucannabis') {
+        result = result.filter(p => 
+          (p.manufacturer || '').toLowerCase().includes('soucannabis') || 
+          (p.sourceCatalog || '').toLowerCase().includes('soucannabis') || 
+          (p.name || '').toLowerCase().includes('soucannabis')
+        );
+      } else if (librarySelectedCategory === 'abecmed') {
         result = result.filter(p => 
           (p.manufacturer || '').toLowerCase().includes('abec') || 
           (p.sourceCatalog || '').toLowerCase().includes('abec') || 
@@ -234,7 +258,8 @@ export function PrescriptionEditorModal({
           p.origin === 'Nacional' || 
           (p.manufacturer || '').toLowerCase().includes('associação') ||
           (p.manufacturer || '').toLowerCase().includes('abec') ||
-          (p.manufacturer || '').toLowerCase().includes('abrace')
+          (p.manufacturer || '').toLowerCase().includes('abrace') ||
+          (p.manufacturer || '').toLowerCase().includes('soucannabis')
         );
       } else if (librarySelectedCategory === 'flowermed') {
         result = result.filter(p => (p.manufacturer || '').toLowerCase().includes('flowermed') || p.sourceCatalog === 'Flowermed');
@@ -760,6 +785,82 @@ export function PrescriptionEditorModal({
     setItems(prev => [...prev, newItem]);
   };
 
+  const handleAddSouCannabisItem = (productName: string) => {
+    const prod = SOUCANNABIS_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
+    if (!prod) return;
+    const enriched = enrichMedicationDetails(prod.name, 'SouCannabis', 'Nacional', prod.type, prod);
+
+    let dosageLines: string[];
+    if (prod.usageInstructions) {
+      dosageLines = prod.usageInstructions
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    } else {
+      dosageLines = [
+        'Conforme determinação individual do prescritor habilitado.',
+        'Administrar conforme orientação médica.'
+      ];
+    }
+
+    const newItem: PrescriptionItemData = {
+      name: prod.name,
+      brand: 'SouCannabis (Associação Nacional)',
+      origin: 'Nacional',
+      type: prod.type || enriched.type,
+      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
+      concentration: prod.concentration || enriched.concentration,
+      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
+      quantity: prod.quantity || enriched.quantity,
+      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
+      dosage: dosageLines,
+      description: prod.description || enriched.description || 'Produto oficial da SouCannabis (Associação Brasileira de Cannabis Medicinal).',
+      priceBRL: prod.priceBRL
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddPangaiaItem = (productName: string) => {
+    const prod = PANGAIA_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
+    if (!prod) return;
+    const enriched = enrichMedicationDetails(prod.name, 'Pangaia', 'Importado', prod.type, prod);
+
+    let dosageLines: string[];
+    if (prod.posologyDetails) {
+      dosageLines = prod.posologyDetails
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    } else if (prod.usageInstructions) {
+      dosageLines = prod.usageInstructions
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    } else {
+      dosageLines = [
+        'Conforme determinação individual do prescritor habilitado.',
+        'Administrar sob orientação médica (RDC Anvisa nº 660/2022).'
+      ];
+    }
+
+    const newItem: PrescriptionItemData = {
+      name: prod.name,
+      brand: 'Pangaia Biopharmaceuticals (Importado)',
+      origin: 'Importado',
+      type: prod.type || enriched.type,
+      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
+      concentration: prod.concentration || enriched.concentration,
+      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
+      quantity: prod.quantity || enriched.quantity,
+      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
+      dosage: dosageLines,
+      description: prod.description || enriched.description || 'Produto oficial da Pangaia Biopharmaceuticals (Importação Anvisa RDC 660/2022).',
+      priceBRL: prod.priceBRL,
+      priceUSD: prod.priceUSD
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
   const handleRemoveItem = (index: number) => {
     setItems(prev => prev.filter((_, i) => i !== index));
   };
@@ -1262,6 +1363,178 @@ export function PrescriptionEditorModal({
                           </optgroup>
                           <optgroup label="💨 Spray de Resgate (25 mL)" className="bg-[#0A0A0F] text-cyan-400 font-bold">
                             <option value="Spray Resgate THC 5 mg/mL — ABRACE (25 mL)">Spray Resgate THC 5 mg/mL (25 mL)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* SouCannabis Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-soucannabis"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddSouCannabisItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-teal-500/20 border border-teal-400/40 text-teal-200 rounded-lg text-xs font-bold hover:bg-teal-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-teal-400 shadow-[0_0_12px_rgba(20,184,166,0.2)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-teal-300 font-bold">
+                            🌱 + Linha SouCannabis Nacional (HPLC)...
+                          </option>
+                          <optgroup label="🔵 Óleos Azuis (THC 5:1 — 2% a 20%)" className="bg-[#0A0A0F] text-blue-400 font-bold">
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 2% (10 mL)">Óleo Azul 2% (10 mL • R$ 120)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 2% (30 mL)">Óleo Azul 2% (30 mL • R$ 240)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 3% (10 mL)">Óleo Azul 3% (10 mL • R$ 135)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 3% (30 mL)">Óleo Azul 3% (30 mL • R$ 270)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 6% (10 mL)">Óleo Azul 6% (10 mL • R$ 200)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 6% (30 mL)">Óleo Azul 6% (30 mL • R$ 395)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 10% (10 mL)">Óleo Azul 10% (10 mL • R$ 280)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 10% (30 mL)">Óleo Azul 10% (30 mL • R$ 555)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 15% (10 mL)">Óleo Azul 15% (10 mL • R$ 375)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 15% (30 mL)">Óleo Azul 15% (30 mL • R$ 750)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 20% (10 mL)">Óleo Azul 20% (10 mL • R$ 480)</option>
+                            <option value="Óleo Azul SouCannabis THC 5:1 — 20% (30 mL)">Óleo Azul 20% (30 mL • R$ 955)</option>
+                          </optgroup>
+                          <optgroup label="🟣 Óleos Lilases (1:1 THC:CBD — 2% a 20%)" className="bg-[#0A0A0F] text-purple-400 font-bold">
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 2% (10 mL)">Óleo Lilás 1:1 2% (10 mL • R$ 120)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 2% (30 mL)">Óleo Lilás 1:1 2% (30 mL • R$ 240)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 3% (10 mL)">Óleo Lilás 1:1 3% (10 mL • R$ 135)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 3% (30 mL)">Óleo Lilás 1:1 3% (30 mL • R$ 270)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 6% (10 mL)">Óleo Lilás 1:1 6% (10 mL • R$ 200)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 6% (30 mL)">Óleo Lilás 1:1 6% (30 mL • R$ 395)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 10% (10 mL)">Óleo Lilás 1:1 10% (10 mL • R$ 280)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 10% (30 mL)">Óleo Lilás 1:1 10% (30 mL • R$ 555)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 15% (10 mL)">Óleo Lilás 1:1 15% (10 mL • R$ 375)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 15% (30 mL)">Óleo Lilás 1:1 15% (30 mL • R$ 750)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 20% (10 mL)">Óleo Lilás 1:1 20% (10 mL • R$ 480)</option>
+                            <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 20% (30 mL)">Óleo Lilás 1:1 20% (30 mL • R$ 955)</option>
+                          </optgroup>
+                          <optgroup label="🌸 Óleos Rosas (CBD 5:1 THC — 2% a 20%)" className="bg-[#0A0A0F] text-pink-400 font-bold">
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 2% (10 mL)">Óleo Rosa 5:1 2% (10 mL • R$ 110)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 2% (30 mL)">Óleo Rosa 5:1 2% (30 mL • R$ 220)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 3% (10 mL)">Óleo Rosa 5:1 3% (10 mL • R$ 130)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 3% (30 mL)">Óleo Rosa 5:1 3% (30 mL • R$ 255)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 6% (10 mL)">Óleo Rosa 5:1 6% (10 mL • R$ 185)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 6% (30 mL)">Óleo Rosa 5:1 6% (30 mL • R$ 365)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 10% (10 mL)">Óleo Rosa 5:1 10% (10 mL • R$ 250)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 10% (30 mL)">Óleo Rosa 5:1 10% (30 mL • R$ 500)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 15% (10 mL)">Óleo Rosa 5:1 15% (10 mL • R$ 355)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 15% (30 mL)">Óleo Rosa 5:1 15% (30 mL • R$ 710)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 20% (10 mL)">Óleo Rosa 5:1 20% (10 mL • R$ 440)</option>
+                            <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 20% (30 mL)">Óleo Rosa 5:1 20% (30 mL • R$ 880)</option>
+                          </optgroup>
+                          <optgroup label="🟠 Óleos Laranjas (CBD ~1:10 THC — 2% a 20%)" className="bg-[#0A0A0F] text-amber-400 font-bold">
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 2% (10 mL)">Óleo Laranja 1:10 2% (10 mL • R$ 105)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 2% (30 mL)">Óleo Laranja 1:10 2% (30 mL • R$ 210)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 3% (10 mL)">Óleo Laranja 1:10 3% (10 mL • R$ 120)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 3% (30 mL)">Óleo Laranja 1:10 3% (30 mL • R$ 240)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 6% (10 mL)">Óleo Laranja 1:10 6% (10 mL • R$ 165)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 6% (30 mL)">Óleo Laranja 1:10 6% (30 mL • R$ 325)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 10% (10 mL)">Óleo Laranja 1:10 10% (10 mL • R$ 240)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 10% (30 mL)">Óleo Laranja 1:10 10% (30 mL • R$ 480)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 15% (10 mL)">Óleo Laranja 1:10 15% (10 mL • R$ 295)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 15% (30 mL)">Óleo Laranja 1:10 15% (30 mL • R$ 590)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 20% (10 mL)">Óleo Laranja 1:10 20% (10 mL • R$ 385)</option>
+                            <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 20% (30 mL)">Óleo Laranja 1:10 20% (30 mL • R$ 770)</option>
+                          </optgroup>
+                          <optgroup label="⚪ Óleos Brancos (Broad Spectrum 0% THC)" className="bg-[#0A0A0F] text-slate-200 font-bold">
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 2% (10 mL)">Óleo Branco 0% THC 2% (10 mL • R$ 105)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 2% (30 mL)">Óleo Branco 0% THC 2% (30 mL • R$ 210)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 3% (10 mL)">Óleo Branco 0% THC 3% (10 mL • R$ 120)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 3% (30 mL)">Óleo Branco 0% THC 3% (30 mL • R$ 240)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 6% (10 mL)">Óleo Branco 0% THC 6% (10 mL • R$ 165)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 6% (30 mL)">Óleo Branco 0% THC 6% (30 mL • R$ 325)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 10% (10 mL)">Óleo Branco 0% THC 10% (10 mL • R$ 240)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 10% (30 mL)">Óleo Branco 0% THC 10% (30 mL • R$ 480)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 15% (10 mL)">Óleo Branco 0% THC 15% (10 mL • R$ 295)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 15% (30 mL)">Óleo Branco 0% THC 15% (30 mL • R$ 590)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 20% (10 mL)">Óleo Branco 0% THC 20% (10 mL • R$ 385)</option>
+                            <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 20% (30 mL)">Óleo Branco 0% THC 20% (30 mL • R$ 770)</option>
+                          </optgroup>
+                          <optgroup label="💨 Sprays Nasais (Absorção Rápida Transmucosa)" className="bg-[#0A0A0F] text-cyan-400 font-bold">
+                            <option value="Spray Nasal Azul SouCannabis THC 5:1 — 6% (10 mL)">Spray Nasal Azul THC 5:1 6% (10 mL • R$ 200)</option>
+                            <option value="Spray Nasal Azul SouCannabis THC 5:1 — 6% (30 mL)">Spray Nasal Azul THC 5:1 6% (30 mL • R$ 395)</option>
+                            <option value="Spray Nasal Laranja SouCannabis CBD 1:10 THC — 6% (10 mL)">Spray Nasal Laranja CBD 1:10 6% (10 mL • R$ 165)</option>
+                            <option value="Spray Nasal Laranja SouCannabis CBD 1:10 THC — 6% (30 mL)">Spray Nasal Laranja CBD 1:10 6% (30 mL • R$ 325)</option>
+                          </optgroup>
+                          <optgroup label="💧 Lubrificante Íntimo (1:1 THC:CBD)" className="bg-[#0A0A0F] text-rose-400 font-bold">
+                            <option value="Lubrificante Íntimo SouCannabis THC:CBD 1:1 — 6% (10 mL)">Lubrificante Íntimo 1:1 6% (10 mL • R$ 200)</option>
+                            <option value="Lubrificante Íntimo SouCannabis THC:CBD 1:1 — 6% (30 mL)">Lubrificante Íntimo 1:1 6% (30 mL • R$ 395)</option>
+                            <option value="Lubrificante Íntimo SouCannabis THC:CBD 1:1 — 10% (10 mL)">Lubrificante Íntimo 1:1 10% (10 mL • R$ 280)</option>
+                            <option value="Lubrificante Íntimo SouCannabis THC:CBD 1:1 — 10% (30 mL)">Lubrificante Íntimo 1:1 10% (30 mL • R$ 555)</option>
+                          </optgroup>
+                          <optgroup label="🧴 Pomadas Tópicas Dérmicas (6% e 10%)" className="bg-[#0A0A0F] text-emerald-400 font-bold">
+                            <option value="Pomada Tópica SouCannabis — 6% (30g)">Pomada Tópica 6% (30g • R$ 180)</option>
+                            <option value="Pomada Tópica SouCannabis — 6% (50g)">Pomada Tópica 6% (50g • R$ 290)</option>
+                            <option value="Pomada Tópica SouCannabis — 10% (30g)">Pomada Tópica 10% (30g • R$ 260)</option>
+                            <option value="Pomada Tópica SouCannabis — 10% (50g)">Pomada Tópica 10% (50g • R$ 420)</option>
+                          </optgroup>
+                          <optgroup label="💊 Supositórios Transmucosa Pélvica (1:1 e 5:1)" className="bg-[#0A0A0F] text-indigo-400 font-bold">
+                            <option value="Supositórios SouCannabis THC:CBD 1:1 — 30 mg (10 unidades)">Supositórios 1:1 30 mg (10 un • R$ 250)</option>
+                            <option value="Supositórios SouCannabis THC:CBD 1:1 — 50 mg (10 unidades)">Supositórios 1:1 50 mg (10 un • R$ 360)</option>
+                            <option value="Supositórios SouCannabis Azul THC 5:1 — 30 mg (10 unidades)">Supositórios Azul THC 5:1 30 mg (10 un • R$ 250)</option>
+                            <option value="Supositórios SouCannabis Azul THC 5:1 — 50 mg (10 unidades)">Supositórios Azul THC 5:1 50 mg (10 un • R$ 360)</option>
+                          </optgroup>
+                          <optgroup label="⚗️ Extratos Concentrados (Resina / Pasta 60% e 80%)" className="bg-[#0A0A0F] text-amber-300 font-bold">
+                            <option value="Extrato Concentrado SouCannabis 60% — Seringa 2 mL">Extrato 60% (Seringa 2 mL • R$ 320)</option>
+                            <option value="Extrato Concentrado SouCannabis 60% — Seringa 5 mL">Extrato 60% (Seringa 5 mL • R$ 680)</option>
+                            <option value="Extrato Concentrado SouCannabis 80% — Seringa 2 mL">Extrato 80% (Seringa 2 mL • R$ 420)</option>
+                            <option value="Extrato Concentrado SouCannabis 80% — Seringa 5 mL">Extrato 80% (Seringa 5 mL • R$ 890)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* Pangaia Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-pangaia"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddPangaiaItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-indigo-300 font-bold">
+                            🌐 + Linha Pangaia Pharma (EUA • RDC 660)...
+                          </option>
+                          <optgroup label="💧 Linha Pharma — Óleos Sublinguais (30 mL • ~20 gotas/mL)" className="bg-[#0A0A0F] text-indigo-400 font-bold">
+                            <option value="Óleo CBD Full Spectrum Pangaia 5% — 1500 mg (30 mL)">Óleo 5% • 1500 mg (2,5 mg/gota • R$ 489)</option>
+                            <option value="Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)">Óleo 10% • 3000 mg (5,0 mg/gota • R$ 879 — Mais Prescrito)</option>
+                            <option value="Óleo CBD Full Spectrum Pangaia 20% — 6000 mg (30 mL)">Óleo 20% • 6000 mg (10,0 mg/gota • R$ 1.099)</option>
+                            <option value="Óleo CBD Full Spectrum + Delta-8 THC Pangaia — 2000 mg (30 mL)">Óleo Delta-8 THC • 2000 mg (R$ 599,99)</option>
+                            <option value="Óleo CBD Isolate Pangaia 3000 mg — 100 mg/mL (30 mL — 0% THC)">Óleo CBD Isolate • 3000 mg 0% THC (R$ 790)</option>
+                          </optgroup>
+                          <optgroup label="🌿 Linha Pangaia Amazônia (Bioativos Nativos & Copaíba)" className="bg-[#0A0A0F] text-emerald-400 font-bold">
+                            <option value="Óleo Maná Pangaia 3000 mg — CBD Full Spectrum com Copaíba Amazônica (30 mL)">Óleo Maná 3000 mg c/ Copaíba (30 mL • R$ 440)</option>
+                            <option value="Pomada Táio Pangaia 3375 mg — Andiroba, Arnica, Copaíba & CBD (100g)">Pomada Táio 3375 mg (100g • R$ 440)</option>
+                          </optgroup>
+                          <optgroup label="💊 Linha Pharma — Cápsulas Softgel Orais" className="bg-[#0A0A0F] text-amber-400 font-bold">
+                            <option value="Cápsulas Soft Gel Full Spectrum Pangaia 750 mg (30 cápsulas de 25 mg)">Softgel 750 mg (30 cap de 25 mg • R$ 349,99)</option>
+                            <option value="Cápsulas Soft Gel Full Spectrum Pangaia 1500 mg (30 cápsulas de 50 mg)">Softgel 1500 mg (30 cap de 50 mg • R$ 599)</option>
+                          </optgroup>
+                          <optgroup label="🍬 Linha Pharma — Gomas Terapêuticas (Gummies)" className="bg-[#0A0A0F] text-pink-400 font-bold">
+                            <option value="Gummies Grape Pangaia Full Spectrum — 16 unidades (400 mg — 25 mg/goma)">Gummies Grape 16 un (400 mg • R$ 199,90)</option>
+                            <option value="Gummies Grape Pangaia Full Spectrum — 28 unidades (700 mg — 25 mg/goma)">Gummies Grape 28 un (700 mg • R$ 247,90)</option>
+                            <option value="Gummies Vegan Delta-8 Pangaia — 400 mg (16 unidades de 25 mg)">Gummies Vegan Delta-8 16 un (400 mg • R$ 259)</option>
+                            <option value="Gummies Vegan Delta-8 Pangaia — 700 mg (28 unidades de 25 mg)">Gummies Vegan Delta-8 28 un (700 mg • R$ 389)</option>
+                          </optgroup>
+                          <optgroup label="🧴 Linha Tópica & Cremes Dérmicos" className="bg-[#0A0A0F] text-teal-400 font-bold">
+                            <option value="Cooling Salve Pangaia 500 mg — Pomada Balsâmica Refrescante (60g)">Cooling Salve 500 mg (60g • R$ 199,90)</option>
+                            <option value="CBD Relief Cream Pangaia 3000 mg — Creme Analgésico de Alta Potência (100 mL)">CBD Relief Cream 3000 mg (100 mL • R$ 599)</option>
+                          </optgroup>
+                          <optgroup label="⚗️ Linha Concentrados Elite (Solventless)" className="bg-[#0A0A0F] text-yellow-400 font-bold">
+                            <option value="Live Rosin THC-A Pangaia Elite (1g)">Live Rosin THC-A 1g (Resgate • R$ 200)</option>
+                            <option value="Diamond Sauce CBD Pangaia Elite (10g)">Diamond Sauce CBD 10g (R$ 649)</option>
+                            <option value="Bubble Hash CBD Pangaia Elite (10g)">Bubble Hash CBD 10g (R$ 999)</option>
+                          </optgroup>
+                          <optgroup label="🌱 Linha Flor Medicinal Selecionada (Inalação Controlada)" className="bg-[#0A0A0F] text-green-400 font-bold">
+                            <option value="Flores Medicinais CBD High Pangaia Organics (5g)">Flores CBD High 5g (R$ 280)</option>
+                            <option value="Flores Medicinais Balanced 1:1 Pangaia Organics (5g)">Flores Balanced 1:1 5g (R$ 320)</option>
                           </optgroup>
                         </select>
                       </div>
@@ -2282,6 +2555,8 @@ export function PrescriptionEditorModal({
                 <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto py-1">
                   {[
                     { id: 'all', label: `Todos (${allLibraryProducts.length})` },
+                    { id: 'pangaia', label: '🌐 Pangaia Pharma (EUA)' },
+                    { id: 'soucannabis', label: '🌱 SouCannabis (Nacional)' },
                     { id: 'abrace', label: '🌿 ABRACE Esperança (Nacional)' },
                     { id: 'abecmed', label: '🟠 ABECMED Oficial (Nacional)' },
                     { id: 'gomas', label: '🍬 Gomas & Comestíveis' },

@@ -353,8 +353,7 @@ export function PharmacyScreen() {
   const handleSendWhatsAppOrder = () => {
     const itemsText = importedItems.map(item => {
       const qty = quantities[item.id] || 1;
-      const itemTotal = item.unitPriceBRL * qty;
-      return `• *${qty}x* ${item.name} (${item.brand}) - R$ ${itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      return `• *${qty}x* ${item.name} (${item.brand || 'GreenBudz'})`;
     }).join('\n');
 
     const addressText = address.street.trim()
@@ -366,7 +365,7 @@ CEP: ${address.cep || ''}`
 
     const patientInfo = `Nome: ${userName || 'Paciente'}${userCpf ? `\nCPF: ${userCpf}` : ''}${userPhone ? `\nTelefone: ${userPhone}` : ''}`;
 
-    const message = `🌿 *SOLICITAÇÃO DE PEDIDO - FARMÁCIA GREENBUDZ* 🌿
+    const message = `🌿 *SOLICITAÇÃO DE PEDIDO - MEDICAMENTOS PRESCRITOS* 🌿
 
 👤 *DADOS DO PACIENTE:*
 ${patientInfo}
@@ -377,13 +376,7 @@ ${itemsText}
 🚚 *ENDEREÇO DE ENTREGA:*
 ${addressText}
 
-💰 *RESUMO FINANCEIRO:*
-• Subtotal dos Produtos: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-• Frete Internacional: R$ ${shippingFeeBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-• Taxas de Importação fixa: R$ ${fixedImportTaxBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-*VALOR TOTAL ESTIMADO: R$ ${finalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*
-
-Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientações de finalização e envio! ✨`;
+Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescritos e receber as orientações de finalização e envio! ✨`;
 
     const whatsappUrl = `https://wa.me/5566996280883?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
@@ -602,17 +595,16 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
                         </button>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/20 px-2 py-1 rounded-md mb-1.5">
+                    <div className="text-right flex flex-col items-end gap-1.5">
+                      <div className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/20 px-2.5 py-1 rounded-md">
                         <div className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
                         <span className="text-[10px] text-mecura-neon font-bold">
                           Dura aprox. {Math.round((item.durationPerUnit * qty) / 30)} meses
                         </span>
                       </div>
-                      <div className="text-xl font-bold text-white tracking-tight">
-                        <span className="text-sm text-[#8A8A9E] font-normal mr-1">R$</span>
-                        {itemTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
+                      <span className="text-[11px] font-bold text-white/90 bg-[#0A0A0F] border border-[#262636] px-2.5 py-1 rounded-lg shadow-sm">
+                        Item Prescrito
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -731,43 +723,38 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
         )}
       </div>
 
-      {/* Resumo Financeiro (APENAS SE HOUVER IMPORTADOS) */}
+      {/* Resumo do Tratamento Prescrito (SEM VALORES) */}
       {hasImportedItems ? (
         <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-6 space-y-4 relative overflow-hidden mb-8">
           <div className="absolute -right-10 -top-10 w-32 h-32 bg-mecura-neon/5 blur-3xl rounded-full" />
           
-          <h3 className="font-bold text-white text-lg">Resumo Financeiro (Importados)</h3>
+          <h3 className="font-bold text-white text-lg flex items-center gap-2">
+            <Package className="w-5 h-5 text-mecura-neon" />
+            Resumo do Pedido Prescrito
+          </h3>
           
           <div className="space-y-3 text-sm relative z-10">
             <div className="flex justify-between text-[#8A8A9E]">
-              <span>Produtos ({importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0)} itens)</span>
-              <span className="text-white">R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span>Medicamentos Selecionados</span>
+              <span className="text-white font-medium">{importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0)} {importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0) === 1 ? 'item' : 'itens'}</span>
             </div>
             <div className="flex justify-between text-[#8A8A9E] items-center">
               <span className="flex items-center gap-1.5">
-                Frete Internacional
-                <div className="group relative">
-                  <Info className="w-3.5 h-3.5 text-mecura-neon cursor-help" />
-                </div>
+                Modalidade de Atendimento
               </span>
-              <span className="text-white">R$ {shippingFeeBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-emerald-400 font-medium">Importação Oficial Autorizada</span>
             </div>
             <div className="flex justify-between text-[#8A8A9E] items-center">
-              <span className="flex items-center gap-1.5">
-                Taxas Importação fixa
-              </span>
-              <span className="text-white">R$ {FIXED_IMPORT_TAX_BRL.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span>Regulamentação e Segurança</span>
+              <span className="text-white font-medium">Conformidade RDC Anvisa</span>
             </div>
             
             <div className="pt-4 border-t border-[#262636] border-dashed">
-              <div className="flex justify-between items-end">
-                <span className="font-bold text-white text-base">Total Estimado</span>
-                <div className="text-right">
-                  <span className="text-2xl font-bold text-mecura-neon tracking-tight">
-                    <span className="text-sm mr-1">R$</span>
-                    {totalBeforeDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-white text-sm">Status do Tratamento</span>
+                <span className="text-xs font-bold text-mecura-neon bg-mecura-neon/10 px-3 py-1 rounded-full border border-mecura-neon/30">
+                  Pronto para Solicitação
+                </span>
               </div>
             </div>
           </div>
@@ -940,11 +927,10 @@ Olá! Gostaria de confirmar a solicitação do meu pedido e receber as orientaç
               <div className="bg-[#161622]/95 backdrop-blur-xl border border-[#262636] rounded-[28px] p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                 <div className="flex items-center justify-between mb-4 px-2">
                   <div className="flex flex-col">
-                    <span className="text-[11px] text-[#8A8A9E] font-medium uppercase tracking-wider">Total do Pedido</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-sm font-bold text-white">R$</span>
-                      <span className="text-2xl font-bold text-white tracking-tight">
-                        {finalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-[11px] text-[#8A8A9E] font-medium uppercase tracking-wider">Tratamento Prescrito</span>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-base font-bold text-white tracking-tight">
+                        {importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0)} {importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0) === 1 ? 'item selecionado' : 'itens selecionados'}
                       </span>
                     </div>
                   </div>

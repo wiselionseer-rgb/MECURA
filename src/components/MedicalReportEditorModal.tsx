@@ -18,10 +18,12 @@ import {
   Send,
   Plus,
   Pill,
-  RefreshCw
+  RefreshCw,
+  Save,
+  Check
 } from 'lucide-react';
 import { PrescriptionItemData } from '../utils/pdfGenerator';
-import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
+import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
 
 interface MedicalReportEditorModalProps {
   isOpen: boolean;
@@ -50,6 +52,19 @@ interface MedicalReportEditorModalProps {
   setMonitoring: (val: string) => void;
   onDownloadPDF: () => void;
   onSendToChat?: () => Promise<void> | void;
+  onSave?: (savedData: {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+  }) => void;
   isSendingToChat?: boolean;
   reportType?: 'inicial' | 'evolutivo';
   prescribedItems?: PrescriptionItemData[];
@@ -82,12 +97,15 @@ export function MedicalReportEditorModal({
   setMonitoring,
   onDownloadPDF,
   onSendToChat,
+  onSave,
   isSendingToChat = false,
   reportType = 'inicial',
   prescribedItems = []
 }: MedicalReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavedFeedback, setIsSavedFeedback] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
   // Local state for blazing fast editing without re-rendering parent Dashboard on every keystroke
   const [localPatientName, setLocalPatientName] = useState(patientName);
@@ -165,6 +183,29 @@ export function MedicalReportEditorModal({
     onClose();
   };
 
+  const handleSaveChanges = () => {
+    syncToParent();
+    if (onSave) {
+      onSave({
+        diagnosis: localDiagnosis,
+        rationale: localRationale,
+        treatmentPlan: localTreatmentPlan,
+        monitoring: localMonitoring,
+        patientName: localPatientName,
+        birthDate: localBirthDate,
+        cpf: localCpf,
+        emissionDate: localEmissionDate,
+        doctorName: localDoctorName,
+        doctorCrm: localDoctorCrm,
+        doctorSpecialty: localDoctorSpecialty
+      });
+    }
+    setIsSavedFeedback(true);
+    const now = new Date();
+    setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    setTimeout(() => setIsSavedFeedback(false), 2500);
+  };
+
   const handleDownload = () => {
     syncToParent();
     setIsGenerating(true);
@@ -219,6 +260,11 @@ export function MedicalReportEditorModal({
                   }`}>
                     {reportType === 'evolutivo' ? 'Acompanhamento & Evolução' : 'Comprovação de Início'}
                   </span>
+                  {lastSavedTime && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      <Check className="w-3 h-3" /> Salvo às {lastSavedTime}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-mecura-silver">
                   {reportType === 'evolutivo'
@@ -228,8 +274,8 @@ export function MedicalReportEditorModal({
               </div>
             </div>
 
-            {/* Tab Switcher & Close */}
-            <div className="flex items-center gap-3">
+            {/* Tab Switcher & Actions */}
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="bg-mecura-surface border border-mecura-elevated rounded-xl p-1 flex items-center gap-1">
                 <button
                   type="button"
@@ -263,15 +309,39 @@ export function MedicalReportEditorModal({
                 </button>
               </div>
 
+              {/* Botão de Salvar Alterações no Header */}
+              <button
+                type="button"
+                onClick={handleSaveChanges}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black shadow-emerald-500/30 ring-2 ring-emerald-400'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95'
+                }`}
+                title="Salvar alterações do laudo imediatamente"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvo!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group"
-                title="Fechar e sair sem enviar o laudo"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group cursor-pointer"
+                title="Fechar e sair da edição"
                 aria-label="Fechar laudo"
               >
                 <X className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span className="hidden sm:inline">Fechar (Sair)</span>
+                <span className="hidden sm:inline">Fechar</span>
               </button>
             </div>
           </div>
@@ -442,7 +512,9 @@ export function MedicalReportEditorModal({
                         onChange={(e) => {
                           const val = e.target.value;
                           if (!val) return;
-                          const found = NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                          const found = PANGAIA_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                                        SOUCANNABIS_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                                        NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
                                         ABECMED_PRODUCTS.find(p => p.name === val) ||
                                         ABRACE_PRODUCTS.find(p => p.name === val);
                           if (found) {
@@ -453,11 +525,26 @@ export function MedicalReportEditorModal({
                             const route = found.administrationRoute || enriched.administrationRoute;
                             const isGummy = /goma/i.test(found.name || form);
                             const isFlower = /flor|in natura/i.test(found.name || form);
-                            const posHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+                            const isTopical = /pomada|t[óo]pico/i.test(found.name || form);
+                            const isNasal = /spray|nasal/i.test(found.name || form);
+                            const isSupp = /suposit/i.test(found.name || form);
+                            const isExt = /extrato|seringa/i.test(found.name || form);
+                            const isSou = (found.manufacturer || '').toLowerCase().includes('soucannabis') || found.name.toLowerCase().includes('soucannabis');
+                            const isPangaia = (found.manufacturer || '').toLowerCase().includes('pangaia') || found.name.toLowerCase().includes('pangaia');
+                            
+                            const posHeader = (isGummy || isFlower || isTopical || isNasal || isSupp || isExt) 
+                              ? 'Posologia' 
+                              : isSou 
+                              ? 'Posologia (Média de 26 gotas por mL em veículo MCT)' 
+                              : isPangaia
+                              ? 'Posologia (Média de 20 gotas por mL em veículo MCT / Anvisa RDC 660)'
+                              : 'Posologia (Aproximadamente 25 gotas por mL)';
                             const dose = (found.usageInstructions || 'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.')
                               .replace(/Aproximadamente 25 gotas por mL\.?/gi, '')
+                              .replace(/Média de 26 gotas por mL\.?/gi, '')
+                              .replace(/Média de 20 gotas por mL\.?/gi, '')
                               .trim();
-                            const newBlock = `• ${found.name} (${found.manufacturer || 'Associação Nacional'} - ${found.origin || 'Nacional'})\n   Princípio Ativo: ${ing}\n   Apresentação / Via: ${form} • ${qty} • ${route}\n   ${posHeader}: ${dose}\n   Finalidade: ${found.description || 'Modulação canabinoide.'}`;
+                            const newBlock = `• ${found.name} (${found.manufacturer || 'Laboratório / Fabricante'} - ${found.origin || 'Nacional'})\n   Princípio Ativo: ${ing}\n   Apresentação / Via: ${form} • ${qty} • ${route}\n   ${posHeader}: ${dose}\n   Finalidade: ${found.description || 'Modulação canabinoide.'}`;
                             setLocalTreatmentPlan(localTreatmentPlan ? `${localTreatmentPlan}\n\n${newBlock}` : newBlock);
                           }
                           e.target.value = '';
@@ -467,6 +554,42 @@ export function MedicalReportEditorModal({
                         <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
                           + Inserir Medicamento do Catálogo...
                         </option>
+                        <optgroup label="🌐 Linha Pangaia Biopharmaceuticals (Importado • RDC 660)" className="bg-[#0A0A0F] text-indigo-400 font-bold">
+                          <option value="Óleo CBD Full Spectrum Pangaia 5% — 1500 mg (30 mL)">Óleo CBD 5% — 1500 mg (30 mL • Pangaia)</option>
+                          <option value="Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)">Óleo CBD 10% — 3000 mg (30 mL • Pangaia — Mais Prescrito)</option>
+                          <option value="Óleo CBD Full Spectrum Pangaia 20% — 6000 mg (30 mL)">Óleo CBD 20% — 6000 mg (30 mL • Pangaia Alta Potência)</option>
+                          <option value="Óleo CBD Full Spectrum + Delta-8 THC Pangaia — 2000 mg (30 mL)">Óleo CBD + Delta-8 THC 2000 mg (30 mL • Pangaia)</option>
+                          <option value="Óleo CBD Isolate Pangaia 3000 mg — 100 mg/mL (30 mL — 0% THC)">Óleo CBD Isolate 3000 mg (0% THC • 30 mL)</option>
+                          <option value="Óleo Maná Pangaia 3000 mg — CBD Full Spectrum com Copaíba Amazônica (30 mL)">Óleo Maná 3000 mg c/ Copaíba (30 mL • Pangaia Amazônia)</option>
+                          <option value="Pomada Táio Pangaia 3375 mg — Andiroba, Arnica, Copaíba & CBD (100g)">Pomada Táio 3375 mg (100g • Pangaia Amazônia)</option>
+                          <option value="Cápsulas Soft Gel Full Spectrum Pangaia 750 mg (30 cápsulas de 25 mg)">Cápsulas Soft Gel 750 mg (30 un • Pangaia)</option>
+                          <option value="Cápsulas Soft Gel Full Spectrum Pangaia 1500 mg (30 cápsulas de 50 mg)">Cápsulas Soft Gel 1500 mg (30 un • Pangaia)</option>
+                          <option value="Gummies Grape Pangaia Full Spectrum — 28 unidades (700 mg — 25 mg/goma)">Gummies Grape 28 un (700 mg • Pangaia)</option>
+                          <option value="Cooling Salve Pangaia 500 mg — Pomada Balsâmica Refrescante (60g)">Cooling Salve 500 mg (60g • Pangaia)</option>
+                          <option value="CBD Relief Cream Pangaia 3000 mg — Creme Analgésico de Alta Potência (100 mL)">CBD Relief Cream 3000 mg (100 mL • Pangaia)</option>
+                          <option value="Live Rosin THC-A Pangaia Elite (1g)">Live Rosin THC-A 1g (Resgate • Pangaia Elite)</option>
+                        </optgroup>
+                        <optgroup label="🌱 Linha SouCannabis (Associação Nacional - HPLC)" className="bg-[#0A0A0F] text-teal-400 font-bold">
+                          <option value="Óleo Azul SouCannabis THC 5:1 — 2% (30 mL)">Óleo Azul THC 5:1 — 2% (30 mL • MCT)</option>
+                          <option value="Óleo Azul SouCannabis THC 5:1 — 6% (30 mL)">Óleo Azul THC 5:1 — 6% (30 mL • MCT)</option>
+                          <option value="Óleo Azul SouCannabis THC 5:1 — 10% (30 mL)">Óleo Azul THC 5:1 — 10% (30 mL • MCT)</option>
+                          <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 2% (30 mL)">Óleo Lilás 1:1 — 2% (30 mL • MCT)</option>
+                          <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 6% (30 mL)">Óleo Lilás 1:1 — 6% (30 mL • MCT)</option>
+                          <option value="Óleo Lilás SouCannabis THC:CBD 1:1 — 10% (30 mL)">Óleo Lilás 1:1 — 10% (30 mL • MCT)</option>
+                          <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 2% (30 mL)">Óleo Rosa CBD 5:1 — 2% (30 mL • MCT)</option>
+                          <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 6% (30 mL)">Óleo Rosa CBD 5:1 — 6% (30 mL • MCT)</option>
+                          <option value="Óleo Rosa SouCannabis CBD:THC 5:1 — 10% (30 mL)">Óleo Rosa CBD 5:1 — 10% (30 mL • MCT)</option>
+                          <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 2% (30 mL)">Óleo Laranja CBD 1:10 — 2% (30 mL • MCT)</option>
+                          <option value="Óleo Laranja SouCannabis CBD 1:10 THC — 6% (30 mL)">Óleo Laranja CBD 1:10 — 6% (30 mL • MCT)</option>
+                          <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 2% (30 mL)">Óleo Branco 0% THC — 2% (30 mL • Broad)</option>
+                          <option value="Óleo Branco SouCannabis CBD Broad Spectrum 0% THC — 6% (30 mL)">Óleo Branco 0% THC — 6% (30 mL • Broad)</option>
+                          <option value="Spray Nasal Azul SouCannabis THC 5:1 — 6% (30 mL)">Spray Nasal Azul THC 5:1 6% (30 mL)</option>
+                          <option value="Spray Nasal Laranja SouCannabis CBD 1:10 THC — 6% (30 mL)">Spray Nasal Laranja CBD 1:10 6% (30 mL)</option>
+                          <option value="Lubrificante Íntimo SouCannabis THC:CBD 1:1 — 6% (30 mL)">Lubrificante Íntimo 1:1 6% (30 mL)</option>
+                          <option value="Pomada Tópica SouCannabis — 6% (50g)">Pomada Tópica SouCannabis 6% (50g)</option>
+                          <option value="Supositórios SouCannabis THC:CBD 1:1 — 30 mg (10 unidades)">Supositórios 1:1 30 mg (10 un)</option>
+                          <option value="Extrato Concentrado SouCannabis 60% — Seringa 5 mL">Extrato Concentrado 60% (Seringa 5 mL)</option>
+                        </optgroup>
                         <optgroup label="🌿 Linha ABRACE Esperança (Nacional)" className="bg-[#0A0A0F] text-emerald-400 font-bold">
                           <option value="Óleo Laranja CBD 20 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 20 mg/mL (30 mL)</option>
                           <option value="Óleo Laranja CBD 30 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 30 mg/mL (30 mL)</option>
@@ -664,6 +787,30 @@ export function MedicalReportEditorModal({
             </button>
 
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              {/* Botão de Salvar Alterações no Footer */}
+              <button
+                type="button"
+                onClick={handleSaveChanges}
+                className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                  isSavedFeedback
+                    ? 'bg-emerald-500 text-black ring-2 ring-emerald-400 shadow-emerald-500/30'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 active:scale-95'
+                }`}
+                title="Salvar todas as alterações feitas no laudo"
+              >
+                {isSavedFeedback ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>✓ Alterações Salvas!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={handleDownload}

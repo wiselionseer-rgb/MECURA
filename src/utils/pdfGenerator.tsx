@@ -73,6 +73,8 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
   // 2. Explicit import brands when origin is unspecified
   if (
     brandLower.includes('flowermed') ||
+    brandLower.includes('pangaia') ||
+    nameLower.includes('pangaia') ||
     brandLower.includes('greenbudz') ||
     brandLower.includes('cannariver') ||
     brandLower.includes('canna river') ||
@@ -94,6 +96,8 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     originLower.includes('brazil') ||
     originLower.includes('abrace') ||
     originLower.includes('abecmed') ||
+    originLower.includes('soucannabis') ||
+    originLower.includes('sou cannabis') ||
     originLower.includes('abrascorp') ||
     originLower.includes('amame') ||
     originLower.includes('apepi') ||
@@ -105,6 +109,8 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     brandLower.includes('associacao') ||
     brandLower.includes('abrace') ||
     brandLower.includes('abecmed') ||
+    brandLower.includes('soucannabis') ||
+    brandLower.includes('sou cannabis') ||
     brandLower.includes('abrascorp') ||
     brandLower.includes('amame') ||
     brandLower.includes('apepi') ||
@@ -127,7 +133,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
 
   // 4. Name indicators for Brazilian associations
   if (
-    /abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|associação|associacao|nacional|brasil|óleo integral/i.test(nameLower)
+    /soucannabis|sou\s*cannabis|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|associação|associacao|nacional|brasil|óleo integral/i.test(nameLower)
   ) {
     return true;
   }
@@ -140,7 +146,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
       if (eOrigin.includes('import') || eOrigin.includes('eua') || eOrigin.includes('usa')) {
         return false;
       }
-      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao') || eOrigin.includes('abrace') || eOrigin.includes('abecmed')) {
+      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao') || eOrigin.includes('abrace') || eOrigin.includes('abecmed') || eOrigin.includes('soucannabis') || eOrigin.includes('sou cannabis')) {
         return true;
       }
     }
@@ -456,11 +462,24 @@ export const generatePrescriptionPDF = async (
   ) => {
     if (guideItems.length === 0) return;
 
-    // All items of each guide fit on a single sheet (up to 12 items),
-    // guaranteeing National items stay on Folha 1 and Imported items stay on Folha 2 (exactly 2 sheets total!)
-    const maxItemsPerPage = 12;
+    // Smart pagination: ensure items + clinical notes never exceed the A4 page height (1123px),
+    // which was causing the signature block to be cut off at the bottom border.
+    // - Pages with clinical notes: max 4 items to leave ample room for notes & signature block.
+    // - Pages without clinical notes: max 5 items.
+    const maxItemsWithNotes = 4;
+    const maxItemsWithoutNotes = 5;
+
     const totalItems = guideItems.length;
-    const numPages = Math.ceil(totalItems / maxItemsPerPage);
+    let numPages = 1;
+
+    if (hasNotes) {
+      if (totalItems > maxItemsWithNotes) {
+        numPages = 1 + Math.ceil((totalItems - maxItemsWithNotes) / maxItemsWithoutNotes);
+      }
+    } else {
+      numPages = Math.ceil(totalItems / maxItemsWithoutNotes);
+    }
+
     const itemsPerPage = Math.ceil(totalItems / numPages);
     const chunks: PrescriptionItemData[][] = [];
     for (let i = 0; i < totalItems; i += itemsPerPage) {
@@ -541,18 +560,19 @@ export const generatePrescriptionPDF = async (
         {allPagesToRender.map((page, pIdx) => (
           <div 
             key={pIdx} 
-            className="prescription-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
+            className="prescription-pdf-page relative box-border flex flex-col justify-between" 
             style={{ 
               width: "794px", 
               height: "1123px", 
-              minHeight: "1123px", 
-              padding: page.items.length >= 6 ? "10px 32px 10px 32px" : page.items.length >= 4 ? "14px 36px 12px 36px" : "18px 36px 16px 36px", 
+              maxHeight: "1123px", 
+              padding: page.items.length >= 5 ? "14px 38px 20px 38px" : page.items.length >= 4 ? "16px 40px 22px 40px" : "18px 40px 24px 40px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
-              boxSizing: "border-box"
+              boxSizing: "border-box",
+              overflow: "hidden"
             }}
           >
-            <div>
+            <div className="flex-1 flex flex-col min-h-0">
               {/* Top Bar with Page Indicator & Guide Badge in-flow (never overlaps doctor info) */}
               <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
                 <span className="text-[9.5px] text-[#64748B] font-semibold">
@@ -701,9 +721,9 @@ export const generatePrescriptionPDF = async (
                 </div>
               )}
 
-              {/* Dispensação e Validade card when 1, 2 or 3 items to prevent awkward blank gap */}
-              {page.items.length <= 3 && (
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2.5 mt-2.5 text-[8.5px] text-[#475569] leading-snug">
+              {/* Dispensação e Validade card when 1, 2 or 3 items and NO notes to prevent awkward blank gap */}
+              {page.items.length <= 3 && !page.notesText && (
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2.5 mt-2 text-[8.5px] text-[#475569] leading-snug">
                   <span className="font-bold block text-[9px] uppercase text-[#1E1B4B] mb-0.5">
                     Dispensação e Acompanhamento Farmacoterapêutico
                   </span>
@@ -714,7 +734,7 @@ export const generatePrescriptionPDF = async (
             </div>
 
             {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="pt-2 border-t border-[#E2E8F0] mt-auto flex justify-between items-end">
+            <div className="pt-2 border-t border-[#E2E8F0] mt-auto flex justify-between items-end shrink-0 w-full">
               <div className="text-[9px] text-[#64748B] space-y-0.5">
                 <p className="m-0 font-medium">Data de Emissão: {emissionDateStr}</p>
                 <p className="text-[8px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
@@ -873,21 +893,27 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const planItems = splitPlanItems(plan);
 
   // Dynamic adaptive report pagination:
-  // Never cram 5 full clinical sections onto 1 page (which caused Section 5 / Item 5 to collide with borders)
-  // An official medical report is generated across dedicated pages with safe breathing margins (> 300px)
-  const isSinglePage = (totalLength <= 700 && planItems.length <= 1);
+  // Optimize page utilization to avoid awkward blank spaces and unnecessary extra pages.
+  // Standard Laudo Inicial fits cleanly on 1 single page (up to ~3.600 chars and up to 3 plan items).
+  const isSinglePageInicial = !isEvolutivo && (
+    (totalLength <= 3600 && planItems.length <= 3) ||
+    (totalLength <= 2900 && planItems.length <= 4) ||
+    (totalLength <= 2000)
+  );
 
-  if (isSinglePage) {
-    // 1 SINGLE PAGE: Only for ultra-concise 1-paragraph summary
+  if (isSinglePageInicial) {
+    // =========================================================================
+    // LAUDO INICIAL — 1 ÚNICA PÁGINA (COMPACTA, ELEGANTE E COMPLETA)
+    // =========================================================================
     const p1Sections = [
       { 
-        title: isEvolutivo ? 'Diagnóstico Clínico & Evolução Terapêutica' : 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
+        title: 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
         content: diag 
       }
     ];
     if (rat) {
       p1Sections.push({
-        title: isEvolutivo ? 'Fundamentação Terapêutica & Continuidade (Quesito 7)' : 'Raciocínio Clínico & Indicação de Início de Tratamento',
+        title: 'Raciocínio Fisiopatológico & Indicação de Tratamento',
         content: rat
       });
     }
@@ -912,9 +938,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     });
   } else if (!isEvolutivo) {
     // =========================================================================
-    // LAUDO INICIAL (COMPROVAÇÃO DE INÍCIO) — PAGINAÇÃO OFICIAL BALANCEADA
+    // LAUDO INICIAL (EXTENSO) — EXATAMENTE 2 PÁGINAS BALANCEADAS (ZERO ESPAÇOS EM BRANCO)
     // =========================================================================
-    // Página 1: Identificação Completa + Diagnóstico + Raciocínio Clínico / SEC
+    // Distribui o plano de tratamento entre as páginas para que a Página 1 não fique com vácuo em branco!
+    const p1PlanCount = Math.min(2, Math.max(1, Math.floor(planItems.length / 2)));
+    const p1PlanItems = planItems.slice(0, p1PlanCount);
+    const p2PlanItems = planItems.slice(p1PlanCount);
+
     const p1Sections = [
       { 
         title: 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
@@ -927,75 +957,41 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         content: rat
       });
     }
+    if (p1PlanItems.length > 0) {
+      p1Sections.push({
+        title: 'Plano de Tratamento Canabinoide Individualizado',
+        content: p1PlanItems.join('\n\n')
+      });
+    }
 
     reportPages.push({
       pageNumber: 1,
-      totalPages: 0,
+      totalPages: 2,
       title: baseReportTitle,
       sections: p1Sections
     });
 
-    if (planItems.length <= 3) {
-      // Página 2: Plano de Tratamento (até 3 itens) + Seção 5: Monitoramento & Diretrizes + Assinatura
-      // Altura total: ~550px. Margem de segurança de > 400px. NUNCA CORTA O ITEM 5 NA BORDA!
-      const p2Sections = [];
-      if (plan) {
-        p2Sections.push({
-          title: 'Plano de Tratamento Canabinoide Individualizado',
-          content: plan
-        });
-      }
-      if (mon) {
-        p2Sections.push({
-          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-          content: mon
-        });
-      }
-      reportPages.push({
-        pageNumber: 2,
-        totalPages: 0,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
-        sections: p2Sections
-      });
-    } else {
-      // 3 ou mais itens no plano (ex: 4, 5 ou mais medicamentos):
-      // Página 2: Primeiros 3 itens do plano de tratamento
-      const p2Items = planItems.slice(0, 3);
-      const remainingItems = planItems.slice(3);
-
-      reportPages.push({
-        pageNumber: 2,
-        totalPages: 0,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA TERAPÊUTICA`,
-        sections: [
-          {
-            title: 'Plano de Tratamento Canabinoide (Parte 1)',
-            content: p2Items.join('\n\n')
-          }
-        ]
-      });
-
-      // Página 3: Itens restantes (ex: Item 4, 5...) + Seção 5: Monitoramento & Segurança + Assinatura Oficial
-      const p3Sections = [
-        {
-          title: 'Continuação do Plano de Tratamento Canabinoide',
-          content: remainingItems.join('\n\n')
-        }
-      ];
-      if (mon) {
-        p3Sections.push({
-          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-          content: mon
-        });
-      }
-
-      reportPages.push({
-        pageNumber: 3,
-        totalPages: 0,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
-        sections: p3Sections
+    // Página 2: Continuação do Plano de Tratamento + Diretrizes de Acompanhamento & Segurança + Assinatura Oficial
+    const p2Sections = [];
+    if (p2PlanItems.length > 0) {
+      p2Sections.push({
+        title: 'Continuação do Plano de Tratamento Canabinoide',
+        content: p2PlanItems.join('\n\n')
       });
     }
+    if (mon) {
+      p2Sections.push({
+        title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+        content: mon
+      });
+    }
+
+    reportPages.push({
+      pageNumber: 2,
+      totalPages: 2,
+      title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
+      sections: p2Sections
+    });
   } else {
     // =========================================================================
     // LAUDO EVOLUTIVO (DOSSIÊ JUDICIAL / HABEAS CORPUS) — DISTRIBUIÇÃO ADAPTATIVA
@@ -1031,7 +1027,6 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     });
 
     // Página 2: Quesitos 4, 5 e 6 (Evolução com Canabinoides e Autocultivo) + Fundamentação & Quesito 7 + CID-10
-    // Conteúdo perfeitamente contido nesta folha, sem estourar e sem cortar para a próxima página!
     const p2Sections = [];
     if (diagP2) {
       p2Sections.push({
@@ -1053,8 +1048,8 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       sections: p2Sections
     });
 
-    // Página 3 (e subsequentes se necessário): Plano de Tratamento + Diretrizes de Monitoramento + Assinatura Oficial
-    if (planItems.length <= 3) {
+    // Página 3: Plano de Tratamento (até 5 itens) + Diretrizes de Monitoramento + Assinatura Oficial
+    if (planItems.length <= 5) {
       const p3Sections = [];
       if (plan) {
         p3Sections.push({
@@ -1075,9 +1070,9 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         sections: p3Sections
       });
     } else {
-      // 4 ou mais itens prescritos:
-      const p3Items = planItems.slice(0, 3);
-      const remainingPlanItems = planItems.slice(3);
+      // 6 ou mais itens prescritos:
+      const p3Items = planItems.slice(0, 4);
+      const remainingPlanItems = planItems.slice(4);
 
       reportPages.push({
         pageNumber: 3,
@@ -1130,10 +1125,12 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               width: "794px", 
               minHeight: "1123px", 
               height: "1123px", 
-              padding: page.totalPages === 1 ? "12px 32px 10px 32px" : "16px 34px 14px 34px", 
+              maxHeight: "1123px",
+              padding: page.totalPages === 1 ? "14px 34px 18px 34px" : "16px 34px 18px 34px", 
               backgroundColor: "#FFFFFF", 
               color: "#111827",
-              boxSizing: "border-box"
+              boxSizing: "border-box",
+              overflow: "hidden"
             }}
           >
             <div className="flex-1 flex flex-col justify-start min-h-0">
@@ -1239,7 +1236,11 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                         </div>
                       ) : (
                         <div className={`${page.totalPages === 1 ? 'text-[8.5px]' : 'text-[9.5px]'} text-[#334155] leading-snug flex flex-col gap-1 text-justify`}>
-                          {sec.content.split('\n').map((p, i) => {
+                          {sec.content.split('\n').filter((p, i, arr) => {
+                            const trimmed = p.trim();
+                            if (!trimmed && (i === 0 || !arr[i - 1].trim())) return false;
+                            return true;
+                          }).map((p, i) => {
                             const trimmed = p.trim();
                             if (!trimmed) return <div key={i} className="h-0.5" />;
                             
