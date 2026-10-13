@@ -293,6 +293,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           quantity: d.quantity !== undefined ? Number(d.quantity) : 0,
           usedCount: Number(d.usedCount) || 0,
           usedBy: Array.isArray(d.usedBy) ? d.usedBy : [],
+          usageLogs: Array.isArray(d.usageLogs) ? d.usageLogs : [],
+          lastUsedAt: d.lastUsedAt || undefined,
           ownerId: d.ownerId || undefined,
         });
       });
@@ -305,6 +307,118 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       setIsRefreshingCoupons(false);
     }
   };
+
+  const [expandedCoupons, setExpandedCoupons] = useState<Record<string, boolean>>({});
+
+  const resolveCouponUsers = useCallback((coupon: any) => {
+    const map = new Map<string, {
+      patientId: string;
+      name: string;
+      email: string;
+      phone: string;
+      planName: string;
+      price: number;
+      usedAt: string;
+    }>();
+
+    // 1. Process usageLogs if available
+    if (Array.isArray(coupon.usageLogs) && coupon.usageLogs.length > 0) {
+      coupon.usageLogs.forEach((log: any) => {
+        if (!log) return;
+        const cleanEmail = (log.userEmail || '').trim().toLowerCase();
+
+        const matchedPatient = patients.find(p => 
+          (log.userId && p.id === log.userId) ||
+          (cleanEmail && p.email && p.email.trim().toLowerCase() === cleanEmail)
+        );
+
+        const matchedPayment = payments.find(pay =>
+          (log.userId && pay.patientId === log.userId) ||
+          (cleanEmail && pay.payerEmail && pay.payerEmail.trim().toLowerCase() === cleanEmail)
+        );
+
+        const isPrem = !!(
+          log.planName?.toLowerCase().includes('premium') ||
+          (log.price && log.price >= 150) ||
+          matchedPatient?.isPremium ||
+          matchedPatient?.tier === 'Premium' ||
+          matchedPatient?.plan === 'premium' ||
+          matchedPatient?.pagamento_premium ||
+          matchedPayment?.isPremium ||
+          (matchedPayment?.value && Number(matchedPayment.value) >= 150)
+        );
+
+        const pName = matchedPatient?.name || matchedPayment?.payerName || log.userName || 'Paciente';
+        const pEmail = matchedPatient?.email || matchedPayment?.payerEmail || log.userEmail || 'N/A';
+        const pPhone = matchedPatient?.phone || 'N/A';
+        const price = log.price || (isPrem ? 249.90 : 49.90);
+        const planName = isPrem ? 'Premium (VIP)' : 'Essencial';
+        const usedAt = log.usedAt || matchedPayment?.date || matchedPatient?.createdAt || coupon.lastUsedAt || '';
+
+        const key = matchedPatient?.id || (pEmail !== 'N/A' ? pEmail : (log.userId || `log_${Math.random()}`));
+        map.set(key, {
+          patientId: key,
+          name: pName,
+          email: pEmail,
+          phone: pPhone,
+          planName,
+          price,
+          usedAt
+        });
+      });
+    }
+
+    // 2. Process usedBy identifiers (backward compatibility)
+    if (Array.isArray(coupon.usedBy) && coupon.usedBy.length > 0) {
+      coupon.usedBy.forEach((ident: string) => {
+        if (!ident) return;
+        const cleanIdent = ident.trim().toLowerCase();
+
+        const matchedPatient = patients.find(p => 
+          p.id === ident || 
+          (p.email && p.email.trim().toLowerCase() === cleanIdent)
+        );
+
+        const matchedPayment = payments.find(pay => 
+          (pay.patientId && pay.patientId === ident) ||
+          (cleanIdent && pay.payerEmail && pay.payerEmail.trim().toLowerCase() === cleanIdent)
+        );
+
+        const key = matchedPatient ? matchedPatient.id : (cleanIdent.includes('@') ? cleanIdent : ident);
+
+        if (!map.has(key)) {
+          const isPrem = !!(
+            matchedPatient?.isPremium || 
+            matchedPatient?.tier === 'Premium' || 
+            matchedPatient?.plan === 'premium' || 
+            matchedPatient?.answers?.isPremium ||
+            matchedPatient?.pagamento_premium ||
+            matchedPayment?.isPremium ||
+            (matchedPayment?.value && Number(matchedPayment.value) >= 150)
+          );
+
+          const pName = matchedPatient?.name || matchedPayment?.payerName || (cleanIdent.includes('@') ? cleanIdent.split('@')[0] : 'Paciente');
+          const pEmail = matchedPatient?.email || matchedPayment?.payerEmail || (cleanIdent.includes('@') ? ident : 'Sem e-mail');
+          const pPhone = matchedPatient?.phone || 'N/A';
+          const price = matchedPayment?.value ? Number(matchedPayment.value) : (isPrem ? 249.90 : 49.90);
+          const planName = isPrem ? 'Premium (VIP)' : 'Essencial';
+          const usedAt = matchedPayment?.date || matchedPatient?.createdAt || coupon.lastUsedAt || '';
+
+          map.set(key, {
+            patientId: key,
+            name: pName,
+            email: pEmail,
+            phone: pPhone,
+            planName,
+            price,
+            usedAt
+          });
+        }
+      });
+    }
+
+    return Array.from(map.values());
+  }, [patients, payments]);
 
   const handleManualSyncCatalog = async () => {
     try {
@@ -1685,11 +1799,15 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           </div>
         )}
         {activeTab === 'coupons' && (
-          <div className="max-w-4xl mx-auto space-y-6">
+          <div className="max-w-5xl mx-auto space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-2xl font-bold">Cupons de Desconto</h2>
-                <p className="text-xs text-[#8A8A9E] mt-0.5">Sincronização em tempo real na nuvem (Firestore)</p>
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <Ticket className="w-6 h-6 text-mecura-neon" /> Cupons de Desconto
+                </h2>
+                <p className="text-xs text-[#8A8A9E] mt-0.5">
+                  Gerencie e acompanhe o uso dos cupons com detalhamento dos clientes e planos contratados (Essencial R$ 49,90 vs Premium R$ 249,90).
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <Button 
@@ -1716,38 +1834,41 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 </div>
               ) : (
                 coupons.map(coupon => {
-                  const usedCount = coupon.usedCount || 0;
-                  const isMaxReached = coupon.quantity && coupon.quantity > 0 && usedCount >= coupon.quantity;
+                  const resolvedUsers = resolveCouponUsers(coupon);
+                  const realCount = resolvedUsers.length > 0 ? resolvedUsers.length : (coupon.usedCount || 0);
+                  const isMaxReached = coupon.quantity && coupon.quantity > 0 && realCount >= coupon.quantity;
+                  const isExpanded = !!expandedCoupons[coupon.id];
+                  const displayedUsers = isExpanded ? resolvedUsers : resolvedUsers.slice(0, 3);
 
                   return (
-                    <div key={coupon.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
+                    <div key={coupon.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex flex-col gap-4 shadow-xl">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-3">
-                            <h3 className="font-black text-xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
-                            {usedCount > 0 && (
-                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 inline-flex items-center gap-1 shadow-sm">
-                                ⚡ {usedCount} {usedCount === 1 ? 'uso registrado' : 'usos registrados'}
+                            <h3 className="font-black text-2xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
+                            {realCount > 0 && (
+                              <span className="px-3 py-1 rounded-full text-xs font-black bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 inline-flex items-center gap-1 shadow-[0_0_10px_rgba(166,255,0,0.2)]">
+                                ⚡ {realCount} {realCount === 1 ? 'uso registrado' : 'usos registrados'}
                               </span>
                             )}
                             {isMaxReached && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                                 Limite Atingido
                               </span>
                             )}
                           </div>
                           
                           <p className="text-[#8A8A9E] text-sm mt-1">
-                            {coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador: ${coupon.ownerId})` : ''}
+                            {coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador / Indicação: ${coupon.ownerId})` : ''}
                           </p>
 
-                          <div className="flex items-center gap-3 mt-1.5 text-xs text-[#8A8A9E]">
+                          <div className="flex items-center gap-3 mt-2 text-xs text-[#8A8A9E]">
                             <span>
-                              Usados: <strong className="text-white">{usedCount}</strong> / {coupon.quantity ? coupon.quantity : 'Ilimitado (1x por cliente)'}
+                              Usados: <strong className="text-white">{realCount}</strong> / {coupon.quantity ? coupon.quantity : 'Ilimitado (1x por cliente)'}
                             </span>
                             {coupon.quantity && coupon.quantity > 0 && (
                               <span className="text-[11px] text-[#A0A0B0]">
-                                • Restam: <strong className="text-mecura-neon">{Math.max(0, coupon.quantity - usedCount)}</strong>
+                                • Restam: <strong className="text-mecura-neon">{Math.max(0, coupon.quantity - realCount)}</strong>
                               </span>
                             )}
                           </div>
@@ -1782,17 +1903,67 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                         </div>
                       </div>
 
-                      {coupon.usedBy && coupon.usedBy.length > 0 && (
-                        <div className="text-[11px] text-[#8A8A9E] pt-3 border-t border-white/5 flex flex-wrap items-center gap-1.5">
-                          <span className="text-white/90 font-medium">Clientes que já utilizaram ({coupon.usedBy.length}):</span>
-                          {coupon.usedBy.slice(-4).map((ident, i) => (
-                            <span key={i} className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[10px] text-white/80 font-mono">
-                              {ident.length > 25 ? `${ident.substring(0, 22)}...` : ident}
+                      {/* Seção Detalhada de Pacientes que Utilizaram o Cupom */}
+                      {resolvedUsers.length > 0 && (
+                        <div className="pt-4 border-t border-white/10 space-y-3">
+                          <div className="flex justify-between items-center text-xs text-white font-bold">
+                            <span className="flex items-center gap-2 text-white/90">
+                              <UserCircle className="w-4 h-4 text-mecura-neon" />
+                              Pacientes que utilizaram este cupom ({resolvedUsers.length}):
                             </span>
-                          ))}
-                          {coupon.usedBy.length > 4 && (
-                            <span className="text-[10px] text-mecura-neon font-bold">+{coupon.usedBy.length - 4} outros</span>
-                          )}
+                            {resolvedUsers.length > 3 && (
+                              <button 
+                                onClick={() => setExpandedCoupons(prev => ({ ...prev, [coupon.id]: !prev[coupon.id] }))}
+                                className="text-xs text-mecura-neon hover:underline font-semibold cursor-pointer"
+                              >
+                                {isExpanded ? 'Ver menos' : `Ver todos (${resolvedUsers.length})`}
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid gap-2">
+                            {displayedUsers.map((u, uIdx) => (
+                              <div key={uIdx} className="bg-[#1C1C2B] border border-[#2B2B3D] p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-mecura-neon/10 border border-mecura-neon/30 flex items-center gap-0 justify-center text-mecura-neon font-black text-sm shrink-0">
+                                    {u.name ? u.name.charAt(0).toUpperCase() : 'P'}
+                                  </div>
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="font-bold text-white text-sm">{u.name}</span>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[#8A8A9E] text-[11px]">
+                                      <span>📧 {u.email}</span>
+                                      {u.phone && u.phone !== 'N/A' && <span>📱 {u.phone}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                  {/* Badge do Plano Comprado */}
+                                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border inline-flex items-center gap-1 ${
+                                    u.price >= 150 || u.planName.includes('Premium')
+                                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.15)]'
+                                      : 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/30'
+                                  }`}>
+                                    {u.price >= 150 || u.planName.includes('Premium') ? '👑' : '⚡'} R$ {u.price.toFixed(2).replace('.', ',')} ({u.planName})
+                                  </span>
+
+                                  {/* Data do Uso */}
+                                  {u.usedAt && (
+                                    <span className="text-[11px] text-[#8A8A9E] bg-white/5 border border-white/10 px-2 py-0.5 rounded">
+                                      {(() => {
+                                        try {
+                                          const d = new Date(u.usedAt);
+                                          return !isNaN(d.getTime()) ? `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : u.usedAt;
+                                        } catch (e) {
+                                          return u.usedAt;
+                                        }
+                                      })()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

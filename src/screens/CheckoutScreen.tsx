@@ -291,7 +291,11 @@ export function CheckoutScreen() {
       try {
         const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
         const uemail = auth.currentUser?.email || undefined;
-        await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
+        await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
+          planName: 'Essencial',
+          price: finalPrice || 49.90,
+          isPremium: false
+        });
         localStorage.removeItem('mecura_applied_coupon');
       } catch (e) {
         console.error("Erro ao registrar uso do cupom:", e);

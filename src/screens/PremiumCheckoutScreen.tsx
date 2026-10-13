@@ -292,7 +292,11 @@ export function PremiumCheckoutScreen() {
       try {
         const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
         const uemail = auth.currentUser?.email || undefined;
-        useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
+        useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
+          planName: 'Premium',
+          price: finalPrice || 249.90,
+          isPremium: true
+        });
         localStorage.removeItem('mecura_applied_coupon');
       } catch (e) {
         console.error("Erro ao registrar uso do cupom:", e);

@@ -22,6 +22,15 @@ export interface Doctor {
   email: string;
 }
 
+export interface CouponUsageLog {
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
+  planName?: string;
+  price?: number;
+  usedAt?: string;
+}
+
 export interface Coupon {
   id: string;
   code: string;
@@ -31,6 +40,7 @@ export interface Coupon {
   quantity?: number;
   usedCount?: number;
   usedBy?: string[];
+  usageLogs?: CouponUsageLog[];
   ownerId?: string; // ID of the patient who owns this referral coupon
 }
 
@@ -51,7 +61,12 @@ interface AdminState {
   addCoupon: (coupon: Coupon) => Promise<void>;
   updateCoupon: (id: string, data: Partial<Coupon>) => Promise<void>;
   deleteCoupon: (id: string) => Promise<void>;
-  useCoupon: (id: string, userId: string, userEmail?: string) => Promise<void>;
+  useCoupon: (
+    id: string, 
+    userId: string, 
+    userEmail?: string, 
+    planDetails?: { planName?: string; price?: number; isPremium?: boolean }
+  ) => Promise<void>;
 
   notifications: Notification[];
   addNotification: (notification: Notification) => void;
@@ -119,11 +134,16 @@ export const useAdminStore = create<AdminState>()(
           console.warn("Erro ao excluir cupom no Firestore:", e);
         }
       },
-      useCoupon: async (id, userId, userEmail) => {
-        const identifiers = [userId, userEmail].filter(Boolean) as string[];
-        if (identifiers.length === 0) {
-          identifiers.push('paciente_' + Date.now().toString(36));
-        }
+      useCoupon: async (id, userId, userEmail, planDetails) => {
+        const primaryIdent = (userEmail && userEmail.trim().includes('@')) ? userEmail.trim() : (userId || ('paciente_' + Date.now().toString(36)));
+
+        const newLog: CouponUsageLog = {
+          userId: userId || undefined,
+          userEmail: userEmail || undefined,
+          planName: planDetails?.isPremium ? 'Premium' : (planDetails?.planName || 'Essencial'),
+          price: planDetails?.price || (planDetails?.isPremium ? 249.90 : 49.90),
+          usedAt: new Date().toISOString()
+        };
 
         const currentCoupons = useAdminStore.getState().coupons;
         const target = currentCoupons.find(
@@ -136,11 +156,13 @@ export const useAdminStore = create<AdminState>()(
           coupons: state.coupons.map((c) => {
             if (c.id === resolvedId || c.code.trim().toUpperCase() === resolvedCode.trim().toUpperCase()) {
               const currentUsedBy = c.usedBy || [];
-              const newUsedBy = Array.from(new Set([...currentUsedBy, ...identifiers]));
+              const currentLogs = c.usageLogs || [];
+              const newUsedBy = Array.from(new Set([...currentUsedBy, primaryIdent]));
               return { 
                 ...c, 
                 usedCount: (c.usedCount || 0) + 1, 
-                usedBy: newUsedBy 
+                usedBy: newUsedBy,
+                usageLogs: [...currentLogs, newLog]
               };
             }
             return c;
@@ -151,7 +173,8 @@ export const useAdminStore = create<AdminState>()(
           await setDoc(doc(db, 'coupons', resolvedId), {
             code: resolvedCode,
             usedCount: increment(1),
-            usedBy: arrayUnion(...identifiers),
+            usedBy: arrayUnion(primaryIdent),
+            usageLogs: arrayUnion(newLog),
             lastUsedAt: new Date().toISOString()
           }, { merge: true });
         } catch (e) {
