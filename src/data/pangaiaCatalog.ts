@@ -55,7 +55,7 @@ export const PANGAIA_PRODUCTS: PangaiaProduct[] = [
     origin: "Importado",
     type: "Óleo Sublingual Full Spectrum",
     productLine: "Pharma Óleos",
-    ratio: "Full Spectrum (CBD predominante com traços de THC < 0,3%)",
+    ratio: "Full Spectrum (CBD predominante com traços de THC < 0,2%)",
     volumeOrWeight: "30 mL",
     extractConcentration: "5% (50 mg de CBD por mL — 1500 mg no frasco)",
     mgPerDropCBD: 2.5,
@@ -94,7 +94,7 @@ export const PANGAIA_PRODUCTS: PangaiaProduct[] = [
     origin: "Importado",
     type: "Óleo Sublingual Full Spectrum",
     productLine: "Pharma Óleos",
-    ratio: "Full Spectrum (CBD balanceado de alta potência com traços de THC < 0,3%)",
+    ratio: "Full Spectrum (CBD balanceado de alta potência com traços de THC < 0,2%)",
     volumeOrWeight: "30 mL",
     extractConcentration: "10% (100 mg de CBD por mL — 3000 mg no frasco)",
     mgPerDropCBD: 5.0,
@@ -134,7 +134,7 @@ export const PANGAIA_PRODUCTS: PangaiaProduct[] = [
     origin: "Importado",
     type: "Óleo Sublingual Full Spectrum de Alta Concentração",
     productLine: "Pharma Óleos",
-    ratio: "Full Spectrum Ultra Concentrado (CBD 200 mg/mL, THC < 0,3%)",
+    ratio: "Full Spectrum Ultra Concentrado (CBD 200 mg/mL, THC < 0,2%)",
     volumeOrWeight: "30 mL",
     extractConcentration: "20% (200 mg de CBD por mL — 6000 mg no frasco)",
     mgPerDropCBD: 10.0,
@@ -739,7 +739,7 @@ export const PANGAIA_PRODUCTS: PangaiaProduct[] = [
     origin: "Importado",
     type: "Inflorescências Medicinais Curadas Ricas em CBD",
     productLine: "Flores Medicinais",
-    ratio: "Rica em CBD (12% a 16% CBD / THC < 0,3%)",
+    ratio: "Rica em CBD (12% a 16% CBD / THC < 0,2%)",
     volumeOrWeight: "5 g",
     extractConcentration: "120 a 160 mg de CBD por grama de flor curada (600 a 800 mg por embalagem)",
     carrierVehicle: "Inflorescências puras de Cannabis sativa L. dessecadas e curadas em atmosfera controlada",
@@ -753,7 +753,7 @@ export const PANGAIA_PRODUCTS: PangaiaProduct[] = [
     pharmaceuticalForm: "Flores secas curadas para uso em vaporizador medicinal",
     quantity: "01 Embalagem hermética de 5 g com controle de umidade boveda",
     administrationRoute: "Via Inalatória por Vaporização Controlada",
-    description: "Flores de Cannabis medicinal cultivadas organicamente em estufas de ambiente controlado com certificação farmacêutica. Ricas em Canabidiol (12% a 16%) e terpenos terapêuticos com teores estritamente controlados de THC (< 0,3%). Destinadas exclusivamente à vaporização médica como terapia de resgate de ação rápida para crises de dor ou ansiedade sem queima nem combustão tóxica.",
+    description: "Flores de Cannabis medicinal cultivadas organicamente em estufas de ambiente controlado com certificação farmacêutica. Ricas em Canabidiol (12% a 16%) e terpenos terapêuticos com teores estritamente controlados de THC (< 0,2%). Destinadas exclusivamente à vaporização médica como terapia de resgate de ação rápida para crises de dor ou ansiedade sem queima nem combustão tóxica.",
     indications: "Resgate de crises agudas de ansiedade e pânico, enxaqueca em fase inicial, dores neuropáticas agudas paroxísticas e espasmos musculares dolorosos refratários ao óleo oral.",
     contraindications: "Veda-se expressamente o uso por combustão (cigarro/fumo). Doença pulmonar obstrutiva crônica (DPOC) descompensada.",
     mechanismOfAction: "Rápida absorção alveolar pulmonar dos canabinoides vaporizados, atingindo pico plasmático em menos de 3 minutos, com depuração rápida e excelente controle agudo de sintomas.",
@@ -763,7 +763,7 @@ export const PANGAIA_PRODUCTS: PangaiaProduct[] = [
     prescriptionExample: "Flores Medicinais CBD High Pangaia Organics (5g) — 01 Embalagem. Inalar 2 aspirações via vaporizador médico a 180°C em crises de ansiedade ou dor de resgate.",
     details: [
       "Cultivo 100% orgânico livre de pesticidas, fungicidas e metais pesados",
-      "Perfil rico de CBD (12-16%) com menos de 0,3% de THC",
+      "Perfil rico de CBD (12-16%) com menos de 0,2% de THC",
       "Alívio de resgate quase instantâneo (< 3 minutos)",
       "Embalagem hermética com regulador de umidade para preservar integridade dos terpenos",
       "Prescrição e importação individual fundamentada sob RDC 660/2022"
@@ -849,7 +849,7 @@ LINHAS DE PRODUTOS E PREÇOS OFICIAIS:
    - Bubble Hash CBD 10g (55% canabinoides): Preço R$ 999,00. Extração mecânica por água e gelo (Ice-o-Lator).
 
 7. LINHA FLOR MEDICINAL SELECIONADA:
-   - Flores Medicinais CBD High Organics (5g — 12-16% CBD, <0,3% THC): Preço R$ 280,00. Vaporização médica regulada de resgate.
+   - Flores Medicinais CBD High Organics (5g — 12-16% CBD, <0,2% THC): Preço R$ 280,00. Vaporização médica regulada de resgate.
    - Flores Medicinais Balanced 1:1 Organics (5g — ~8% CBD / ~8% THC): Preço R$ 320,00. Equilíbrio 1:1 para dor oncológica e espasticidade.
 
 REGRA DE EMISSÃO DE RECEITA:
