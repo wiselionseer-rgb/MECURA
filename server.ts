@@ -311,21 +311,34 @@ async function startServer() {
       // Check user document in Firestore to prevent adding unpaid registrations to the doctor's queue
       try {
         const userSnap = await getDoc(doc(db, "users", patient.id));
-        if (userSnap.exists()) {
-          const u = userSnap.data();
-          const hasRealPayment = !!(
+        const u = userSnap.exists() ? userSnap.data() : null;
+        const hasRealPayment = !!(
+          (u && (
             u.pagamento_consulta === true || 
             u.hasPaid === true || 
             u.isPaid === true || 
             u.bypassedPayment === true
-          );
-          if (!hasRealPayment) {
-            console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id} sem pagamento confirmado.`);
-            return res.status(403).json({ error: "Pagamento não confirmado para este paciente" });
-          }
-        } else {
-          console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id}: usuário não encontrado.`);
-          return res.status(403).json({ error: "Usuário não encontrado ou sem pagamento confirmado" });
+          )) ||
+          patient.pagamento_consulta === true ||
+          patient.hasPaid === true ||
+          patient.isPaid === true
+        );
+        if (!hasRealPayment) {
+          console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id} sem pagamento confirmado.`);
+          return res.status(403).json({ error: "Pagamento não confirmado para este paciente" });
+        }
+
+        // Se verificado, garantir que o status do usuário em users reflita pagamento ativo
+        if (userSnap.exists()) {
+          const isUserPrem = !!(patient.isPremium || patient.plan === 'premium' || u?.pagamento_premium || u?.isPremium);
+          setDoc(doc(db, "users", patient.id), {
+            pagamento_consulta: true,
+            pagamento_premium: isUserPrem,
+            isPremium: isUserPrem,
+            plan: isUserPrem ? 'premium' : 'basic',
+            inQueue: true,
+            consultationStatus: 'waiting'
+          }, { merge: true }).catch(() => {});
         }
       } catch (err) {
         console.warn("[QUEUE FORCE-JOIN] Erro ao verificar usuário:", err);
@@ -376,6 +389,9 @@ async function startServer() {
           inQueue: true,
           consultationStatus: 'waiting',
           pagamento_consulta: true,
+          pagamento_premium: cleanPatient.isPremium,
+          isPremium: cleanPatient.isPremium,
+          plan: cleanPatient.plan,
           lastUpdated: new Date().toISOString()
         }, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
@@ -488,16 +504,53 @@ async function startServer() {
           const isRecent = !isNaN(paymentDate.getTime()) && (Date.now() - paymentDate.getTime() < 48 * 3600 * 1000);
           
           if (isRecent) {
-            const targetId = p.patientId || (p.payerEmail ? `user_${p.payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${p.mpId}`);
+            let targetId = p.patientId;
+            let existingUserData: any = null;
+
+            if (!targetId && p.payerEmail) {
+              try {
+                const cleanMail = p.payerEmail.toLowerCase().trim();
+                const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", cleanMail)));
+                if (!uSnap.empty) {
+                  targetId = uSnap.docs[0].id;
+                  existingUserData = uSnap.docs[0].data();
+                }
+              } catch (qErr) {}
+            }
+
+            if (!targetId) {
+              targetId = p.payerEmail ? `user_${p.payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${p.mpId}`;
+            }
+
+            // Atualiza usuário se encontrado
+            if (existingUserData && targetId) {
+              setDoc(doc(db, "users", targetId), {
+                pagamento_consulta: true,
+                pagamento_premium: p.isPremium,
+                hasPaid: true,
+                isPaid: true,
+                plan: p.plan,
+                isPremium: p.isPremium,
+                inQueue: true,
+                consultationStatus: 'waiting'
+              }, { merge: true }).catch(() => {});
+            }
+
             const queueDoc = await getDoc(doc(db, "queue", targetId));
             if (!queueDoc.exists()) {
               // Checar se já não está finalizado em active_consultations
               const activeDoc = await getDoc(doc(db, "active_consultations", targetId));
               if (!activeDoc.exists() || activeDoc.data()?.status !== 'finished') {
+                const patientName = existingUserData?.name || p.payerName || 'Paciente';
                 await setDoc(doc(db, "queue", targetId), {
                   id: targetId,
-                  patientName: p.payerName || 'Paciente',
-                  email: p.payerEmail || '',
+                  patientName: patientName,
+                  name: patientName,
+                  email: p.payerEmail || existingUserData?.email || '',
+                  phone: existingUserData?.phone || '',
+                  cpf: existingUserData?.cpf || '',
+                  birthDate: existingUserData?.birthDate || '',
+                  answers: existingUserData?.answers || {},
                   isPremium: p.isPremium,
                   plan: p.plan,
                   joinedAt: p.date || new Date().toISOString(),
@@ -1279,25 +1332,48 @@ app.post('/api/send-admin-push', async (req, res) => {
             await setDoc(doc(db, "payments", String(payment.id)), paymentDoc, { merge: true });
 
             // Identificar o paciente para a fila
-            const targetPatientId = patientId || (payerEmail ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`);
-
-            // Buscar dados existentes do paciente se houver
+            let targetPatientId = patientId;
+            let resolvedPatientName = payerName;
             let existingAnswers = {};
             let existingPhone = '';
             let existingCpf = '';
             let existingBirthDate = '';
 
-            try {
-              const userSnap = await getDoc(doc(db, "users", targetPatientId));
-              if (userSnap.exists()) {
-                const uData = userSnap.data();
-                existingAnswers = uData.answers || {};
-                existingPhone = uData.phone || '';
-                existingCpf = uData.cpf || '';
-                existingBirthDate = uData.birthDate || '';
+            if (!targetPatientId && payerEmail) {
+              try {
+                const cleanMail = payerEmail.toLowerCase().trim();
+                const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", cleanMail)));
+                if (!uSnap.empty) {
+                  targetPatientId = uSnap.docs[0].id;
+                  const uData = uSnap.docs[0].data();
+                  resolvedPatientName = uData.name || payerName;
+                  existingAnswers = uData.answers || {};
+                  existingPhone = uData.phone || '';
+                  existingCpf = uData.cpf || '';
+                  existingBirthDate = uData.birthDate || '';
+                }
+              } catch (qErr) {}
+            }
+
+            if (!targetPatientId) {
+              targetPatientId = payerEmail ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`;
+            }
+
+            // Buscar dados existentes se ainda não foram buscados
+            if (existingPhone === '' && targetPatientId) {
+              try {
+                const userSnap = await getDoc(doc(db, "users", targetPatientId));
+                if (userSnap.exists()) {
+                  const uData = userSnap.data();
+                  if (uData.name) resolvedPatientName = uData.name;
+                  existingAnswers = uData.answers || {};
+                  existingPhone = uData.phone || '';
+                  existingCpf = uData.cpf || '';
+                  existingBirthDate = uData.birthDate || '';
+                }
+              } catch (err) {
+                console.warn("[WEBHOOK] Erro ao buscar user:", err);
               }
-            } catch (err) {
-              console.warn("[WEBHOOK] Erro ao buscar user:", err);
             }
 
             // Inserir ou atualizar na coleção 'queue' para o médico atender
@@ -1307,7 +1383,8 @@ app.post('/api/send-admin-push', async (req, res) => {
             if (!queueSnap.exists() || queueSnap.data()?.status !== 'in-consultation') {
               await setDoc(queueDocRef, {
                 id: targetPatientId,
-                patientName: payerName,
+                patientName: resolvedPatientName,
+                name: resolvedPatientName,
                 email: payerEmail || '',
                 phone: existingPhone,
                 cpf: existingCpf,

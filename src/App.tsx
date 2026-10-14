@@ -119,6 +119,7 @@ export default function App() {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.removeItem('mecura_consultation_active');
+                  localStorage.removeItem('mecura_consultation_finished');
                 }
                 useStore.setState({ 
                   inQueue: true, 

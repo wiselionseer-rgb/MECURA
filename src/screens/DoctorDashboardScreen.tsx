@@ -68,7 +68,7 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
     <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.007c.106.005.249-.04.39.299.144.347.491 1.2.534 1.287.043.087.072.188.014.303-.058.116-.087.188-.173.289l-.26.303c-.087.087-.177.182-.076.355.101.173.45 1.085 1.276 1.821.65.579 1.199.759 1.372.845.173.086.274.072.375-.044.101-.116.433-.505.549-.679.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.043.073.043.419-.101.824z" />
   </svg>
 );
-import { setDoc, doc, updateDoc, getDoc, collection } from 'firebase/firestore';
+import { setDoc, doc, updateDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { requestNotificationPermission, getNotificationPermission, testNotification, showNativeNotification, subscribeToBackgroundNotifications, triggerBackgroundPush } from '../utils/notifications';
 import { playNotificationSound, initAudioUnlock } from '../utils/sound';
@@ -871,6 +871,7 @@ export function DoctorDashboardScreen() {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const greetedPatientsRef = useRef<Set<string>>(new Set());
 
   const pendingCount = allAppointments.filter(app => app.status === 'pending').length;
 
@@ -1020,20 +1021,63 @@ export function DoctorDashboardScreen() {
     startConsultation(patient.id);
     subscribeToMessages(patient.id);
     
-    // Auto-greeting if the patient was just waiting
-    if (patient.status === 'waiting') {
-      setTimeout(() => {
-        const objectivesStr = patient.answers?.objectives?.length > 0 
-          ? patient.answers.objectives.join(", ") 
-          : "suas queixas e histórico";
+    // Auto-greeting: ONLY send once when the consultation is first initiated
+    const patientGreetingKey = `mecura_greeting_sent_${patient.id}`;
+    const alreadyGreetedInStorage = typeof window !== 'undefined' && localStorage.getItem(patientGreetingKey) === 'true';
+    const alreadyGreetedInRef = greetedPatientsRef.current.has(patient.id);
+    const alreadyGreetedInPatient = !!(patient.greetingSent || enrichedPatient.greetingSent || (patient as any).initialGreetingSent);
+
+    if (patient.status === 'waiting' && !alreadyGreetedInStorage && !alreadyGreetedInRef && !alreadyGreetedInPatient) {
+      // Immediately flag in memory and storage to prevent race condition when doctor switches chat
+      greetedPatientsRef.current.add(patient.id);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(patientGreetingKey, 'true');
+      }
+
+      setTimeout(async () => {
+        try {
+          // Double-check Firestore messages to ensure NO doctor message was ever sent before
+          const msgsRef = collection(db, 'active_consultations', patient.id, 'messages');
+          const snap = await getDocs(msgsRef);
+          const hasExistingDoctorMessage = !snap.empty && snap.docs.some(d => {
+            const data = d.data();
+            return data.sender === 'doctor' || (data.text && typeof data.text === 'string' && data.text.includes('sou o Dr. Guilherme'));
+          });
+
+          if (hasExistingDoctorMessage) {
+            console.log("[Auto-Greeting] Patient already has doctor message in Firestore. Skipping duplicate greeting.");
+            return;
+          }
+
+          // Double check local store messages as well
+          const currentStoreMsgs = useStore.getState().messages;
+          if (currentStoreMsgs.some(m => m.sender === 'doctor' || (m.text && typeof m.text === 'string' && m.text.includes('sou o Dr. Guilherme')))) {
+            console.log("[Auto-Greeting] Doctor message already exists in local store. Skipping duplicate greeting.");
+            return;
+          }
+
+          const rawObjectives = patient.answers?.objectives || enrichedPatient.answers?.objectives;
+          const objectivesStr = (Array.isArray(rawObjectives) && rawObjectives.length > 0)
+            ? rawObjectives.join(", ") 
+            : "";
+            
+          const pFirstName = (enrichedPatient.patientName || patient.patientName || 'Paciente').split(' ')[0];
+          const greetingMsg = objectivesStr
+            ? `Olá ${pFirstName}, sou o Dr. Guilherme. Analisei seu histórico e sua queixa de ${objectivesStr}. Como você está se sentindo hoje?`
+            : `Olá ${pFirstName}, sou o Dr. Guilherme. Analisei o seu histórico de sintomas e objetivos de tratamento. Como você está se sentindo hoje?`;
           
-        const greetingMsg = `Olá ${(patient.patientName || 'Paciente').split(' ')[0]}, sou o Dr. Guilherme. Analisei sua queixa de ${objectivesStr}. Como você está se sentindo hoje?`;
-        
-        addMessage({
-          text: greetingMsg,
-          sender: 'doctor',
-          type: 'text'
-        }, patient.id);
+          await addMessage({
+            text: greetingMsg,
+            sender: 'doctor',
+            type: 'text'
+          }, patient.id);
+
+          await setDoc(doc(db, 'queue', patient.id), { greetingSent: true }, { merge: true }).catch(() => {});
+          await setDoc(doc(db, 'users', patient.id), { greetingSent: true }, { merge: true }).catch(() => {});
+          await setDoc(doc(db, 'active_consultations', patient.id), { greetingSent: true }, { merge: true }).catch(() => {});
+        } catch (err) {
+          console.warn("[Auto-Greeting] Error checking/sending initial greeting:", err);
+        }
       }, 1000);
     }
   };
@@ -1910,6 +1954,22 @@ export function DoctorDashboardScreen() {
           status: 'pending_confirmation'
         }
       } as any, targetPatientId);
+
+      if (targetPatientId) {
+        try {
+          await updateDoc(doc(db, 'queue', targetPatientId), {
+            status: 'in-consultation',
+            lastMessageAt: new Date().toISOString(),
+            lastMessageText: 'Receita Prévia Enviada',
+            hasUnread: true
+          });
+        } catch (err) {
+          console.warn("Could not update queue status for receita previa:", err);
+        }
+        useStore.setState((state) => ({
+          queue: state.queue.map(p => p.id === targetPatientId ? { ...p, status: 'in-consultation', hasUnread: true } : p)
+        }));
+      }
 
       setShowPrescriptionEditorModal(false);
       setShowProductSearchModal(false);
@@ -4623,7 +4683,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                       <div className="bg-[#181822] border border-[#2a2a35] rounded-2xl p-5 flex items-center justify-between mb-8">
                         <div>
                           <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Teleconsulta Completa</p>
-                          <p className="text-white font-bold text-2xl">R$ 249<span className="text-gray-500 text-sm">,00</span></p>
+                          <p className="text-white font-bold text-2xl">R$ 249<span className="text-gray-500 text-sm">,90</span></p>
                         </div>
                         <div className="w-12 h-12 rounded-full bg-mecura-neon/10 flex items-center justify-center">
                           <ShieldCheck className="w-6 h-6 text-mecura-neon" />
@@ -4647,7 +4707,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                         </div>
                         <div>
                           <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Confirmado!</h3>
-                          <p className="text-white text-sm">O paciente realizou o pagamento da Consulta Premium (R$ 249,00). Você pode prosseguir com o atendimento e envio dos laudos.</p>
+                          <p className="text-white text-sm">O paciente realizou o pagamento da Consulta Premium (R$ 249,90). Você pode prosseguir com o atendimento e envio dos laudos.</p>
                         </div>
                       </div>
                       <button

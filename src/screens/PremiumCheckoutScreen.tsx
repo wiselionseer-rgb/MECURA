@@ -249,7 +249,19 @@ export function PremiumCheckoutScreen() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('mecura_pagamento', 'true');
       localStorage.setItem('mecura_premium', 'true');
+      localStorage.removeItem('mecura_consultation_finished');
+      localStorage.removeItem('mecura_consultation_active');
+      localStorage.removeItem('mecura_queue_display_pos');
+      localStorage.removeItem('mecura_queue_entered_at');
+      localStorage.removeItem('mecura_queue_notified_10m');
     }
+    useStore.setState({
+      isConsultationFinished: false,
+      consultationActive: false,
+      inQueue: true,
+      pagamento_consulta: true,
+      pagamento_premium: true
+    });
 
     const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
     const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente VIP';
@@ -277,6 +289,7 @@ export function PremiumCheckoutScreen() {
           isPremium: true,
           consultationStatus: 'waiting',
           inQueue: true,
+          isConsultationFinished: false,
           lastPaymentDate: new Date().toISOString()
         }, { merge: true });
       }

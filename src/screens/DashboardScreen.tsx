@@ -83,17 +83,25 @@ export function DashboardScreen() {
 
   const hasPaidConsultation = !!pagamento_consulta;
 
-  const isFinishedConsultation = isConsultationFinished || 
-    (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') ||
-    myQueueEntry?.status === 'finished' ||
-    messages.some(m => m.sender === 'doctor' && (
-      m.text?.toLowerCase().includes('consulta finalizada') || 
-      m.text?.toLowerCase().includes('atendimento finalizado') ||
-      m.text?.toLowerCase().includes('consulta foi finalizada')
-    ));
+  const isDoctorCalling = hasPaidConsultation && (myQueueEntry?.status === 'in-consultation' || consultationActive);
+  
+  const isWaitingInQueue = hasPaidConsultation && !isDoctorCalling && (
+    myQueueEntry?.status === 'waiting' || 
+    (inQueue && !consultationActive && myQueueEntry?.status !== 'finished')
+  );
 
-  const isDoctorCalling = hasPaidConsultation && !isFinishedConsultation && (myQueueEntry?.status === 'in-consultation' || consultationActive);
-  const isWaitingInQueue = hasPaidConsultation && !isDoctorCalling && !isFinishedConsultation && (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive));
+  const isFinishedConsultation = hasPaidConsultation && !isDoctorCalling && !isWaitingInQueue && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
+    myQueueEntry?.status === 'finished' ||
+    (!myQueueEntry && !inQueue && (
+      isConsultationFinished || 
+      (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') ||
+      messages.some(m => m.sender === 'doctor' && (
+        m.text?.toLowerCase().includes('consulta finalizada') || 
+        m.text?.toLowerCase().includes('atendimento finalizado') ||
+        m.text?.toLowerCase().includes('consulta foi finalizada')
+      ))
+    ))
+  );
 
   // Handle entering queue directly
   const handleEnterQueue = async () => {
@@ -115,6 +123,12 @@ export function DashboardScreen() {
 
     const isPrem = !!(pagamento_premium || (typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'));
     
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('mecura_consultation_finished');
+      localStorage.removeItem('mecura_consultation_active');
+    }
+    useStore.setState({ isConsultationFinished: false, consultationActive: false, inQueue: true });
+
     await joinQueue({
       id: currentUid,
       patientName: pName || 'Paciente',
@@ -135,15 +149,28 @@ export function DashboardScreen() {
     return () => unsubQueue();
   }, [subscribeToQueue]);
 
-  // Patient has actual prescription if consultation is finished or doctor has sent prescription/consultation concluding message
-  const hasActualPrescription = hasPaidConsultation && (
+  // Clean stale finished flags if patient is waiting in queue
+  useEffect(() => {
+    if (isWaitingInQueue || myQueueEntry?.status === 'waiting') {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_consultation_finished');
+        localStorage.removeItem('mecura_consultation_active');
+      }
+      if (isConsultationFinished) {
+        useStore.setState({ isConsultationFinished: false });
+      }
+    }
+  }, [isWaitingInQueue, myQueueEntry?.status, isConsultationFinished]);
+
+  // Patient has actual prescription ONLY when consultation is finished and not actively waiting or in consultation
+  const hasActualPrescription = hasPaidConsultation && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
     isFinishedConsultation ||
-    messages.some(m => 
+    (myQueueEntry?.status === 'finished' && messages.some(m => 
       m.type === 'prescription' || 
       m.type === 'receita_previa' || 
       (m.type === 'product' && m.productData) ||
       (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
-    )
+    ))
   );
 
   // Sync messages and user payment status if user is logged in
@@ -457,63 +484,7 @@ export function DashboardScreen() {
       >
         {/* Hero Section (Status Card) */}
         <section>
-          {hasActualPrescription ? (
-            <motion.div 
-              variants={itemVariants}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              className="relative border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
-              onClick={() => navigate('/protocol')}
-            >
-              {/* Background Video */}
-              <div className="absolute inset-0 z-0 bg-black">
-                
-                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
-                {!videoFailed && (
-                  <video
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    ref={(el) => {
-                      if (el && !el.dataset.initialized) {
-                        el.dataset.initialized = 'true';
-                        const p = el.play();
-                        if (p !== undefined) {
-                          p.catch((e) => {
-                            console.log('Autoplay blocked:', e);
-                            setVideoFailed(true);
-                          });
-                        }
-                      }
-                    }}
-                    src="/2131-ezgif.com-video-compressor.mp4"
-                    className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
-                <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
-              </div>
-              
-              <div className="relative z-10 flex flex-col items-start">
-                <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
-                  <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
-                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">PRESCRITA</span>
-                </div>
-                
-                <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
-                  Sua receita<br/>está pronta!
-                </h2>
-                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
-                  Acesse seu laudo, orientações e prescrição médica digital.
-                </p>
-                
-                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all">
-                  Ver Documentos <ChevronRight className="w-4 h-4 ml-1" />
-                </button>
-              </div>
-            </motion.div>
-          ) : isDoctorCalling ? (
+          {isDoctorCalling ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -592,6 +563,61 @@ export function DashboardScreen() {
                 
                 <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(255,138,0,0.2)] transition-all">
                   Acompanhar Fila <ChevronRight className="w-4 h-4 ml-1" />
+                </button>
+              </div>
+            </motion.div>
+          ) : hasActualPrescription ? (
+            <motion.div 
+              variants={itemVariants}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="relative border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
+              onClick={() => navigate('/protocol')}
+            >
+              {/* Background Video */}
+              <div className="absolute inset-0 z-0 bg-black">
+                <img src="/dashboard-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
+                {!videoFailed && (
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    ref={(el) => {
+                      if (el && !el.dataset.initialized) {
+                        el.dataset.initialized = 'true';
+                        const p = el.play();
+                        if (p !== undefined) {
+                          p.catch((e) => {
+                            console.log('Autoplay blocked:', e);
+                            setVideoFailed(true);
+                          });
+                        }
+                      }
+                    }}
+                    src="/2131-ezgif.com-video-compressor.mp4"
+                    className="absolute inset-0 w-full h-full object-cover opacity-100 pointer-events-none z-10"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0F]/50 to-transparent z-20 pointer-events-none" />
+              </div>
+              
+              <div className="relative z-10 flex flex-col items-start">
+                <div className="inline-flex items-center gap-2 bg-mecura-neon/10 border border-mecura-neon/20 px-3 py-1.5 rounded-full mb-6">
+                  <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
+                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">PRESCRITA</span>
+                </div>
+                
+                <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
+                  Sua receita<br/>está pronta!
+                </h2>
+                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
+                  Acesse seu laudo, orientações e prescrição médica digital.
+                </p>
+                
+                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.2)] transition-all">
+                  Ver Documentos <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
             </motion.div>

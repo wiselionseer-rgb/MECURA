@@ -9,7 +9,8 @@ import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorR
 import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
-import { auth } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const PatientChatInputBar = ({
   onSend,
@@ -73,6 +74,7 @@ export function ChatScreen() {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const greetingAttemptedRef = useRef(false);
 
   const [currentUid, setCurrentUid] = useState<string | null>(auth.currentUser?.uid || null);
 
@@ -125,8 +127,15 @@ export function ChatScreen() {
   );
 
   const isConsultationConcluded = useMemo(() => {
+    // If patient is waiting in queue or actively in consultation, consultation is NOT finished
+    if (myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation')) {
+      return false;
+    }
+
     if (isConsultationFinished) return true;
-    if (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') return true;
+    if (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') {
+      if (!myQueueEntry) return true;
+    }
     
     // Check if the doctor has sent the final consultation closing message
     const hasFinalDoctorMsg = messages.some(
@@ -259,27 +268,48 @@ export function ChatScreen() {
   };
 
   useEffect(() => {
+    if (!effectiveConsultationId) return;
+    const greetingKey = `mecura_greeting_sent_${effectiveConsultationId}`;
+    if (typeof window !== 'undefined' && localStorage.getItem(greetingKey) === 'true') {
+      return;
+    }
+    if (greetingAttemptedRef.current) return;
+
     // Initial doctor message only if patient has actually paid AND chat is empty AND patient is actively in consultation
     if (hasPaidConsultation && !isWaitingInQueue && (consultationActive || myQueueEntry?.status === 'in-consultation') && messages.length === 0) {
-      const timeoutId = setTimeout(() => {
+      greetingAttemptedRef.current = true;
+      const timeoutId = setTimeout(async () => {
         // Double check if messages are still empty before adding
         if (useStore.getState().messages.length > 0) return;
         
-        let problemText = 'anamnese';
-        
+        try {
+          const msgsSnap = await getDocs(collection(db, 'active_consultations', effectiveConsultationId, 'messages'));
+          if (!msgsSnap.empty) {
+            if (typeof window !== 'undefined') localStorage.setItem(greetingKey, 'true');
+            return;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(greetingKey, 'true');
+        }
+
+        let problemText = 'seus sintomas e histórico';
         if ((answers && answers.objectives && answers.objectives.length) > 0) {
-          problemText = `queixa de ${answers.objectives.join(', ')}`;
+          problemText = `sua queixa de ${answers.objectives.join(', ')}`;
         } else if ((answers && answers.description)) {
-          problemText = 'queixa principal';
+          problemText = 'suas observações iniciais';
         }
         
-        const obsText = answers?.description ? ` e as observações que você enviou` : '';
+        const obsText = answers?.description && !answers?.objectives?.length ? ` e as observações que você enviou` : '';
 
         addMessage({
-          text: `Olá ${userName || 'paciente'}, sou o Dr. Guilherme. Analisei sua ${problemText}${obsText}. Como você está se sentindo hoje?`,
+          text: `Olá ${userName || 'paciente'}, sou o Dr. Guilherme. Analisei ${problemText}${obsText}. Como você está se sentindo hoje?`,
           sender: 'doctor'
         }, effectiveConsultationId);
-      }, 1000);
+      }, 1200);
       
       return () => clearTimeout(timeoutId);
     }
@@ -1095,7 +1125,7 @@ export function ChatScreen() {
                 <div className="bg-[#181822] border border-[#2a2a35] rounded-2xl p-5 flex items-center justify-between mb-8">
                   <div>
                     <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Teleconsulta Completa</p>
-                    <p className="text-white font-bold text-2xl">R$ 249<span className="text-gray-500 text-sm">,00</span></p>
+                    <p className="text-white font-bold text-2xl">R$ 249<span className="text-gray-500 text-sm">,90</span></p>
                   </div>
                   <div className="w-12 h-12 rounded-full bg-mecura-neon/10 flex items-center justify-center">
                     <ShieldCheck className="w-6 h-6 text-mecura-neon" />
@@ -1121,7 +1151,7 @@ export function ChatScreen() {
                 </div>
                 <div>
                   <h3 className="text-[#A6FF00] font-bold text-lg">Pagamento Aprovado!</h3>
-                  <p className="text-white text-sm">O pagamento da Consulta Premium (R$ 249,00) foi confirmado. O médico já foi notificado.</p>
+                  <p className="text-white text-sm">O pagamento da Consulta Premium (R$ 249,90) foi confirmado. O médico já foi notificado.</p>
                 </div>
               </div>
             ) : (

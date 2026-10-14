@@ -510,6 +510,8 @@ export const useStore = create<AppState>((set, get) => ({
     if (typeof window !== 'undefined') { 
       localStorage.setItem('mecura_patientId', currentUserId); 
       localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.removeItem('mecura_consultation_finished');
+      localStorage.removeItem('mecura_consultation_active');
       localStorage.removeItem('mecura_queue_display_pos');
       localStorage.removeItem('mecura_queue_entered_at');
       localStorage.removeItem('mecura_queue_notified_10m');
@@ -523,7 +525,16 @@ export const useStore = create<AppState>((set, get) => ({
       messages: []
     });
     
-    const isPremium = !!(state.pagamento_premium || state.selectedOffer === 'premium' || (patient as any)?.isPremium || (patient as any)?.plan === 'premium' || uData?.pagamento_premium || uData?.isPremium);
+    const isPremium = !!(
+      state.pagamento_premium || 
+      state.selectedOffer === 'premium' || 
+      (patient as any)?.isPremium || 
+      (patient as any)?.plan === 'premium' || 
+      (patient as any)?.pagamento_premium ||
+      uData?.pagamento_premium || 
+      uData?.isPremium ||
+      (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium'))
+    );
 
     if (!resolvedPatientName) {
       const storedName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
@@ -588,9 +599,10 @@ export const useStore = create<AppState>((set, get) => ({
       isConsultationFinished: false,
       consultationActive: false,
       pagamento_consulta: true,
+      pagamento_premium: isPremium,
       queue: updatedQueue,
       queuePosition: existsIdx >= 0 ? existsIdx + 1 : 1,
-      estimatedWaitTime: 10,
+      estimatedWaitTime: isPremium ? 5 : 10,
       messages: []
     });
     
@@ -955,13 +967,25 @@ export const useStore = create<AppState>((set, get) => ({
           myIndex = queueData.findIndex(p => p.id === storedPatientId);
         }
         if (myIndex === -1 && myEmail) {
-          myIndex = queueData.findIndex(p => p.email && p.email.toLowerCase() === myEmail);
+          // Check for active waiting/in-consultation with this email first
+          myIndex = queueData.findIndex(p => p.email && p.email.toLowerCase() === myEmail && (p.status === 'waiting' || p.status === 'in-consultation'));
+          if (myIndex === -1) {
+            myIndex = queueData.findIndex(p => p.email && p.email.toLowerCase() === myEmail);
+          }
         }
         if (myIndex === -1 && myPhone && myPhone.length >= 8) {
-          myIndex = queueData.findIndex(p => p.phone && p.phone.replace(/\D/g, '') === myPhone);
+          // Check for active waiting/in-consultation with this phone first
+          myIndex = queueData.findIndex(p => p.phone && p.phone.replace(/\D/g, '') === myPhone && (p.status === 'waiting' || p.status === 'in-consultation'));
+          if (myIndex === -1) {
+            myIndex = queueData.findIndex(p => p.phone && p.phone.replace(/\D/g, '') === myPhone);
+          }
         }
         if (myIndex === -1 && myCpf && myCpf.length >= 9) {
-          myIndex = queueData.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === myCpf);
+          // Check for active waiting/in-consultation with this CPF first
+          myIndex = queueData.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === myCpf && (p.status === 'waiting' || p.status === 'in-consultation'));
+          if (myIndex === -1) {
+            myIndex = queueData.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === myCpf);
+          }
         }
 
         if (myIndex !== -1) {

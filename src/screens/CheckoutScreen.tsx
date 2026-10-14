@@ -248,7 +248,20 @@ export function CheckoutScreen() {
       if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
     }
     setPagamentoConsulta(true);
-    if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.removeItem('mecura_consultation_finished');
+      localStorage.removeItem('mecura_consultation_active');
+      localStorage.removeItem('mecura_queue_display_pos');
+      localStorage.removeItem('mecura_queue_entered_at');
+      localStorage.removeItem('mecura_queue_notified_10m');
+    }
+    useStore.setState({
+      isConsultationFinished: false,
+      consultationActive: false,
+      inQueue: true,
+      pagamento_consulta: true
+    });
 
     const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
     const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
@@ -276,6 +289,7 @@ export function CheckoutScreen() {
           isPremium: isPrem,
           consultationStatus: 'waiting',
           inQueue: true,
+          isConsultationFinished: false,
           lastPaymentDate: new Date().toISOString()
         }, { merge: true });
       }
@@ -292,9 +306,9 @@ export function CheckoutScreen() {
         const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
         const uemail = auth.currentUser?.email || undefined;
         await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
-          planName: 'Essencial',
-          price: finalPrice || 49.90,
-          isPremium: false
+          planName: isPrem ? 'VIP Premium' : 'Essencial',
+          price: finalPrice || (isPrem ? 249.90 : 49.90),
+          isPremium: isPrem
         });
         localStorage.removeItem('mecura_applied_coupon');
       } catch (e) {

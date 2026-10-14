@@ -25,6 +25,7 @@ export function QueueScreen() {
     pagamento_consulta, 
     consultationActive, 
     isConsultationFinished,
+    inQueue,
     subscribeToQueue,
     joinQueue,
     userPhone,
@@ -38,10 +39,24 @@ export function QueueScreen() {
   
   // Find if current user has an entry in Firestore queue
   const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
-  const myQueueEntry = queue.find(p => 
-    (currentUserId && p.id === currentUserId) ||
-    (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
-  );
+  
+  // Look for current user's entry: prioritize exact UID match, and if matching by phone, prioritize active/waiting status over old finished records
+  const myQueueEntry = (() => {
+    if (currentUserId) {
+      const byId = queue.find(p => p.id === currentUserId);
+      if (byId) return byId;
+    }
+    const cleanPhone = (userPhone || '').replace(/\D/g, '');
+    if (cleanPhone && cleanPhone.length >= 8) {
+      // Find entries matching phone, prioritize waiting or in-consultation
+      const matches = queue.filter(p => p.phone && p.phone.replace(/\D/g, '') === cleanPhone);
+      const activeMatch = matches.find(p => p.status === 'waiting' || p.status === 'in-consultation');
+      if (activeMatch) return activeMatch;
+      // If none active, fallback to first match
+      return matches[0];
+    }
+    return undefined;
+  })();
 
   const isVip = !!(
     pagamento_premium || 
@@ -289,13 +304,24 @@ export function QueueScreen() {
   }, [myQueueEntry?.status, consultationActive, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
 
   useEffect(() => {
-    // If patient is waiting in queue, ensure consultationActive is false
+    // If patient has paid and is not marked finished by the doctor, ensure stale finished flags are removed
+    if (pagamento_consulta && myQueueEntry?.status !== 'finished') {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_consultation_finished');
+      }
+      if (isConsultationFinished) {
+        useStore.setState({ isConsultationFinished: false });
+      }
+    }
+
+    // If patient is waiting in queue, ensure consultationActive is false and remove any stale finished flag
     if (myQueueEntry && myQueueEntry.status === 'waiting') {
-      if (consultationActive) {
-        useStore.setState({ consultationActive: false, inQueue: true });
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('mecura_consultation_active');
-        }
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_consultation_finished');
+        localStorage.removeItem('mecura_consultation_active');
+      }
+      if (consultationActive || isConsultationFinished || !inQueue) {
+        useStore.setState({ consultationActive: false, inQueue: true, isConsultationFinished: false });
       }
       return;
     }
@@ -313,11 +339,12 @@ export function QueueScreen() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('mecura_consultation_active', 'true');
         localStorage.setItem('mecura_pagamento', 'true');
+        localStorage.removeItem('mecura_consultation_finished');
       }
       playNotificationSound();
       navigate('/chat');
     }
-  }, [myQueueEntry?.status, myQueueEntry?.id, currentUserId, consultationActive, navigate]);
+  }, [myQueueEntry?.status, myQueueEntry?.id, currentUserId, consultationActive, isConsultationFinished, inQueue, pagamento_consulta, navigate]);
 
   const formatTime = (totalSecs: number) => {
     const safeSecs = Math.max(0, isNaN(totalSecs) ? 0 : totalSecs);
@@ -353,10 +380,11 @@ export function QueueScreen() {
   const progressPercent = Math.min(100, Math.round((effectiveSeconds / 600) * 100));
   const estimatedMins = Math.max(1, displayPosition * 2);
 
-  const isFinished = !!(
-    isConsultationFinished || 
-    myQueueEntry?.status === 'finished' || 
-    (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true')
+  // A consultation is ONLY finished if the doctor explicitly completed it or there's an explicit finished entry for the current session
+  const isFinished = !consultationActive && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && !!(
+    (myQueueEntry?.status === 'finished' && !inQueue && !pagamento_consulta) || 
+    (myQueueEntry?.status === 'finished' && isConsultationFinished && !inQueue) ||
+    (!pagamento_consulta && (!myQueueEntry && (isConsultationFinished || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true'))))
   );
 
   return (
@@ -451,6 +479,21 @@ export function QueueScreen() {
                     Meu Painel
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem('mecura_consultation_finished');
+                      localStorage.removeItem('mecura_consultation_active');
+                    }
+                    useStore.setState({ isConsultationFinished: false, consultationActive: false });
+                    navigate('/checkout');
+                  }}
+                  className="text-[11px] text-mecura-silver/70 hover:text-mecura-neon underline transition-colors pt-2 cursor-pointer"
+                >
+                  Precisa de uma nova consulta? Clique aqui
+                </button>
               </div>
             </div>
           </div>
