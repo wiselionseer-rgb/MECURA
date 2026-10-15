@@ -14,8 +14,17 @@ import {
   DollarSign,
   Layers,
   ShieldCheck,
-  Globe
-, Users, Activity, Stethoscope, TrendingUp, BookOpen, Pill, FileText } from 'lucide-react';
+  Globe,
+  Users, 
+  Activity, 
+  Stethoscope, 
+  TrendingUp, 
+  BookOpen, 
+  Pill, 
+  FileText,
+  Plus,
+  Trash2
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
@@ -23,7 +32,7 @@ import { useStore } from '../store/useStore';
 import { ProductBulaModal } from './ProductBulaModal';
 
 export function CBDGuideView() {
-  const { productCategories: storeCategories } = useAdminStore();
+  const { productCategories: storeCategories, addProduct, updateProduct, deleteProduct } = useAdminStore();
   const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
 
   useEffect(() => {
@@ -42,11 +51,11 @@ export function CBDGuideView() {
   const [diseaseFilter, setDiseaseFilter] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>(() => {
-    // Open the first category by default
-    if (productCategories.length > 0) {
-      return { [productCategories[0].id]: true };
-    }
-    return {};
+    const initial: Record<string, boolean> = {};
+    cbdGuideData.forEach(cat => {
+      initial[cat.id] = true;
+    });
+    return initial;
   });
   const [showWarning, setShowWarning] = useState(true);
   const [warningDismissed, setWarningDismissed] = useState(false);
@@ -56,6 +65,78 @@ export function CBDGuideView() {
   const [deepSearchTerm, setDeepSearchTerm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [selectedDisease, setSelectedDisease] = useState<{name: string, category: CBDCategory} | null>(null);
+
+  // States for adding a new product directly from the CBD Guide
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdManufacturer, setNewProdManufacturer] = useState('SouCannabis');
+  const [newProdCategory, setNewProdCategory] = useState<string>('soucannabis_oficial');
+  const [newProdOrigin, setNewProdOrigin] = useState<'Nacional' | 'Importado'>('Nacional');
+  const [newProdType, setNewProdType] = useState('Óleo Full Spectrum');
+  const [newProdConcentration, setNewProdConcentration] = useState('');
+  const [newProdForm, setNewProdForm] = useState('Solução Oleosa Sublingual (Gotas)');
+  const [newProdRoute, setNewProdRoute] = useState('Via Sublingual / Oral');
+  const [newProdQuantity, setNewProdQuantity] = useState('01 Frasco de 30 mL');
+  const [newProdIndications, setNewProdIndications] = useState('Dor Crônica, Ansiedade, Insônia');
+  const [newProdPosology, setNewProdPosology] = useState('Tomar 03 a 05 gotas sublinguais de 12/12 horas. Reter 60 segundos antes de engolir.');
+  const [newProdPriceBRL, setNewProdPriceBRL] = useState('');
+  const [newProdPriceUSD, setNewProdPriceUSD] = useState('');
+  const [newProdDescription, setNewProdDescription] = useState('');
+  const [addSuccessToast, setAddSuccessToast] = useState<string | null>(null);
+
+  const handleSaveNewProduct = () => {
+    if (!newProdName.trim()) {
+      alert("Por favor, informe o nome comercial do medicamento.");
+      return;
+    }
+
+    const cleanName = newProdName.trim();
+    const enriched = enrichMedicationDetails(
+      cleanName,
+      newProdManufacturer.trim(),
+      newProdOrigin,
+      newProdType
+    );
+
+    const targetCatId = newProdCategory || (newProdOrigin === 'Nacional' ? 'soucannabis_oficial' : 'pangaia_oficial');
+
+    const createdProduct: CBDProduct = {
+      name: cleanName,
+      manufacturer: newProdManufacturer.trim() || 'Associação / Laboratório',
+      type: newProdType.trim() || 'Óleo Full Spectrum',
+      concentration: newProdConcentration.trim() || enriched.concentration || '',
+      origin: newProdOrigin,
+      details: [
+        newProdConcentration.trim() || enriched.concentration || 'Concentração padronizada',
+        newProdForm.trim() || 'Solução Oleosa',
+        newProdQuantity.trim() || 'Frasco 30 mL',
+        newProdRoute.trim() || 'Via Sublingual'
+      ],
+      indications: newProdIndications.trim() || 'Dores Crônicas, Ansiedade, Insônia',
+      usageInstructions: newProdPosology.trim() || 'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
+      priceBRL: newProdPriceBRL ? Number(newProdPriceBRL.replace(/[^0-9.]/g, '')) : undefined,
+      priceUSD: newProdPriceUSD ? Number(newProdPriceUSD.replace(/[^0-9.]/g, '')) : undefined,
+      description: newProdDescription.trim() || `Medicamento registrado pelo médico no Guia CBD.`
+    };
+
+    addProduct(targetCatId, createdProduct);
+
+    setSelectedCategoryFilter('all');
+    setDiseaseFilter('');
+    setSearchTerm(cleanName);
+    setExpandedCategories(prev => ({ ...prev, [targetCatId]: true }));
+
+    setAddSuccessToast(`✓ "${cleanName}" cadastrado e adicionado ao Guia CBD com sucesso!`);
+    setTimeout(() => setAddSuccessToast(null), 4000);
+
+    // Reset fields and close
+    setNewProdName('');
+    setNewProdConcentration('');
+    setNewProdPriceBRL('');
+    setNewProdPriceUSD('');
+    setNewProdDescription('');
+    setShowAddProductModal(false);
+  };
 
   const allDiseases = React.useMemo(() => {
     const diseases = [];
@@ -135,25 +216,6 @@ export function CBDGuideView() {
   const filteredData = productCategories
     .filter(category => {
       if (isSearching) {
-        // If user is searching, check across all categories if current filter doesn't yield results
-        if (selectedCategoryFilter === 'all') return true;
-        const term = searchTerm.toLowerCase();
-        // If searching specifically for brand names, prioritize matching that category
-        if (term.includes('pangaia') || term.includes('maná') || term.includes('táio')) {
-          return category.id === 'pangaia_oficial';
-        }
-        if (term.includes('sou') || term.includes('soucannabis')) {
-          return category.id === 'soucannabis_oficial';
-        }
-        if (term.includes('abrace')) {
-          return category.id === 'abrace_oficial';
-        }
-        if (term.includes('abec') || term.includes('abecmed')) {
-          return category.id === 'abecmed_oficial';
-        }
-        if (term.includes('flower') || term.includes('flowermed')) {
-          return category.id === 'flowermed_oficial';
-        }
         return true;
       }
       return selectedCategoryFilter === 'all' || category.id === selectedCategoryFilter;
@@ -298,6 +360,16 @@ export function CBDGuideView() {
               )}
             </div>
 
+            <button
+              type="button"
+              onClick={() => setShowAddProductModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black rounded-xl text-xs md:text-sm font-black shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all cursor-pointer active:scale-95 flex-shrink-0"
+              title="Cadastrar novo produto ou medicamento no Guia CBD"
+            >
+              <Plus className="w-4 h-4 text-black stroke-[3]" />
+              <span>+ Adicionar Novo Produto</span>
+            </button>
+
             {!showWarning && (
               <button
                 id="btn-reopen-warning-desktop"
@@ -311,6 +383,19 @@ export function CBDGuideView() {
             )}
           </div>
         </div>
+
+        {/* Success Toast Banner */}
+        {addSuccessToast && (
+          <div className="mt-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between gap-2 shadow-lg animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+              <span>{addSuccessToast}</span>
+            </div>
+            <button onClick={() => setAddSuccessToast(null)} className="text-emerald-400 hover:text-white">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Association & Laboratory Quick Selection Toolbar */}
         <div id="cbd-association-quick-select" className="pt-3 pb-1 border-t border-white/5 mt-2">
@@ -762,7 +847,7 @@ export function CBDGuideView() {
         ) : (
           <div className="space-y-6">
           {filteredData.map((category) => {
-            const isExpanded = expandedCategories[category.id] ?? false;
+            const isExpanded = isSearching ? (expandedCategories[category.id] !== false) : (expandedCategories[category.id] ?? true);
 
             return (
               <div 
@@ -1347,7 +1432,7 @@ export function CBDGuideView() {
                         <div 
                           key={`mob-prod-${category.id}-${product.name}-${idx}`} 
                           className="p-4 rounded-xl bg-[#0E0E14] border border-mecura-elevated hover:border-mecura-neon/40 transition-all space-y-2.5 cursor-pointer hover:bg-white/5"
-                          onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}
+                          onClick={() => setSelectedProduct({ ...product, categoryId: category.id, categoryName: category.title, categoryIndications: category.indicationsList || [] })}
                         >
                           {/* Top: Name & Price */}
                           <div className="flex justify-between items-start gap-2">
@@ -1487,7 +1572,7 @@ export function CBDGuideView() {
                         </thead>
                         <tbody className="divide-y divide-mecura-elevated bg-[#0A0A0F]/60">
                           {category.products.map((product, idx) => (
-                            <tr key={`desk-prod-${category.id}-${product.name}-${idx}`} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => setSelectedProduct({ ...product, categoryName: category.title, categoryIndications: category.indicationsList || [] })}>
+                            <tr key={`desk-prod-${category.id}-${product.name}-${idx}`} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => setSelectedProduct({ ...product, categoryId: category.id, categoryName: category.title, categoryIndications: category.indicationsList || [] })}>
                               <td className="py-3.5 px-4 font-medium text-white align-top">
                                 <div className="font-bold text-white text-sm group-hover:text-mecura-neon transition-colors leading-snug break-words">
                                   {product.name}
@@ -1960,9 +2045,320 @@ export function CBDGuideView() {
           onClose={() => setSelectedProduct(null)} 
           exchangeRate={exchangeRate}
           onSave={(savedData) => {
-            setSelectedProduct((prev: any) => (prev ? { ...prev, ...savedData } : null));
+            const catId = selectedProduct.categoryId || 'all';
+            const updatedProductObj: Partial<CBDProduct> = {
+              name: (savedData.name || selectedProduct.name).trim(),
+              manufacturer: (savedData.manufacturer || selectedProduct.manufacturer || '').trim(),
+              origin: savedData.origin || selectedProduct.origin,
+              type: savedData.type || selectedProduct.type,
+              concentration: savedData.concentration || savedData.activeIngredients || selectedProduct.concentration,
+              activeIngredients: savedData.activeIngredients || selectedProduct.activeIngredients,
+              pharmaceuticalForm: savedData.pharmaceuticalForm || (selectedProduct as any).pharmaceuticalForm,
+              quantity: savedData.quantity || (selectedProduct as any).quantity,
+              administrationRoute: savedData.administrationRoute || (selectedProduct as any).administrationRoute,
+              indications: savedData.indications || selectedProduct.indications,
+              usageInstructions: savedData.posologyDetails || selectedProduct.usageInstructions,
+              description: savedData.description || selectedProduct.description,
+              priceBRL: savedData.priceBRL ? Number(String(savedData.priceBRL).replace(/[^0-9.]/g, '')) : selectedProduct.priceBRL,
+              priceUSD: savedData.priceUSD ? Number(String(savedData.priceUSD).replace(/[^0-9.]/g, '')) : selectedProduct.priceUSD,
+              details: [
+                savedData.concentration || savedData.activeIngredients,
+                savedData.pharmaceuticalForm,
+                savedData.quantity,
+                savedData.administrationRoute,
+                savedData.carrierVehicle
+              ].filter(Boolean) as string[]
+            };
+
+            updateProduct(catId, selectedProduct.name, updatedProductObj);
+            setSelectedProduct((prev: any) => (prev ? { ...prev, ...updatedProductObj, categoryId: catId } : null));
+            setAddSuccessToast(`✓ "${updatedProductObj.name}" atualizado e gravado no Guia CBD com sucesso!`);
+            setTimeout(() => setAddSuccessToast(null), 4000);
+          }}
+          onDelete={(prodName, catId) => {
+            deleteProduct(catId || 'all', prodName);
+            setSelectedProduct(null);
+            setAddSuccessToast(`✓ "${prodName}" excluído do Guia CBD com sucesso!`);
+            setTimeout(() => setAddSuccessToast(null), 4000);
           }}
         />
+      )}
+
+      {/* Add New Product Modal */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <div 
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowAddProductModal(false)}
+          />
+          <div className="relative w-full max-w-2xl bg-[#0F0F16] border border-mecura-elevated rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] z-10">
+            {/* Header */}
+            <div className="p-4 sm:p-6 border-b border-white/10 flex justify-between items-center bg-[#14141F]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.2)]">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-xl font-bold text-white flex items-center gap-2">
+                    Cadastrar Novo Produto no Guia CBD
+                  </h3>
+                  <p className="text-xs text-mecura-silver">
+                    Adicione novos medicamentos nacionais ou importados à biblioteca médica oficial.
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowAddProductModal(false)}
+                className="p-2 rounded-xl text-mecura-silver hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1 bg-[#0A0A0F]">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Nome Comercial */}
+                <div className="sm:col-span-8">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Nome Comercial do Medicamento / Formulação *
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdName}
+                    onChange={(e) => setNewProdName(e.target.value)}
+                    placeholder="Ex: Óleo CBD 3000mg Full Spectrum (30ml)"
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-bold"
+                  />
+                </div>
+
+                {/* Origem */}
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Origem
+                  </label>
+                  <select
+                    value={newProdOrigin}
+                    onChange={(e) => setNewProdOrigin(e.target.value as 'Nacional' | 'Importado')}
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-medium"
+                  >
+                    <option value="Nacional">Associação Nacional (Brasil)</option>
+                    <option value="Importado">Importado (EUA/Europa - RDC 660)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Fabricante / Associação */}
+                <div className="sm:col-span-6">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Fabricante / Associação / Laboratório *
+                  </label>
+                  <input
+                    type="text"
+                    list="new-prod-guide-manufacturers"
+                    value={newProdManufacturer}
+                    onChange={(e) => setNewProdManufacturer(e.target.value)}
+                    placeholder="Ex: SouCannabis, ABECMED, Pangaia..."
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-semibold"
+                  />
+                  <datalist id="new-prod-guide-manufacturers">
+                    <option value="SouCannabis" />
+                    <option value="ABECMED" />
+                    <option value="ABRACE Esperança" />
+                    <option value="Pangaia Biopharmaceuticals" />
+                    <option value="Flowermed" />
+                    <option value="Santa Cannabis" />
+                    <option value="Flor da Vida" />
+                    <option value="GreenBudzCBD" />
+                    <option value="Associação Brasileira (Nacional)" />
+                  </datalist>
+                </div>
+
+                {/* Categoria do Guia */}
+                <div className="sm:col-span-6">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Categoria no Guia CBD
+                  </label>
+                  <select
+                    value={newProdCategory}
+                    onChange={(e) => setNewProdCategory(e.target.value)}
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  >
+                    {productCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Concentração */}
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-emerald-400 uppercase font-bold block mb-1">
+                    Composição / Concentração *
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdConcentration}
+                    onChange={(e) => setNewProdConcentration(e.target.value)}
+                    placeholder="Ex: 50 mg/mL CBD (1500mg)"
+                    className="w-full bg-[#12121A] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
+                  />
+                </div>
+
+                {/* Tipo / Espectro */}
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Tipo / Espectro Canabinoide
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdType}
+                    onChange={(e) => setNewProdType(e.target.value)}
+                    placeholder="Ex: Óleo Full Spectrum, Pomada..."
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                {/* Forma Farmacêutica */}
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Forma Farmacêutica
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdForm}
+                    onChange={(e) => setNewProdForm(e.target.value)}
+                    placeholder="Ex: Solução Oleosa (Gotas)"
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Via de Administração */}
+                <div className="sm:col-span-6">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Via de Administração
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdRoute}
+                    onChange={(e) => setNewProdRoute(e.target.value)}
+                    placeholder="Ex: Via Sublingual / Oral"
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                {/* Quantidade / Volume */}
+                <div className="sm:col-span-6">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Quantidade / Volume
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdQuantity}
+                    onChange={(e) => setNewProdQuantity(e.target.value)}
+                    placeholder="Ex: 01 Frasco de 30 mL"
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+              </div>
+
+              {/* Indicações Clínicas */}
+              <div>
+                <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                  Indicações Clínicas & Patologias Alvo
+                </label>
+                <input
+                  type="text"
+                  value={newProdIndications}
+                  onChange={(e) => setNewProdIndications(e.target.value)}
+                  placeholder="Ex: Dor Crônica, Fibromialgia, Ansiedade, Insônia..."
+                  className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                />
+              </div>
+
+              {/* Posologia Sugerida */}
+              <div>
+                <label className="text-[11px] text-cyan-400 uppercase font-bold block mb-1">
+                  Posologia Inicial Sugerida / Modo de Uso
+                </label>
+                <textarea
+                  rows={2}
+                  value={newProdPosology}
+                  onChange={(e) => setNewProdPosology(e.target.value)}
+                  placeholder="Ex: Tomar 03 a 05 gotas sublinguais de 12/12 horas. Reter por 60 segundos sob a língua antes de engolir."
+                  className="w-full bg-[#12121A] border border-cyan-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              {/* Valores Comerciais */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Preço Estimado em Reais (R$)
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdPriceBRL}
+                    onChange={(e) => setNewProdPriceBRL(e.target.value)}
+                    placeholder="Ex: 290.00"
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Preço Estimado em Dólares (US$)
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdPriceUSD}
+                    onChange={(e) => setNewProdPriceUSD(e.target.value)}
+                    placeholder="Ex: 65.00"
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Descrição Detalhada */}
+              <div>
+                <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                  Descrição Farmacológica / Notas Técnicas
+                </label>
+                <textarea
+                  rows={2}
+                  value={newProdDescription}
+                  onChange={(e) => setNewProdDescription(e.target.value)}
+                  placeholder="Informações adicionais sobre o fitocomplexo, extração ou fabricante..."
+                  className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-mecura-neon"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 sm:p-5 border-t border-white/10 bg-[#14141F] flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAddProductModal(false)}
+                className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveNewProduct}
+                disabled={!newProdName.trim()}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black font-extrabold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <Plus className="w-4 h-4 text-black stroke-[3]" />
+                <span>Salvar Produto no Guia</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

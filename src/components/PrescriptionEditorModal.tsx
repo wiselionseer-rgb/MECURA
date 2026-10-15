@@ -29,6 +29,7 @@ import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCT
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 import { useAdminStore } from '../store/useAdminStore';
+import { getBestCategoryIdForProduct } from '../utils/productCatalog';
 
 interface PrescriptionEditorModalProps {
   isOpen: boolean;
@@ -152,12 +153,25 @@ export function PrescriptionEditorModal({
     doctorName, doctorCrm, doctorSpecialty, items, notes
   ]);
 
-  const { productCategories } = useAdminStore();
+  const { productCategories, addProduct } = useAdminStore();
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [librarySearchTerm, setLibrarySearchTerm] = useState('');
   const [librarySelectedCategory, setLibrarySelectedCategory] = useState<string>('all');
   const [libraryOriginFilter, setLibraryOriginFilter] = useState<'all' | 'Nacional' | 'Importado'>('all');
   const [replaceTargetIndex, setReplaceTargetIndex] = useState<number | null>(null);
+
+  // States for adding new custom product
+  const [showNewProductForm, setShowNewProductForm] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdBrand, setNewProdBrand] = useState('Associação Brasileira (Nacional)');
+  const [newProdOrigin, setNewProdOrigin] = useState<'Nacional' | 'Importado'>('Nacional');
+  const [newProdForm, setNewProdForm] = useState('Solução Oleosa Sublingual (Gotas)');
+  const [newProdConcentration, setNewProdConcentration] = useState('');
+  const [newProdQuantity, setNewProdQuantity] = useState('01 Frasco de 30 mL');
+  const [newProdDosage, setNewProdDosage] = useState('Tomar 05 gotas sublinguais de 12/12 horas. Reter 60 segundos antes de deglutir.');
+  const [newProdActiveIngredients, setNewProdActiveIngredients] = useState('');
+  const [saveToGlobalCatalog, setSaveToGlobalCatalog] = useState(false);
+  const [feedbackBannerText, setFeedbackBannerText] = useState<string | null>(null);
 
   // All catalog products merged from ALL categories of cbdGuideData, useAdminStore, Flowermed, Flores/Extrações e Associações
   const allLibraryProducts = useMemo(() => {
@@ -309,7 +323,23 @@ export function PrescriptionEditorModal({
 
     if (librarySearchTerm.trim()) {
       const q = librarySearchTerm.toLowerCase().trim();
-      result = result.filter(p => 
+      const textFiltered = result.filter(p => 
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.manufacturer && p.manufacturer.toLowerCase().includes(q)) ||
+        (p.activeIngredients && p.activeIngredients.toLowerCase().includes(q)) ||
+        (p.concentration && p.concentration.toLowerCase().includes(q)) ||
+        (p.pharmaceuticalForm && p.pharmaceuticalForm.toLowerCase().includes(q)) ||
+        (p.indications && p.indications.toLowerCase().includes(q)) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        (p.type && p.type.toLowerCase().includes(q))
+      );
+
+      if (textFiltered.length > 0) {
+        return textFiltered;
+      }
+
+      // Smart fallback: search across all categories if active category/origin filter left 0 results
+      return allLibraryProducts.filter(p => 
         (p.name && p.name.toLowerCase().includes(q)) ||
         (p.manufacturer && p.manufacturer.toLowerCase().includes(q)) ||
         (p.activeIngredients && p.activeIngredients.toLowerCase().includes(q)) ||
@@ -877,7 +907,156 @@ export function PrescriptionEditorModal({
   };
 
   const handleRemoveItem = (index: number) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
+    const updated = items.filter((_, i) => i !== index);
+    setItems(updated);
+    propSetItems(updated);
+  };
+
+  const handleRemoveItemAndSave = (index: number) => {
+    const itemToRemove = items[index];
+    const removedName = itemToRemove?.name || 'Medicamento';
+    const updated = items.filter((_, i) => i !== index);
+    setItems(updated);
+    propSetItems(updated);
+    if (onSave) {
+      onSave({
+        patientName,
+        birthDate,
+        cpf,
+        emissionDate,
+        doctorName,
+        doctorCrm,
+        doctorSpecialty,
+        items: updated,
+        notes
+      });
+    }
+    setIsSavedFeedback(true);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLastSavedTime(timeStr);
+    setFeedbackBannerText(`✓ "${removedName}" excluído da prescrição e receita salva com sucesso!`);
+    setTimeout(() => {
+      setIsSavedFeedback(false);
+      setFeedbackBannerText(null);
+    }, 3500);
+  };
+
+  const handleAddCustomProductAndSave = () => {
+    if (!newProdName.trim()) {
+      setFeedbackBannerText("⚠️ Por favor, digite o nome do medicamento ou produto a ser adicionado.");
+      setTimeout(() => setFeedbackBannerText(null), 3000);
+      return;
+    }
+
+    const cleanName = newProdName.trim();
+    const enriched = enrichMedicationDetails(
+      cleanName,
+      newProdBrand.trim() || 'Associação Brasileira (Nacional)',
+      newProdOrigin,
+      newProdForm
+    );
+
+    const dosageLines = newProdDosage.trim()
+      ? newProdDosage.split('\n').map(s => s.trim()).filter(Boolean)
+      : ['Tomar 05 gotas sublinguais de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir.'];
+
+    const newItem: PrescriptionItemData = {
+      name: cleanName,
+      brand: newProdBrand.trim() || enriched.brand || 'Associação Brasileira (Nacional)',
+      origin: newProdOrigin,
+      type: newProdForm || enriched.type || 'Óleo / Extrato',
+      activeIngredients: newProdActiveIngredients.trim() || enriched.activeIngredients || cleanName,
+      concentration: newProdConcentration.trim() || enriched.concentration || '',
+      pharmaceuticalForm: newProdForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: newProdQuantity.trim() || enriched.quantity || '01 Frasco de 30 mL',
+      administrationRoute: newProdForm.toLowerCase().includes('pomada')
+        ? 'Via Tópica'
+        : (newProdForm.toLowerCase().includes('goma') ? 'Via Oral' : 'Via Sublingual / Oral'),
+      dosage: dosageLines,
+      description: `Medicamento prescrito e cadastrado pelo médico: ${cleanName}`
+    };
+
+    const updated = [...items, newItem];
+    setItems(updated);
+    propSetItems(updated);
+
+    if (onSave) {
+      onSave({
+        patientName,
+        birthDate,
+        cpf,
+        emissionDate,
+        doctorName,
+        doctorCrm,
+        doctorSpecialty,
+        items: updated,
+        notes
+      });
+    }
+
+    if (saveToGlobalCatalog && addProduct) {
+      try {
+        const catId = getBestCategoryIdForProduct(newProdOrigin, newProdBrand);
+        const prodData: CBDProduct = {
+          name: cleanName,
+          manufacturer: newProdBrand.trim() || 'Associação Brasileira',
+          type: newProdForm || 'Óleo',
+          concentration: newProdConcentration.trim() || '',
+          origin: newProdOrigin,
+          activeIngredients: newItem.activeIngredients,
+          pharmaceuticalForm: newItem.pharmaceuticalForm,
+          quantity: newItem.quantity,
+          administrationRoute: newItem.administrationRoute,
+          usageInstructions: dosageLines.join('\n'),
+          posologyDetails: dosageLines.join('\n'),
+          description: `Medicamento canabinoide cadastrado pelo médico: ${cleanName}`
+        };
+        addProduct(catId, prodData);
+
+        // Also save initial custom bula override so enrichMedicationDetails immediately has the exact specs
+        try {
+          const key = `mecura_bula_custom_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          localStorage.setItem(key, JSON.stringify({
+            name: cleanName,
+            manufacturer: prodData.manufacturer,
+            origin: prodData.origin,
+            type: prodData.type,
+            activeIngredients: prodData.activeIngredients,
+            concentration: prodData.concentration,
+            pharmaceuticalForm: prodData.pharmaceuticalForm,
+            quantity: prodData.quantity,
+            administrationRoute: prodData.administrationRoute,
+            posologyDetails: prodData.posologyDetails,
+            usageInstructions: prodData.usageInstructions,
+            description: prodData.description
+          }));
+        } catch {
+          // ignore
+        }
+      } catch (err) {
+        console.warn("Could not save to global admin store:", err);
+      }
+    }
+
+    // Reset fields & update library filters so the product is immediately visible
+    setNewProdName('');
+    setNewProdConcentration('');
+    setNewProdActiveIngredients('');
+    setShowNewProductForm(false);
+    setLibrarySelectedCategory('all');
+    setLibraryOriginFilter('all');
+    setLibrarySearchTerm(cleanName);
+
+    setIsSavedFeedback(true);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLastSavedTime(timeStr);
+    setFeedbackBannerText(`✓ Novo produto "${cleanName}" adicionado à receita e salvo com sucesso!`);
+    setTimeout(() => {
+      setIsSavedFeedback(false);
+      setFeedbackBannerText(null);
+    }, 3500);
   };
 
   const handleUpdateItem = (index: number, field: keyof PrescriptionItemData, value: any) => {
@@ -895,6 +1074,7 @@ export function PrescriptionEditorModal({
       }
       
       updated[index] = current;
+      propSetItems(updated);
       return updated;
     });
   };
@@ -905,6 +1085,7 @@ export function PrescriptionEditorModal({
       const newDosage = [...updated[itemIdx].dosage];
       newDosage[lineIdx] = value;
       updated[itemIdx] = { ...updated[itemIdx], dosage: newDosage };
+      propSetItems(updated);
       return updated;
     });
   };
@@ -913,6 +1094,7 @@ export function PrescriptionEditorModal({
     setItems(prev => {
       const updated = [...prev];
       updated[itemIdx] = { ...updated[itemIdx], dosage: [...updated[itemIdx].dosage, ''] };
+      propSetItems(updated);
       return updated;
     });
   };
@@ -922,6 +1104,7 @@ export function PrescriptionEditorModal({
       const updated = [...prev];
       const newDosage = updated[itemIdx].dosage.filter((_, i) => i !== lineIdx);
       updated[itemIdx] = { ...updated[itemIdx], dosage: newDosage.length > 0 ? newDosage : [''] };
+      propSetItems(updated);
       return updated;
     });
   };
@@ -975,8 +1158,13 @@ export function PrescriptionEditorModal({
     }
     setIsSavedFeedback(true);
     const now = new Date();
-    setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    setTimeout(() => setIsSavedFeedback(false), 2500);
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLastSavedTime(timeStr);
+    setFeedbackBannerText(`✓ Alterações da receita salvas com sucesso às ${timeStr}!`);
+    setTimeout(() => {
+      setIsSavedFeedback(false);
+      setFeedbackBannerText(null);
+    }, 3500);
   };
 
   const handleClose = () => {
@@ -1122,6 +1310,19 @@ export function PrescriptionEditorModal({
               </button>
             </div>
           </div>
+
+          {/* Real-time Save & Delete Feedback Banner */}
+          {feedbackBannerText && (
+            <div className="bg-emerald-500/15 border-b border-emerald-500/30 px-6 py-2.5 flex items-center justify-between text-xs font-bold text-emerald-300 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                <span>{feedbackBannerText}</span>
+              </div>
+              {lastSavedTime && (
+                <span className="text-[10px] text-emerald-400/80 font-mono">Salvo às {lastSavedTime}</span>
+              )}
+            </div>
+          )}
 
           {/* Body Content */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-[#0D0D12]">
@@ -1738,6 +1939,195 @@ export function PrescriptionEditorModal({
                     </div>
                   </div>
 
+                  {/* Campo & Formulário para Adicionar Novos Produtos / Medicamentos */}
+                  <div className="p-4 bg-gradient-to-r from-purple-950/20 via-mecura-surface/40 to-emerald-950/20 border border-purple-500/30 rounded-2xl space-y-3 shadow-md">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 font-bold shrink-0">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="text-white font-bold text-xs sm:text-sm flex items-center gap-2">
+                            <span>Adicionar Novo Produto / Medicamento à Receita</span>
+                            <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                              Salva Automaticamente
+                            </span>
+                          </h5>
+                          <p className="text-[11px] text-mecura-silver">
+                            Cadastre novos produtos personalizados ou insira formulações específicas para compor a receita médica.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowNewProductForm(!showNewProductForm)}
+                          className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{showNewProductForm ? 'Ocultar Campos' : '+ Cadastrar Novo Medicamento'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Form for adding custom new product */}
+                    {showNewProductForm && (
+                      <div className="p-4 bg-[#0A0A0F] border border-purple-500/30 rounded-xl space-y-3 mt-3 animate-fadeIn">
+                        <div className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-white/5">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Dados e Posologia do Novo Produto</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                          {/* Name */}
+                          <div className="sm:col-span-6">
+                            <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                              Nome Comercial / Formulação *
+                            </label>
+                            <input
+                              type="text"
+                              value={newProdName}
+                              onChange={(e) => setNewProdName(e.target.value)}
+                              placeholder="Ex: Óleo CBD 3000mg Full Spectrum (30ml)"
+                              className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-bold"
+                            />
+                          </div>
+
+                          {/* Brand / Association */}
+                          <div className="sm:col-span-3">
+                            <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                              Fabricante / Associação
+                            </label>
+                            <input
+                              type="text"
+                              list="new-prod-brand-list-modal"
+                              value={newProdBrand}
+                              onChange={(e) => setNewProdBrand(e.target.value)}
+                              placeholder="Ex: Associação Brasileira"
+                              className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-semibold"
+                            />
+                            <datalist id="new-prod-brand-list-modal">
+                              <option value="Associação Brasileira (Nacional)" />
+                              <option value="Santa Cannabis" />
+                              <option value="Abrace Esperança" />
+                              <option value="Flor da Vida" />
+                              <option value="Flowermed (EUA)" />
+                              <option value="GreenBudzCBD" />
+                              <option value="Pangaia" />
+                              <option value="Abecmed" />
+                            </datalist>
+                          </div>
+
+                          {/* Origin */}
+                          <div className="sm:col-span-3">
+                            <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                              Origem
+                            </label>
+                            <select
+                              value={newProdOrigin}
+                              onChange={(e) => setNewProdOrigin(e.target.value as 'Nacional' | 'Importado')}
+                              className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
+                            >
+                              <option value="Nacional">Associação Nacional (Brasil)</option>
+                              <option value="Importado">Importado (EUA/Europa)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                          {/* Concentration */}
+                          <div className="sm:col-span-4">
+                            <label className="text-[10px] text-emerald-400 uppercase font-bold block mb-1">
+                              Composição / Concentração
+                            </label>
+                            <input
+                              type="text"
+                              value={newProdConcentration}
+                              onChange={(e) => setNewProdConcentration(e.target.value)}
+                              placeholder="Ex: CBD 100mg/mL (10%), THC < 0,2%"
+                              className="w-full bg-[#12121A] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
+                            />
+                          </div>
+
+                          {/* Pharmaceutical Form */}
+                          <div className="sm:col-span-4">
+                            <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                              Forma Farmacêutica
+                            </label>
+                            <input
+                              type="text"
+                              value={newProdForm}
+                              onChange={(e) => setNewProdForm(e.target.value)}
+                              placeholder="Ex: Solução Oleosa Sublingual (Gotas)"
+                              className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+
+                          {/* Quantity */}
+                          <div className="sm:col-span-4">
+                            <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                              Quantidade / Volume
+                            </label>
+                            <input
+                              type="text"
+                              value={newProdQuantity}
+                              onChange={(e) => setNewProdQuantity(e.target.value)}
+                              placeholder="Ex: 01 Frasco de 30 mL"
+                              className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Initial Dosage Instructions */}
+                        <div>
+                          <label className="text-[10px] text-cyan-400 uppercase font-bold block mb-1">
+                            Posologia Inicial / Modo de Uso
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={newProdDosage}
+                            onChange={(e) => setNewProdDosage(e.target.value)}
+                            placeholder="Ex: Tomar 05 gotas sublinguais de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir."
+                            className="w-full bg-[#12121A] border border-cyan-500/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
+                          />
+                        </div>
+
+                        {/* Checkbox and Action Button */}
+                        <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-white/5">
+                          <label className="flex items-center gap-2 cursor-pointer text-xs text-mecura-silver">
+                            <input
+                              type="checkbox"
+                              checked={saveToGlobalCatalog}
+                              onChange={(e) => setSaveToGlobalCatalog(e.target.checked)}
+                              className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-mecura-elevated bg-[#12121A]"
+                            />
+                            <span>Salvar também na Biblioteca Geral da Plataforma para consultas futuras</span>
+                          </label>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowNewProductForm(false)}
+                              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-mecura-silver text-xs rounded-xl transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAddCustomProductAndSave}
+                              disabled={!newProdName.trim()}
+                              className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black font-extrabold rounded-xl text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            >
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>Adicionar à Receita & Salvar</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {items.length === 0 ? (
                     <div className="p-8 border border-dashed border-mecura-elevated rounded-2xl text-center">
                       <p className="text-mecura-silver text-sm mb-3">Nenhum medicamento adicionado à receita.</p>
@@ -1766,7 +2156,7 @@ export function PrescriptionEditorModal({
 
                         return (
                           <div
-                            key={`presc-item-${itemIdx}-${item.name}`}
+                            key={`presc-item-${itemIdx}`}
                             className="p-4 bg-mecura-surface/30 border border-mecura-elevated rounded-2xl space-y-3.5 relative group"
                           >
                             {/* Top Card Bar: Number, Type Badge & Actions */}
@@ -1933,11 +2323,12 @@ export function PrescriptionEditorModal({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveItem(itemIdx)}
-                                  className="p-1.5 text-mecura-silver hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
-                                  title="Remover Medicamento"
+                                  onClick={() => handleRemoveItemAndSave(itemIdx)}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-red-400 hover:text-red-300 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                                  title="Excluir este medicamento da prescrição e salvar imediatamente"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                  <span>Excluir & Salvar</span>
                                 </button>
                               </div>
                             </div>
@@ -2170,32 +2561,67 @@ export function PrescriptionEditorModal({
                             )}
 
                             {/* Posology / Dosage Lines */}
-                            <div className="pt-2 border-t border-mecura-elevated/40 space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <label className="text-[10px] text-purple-400 uppercase font-bold tracking-wider flex items-center gap-2">
-                                  <span>Posologia & Modo de Uso {isGummy ? '(Via Oral - Mastigável)' : '(Aproximadamente 25 gotas por mL)'}</span>
-                                </label>
-                                <div className="flex items-center gap-2">
-                                  {!item.dosage.some(d => /25 gotas/i.test(d)) && !isGummy && (
+                            <div className="pt-2 border-t border-mecura-elevated/40 space-y-2">
+                              {/* Editable Posology Header & Presets */}
+                              <div className="space-y-1.5 bg-[#0D0B18]/70 border border-purple-500/20 rounded-xl p-2.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                                  <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider flex items-center gap-1.5">
+                                    <Sparkles className="w-3 h-3 text-purple-400" />
+                                    <span>Cabeçalho da Posologia (100% Livre / Editável)</span>
+                                  </label>
+                                  <div className="flex items-center gap-1 flex-wrap">
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        handleUpdateDosageLine(itemIdx, item.dosage.length, 'Aproximadamente 25 gotas por mL.');
-                                      }}
-                                      className="text-[10px] text-purple-300 hover:text-white bg-purple-500/15 hover:bg-purple-500/30 px-2 py-0.5 rounded border border-purple-500/25 flex items-center gap-1 cursor-pointer transition-colors"
-                                      title="Adicionar linha com o padrão de 25 gotas por mL"
+                                      onClick={() => handleUpdateItem(itemIdx, 'posologyHeader', 'Posologia e Modo de Uso:')}
+                                      className="text-[9px] px-2 py-0.5 rounded bg-white/5 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 transition-all font-semibold cursor-pointer"
+                                      title="Usar apenas 'Posologia e Modo de Uso:' (sem menção a 25 gotas)"
                                     >
-                                      <Sparkles className="w-2.5 h-2.5 text-purple-400" /> + 25 gotas/mL
+                                      ✓ Sem "25 gotas"
                                     </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddDosageLine(itemIdx)}
-                                    className="text-[10px] text-mecura-silver hover:text-white flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Plus className="w-3 h-3" /> + Linha de dosagem
-                                  </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateItem(itemIdx, 'posologyHeader', 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):')}
+                                      className="text-[9px] px-2 py-0.5 rounded bg-white/5 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/30 transition-all cursor-pointer"
+                                      title="Usar padrão com 25 gotas por mL"
+                                    >
+                                      💧 25 gotas/mL
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateItem(itemIdx, 'posologyHeader', 'Posologia e Modo de Uso (Dosagem em mL):')}
+                                      className="text-[9px] px-2 py-0.5 rounded bg-white/5 hover:bg-cyan-500/20 text-cyan-300 hover:text-cyan-200 border border-cyan-500/30 transition-all font-semibold cursor-pointer"
+                                      title="Para seringa graduada ou dosagem direta em mL"
+                                    >
+                                      💉 Seringa (em mL)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateItem(itemIdx, 'posologyHeader', 'Posologia:')}
+                                      className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-mecura-silver transition-all cursor-pointer"
+                                      title="Apenas 'Posologia:'"
+                                    >
+                                      Simples
+                                    </button>
+                                  </div>
                                 </div>
+                                <input
+                                  type="text"
+                                  value={item.posologyHeader !== undefined ? item.posologyHeader : (isGummy || isFlower ? 'Posologia e Modo de Uso:' : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):')}
+                                  onChange={(e) => handleUpdateItem(itemIdx, 'posologyHeader', e.target.value)}
+                                  placeholder="Ex: Posologia e Modo de Uso: ou Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):"
+                                  className="w-full bg-[#0A0A0F] border border-purple-500/30 rounded-lg px-2.5 py-1 text-xs text-purple-200 focus:outline-none focus:border-purple-400 font-semibold"
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1">
+                                <span className="text-[10px] text-mecura-silver font-semibold uppercase">Linhas de Instrução e Dosagem</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddDosageLine(itemIdx)}
+                                  className="text-[10px] text-purple-300 hover:text-white bg-purple-500/15 hover:bg-purple-500/30 px-2.5 py-1 rounded-lg border border-purple-500/30 flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  <Plus className="w-3 h-3" /> + Adicionar linha de dosagem
+                                </button>
                               </div>
 
                               {item.dosage.map((line, lineIdx) => (
@@ -2205,7 +2631,7 @@ export function PrescriptionEditorModal({
                                     type="text"
                                     value={line}
                                     onChange={(e) => handleUpdateDosageLine(itemIdx, lineIdx, e.target.value)}
-                                    placeholder={isGummy ? "Ex: Mastigar 01 goma ao final da tarde..." : "Ex: Aproximadamente 25 gotas por mL / Tomar 05 gotas sublinguais..."}
+                                    placeholder={isGummy ? "Ex: Mastigar 01 goma ao final da tarde..." : "Ex: Tomar 05 gotas sublinguais de 12/12 horas..."}
                                     className="flex-1 bg-[#0A0A0F] border border-mecura-elevated rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50"
                                   />
                                   {item.dosage.length > 1 && (
@@ -2213,32 +2639,29 @@ export function PrescriptionEditorModal({
                                       type="button"
                                       onClick={() => handleRemoveDosageLine(itemIdx, lineIdx)}
                                       className="text-mecura-silver hover:text-red-400 p-1 cursor-pointer"
+                                      title="Remover linha"
                                     >
                                       <X className="w-3 h-3" />
                                     </button>
                                   )}
                                 </div>
                               ))}
+                            </div>
 
-                              {/* Padrão sublinhado em azul pelo usuário */}
-                              <div className="flex flex-wrap items-center justify-between gap-2 bg-[#120F1D] border border-purple-500/25 rounded-lg px-3 py-1.5 text-xs text-purple-200 mt-1.5">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                                  <span className="text-mecura-silver text-[11px]">Padrão:</span>
-                                  <strong className="text-white font-medium text-[11px]">Aproximadamente 25 gotas por mL.</strong>
-                                </div>
-                                {!item.dosage.some(d => /25 gotas/i.test(d)) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      handleUpdateDosageLine(itemIdx, item.dosage.length, 'Aproximadamente 25 gotas por mL.');
-                                    }}
-                                    className="text-[10px] text-purple-200 hover:text-white bg-purple-600/30 hover:bg-purple-600/50 px-2 py-0.5 rounded border border-purple-400/30 transition-colors cursor-pointer flex items-center gap-1 font-medium"
-                                  >
-                                    <Plus className="w-2.5 h-2.5" /> Incluir na posologia
-                                  </button>
-                                )}
-                              </div>
+                            {/* Bottom Action Bar: Excluir Medicamento e Salvar */}
+                            <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between flex-wrap gap-2">
+                              <span className="text-[11px] text-mecura-silver">
+                                Deseja retirar este medicamento da receita médica?
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItemAndSave(itemIdx)}
+                                className="px-3.5 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm"
+                                title="Excluir este medicamento da prescrição e salvar imediatamente"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Excluir Medicamento & Salvar</span>
+                              </button>
                             </div>
                           </div>
                         );
@@ -2459,18 +2882,33 @@ export function PrescriptionEditorModal({
 
                                   {/* Dosage */}
                                   <div className="pl-4 space-y-0.5 text-xs text-slate-700">
-                                    <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">
-                                      Posologia e Modo de Uso {!isGummy && !/flor/i.test(item.name || '') ? '(Aproximadamente 25 gotas por mL):' : ':'}
-                                    </span>
                                     {(() => {
+                                      const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${pharmForm} ${item.name} ${admRoute} ${dosageList.join(' ')}`);
+                                      const headerText = item.posologyHeader !== undefined
+                                        ? (item.posologyHeader.trim() ? item.posologyHeader.trim() : 'Posologia e Modo de Uso:')
+                                        : ((isGummy || /flor/i.test(item.name || '') || isSyringeOrMl) 
+                                            ? 'Posologia e Modo de Uso:' 
+                                            : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):');
+
                                       const cleaned = dosageList.filter(d => {
                                         const t = d.trim();
-                                        return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+                                        if (!t) return false;
+                                        if (headerText.includes('25 gotas') && /^Aproximadamente 25 gotas por mL\.?$/i.test(t)) return false;
+                                        if (/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t)) return false;
+                                        return true;
                                       });
                                       const toRender = cleaned.length > 0 ? cleaned : dosageList;
-                                      return toRender.map((d, dIdx) => (
-                                        <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
-                                      ));
+
+                                      return (
+                                        <>
+                                          <span className="font-semibold text-slate-800 block text-[11px] mb-0.5">
+                                            {headerText}
+                                          </span>
+                                          {toRender.map((d, dIdx) => (
+                                            <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
+                                          ))}
+                                        </>
+                                      );
                                     })()}
                                   </div>
                                 </div>

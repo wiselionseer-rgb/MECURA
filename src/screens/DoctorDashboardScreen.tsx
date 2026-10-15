@@ -86,7 +86,7 @@ import {
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
 import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT, ABRACE_PRODUCTS, ABRACE_COMPANY_INFO, ABRACE_AGENT_SYSTEM_PROMPT, SOUCANNABIS_PRODUCTS, SOUCANNABIS_COMPANY_INFO, SOUCANNABIS_AGENT_SYSTEM_PROMPT, PANGAIA_PRODUCTS, PANGAIA_COMPANY_INFO, PANGAIA_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
-import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases } from '../utils/productCatalog';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases, getBestCategoryIdForProduct } from '../utils/productCatalog';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
 import { NotificationToast } from '../components/NotificationToast';
@@ -231,8 +231,19 @@ const IsolatedFastTextarea = memo(({
 });
 
 export function DoctorDashboardScreen() {
-  const { productCategories: storeProductCategories } = useAdminStore();
+  const { productCategories: storeProductCategories, addProduct } = useAdminStore();
   const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
+
+  // Quick Add Custom Product in Doctor Dashboard
+  const [showNewProductModalInDashboard, setShowNewProductModalInDashboard] = useState(false);
+  const [newDashProdName, setNewDashProdName] = useState('');
+  const [newDashProdBrand, setNewDashProdBrand] = useState('Associação Brasileira (Nacional)');
+  const [newDashProdOrigin, setNewDashProdOrigin] = useState<'Nacional' | 'Importado'>('Nacional');
+  const [newDashProdForm, setNewDashProdForm] = useState('Solução Oleosa Sublingual (Gotas)');
+  const [newDashProdConcentration, setNewDashProdConcentration] = useState('');
+  const [newDashProdQuantity, setNewDashProdQuantity] = useState('01 Frasco de 30 mL');
+  const [newDashProdDosage, setNewDashProdDosage] = useState('Tomar 05 gotas sublinguais de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir.');
+  const [saveDashToCatalog, setSaveDashToCatalog] = useState(true);
 
   useEffect(() => {
     const unsub = subscribeToFirestoreCatalog((cats) => {
@@ -387,6 +398,7 @@ export function DoctorDashboardScreen() {
 
     const fullMatches: (CBDProduct & { categoryTitle?: string; categoryIndications?: string[] })[] = [];
     const textAndBrandMatches: (CBDProduct & { categoryTitle?: string; categoryIndications?: string[] })[] = [];
+    const allTextMatches: (CBDProduct & { categoryTitle?: string; categoryIndications?: string[] })[] = [];
 
     allGuideProducts.forEach(p => {
       const pName = normalizeSearch(p.name);
@@ -427,6 +439,10 @@ export function DoctorDashboardScreen() {
             pName.includes(tok)
           );
         }
+      }
+
+      if (textOk && queryTokens.length > 0) {
+        allTextMatches.push(p);
       }
 
       // 2. Brand select match
@@ -472,11 +488,19 @@ export function DoctorDashboardScreen() {
       }
     });
 
-    // Smart fallback: if searching specifically by brand or term and disease filter leaves 0 results, relax the disease filter
+    // Smart fallback: if searching specifically by brand or term and disease/brand/origin filters leave 0 results, relax filters
     if ((queryTokens.length > 0 || productBrandFilter !== 'all') && diseaseClean && fullMatches.length === 0 && textAndBrandMatches.length > 0) {
       return {
         filteredGuideProducts: textAndBrandMatches,
         totalMatchingQueryWithoutDisease: textAndBrandMatches.length,
+        isRelaxedForQuery: true
+      };
+    }
+
+    if (queryTokens.length > 0 && fullMatches.length === 0 && allTextMatches.length > 0) {
+      return {
+        filteredGuideProducts: allTextMatches,
+        totalMatchingQueryWithoutDisease: allTextMatches.length,
         isRelaxedForQuery: true
       };
     }
@@ -558,7 +582,22 @@ export function DoctorDashboardScreen() {
       const raw = localStorage.getItem('mecura_saved_reports_v2');
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return parsed?.[patientKey]?.[type] || null;
+      if (!parsed || typeof parsed !== 'object') return null;
+
+      const candidates: string[] = [];
+      if (patientKey) candidates.push(patientKey, patientKey.toLowerCase().trim());
+      if (standaloneTargetPatientId) candidates.push(standaloneTargetPatientId, standaloneTargetPatientId.toLowerCase().trim());
+      if (currentPatient?.id) candidates.push(currentPatient.id, currentPatient.id.toLowerCase().trim());
+      if (currentPatient?.patientName) candidates.push(currentPatient.patientName, currentPatient.patientName.toLowerCase().trim());
+      if (reportPatientName) candidates.push(reportPatientName, reportPatientName.toLowerCase().trim());
+      candidates.push('paciente_atual');
+
+      for (const k of candidates) {
+        if (k && parsed[k] && parsed[k][type]) {
+          return parsed[k][type];
+        }
+      }
+      return null;
     } catch {
       return null;
     }
@@ -568,18 +607,31 @@ export function DoctorDashboardScreen() {
     try {
       const raw = localStorage.getItem('mecura_saved_reports_v2');
       const parsed = raw ? JSON.parse(raw) : {};
-      if (!parsed[patientKey]) parsed[patientKey] = {};
-      parsed[patientKey][type] = {
+      const payload = {
         ...data,
         updatedAt: new Date().toISOString()
       };
+      const keysToSave = new Set<string>();
+      if (patientKey) keysToSave.add(patientKey.toLowerCase().trim());
+      if (standaloneTargetPatientId) keysToSave.add(standaloneTargetPatientId.toLowerCase().trim());
+      if (currentPatient?.id) keysToSave.add(currentPatient.id.toLowerCase().trim());
+      if (currentPatient?.patientName) keysToSave.add(currentPatient.patientName.toLowerCase().trim());
+      if (data?.patientName) keysToSave.add(data.patientName.toLowerCase().trim());
+      if (reportPatientName) keysToSave.add(reportPatientName.toLowerCase().trim());
+      keysToSave.add('paciente_atual');
+
+      keysToSave.forEach(k => {
+        if (!k) return;
+        if (!parsed[k]) parsed[k] = {};
+        parsed[k][type] = payload;
+      });
       localStorage.setItem('mecura_saved_reports_v2', JSON.stringify(parsed));
     } catch (e) {
       console.warn("Could not save report to localStorage:", e);
     }
   };
 
-  const handleSaveMedicalReport = (savedData: {
+  const handleSaveMedicalReport = async (savedData: {
     diagnosis: string;
     rationale: string;
     treatmentPlan: string;
@@ -605,12 +657,29 @@ export function DoctorDashboardScreen() {
     setReportDoctorName(savedData.doctorName);
     setReportDoctorCrm(savedData.doctorCrm);
     setReportDoctorSpecialty(savedData.doctorSpecialty);
+
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
+    if (targetPatientId) {
+      try {
+        await setDoc(doc(db, 'queue', targetPatientId), {
+          medicalReportData: savedData,
+          lastReportUpdated: new Date().toISOString()
+        }, { merge: true });
+        await setDoc(doc(db, 'active_consultations', targetPatientId), {
+          medicalReportData: savedData,
+          lastReportUpdated: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Could not sync medical report to Firestore:", err);
+      }
+    }
+
     showActionToast(`Alterações do ${medicalReportType === 'evolutivo' ? 'Laudo Evolutivo' : 'Laudo Inicial'} salvas com sucesso!`);
   };
 
-  const handleSavePsychomotorReport = (text: string) => {
+  const handleSavePsychomotorReport = async (text: string) => {
     const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, reportPatientName);
-    saveReportToStorage(key, 'psicomotor', { 
+    const dataToSave = { 
       text,
       patientName: reportPatientName,
       birthDate: reportBirthDate,
@@ -619,17 +688,54 @@ export function DoctorDashboardScreen() {
       doctorName: reportDoctorName,
       doctorCrm: reportDoctorCrm,
       doctorSpecialty: reportDoctorSpecialty
-    });
+    };
+    saveReportToStorage(key, 'psicomotor', dataToSave);
     setPsychomotorReportText(text);
+
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
+    if (targetPatientId) {
+      try {
+        await setDoc(doc(db, 'queue', targetPatientId), {
+          psychomotorReportData: dataToSave,
+          lastReportUpdated: new Date().toISOString()
+        }, { merge: true });
+        await setDoc(doc(db, 'active_consultations', targetPatientId), {
+          psychomotorReportData: dataToSave,
+          lastReportUpdated: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Could not sync psychomotor report to Firestore:", err);
+      }
+    }
+
     showActionToast('Alterações do Laudo Psicomotor salvas com sucesso!');
   };
 
-  const loadSavedPrescription = (patientKey: string) => {
+  const loadSavedPrescription = (patientKey?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return parsed?.[patientKey] || null;
+      if (!parsed || typeof parsed !== 'object') return null;
+
+      const candidates: string[] = [];
+      if (patientKey) candidates.push(patientKey, patientKey.toLowerCase().trim());
+      if (standaloneTargetPatientId) candidates.push(standaloneTargetPatientId, standaloneTargetPatientId.toLowerCase().trim());
+      if (currentPatient?.id) candidates.push(currentPatient.id, currentPatient.id.toLowerCase().trim());
+      if (currentPatient?.patientName) candidates.push(currentPatient.patientName, currentPatient.patientName.toLowerCase().trim());
+      if (prescPatientName) candidates.push(prescPatientName, prescPatientName.toLowerCase().trim());
+
+      for (const k of candidates) {
+        if (k && parsed[k] && parsed[k].items && Array.isArray(parsed[k].items)) {
+          return parsed[k];
+        }
+      }
+
+      if (!patientKey && !currentPatient?.id && !standaloneTargetPatientId && parsed['paciente_atual'] && Array.isArray(parsed['paciente_atual'].items)) {
+        return parsed['paciente_atual'];
+      }
+
+      return null;
     } catch {
       return null;
     }
@@ -639,17 +745,29 @@ export function DoctorDashboardScreen() {
     try {
       const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
       const parsed = raw ? JSON.parse(raw) : {};
-      parsed[patientKey] = {
+      const payload = {
         ...data,
         updatedAt: new Date().toISOString()
       };
+      const keysToSave = new Set<string>();
+      if (patientKey) keysToSave.add(patientKey.toLowerCase().trim());
+      if (standaloneTargetPatientId) keysToSave.add(standaloneTargetPatientId.toLowerCase().trim());
+      if (currentPatient?.id) keysToSave.add(currentPatient.id.toLowerCase().trim());
+      if (currentPatient?.patientName) keysToSave.add(currentPatient.patientName.toLowerCase().trim());
+      if (data?.patientName) keysToSave.add(data.patientName.toLowerCase().trim());
+      if (prescPatientName) keysToSave.add(prescPatientName.toLowerCase().trim());
+      keysToSave.add('paciente_atual');
+
+      keysToSave.forEach(k => {
+        if (k) parsed[k] = payload;
+      });
       localStorage.setItem('mecura_saved_prescriptions_v2', JSON.stringify(parsed));
     } catch (e) {
       console.warn("Could not save prescription to localStorage:", e);
     }
   };
 
-  const handleSavePrescription = (savedData: {
+  const handleSavePrescription = async (savedData: {
     patientName: string;
     birthDate: string;
     cpf: string;
@@ -662,6 +780,7 @@ export function DoctorDashboardScreen() {
   }) => {
     const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, savedData.patientName || prescPatientName);
     savePrescriptionToStorage(key, savedData);
+
     setPrescPatientName(savedData.patientName);
     setPrescBirthDate(savedData.birthDate);
     setPrescCpf(savedData.cpf);
@@ -671,6 +790,60 @@ export function DoctorDashboardScreen() {
     setPrescDoctorSpecialty(savedData.doctorSpecialty);
     setPrescItems(savedData.items);
     setPrescNotes(savedData.notes);
+
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
+    if (targetPatientId) {
+      try {
+        await setDoc(doc(db, 'queue', targetPatientId), {
+          prescriptionData: savedData,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+
+        await setDoc(doc(db, 'active_consultations', targetPatientId), {
+          prescriptionData: savedData,
+          lastPrescriptionUpdated: new Date().toISOString()
+        }, { merge: true });
+
+        // Update any existing receita_previa message in Firestore active_consultations
+        const currentMsgs = useStore.getState().messages;
+        const previaMsgs = currentMsgs.filter(m => m.type === 'receita_previa');
+        for (const pm of previaMsgs) {
+          if (pm.id) {
+            await updateDoc(doc(db, 'active_consultations', targetPatientId, 'messages', pm.id), {
+              'receitaPreviaData.items': savedData.items,
+              'receitaPreviaData.notes': savedData.notes,
+              'receitaPreviaData.doctorName': savedData.doctorName,
+              'receitaPreviaData.doctorCrm': savedData.doctorCrm,
+              'receitaPreviaData.doctorSpecialty': savedData.doctorSpecialty,
+              'receitaPreviaData.patientName': savedData.patientName,
+              'receitaPreviaData.emissionDate': savedData.emissionDate,
+              'receitaPreviaData.updatedAt': new Date().toISOString()
+            }).catch(console.warn);
+          }
+        }
+
+        // Immediately update in-memory state so dashboard and patient chat reflects the latest changes
+        useStore.setState(state => ({
+          messages: state.messages.map(m => m.type === 'receita_previa' ? ({
+            ...m,
+            receitaPreviaData: {
+              ...(m.receitaPreviaData || {}),
+              status: (m.receitaPreviaData?.status || 'pending_confirmation'),
+              items: savedData.items,
+              notes: savedData.notes,
+              doctorName: savedData.doctorName,
+              doctorCrm: savedData.doctorCrm,
+              doctorSpecialty: savedData.doctorSpecialty,
+              patientName: savedData.patientName,
+              emissionDate: savedData.emissionDate
+            }
+          } as any) : m)
+        }));
+      } catch (err) {
+        console.warn("Could not sync prescription to Firestore:", err);
+      }
+    }
+
     showActionToast('Receita e posologias salvas com sucesso!');
   };
 
@@ -749,10 +922,13 @@ export function DoctorDashboardScreen() {
         const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
         const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.pharmaceuticalForm || '');
         const isFlower = /flor|in natura/i.test(item.name || item.pharmaceuticalForm || '');
-        const posologyHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+        const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${item.pharmaceuticalForm || ''} ${item.name} ${item.administrationRoute || ''} ${(item.dosage || []).join(' ')}`);
+        const posologyHeader = item.posologyHeader !== undefined
+          ? (item.posologyHeader.trim() ? item.posologyHeader.replace(/[:.]+$/, '').trim() : 'Posologia')
+          : ((isGummy || isFlower || isSyringeOrMl) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)');
         const cleanDosage = item.dosage.filter(d => {
           const t = d.trim();
-          return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+          return t && (!posologyHeader.includes('25 gotas') || !/^Aproximadamente 25 gotas por mL\.?$/i.test(t)) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
         });
         const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
         return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
@@ -837,8 +1013,20 @@ export function DoctorDashboardScreen() {
     const cleanName = product.name.toLowerCase().trim();
     const exists = prescItems.some(p => p.name.toLowerCase().trim() === cleanName);
     if (exists) {
-      setPrescItems(prev => prev.filter(p => p.name.toLowerCase().trim() !== cleanName));
-      showActionToast(`"${product.name}" removido da receita.`);
+      const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== cleanName);
+      setPrescItems(updated);
+      handleSavePrescription({
+        patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+        birthDate: prescBirthDate,
+        cpf: prescCpf,
+        emissionDate: prescEmissionDate,
+        doctorName: prescDoctorName,
+        doctorCrm: prescDoctorCrm,
+        doctorSpecialty: prescDoctorSpecialty,
+        items: updated,
+        notes: prescNotes
+      });
+      showActionToast(`✓ "${product.name}" removido da receita e alteração salva.`);
     } else {
       const newItem: PrescriptionItemData = {
         name: product.name,
@@ -863,9 +1051,146 @@ export function DoctorDashboardScreen() {
         priceBRL: isNational ? undefined : product.priceBRL
       };
 
-      setPrescItems(prev => [...prev, newItem]);
-      showActionToast(`✓ "${product.name}" adicionado à receita! (${prescItems.length + 1} itens)`);
+      const updated = [...prescItems, newItem];
+      setPrescItems(updated);
+      handleSavePrescription({
+        patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+        birthDate: prescBirthDate,
+        cpf: prescCpf,
+        emissionDate: prescEmissionDate,
+        doctorName: prescDoctorName,
+        doctorCrm: prescDoctorCrm,
+        doctorSpecialty: prescDoctorSpecialty,
+        items: updated,
+        notes: prescNotes
+      });
+      showActionToast(`✓ "${product.name}" adicionado à receita e salvo! (${updated.length} itens)`);
     }
+  };
+
+  const handleRemovePrescItemAndSave = (productName: string) => {
+    const clean = productName.toLowerCase().trim();
+    const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== clean);
+    setPrescItems(updated);
+
+    handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate,
+      cpf: prescCpf,
+      emissionDate: prescEmissionDate,
+      doctorName: prescDoctorName,
+      doctorCrm: prescDoctorCrm,
+      doctorSpecialty: prescDoctorSpecialty,
+      items: updated,
+      notes: prescNotes
+    });
+    showActionToast(`✓ "${productName}" excluído da receita e alteração salva.`);
+  };
+
+  const handleAddCustomProductInDashboard = () => {
+    if (!newDashProdName.trim()) {
+      showActionToast("Por favor, digite o nome do medicamento.");
+      return;
+    }
+    const cleanName = newDashProdName.trim();
+    const isNational = newDashProdOrigin === 'Nacional';
+    const enriched = enrichMedicationDetails(
+      cleanName,
+      newDashProdBrand.trim() || 'Associação Brasileira (Nacional)',
+      newDashProdOrigin,
+      newDashProdForm
+    );
+
+    const dosageLines = newDashProdDosage.trim()
+      ? newDashProdDosage.split('\n').map(s => s.trim()).filter(Boolean)
+      : ['Tomar 05 gotas sublinguais de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir.'];
+
+    const newItem: PrescriptionItemData = {
+      name: cleanName,
+      brand: newDashProdBrand.trim() || enriched.brand || 'Associação Brasileira (Nacional)',
+      origin: newDashProdOrigin,
+      type: newDashProdForm || enriched.type || 'Óleo / Extrato',
+      activeIngredients: enriched.activeIngredients || cleanName,
+      concentration: newDashProdConcentration.trim() || enriched.concentration || '',
+      pharmaceuticalForm: newDashProdForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: newDashProdQuantity.trim() || enriched.quantity || '01 Frasco de 30 mL',
+      administrationRoute: newDashProdForm.toLowerCase().includes('pomada')
+        ? 'Via Tópica'
+        : (newDashProdForm.toLowerCase().includes('goma') ? 'Via Oral' : 'Via Sublingual / Oral'),
+      dosage: dosageLines,
+      description: `Medicamento prescrito e cadastrado pelo médico: ${cleanName}`
+    };
+
+    const updated = [...prescItems, newItem];
+    setPrescItems(updated);
+
+    handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate,
+      cpf: prescCpf,
+      emissionDate: prescEmissionDate,
+      doctorName: prescDoctorName,
+      doctorCrm: prescDoctorCrm,
+      doctorSpecialty: prescDoctorSpecialty,
+      items: updated,
+      notes: prescNotes
+    });
+
+    if (saveDashToCatalog && addProduct) {
+      try {
+        const catId = getBestCategoryIdForProduct(newDashProdOrigin, newDashProdBrand);
+        const prodData: CBDProduct = {
+          name: cleanName,
+          manufacturer: newDashProdBrand.trim() || 'Associação Brasileira',
+          type: newDashProdForm || 'Óleo',
+          concentration: newDashProdConcentration.trim() || '',
+          origin: newDashProdOrigin,
+          pharmaceuticalForm: newItem.pharmaceuticalForm,
+          quantity: newItem.quantity,
+          administrationRoute: newItem.administrationRoute,
+          usageInstructions: dosageLines.join('\n'),
+          posologyDetails: dosageLines.join('\n'),
+          description: `Medicamento canabinoide cadastrado pelo médico: ${cleanName}`
+        };
+        addProduct(catId, prodData);
+
+        // Also save initial custom bula override so enrichMedicationDetails immediately has the exact specs
+        try {
+          const key = `mecura_bula_custom_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          localStorage.setItem(key, JSON.stringify({
+            name: cleanName,
+            manufacturer: prodData.manufacturer,
+            origin: prodData.origin,
+            type: prodData.type,
+            concentration: prodData.concentration,
+            pharmaceuticalForm: prodData.pharmaceuticalForm,
+            quantity: prodData.quantity,
+            administrationRoute: prodData.administrationRoute,
+            posologyDetails: prodData.posologyDetails,
+            usageInstructions: prodData.usageInstructions,
+            description: prodData.description
+          }));
+        } catch {
+          // ignore
+        }
+      } catch (err) {
+        console.warn("Could not save to admin catalog:", err);
+      }
+    }
+
+    // Set search term to new product name and reset search filters so it immediately appears at top of catalog search filter!
+    setProductSearchTerm(cleanName);
+    setProductBrandFilter('all');
+    setProductDiseaseFilter('all');
+    setProductOriginFilter('all');
+    setProductDiseaseSearchInput('');
+
+    // Reset fields
+    setNewDashProdName('');
+    setNewDashProdConcentration('');
+    setShowNewProductModalInDashboard(false);
+
+    showActionToast(`✓ "${cleanName}" cadastrado na biblioteca e salvo na receita!`);
   };
 
   const navigate = useNavigate();
@@ -945,6 +1270,42 @@ export function DoctorDashboardScreen() {
       if (currentPatient.hasUnread) {
         updateDoc(doc(db, 'queue', currentPatient.id), { hasUnread: false }).catch(console.error);
       }
+
+      // Automatically load and synchronize patient's saved prescription
+      const pName = currentPatient.patientName || userName || 'Paciente';
+      const patientKey = getPatientReportKey(currentPatient.id, pName);
+      const saved = loadSavedPrescription(patientKey) || currentPatient.prescriptionData;
+      if (saved && saved.items && Array.isArray(saved.items) && saved.items.length > 0) {
+        setPrescPatientName(saved.patientName || pName);
+        setPrescBirthDate(saved.birthDate || currentPatient.birthDate || '');
+        setPrescCpf(saved.cpf || currentPatient.cpf || '');
+        setPrescEmissionDate(saved.emissionDate || format(new Date(), 'dd/MM/yyyy'));
+        setPrescDoctorName(saved.doctorName || 'Dr. Guilherme Taveira Dias');
+        setPrescDoctorCrm(saved.doctorCrm || 'CRM/MT 17259');
+        setPrescDoctorSpecialty(saved.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+        setPrescItems(saved.items);
+        setPrescNotes(saved.notes || '');
+      } else {
+        // Query active_consultations doc to see if prescription was stored remotely
+        getDoc(doc(db, 'active_consultations', currentPatient.id)).then(snap => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.prescriptionData && data.prescriptionData.items?.length > 0) {
+              const sp = data.prescriptionData;
+              setPrescPatientName(sp.patientName || pName);
+              setPrescBirthDate(sp.birthDate || currentPatient.birthDate || '');
+              setPrescCpf(sp.cpf || currentPatient.cpf || '');
+              setPrescEmissionDate(sp.emissionDate || format(new Date(), 'dd/MM/yyyy'));
+              setPrescDoctorName(sp.doctorName || 'Dr. Guilherme Taveira Dias');
+              setPrescDoctorCrm(sp.doctorCrm || 'CRM/MT 17259');
+              setPrescDoctorSpecialty(sp.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+              setPrescItems(sp.items);
+              setPrescNotes(sp.notes || '');
+              savePrescriptionToStorage(patientKey, sp);
+            }
+          }
+        }).catch(console.warn);
+      }
       
       return () => {
         console.log("Unsubscribing from messages for:", currentPatient.id);
@@ -983,6 +1344,30 @@ export function DoctorDashboardScreen() {
          if (userData.birthDate) enrichedPatient.birthDate = userData.birthDate;
          if (userData.phone) enrichedPatient.phone = userData.phone;
          if (userData.email && !enrichedPatient.email?.includes('@')) enrichedPatient.email = userData.email;
+         if (userData.greetingSent || userData.initialGreetingSent || userData.treatmentStarted) {
+           enrichedPatient.greetingSent = true;
+           enrichedPatient.initialGreetingSent = true;
+         }
+      }
+
+      // Also check queue and active_consultation documents for existing greeting flags
+      const [qSnap, cSnap] = await Promise.all([
+        getDoc(doc(db, 'queue', patient.id)).catch(() => null),
+        getDoc(doc(db, 'active_consultations', patient.id)).catch(() => null)
+      ]);
+      if (qSnap && qSnap.exists()) {
+        const qd = qSnap.data();
+        if (qd.greetingSent || qd.initialGreetingSent || qd.status === 'in-consultation' || qd.status === 'finished') {
+          enrichedPatient.greetingSent = true;
+          enrichedPatient.initialGreetingSent = true;
+        }
+      }
+      if (cSnap && cSnap.exists()) {
+        const cd = cSnap.data();
+        if (cd.greetingSent || cd.initialGreetingSent) {
+          enrichedPatient.greetingSent = true;
+          enrichedPatient.initialGreetingSent = true;
+        }
       }
     } catch (e) {
       console.warn("Failed to enrich patient data", e);
@@ -1025,14 +1410,19 @@ export function DoctorDashboardScreen() {
     const patientGreetingKey = `mecura_greeting_sent_${patient.id}`;
     const alreadyGreetedInStorage = typeof window !== 'undefined' && localStorage.getItem(patientGreetingKey) === 'true';
     const alreadyGreetedInRef = greetedPatientsRef.current.has(patient.id);
-    const alreadyGreetedInPatient = !!(patient.greetingSent || enrichedPatient.greetingSent || (patient as any).initialGreetingSent);
+    const alreadyGreetedInPatient = !!(patient.greetingSent || enrichedPatient.greetingSent || (patient as any).initialGreetingSent || enrichedPatient.initialGreetingSent);
 
+    // If patient is not in 'waiting' status OR already greeted anywhere, strictly skip
     if (patient.status === 'waiting' && !alreadyGreetedInStorage && !alreadyGreetedInRef && !alreadyGreetedInPatient) {
-      // Immediately flag in memory and storage to prevent race condition when doctor switches chat
+      // Immediately flag in memory, storage and Firestore to prevent race conditions when doctor switches or leaves chat
       greetedPatientsRef.current.add(patient.id);
       if (typeof window !== 'undefined') {
         localStorage.setItem(patientGreetingKey, 'true');
       }
+
+      setDoc(doc(db, 'queue', patient.id), { greetingSent: true, initialGreetingSent: true }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'users', patient.id), { greetingSent: true, initialGreetingSent: true }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'active_consultations', patient.id), { greetingSent: true, initialGreetingSent: true }, { merge: true }).catch(() => {});
 
       setTimeout(async () => {
         try {
@@ -1071,10 +1461,6 @@ export function DoctorDashboardScreen() {
             sender: 'doctor',
             type: 'text'
           }, patient.id);
-
-          await setDoc(doc(db, 'queue', patient.id), { greetingSent: true }, { merge: true }).catch(() => {});
-          await setDoc(doc(db, 'users', patient.id), { greetingSent: true }, { merge: true }).catch(() => {});
-          await setDoc(doc(db, 'active_consultations', patient.id), { greetingSent: true }, { merge: true }).catch(() => {});
         } catch (err) {
           console.warn("[Auto-Greeting] Error checking/sending initial greeting:", err);
         }
@@ -1474,11 +1860,28 @@ export function DoctorDashboardScreen() {
         }
       }
 
-      if (label && !['Tratamento Premium', 'Orientações da Prescrição', 'Receita Digital', 'Pagamento Confirmado'].includes(label)) {
-        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== label.toLowerCase()));
-      } else if (targetMsg?.productData?.name) {
-        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== targetMsg.productData.name.toLowerCase()));
-      }
+      const prodName = (label && !['Tratamento Premium', 'Orientações da Prescrição', 'Receita Digital', 'Pagamento Confirmado'].includes(label))
+        ? label
+        : (targetMsg?.productData?.name || null);
+
+        if (prodName) {
+          const cleanName = prodName.toLowerCase().trim();
+          setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== cleanName));
+          const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== cleanName);
+          setPrescItems(updated);
+          handleSavePrescription({
+            patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+            birthDate: prescBirthDate,
+            cpf: prescCpf,
+            emissionDate: prescEmissionDate,
+            doctorName: prescDoctorName,
+            doctorCrm: prescDoctorCrm,
+            doctorSpecialty: prescDoctorSpecialty,
+            items: updated,
+            notes: prescNotes
+          });
+          showActionToast(`✓ "${prodName}" excluído da receita e alteração salva.`);
+        }
 
       await deleteMessage(messageId, pId);
     } catch (err) {
@@ -1665,6 +2068,42 @@ export function DoctorDashboardScreen() {
       }
     }, targetPatientId);
 
+    // Also add/update in prescItems and persist prescription so it's officially recorded
+    const cleanSendName = selectedProduct.name.toLowerCase().trim();
+    const sendEnriched = enrichMedicationDetails(selectedProduct.name, selectedProduct.manufacturer, isNational ? 'Nacional' : (selectedProduct.origin || 'Importado'), selectedProduct.type, selectedProduct);
+    const sendItem: PrescriptionItemData = {
+      name: selectedProduct.name,
+      brand: selectedProduct.manufacturer || sendEnriched.brand,
+      origin: isNational ? 'Nacional' : (selectedProduct.origin || 'Importado'),
+      type: selectedProduct.type || sendEnriched.type,
+      concentration: selectedProduct.concentration || sendEnriched.concentration || '',
+      activeIngredients: sendEnriched.activeIngredients || selectedProduct.concentration || '',
+      pharmaceuticalForm: sendEnriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: sendEnriched.quantity || '01 Frasco de 30 mL',
+      administrationRoute: sendEnriched.administrationRoute || 'Via Sublingual / Oral',
+      dosage: fullDosage ? fullDosage.split('\n').map(s => s.trim()).filter(Boolean) : ['Tomar conforme orientação médica.'],
+      description: description || sendEnriched.description || '',
+      details: details || [sendEnriched.activeIngredients],
+      priceUSD: isNational ? undefined : selectedProduct.priceUSD,
+      priceBRL: isNational ? undefined : selectedProduct.priceBRL
+    };
+
+    const updatedPresc = prescItems.some(p => p.name.toLowerCase().trim() === cleanSendName)
+      ? prescItems.map(p => p.name.toLowerCase().trim() === cleanSendName ? sendItem : p)
+      : [...prescItems, sendItem];
+
+    setPrescItems(updatedPresc);
+    handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate,
+      cpf: prescCpf,
+      emissionDate: prescEmissionDate,
+      doctorName: prescDoctorName,
+      doctorCrm: prescDoctorCrm,
+      doctorSpecialty: prescDoctorSpecialty,
+      items: updatedPresc,
+      notes: prescNotes
+    });
     
     setShowProductSearchModal(false);
     setSelectedProduct(null);
@@ -1747,7 +2186,7 @@ export function DoctorDashboardScreen() {
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
     const patientKey = getPatientReportKey(currentPatient?.id, pName);
-    const saved = loadSavedPrescription(patientKey);
+    const saved = loadSavedPrescription(patientKey) || currentPatient?.prescriptionData;
 
     if (saved && saved.items && saved.items.length > 0) {
       setPrescPatientName(saved.patientName || pName);
@@ -1757,8 +2196,27 @@ export function DoctorDashboardScreen() {
       setPrescDoctorName(saved.doctorName || 'Dr. Guilherme Taveira Dias');
       setPrescDoctorCrm(saved.doctorCrm || 'CRM/MT 17259');
       setPrescDoctorSpecialty(saved.doctorSpecialty || 'Especialista em Medicina Canabinoide');
-      setPrescItems(saved.items);
-      setPrescNotes(saved.notes || '');
+
+      // Build merged items list: prefer prescItems if an item with the same name was edited in current session
+      const prescMap = new Map<string, PrescriptionItemData>();
+      prescItems.forEach(pi => prescMap.set(pi.name.toLowerCase().trim(), pi));
+
+      const mergedItems: PrescriptionItemData[] = saved.items.map((si: PrescriptionItemData) => {
+        const clean = si.name.toLowerCase().trim();
+        if (prescMap.has(clean)) {
+          const edited = prescMap.get(clean)!;
+          prescMap.delete(clean);
+          return edited;
+        }
+        return si;
+      });
+
+      prescMap.forEach((newlyAdded) => {
+        mergedItems.push(newlyAdded);
+      });
+
+      setPrescItems(mergedItems);
+      setPrescNotes(saved.notes || prescNotes || '');
       setPrescriptionTab('edit');
       setShowPrescriptionEditorModal(true);
       return;
@@ -2306,10 +2764,13 @@ export function DoctorDashboardScreen() {
           const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
           const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.pharmaceuticalForm || '');
           const isFlower = /flor|in natura/i.test(item.name || item.pharmaceuticalForm || '');
-          const posologyHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+          const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${item.pharmaceuticalForm || ''} ${item.name} ${item.administrationRoute || ''} ${(item.dosage || []).join(' ')}`);
+          const posologyHeader = item.posologyHeader !== undefined
+            ? (item.posologyHeader.trim() ? item.posologyHeader.replace(/[:.]+$/, '').trim() : 'Posologia')
+            : ((isGummy || isFlower || isSyringeOrMl) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)');
           const cleanDosage = item.dosage.filter(d => {
             const t = d.trim();
-            return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+            return t && (!posologyHeader.includes('25 gotas') || !/^Aproximadamente 25 gotas por mL\.?$/i.test(t)) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
           });
           const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
           return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
@@ -3347,14 +3808,29 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
       newItem.administrationRoute = 'Uso Tópico';
     }
 
+    let updatedList: PrescriptionItemData[] = [];
     setPrescItems(prev => {
       const clean = newItem.name.toLowerCase().trim();
       const exists = prev.some(p => p.name.toLowerCase().trim() === clean);
-      if (exists) return prev;
-      return [...prev, newItem];
+      updatedList = exists 
+        ? prev.map(p => p.name.toLowerCase().trim() === clean ? newItem : p)
+        : [...prev, newItem];
+      return updatedList;
     });
 
-    showActionToast(`✓ "${newItem.name}" adicionado à receita prévia!`);
+    handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate,
+      cpf: prescCpf,
+      emissionDate: prescEmissionDate,
+      doctorName: prescDoctorName,
+      doctorCrm: prescDoctorCrm,
+      doctorSpecialty: prescDoctorSpecialty,
+      items: updatedList,
+      notes: prescNotes
+    });
+
+    showActionToast(`✓ "${newItem.name}" adicionado à receita e salvo!`);
   };
 
   return (
@@ -6368,16 +6844,181 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                     </p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => {
-                    setShowProductSearchModal(false);
-                    setSelectedProduct(null);
-                  }}
-                  className="p-2 rounded-lg text-mecura-silver hover:bg-white/5 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewProductModalInDashboard(!showNewProductModalInDashboard)}
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                    title="Cadastrar um novo produto ou formulação não listada no catálogo"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showNewProductModalInDashboard ? 'Ocultar Cadastro' : '+ Cadastrar Novo Medicamento'}</span>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setShowProductSearchModal(false);
+                      setSelectedProduct(null);
+                      setShowNewProductModalInDashboard(false);
+                    }}
+                    className="p-2 rounded-lg text-mecura-silver hover:bg-white/5 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
+
+              {/* Form to Register and Save New Product in Dashboard */}
+              {showNewProductModalInDashboard && (
+                <div className="p-4 sm:p-5 bg-[#0A0A0F] border-b border-purple-500/30 space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <div className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Cadastrar Novo Medicamento / Produto</span>
+                    </div>
+                    <span className="text-[11px] text-mecura-silver">
+                      Preencha os campos para prescrever e salvar na receita do paciente
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-6">
+                      <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Nome Comercial / Formulação *
+                      </label>
+                      <input
+                        type="text"
+                        value={newDashProdName}
+                        onChange={(e) => setNewDashProdName(e.target.value)}
+                        placeholder="Ex: Óleo CBD 3000mg Full Spectrum (30ml)"
+                        className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-bold"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Fabricante / Associação
+                      </label>
+                      <input
+                        type="text"
+                        list="new-dash-prod-brand-list"
+                        value={newDashProdBrand}
+                        onChange={(e) => setNewDashProdBrand(e.target.value)}
+                        placeholder="Ex: Associação Brasileira"
+                        className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-semibold"
+                      />
+                      <datalist id="new-dash-prod-brand-list">
+                        <option value="Associação Brasileira (Nacional)" />
+                        <option value="Santa Cannabis" />
+                        <option value="Abrace Esperança" />
+                        <option value="Flor da Vida" />
+                        <option value="Flowermed (EUA)" />
+                        <option value="GreenBudzCBD" />
+                        <option value="Pangaia" />
+                        <option value="Abecmed" />
+                      </datalist>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Origem
+                      </label>
+                      <select
+                        value={newDashProdOrigin}
+                        onChange={(e) => setNewDashProdOrigin(e.target.value as 'Nacional' | 'Importado')}
+                        className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-medium"
+                      >
+                        <option value="Nacional">Associação Nacional (Brasil)</option>
+                        <option value="Importado">Importado (EUA/Europa)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-4">
+                      <label className="text-[10px] text-emerald-400 uppercase font-bold block mb-1">
+                        Composição / Concentração
+                      </label>
+                      <input
+                        type="text"
+                        value={newDashProdConcentration}
+                        onChange={(e) => setNewDashProdConcentration(e.target.value)}
+                        placeholder="Ex: CBD 100mg/mL (10%), THC < 0,2%"
+                        className="w-full bg-[#12121A] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Forma Farmacêutica
+                      </label>
+                      <input
+                        type="text"
+                        value={newDashProdForm}
+                        onChange={(e) => setNewDashProdForm(e.target.value)}
+                        placeholder="Ex: Solução Oleosa Sublingual (Gotas)"
+                        className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
+                        Quantidade / Volume
+                      </label>
+                      <input
+                        type="text"
+                        value={newDashProdQuantity}
+                        onChange={(e) => setNewDashProdQuantity(e.target.value)}
+                        placeholder="Ex: 01 Frasco de 30 mL"
+                        className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-cyan-400 uppercase font-bold block mb-1">
+                      Posologia Inicial / Modo de Uso
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={newDashProdDosage}
+                      onChange={(e) => setNewDashProdDosage(e.target.value)}
+                      placeholder="Ex: Tomar 05 gotas sublinguais de 12/12 horas. Reter sob a língua por 60 segundos antes de deglutir."
+                      className="w-full bg-[#12121A] border border-cyan-500/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-sans"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-white/5">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-mecura-silver">
+                      <input
+                        type="checkbox"
+                        checked={saveDashToCatalog}
+                        onChange={(e) => setSaveDashToCatalog(e.target.checked)}
+                        className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-mecura-elevated bg-[#12121A]"
+                      />
+                      <span>Salvar também na Biblioteca Geral para futuras prescrições</span>
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewProductModalInDashboard(false)}
+                        className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-mecura-silver text-xs rounded-xl transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomProductInDashboard}
+                        disabled={!newDashProdName.trim()}
+                        className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black font-extrabold rounded-xl text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Adicionar à Receita & Salvar</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {!selectedProduct ? (
                 <>
@@ -6724,18 +7365,32 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                         <p className="text-mecura-silver text-xs max-w-sm mb-4">
                           Tente buscar por outro termo, fabricante ou limpar os filtros de patologia.
                         </p>
-                        <button
-                          onClick={() => {
-                            setProductSearchTerm('');
-                            setProductBrandFilter('all');
-                            setProductDiseaseFilter('all');
-                            setProductDiseaseSearchInput('');
-                            setProductOriginFilter('all');
-                          }}
-                          className="px-4 py-2 bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/30 rounded-xl text-xs font-bold transition-all"
-                        >
-                          Resetar Filtros
-                        </button>
+                        <div className="flex items-center gap-2 flex-wrap justify-center">
+                          <button
+                            onClick={() => {
+                              setProductSearchTerm('');
+                              setProductBrandFilter('all');
+                              setProductDiseaseFilter('all');
+                              setProductDiseaseSearchInput('');
+                              setProductOriginFilter('all');
+                            }}
+                            className="px-4 py-2 bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/30 rounded-xl text-xs font-bold transition-all"
+                          >
+                            Resetar Filtros
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (productSearchTerm) {
+                                setNewDashProdName(productSearchTerm);
+                              }
+                              setShowNewProductModalInDashboard(true);
+                            }}
+                            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Plus className="w-4 h-4" />
+                            + Cadastrar Novo Medicamento
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       filteredGuideProducts.map((product, idx) => {
@@ -6841,33 +7496,66 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   </div>
 
                   {/* Sticky Prescription Preview Footer */}
-                  <div className="p-4 bg-[#12121A] border-t border-mecura-elevated flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-[0_-10px_25px_rgba(0,0,0,0.5)]">
-                    <div className="flex items-center gap-3">
+                  <div className="p-4 bg-[#12121A] border-t border-mecura-elevated flex flex-col lg:flex-row items-center justify-between gap-3 shrink-0 shadow-[0_-10px_25px_rgba(0,0,0,0.5)]">
+                    <div className="flex items-center gap-3 w-full lg:w-auto">
                       <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
                         <FileText className="w-5 h-5" />
                       </div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-white">Receita Prévia em Elaboração:</span>
                           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/30">
                             {prescItems.length} medicamento{prescItems.length !== 1 ? 's' : ''}
                           </span>
                         </div>
-                        <p className="text-[11px] text-mecura-silver truncate max-w-xs sm:max-w-md mt-0.5">
-                          {prescItems.length > 0 
-                            ? prescItems.map(it => it.name).join(' • ')
-                            : 'Clique em "+ Adicionar à Receita" nos medicamentos acima para compor a receita médica prévia'}
-                        </p>
+                        {prescItems.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 max-w-xl">
+                            {prescItems.map((it, idx) => (
+                              <span
+                                key={`chip-${it.name}-${idx}`}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-white text-[11px] font-medium group"
+                              >
+                                <span className="truncate max-w-[140px] sm:max-w-[200px]">{it.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemovePrescItemAndSave(it.name);
+                                  }}
+                                  className="text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded p-0.5 transition-colors cursor-pointer"
+                                  title={`Excluir "${it.name}" da receita e salvar`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-mecura-silver truncate max-w-xs sm:max-w-md mt-0.5">
+                            Clique em "+ Adicionar à Receita" nos medicamentos acima ou use "+ Novo Produto"
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 w-full lg:w-auto flex-wrap sm:flex-nowrap">
                       <button
                         type="button"
                         onClick={() => {
                           handleOpenPrescriptionEditor();
                         }}
-                        className="flex-1 sm:flex-none px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="flex-1 sm:flex-none px-3.5 py-2.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Cadastrar novo produto ou ajustar composição, apresentações e posologia da receita"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-purple-300" />
+                        <span>+ Novo Produto / Ajustar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenPrescriptionEditor();
+                        }}
+                        className="flex-1 sm:flex-none px-3.5 py-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Edit3 className="w-3.5 h-3.5 text-purple-400" />
                         <span>Ajustar Composição & Posologia</span>
@@ -6950,20 +7638,37 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
 
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-4 border-t border-mecura-elevated">
+                  <div className="flex items-center justify-between flex-wrap gap-3 pt-4 border-t border-mecura-elevated">
                     <button 
                       onClick={() => setSelectedProduct(null)}
                       className="px-5 py-2.5 rounded-xl text-sm font-medium text-white hover:bg-white/5 transition-colors"
                     >
                       Voltar
                     </button>
-                    <button 
-                      onClick={handleSendProduct}
-                      disabled={!dosageInput.trim()}
-                      className="px-5 py-2.5 bg-mecura-neon text-black rounded-xl text-sm font-bold hover:bg-[#b5ff33] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(166,255,0,0.2)]"
-                    >
-                      Enviar Prescrição
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      {selectedProduct && prescItems.some(p => p.name.toLowerCase().trim() === selectedProduct.name.toLowerCase().trim()) && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            handleRemovePrescItemAndSave(selectedProduct.name);
+                            setSelectedProduct(null);
+                          }}
+                          className="px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer active:scale-95 shadow-sm"
+                          title="Excluir este medicamento da prescrição e salvar alteração"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                          <span>Excluir Medicamento & Salvar</span>
+                        </button>
+                      )}
+                      <button 
+                        onClick={handleSendProduct}
+                        disabled={!dosageInput.trim()}
+                        className="px-5 py-2.5 bg-mecura-neon text-black rounded-xl text-sm font-bold hover:bg-[#b5ff33] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(166,255,0,0.2)]"
+                      >
+                        Enviar Prescrição
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

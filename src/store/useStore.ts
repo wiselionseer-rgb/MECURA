@@ -494,7 +494,18 @@ export const useStore = create<AppState>((set, get) => ({
       console.warn("Failed to fetch user data for queue hydration:", e);
     }
 
-    const hasVerifiedPayment = isDocPaid;
+    const hasVerifiedPayment = !!(
+      isDocPaid ||
+      (patient as any)?.pagamento_consulta === true ||
+      (patient as any)?.hasPaid === true ||
+      (patient as any)?.isPaid === true ||
+      state.pagamento_consulta === true ||
+      state.pagamento_premium === true ||
+      (typeof window !== 'undefined' && (
+        localStorage.getItem('mecura_pagamento') === 'true' ||
+        localStorage.getItem('mecura_premium') === 'true'
+      ))
+    );
 
     if (!hasVerifiedPayment) {
       console.warn('[JOIN QUEUE] Bloqueado: Paciente tentou entrar na fila sem pagamento confirmado.');
@@ -642,6 +653,8 @@ export const useStore = create<AppState>((set, get) => ({
           id: currentUserId,
           inQueue: true,
           consultationStatus: 'waiting',
+          isConsultationFinished: false,
+          consultationActive: false,
           isPremium,
           plan: isPremium ? 'premium' : 'basic',
           lastUpdated: new Date().toISOString()

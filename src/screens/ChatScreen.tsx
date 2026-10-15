@@ -9,7 +9,7 @@ import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorR
 import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 const PatientChatInputBar = ({
@@ -275,18 +275,47 @@ export function ChatScreen() {
     }
     if (greetingAttemptedRef.current) return;
 
-    // Initial doctor message only if patient has actually paid AND chat is empty AND patient is actively in consultation
+    // If queue entry already shows greeting was sent, persist to storage and skip
+    if ((myQueueEntry as any)?.greetingSent || (myQueueEntry as any)?.initialGreetingSent) {
+      greetingAttemptedRef.current = true;
+      if (typeof window !== 'undefined') localStorage.setItem(greetingKey, 'true');
+      return;
+    }
+
+    // Never auto-greet if user is the doctor viewing chat
+    if (auth.currentUser?.email?.includes('medico') || auth.currentUser?.email?.includes('guilherme')) {
+      return;
+    }
+
+    // Initial doctor message only if patient has actually paid AND chat is genuinely empty AND patient is actively in consultation
     if (hasPaidConsultation && !isWaitingInQueue && (consultationActive || myQueueEntry?.status === 'in-consultation') && messages.length === 0) {
       greetingAttemptedRef.current = true;
       const timeoutId = setTimeout(async () => {
-        // Double check if messages are still empty before adding
+        // Double check if messages are still empty in local state
         if (useStore.getState().messages.length > 0) return;
         
         try {
+          // Check active_consultation doc
+          const consultDocRef = doc(db, 'active_consultations', effectiveConsultationId);
+          const consultDocSnap = await getDoc(consultDocRef);
+          if (consultDocSnap.exists()) {
+            const cData = consultDocSnap.data();
+            if (cData.greetingSent || cData.initialGreetingSent) {
+              if (typeof window !== 'undefined') localStorage.setItem(greetingKey, 'true');
+              return;
+            }
+          }
+
           const msgsSnap = await getDocs(collection(db, 'active_consultations', effectiveConsultationId, 'messages'));
           if (!msgsSnap.empty) {
-            if (typeof window !== 'undefined') localStorage.setItem(greetingKey, 'true');
-            return;
+            const hasDoctorMsg = msgsSnap.docs.some(d => {
+              const data = d.data();
+              return data.sender === 'doctor' || (typeof data.text === 'string' && data.text.includes('sou o Dr. Guilherme'));
+            });
+            if (hasDoctorMsg || msgsSnap.docs.length > 0) {
+              if (typeof window !== 'undefined') localStorage.setItem(greetingKey, 'true');
+              return;
+            }
           }
         } catch (e) {
           // ignore
@@ -295,6 +324,11 @@ export function ChatScreen() {
         if (typeof window !== 'undefined') {
           localStorage.setItem(greetingKey, 'true');
         }
+
+        // Flag in Firestore active_consultations, queue, and users
+        setDoc(doc(db, 'active_consultations', effectiveConsultationId), { greetingSent: true, initialGreetingSent: true }, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'queue', effectiveConsultationId), { greetingSent: true, initialGreetingSent: true }, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'users', effectiveConsultationId), { greetingSent: true, initialGreetingSent: true }, { merge: true }).catch(() => {});
 
         let problemText = 'seus sintomas e histórico';
         if ((answers && answers.objectives && answers.objectives.length) > 0) {
@@ -313,7 +347,7 @@ export function ChatScreen() {
       
       return () => clearTimeout(timeoutId);
     }
-  }, [userName, answers, messages.length, addMessage, isWaitingInQueue, consultationActive, myQueueEntry?.status, hasPaidConsultation, effectiveConsultationId]);
+  }, [userName, answers, messages.length, addMessage, isWaitingInQueue, consultationActive, myQueueEntry?.status, (myQueueEntry as any)?.greetingSent, hasPaidConsultation, effectiveConsultationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

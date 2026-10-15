@@ -16,9 +16,12 @@ import {
   Edit3, 
   Copy, 
   DollarSign,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { CBDProduct, enrichMedicationDetails } from '../data/cbdGuide';
+import { markProductAsDeleted } from '../utils/productCatalog';
+import { useAdminStore } from '../store/useAdminStore';
 
 interface ExtendedCBDProduct extends CBDProduct {
   categoryId?: string;
@@ -31,6 +34,7 @@ interface ProductBulaModalProps {
   onClose: () => void;
   exchangeRate: number;
   onSave?: (savedData: any) => void;
+  onDelete?: (productName: string, categoryId?: string) => void;
 }
 
 interface BulaFormData {
@@ -75,8 +79,10 @@ interface BulaFormData {
   doctorNotes: string;
 }
 
-export function ProductBulaModal({ product, onClose, exchangeRate, onSave }: ProductBulaModalProps) {
+export function ProductBulaModal({ product, onClose, exchangeRate, onSave, onDelete }: ProductBulaModalProps) {
   if (!product) return null;
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
 
   const getStorageKey = (prod: any) => {
     const rawId = prod?.id || prod?.name || 'unknown_product';
@@ -196,8 +202,43 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave }: Pro
   const handleSave = () => {
     try {
       localStorage.setItem(currentStorageKey, JSON.stringify(formData));
+      if (formData.name && formData.name.trim() !== product.name.trim()) {
+        const newKey = getStorageKey({ name: formData.name.trim() });
+        localStorage.setItem(newKey, JSON.stringify(formData));
+      }
       setHasSavedCustom(true);
       setIsDirty(false);
+
+      // Persist directly into useAdminStore
+      const catId = (product as any)?.categoryId || 'all';
+      try {
+        useAdminStore.getState().updateProduct(catId, product.name, {
+          name: formData.name.trim(),
+          manufacturer: formData.manufacturer.trim(),
+          origin: formData.origin,
+          type: formData.type,
+          concentration: formData.activeIngredients,
+          activeIngredients: formData.activeIngredients,
+          pharmaceuticalForm: formData.pharmaceuticalForm,
+          quantity: formData.quantity,
+          administrationRoute: formData.administrationRoute,
+          indications: formData.indications,
+          usageInstructions: formData.posologyDetails,
+          description: formData.description,
+          priceBRL: formData.priceBRL ? Number(String(formData.priceBRL).replace(/[^0-9.]/g, '')) : undefined,
+          priceUSD: formData.priceUSD ? Number(String(formData.priceUSD).replace(/[^0-9.]/g, '')) : undefined,
+          details: [
+            formData.activeIngredients,
+            formData.pharmaceuticalForm,
+            formData.quantity,
+            formData.administrationRoute,
+            formData.carrierVehicle
+          ].filter(Boolean)
+        });
+      } catch (storeErr) {
+        console.warn("Could not direct update product in admin store:", storeErr);
+      }
+
       showToast('Alterações da Bula e Doses salvas com sucesso! Ao sair e voltar, os dados permanecerão gravados.');
       if (onSave) {
         onSave(formData);
@@ -218,6 +259,27 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave }: Pro
       showToast('Bula restaurada para as especificações originais de catálogo.');
     } catch (e) {
       console.error('Falha ao resetar bula:', e);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    try {
+      const prodName = formData.name || product.name;
+      markProductAsDeleted(prodName);
+      const catId = (product as any)?.categoryId;
+      try {
+        useAdminStore.getState().deleteProduct(catId || 'all', prodName);
+      } catch (err) {
+        console.warn("Could not delete from admin store:", err);
+      }
+      if (onDelete) {
+        onDelete(prodName, catId);
+      }
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (e) {
+      console.error('Falha ao excluir produto:', e);
+      showToast('Erro ao excluir medicamento.');
     }
   };
 
@@ -298,6 +360,16 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave }: Pro
               >
                 <Sparkles className="w-3.5 h-3.5 text-mecura-neon" />
                 <span className="hidden sm:inline">{copiedPrescription ? 'Receita Copiada!' : 'Copiar Prescrição'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-red-500/15 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 transition-all active:scale-95 cursor-pointer shadow-sm"
+                title="Excluir este medicamento do catálogo"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <span className="hidden sm:inline">Excluir Medicamento</span>
               </button>
 
               <button
@@ -984,6 +1056,16 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave }: Pro
 
                 <button
                   type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex-1 sm:flex-none px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 rounded-xl transition-all text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-sm"
+                  title="Excluir este medicamento do catálogo e salvar"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                  <span>Excluir Medicamento & Salvar</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleSave}
                   className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-xs sm:text-sm flex items-center justify-center gap-2 active:scale-95"
                 >
@@ -1002,6 +1084,40 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave }: Pro
             </div>
           </div>
         </motion.div>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-[#12121A] border border-red-500/40 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+              <div className="w-12 h-12 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="text-center space-y-1">
+                <h4 className="text-lg font-bold text-white">Excluir Medicamento do Catálogo?</h4>
+                <p className="text-xs text-mecura-silver">
+                  Tem certeza que deseja excluir o medicamento <strong className="text-white font-semibold">"{formData.name || product.name}"</strong>? Ele será excluído do catálogo e as alterações serão salvas imediatamente.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-red-500/25 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Excluir & Salvar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AnimatePresence>
   );

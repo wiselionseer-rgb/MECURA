@@ -368,8 +368,9 @@ export function PremiumCheckoutScreen() {
     const statusParam = params.get('status') || params.get('collection_status');
 
     if (!paymentId && !statusParam) {
-      if (!localStorage.getItem('mecura_pagamento')) {
-        setPagamentoPremium(false);
+      if (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true') {
+        navigate('/queue');
+        return;
       }
     }
 

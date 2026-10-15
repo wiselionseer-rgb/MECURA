@@ -265,6 +265,158 @@ async function startServer() {
     console.warn("[QUEUE SEED] Warning:", err);
   }
 
+  const processApprovedPayment = async (payment: any) => {
+    try {
+      if (!payment || (payment.status !== 'approved' && payment.status !== 'completed')) return;
+      const val = Number(payment.transaction_amount) || 0;
+      const desc = (payment.description || '').toLowerCase();
+      const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento') || payment.metadata?.is_premium;
+      const payerEmail = payment.payer?.email;
+      const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : (payment.metadata?.patient_name || 'Paciente');
+      const patientId = payment.external_reference || payment.metadata?.patient_id;
+
+      const paymentDoc = {
+        mpId: String(payment.id),
+        type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
+        value: val,
+        plan: isPrem ? 'premium' : 'basic',
+        isPremium: isPrem,
+        status: payment.status,
+        date: payment.date_approved || payment.date_created || new Date().toISOString(),
+        payerEmail: payerEmail,
+        payerName: payerName,
+        patientId: patientId || undefined,
+        paymentMethod: payment.payment_method_id
+      };
+
+      await setDoc(doc(db, "payments", String(payment.id)), paymentDoc, { merge: true });
+
+      // Identificar o paciente para a fila
+      let targetPatientId = patientId;
+      let resolvedPatientName = payerName;
+      let existingAnswers = {};
+      let existingPhone = '';
+      let existingCpf = '';
+      let existingBirthDate = '';
+
+      if (!targetPatientId && payerEmail) {
+        try {
+          const cleanMail = payerEmail.toLowerCase().trim();
+          const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", cleanMail)));
+          if (!uSnap.empty) {
+            targetPatientId = uSnap.docs[0].id;
+            const uData = uSnap.docs[0].data();
+            resolvedPatientName = uData.name || payerName;
+            existingAnswers = uData.answers || {};
+            existingPhone = uData.phone || '';
+            existingCpf = uData.cpf || '';
+            existingBirthDate = uData.birthDate || '';
+          }
+        } catch (qErr) {}
+      }
+
+      if (!targetPatientId) {
+        targetPatientId = payerEmail ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`;
+      }
+
+      // Buscar dados existentes se ainda não foram buscados
+      if (existingPhone === '' && targetPatientId) {
+        try {
+          const userSnap = await getDoc(doc(db, "users", targetPatientId));
+          if (userSnap.exists()) {
+            const uData = userSnap.data();
+            if (uData.name) resolvedPatientName = uData.name;
+            existingAnswers = uData.answers || {};
+            existingPhone = uData.phone || '';
+            existingCpf = uData.cpf || '';
+            existingBirthDate = uData.birthDate || '';
+          }
+        } catch (err) {
+          console.warn("[PAYMENT PROCESS] Erro ao buscar user:", err);
+        }
+      }
+
+      // Inserir ou atualizar na coleção 'queue' para o médico atender
+      const queueDocRef = doc(db, "queue", targetPatientId);
+      const queuePayload = {
+        id: targetPatientId,
+        patientName: resolvedPatientName,
+        name: resolvedPatientName,
+        email: payerEmail || '',
+        phone: existingPhone,
+        cpf: existingCpf,
+        birthDate: existingBirthDate,
+        answers: existingAnswers,
+        tier: isPrem ? 'Premium' : 'basic',
+        isPremium: isPrem,
+        plan: isPrem ? 'premium' : 'basic',
+        joinedAt: payment.date_approved || new Date().toISOString(),
+        status: 'waiting',
+        pagamento_consulta: true,
+        pagamento_premium: isPrem,
+        hasUnread: true,
+        lastMessageText: 'Paciente aguardando atendimento médico',
+        lastMessageAt: new Date().toISOString()
+      };
+
+      await setDoc(queueDocRef, queuePayload, { merge: true });
+      console.log(`[PAYMENT APPROVED] Paciente ${resolvedPatientName} (${targetPatientId}) colocado na fila de espera com sucesso!`);
+
+      // Atualizar o documento do usuário
+      await setDoc(doc(db, "users", targetPatientId), {
+        pagamento_consulta: true,
+        pagamento_premium: isPrem,
+        isPremium: isPrem,
+        plan: isPrem ? 'premium' : 'basic',
+        inQueue: true,
+        isConsultationFinished: false,
+        consultationActive: false,
+        consultationStatus: 'waiting',
+        lastPaymentId: String(payment.id),
+        lastPaymentDate: new Date().toISOString()
+      }, { merge: true });
+
+      // Atualizar também o server queue cache
+      try {
+        let currentQueue = loadServerQueue();
+        const existingIdx = currentQueue.findIndex(p => p.id === targetPatientId || (payerEmail && p.email && p.email.toLowerCase() === payerEmail.toLowerCase()));
+        if (existingIdx >= 0) {
+          currentQueue[existingIdx] = { ...currentQueue[existingIdx], ...queuePayload };
+        } else {
+          currentQueue.unshift(queuePayload);
+        }
+        saveServerQueue(currentQueue);
+      } catch (cacheErr) {
+        console.warn("[PAYMENT PROCESS] Erro ao atualizar server queue cache:", cacheErr);
+      }
+
+      // Disparar Web Push para o médico
+      try {
+        const usersRef = collection(db, 'users');
+        const qAdmin = query(usersRef, where('role', '==', 'admin'));
+        const adminSnapshot = await getDocs(qAdmin);
+        adminSnapshot.forEach(docSnap => {
+          const uData = docSnap.data();
+          if (uData.pushSubscription) {
+            webpush.sendNotification(
+              uData.pushSubscription, 
+              JSON.stringify({ 
+                title: isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila', 
+                body: `${resolvedPatientName} realizou o pagamento (${isPrem ? 'R$ 249,90' : 'R$ 49,90'}) e está aguardando atendimento.`, 
+                url: '/doctor' 
+              }), 
+              { urgency: 'high', TTL: 86400 }
+            ).catch(() => {});
+          }
+        });
+      } catch (pushErr) {
+        console.warn("[PAYMENT PROCESS] Erro ao disparar push:", pushErr);
+      }
+    } catch (procErr) {
+      console.error("[PAYMENT PROCESS] Erro:", procErr);
+    }
+  };
+
   // ROTA: Buscar fila de pacientes (garante entrega ao médico mesmo com cota do Firestore)
   app.get("/api/queue", async (req, res) => {
     try {
@@ -758,12 +910,32 @@ async function startServer() {
   // ROTA: Verificar Status do Pagamento
   app.get("/api/payment-status/:id", async (req, res) => {
     try {
+      const paymentId = req.params.id;
+
+      // 1. Verificar primeiro no Firestore se já consta como aprovado
+      try {
+        const paySnap = await getDoc(doc(db, "payments", String(paymentId)));
+        if (paySnap.exists()) {
+          const pData = paySnap.data();
+          if (pData.status === 'approved' || pData.status === 'completed' || pData.type) {
+            return res.json({ status: 'approved' });
+          }
+        }
+      } catch (fErr) {
+        console.warn("[PAYMENT STATUS] Erro ao checar Firestore:", fErr);
+      }
+
       const mpInfo = await getMpClient();
       if (!mpInfo) {
         return res.status(500).json({ error: "Mercado Pago não configurado." });
       }
       const payment = new Payment(mpInfo.client);
-      const result = await payment.get({ id: req.params.id });
+      const result = await payment.get({ id: paymentId });
+
+      if (result && (result.status === 'approved' || result.status === 'completed')) {
+        processApprovedPayment(result).catch(e => console.warn("Erro ao processar fila pós verificação de status:", e));
+      }
+
       res.json({ status: result.status });
     } catch (error) {
       res.status(500).json({ error: "Erro ao consultar status." });
@@ -1307,131 +1479,8 @@ app.post('/api/send-admin-push', async (req, res) => {
           const paymentSdk = new Payment(mpInfo.client);
           const payment = await paymentSdk.get({ id: String(paymentId) });
           
-          if (payment && payment.status === 'approved') {
-            const val = Number(payment.transaction_amount) || 0;
-            const desc = (payment.description || '').toLowerCase();
-            const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento') || payment.metadata?.is_premium;
-            const payerEmail = payment.payer?.email;
-            const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : (payment.metadata?.patient_name || 'Paciente');
-            const patientId = payment.external_reference || payment.metadata?.patient_id;
-
-            const paymentDoc = {
-              mpId: String(payment.id),
-              type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
-              value: val,
-              plan: isPrem ? 'premium' : 'basic',
-              isPremium: isPrem,
-              status: payment.status,
-              date: payment.date_approved || payment.date_created || new Date().toISOString(),
-              payerEmail: payerEmail,
-              payerName: payerName,
-              patientId: patientId || undefined,
-              paymentMethod: payment.payment_method_id
-            };
-
-            await setDoc(doc(db, "payments", String(payment.id)), paymentDoc, { merge: true });
-
-            // Identificar o paciente para a fila
-            let targetPatientId = patientId;
-            let resolvedPatientName = payerName;
-            let existingAnswers = {};
-            let existingPhone = '';
-            let existingCpf = '';
-            let existingBirthDate = '';
-
-            if (!targetPatientId && payerEmail) {
-              try {
-                const cleanMail = payerEmail.toLowerCase().trim();
-                const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", cleanMail)));
-                if (!uSnap.empty) {
-                  targetPatientId = uSnap.docs[0].id;
-                  const uData = uSnap.docs[0].data();
-                  resolvedPatientName = uData.name || payerName;
-                  existingAnswers = uData.answers || {};
-                  existingPhone = uData.phone || '';
-                  existingCpf = uData.cpf || '';
-                  existingBirthDate = uData.birthDate || '';
-                }
-              } catch (qErr) {}
-            }
-
-            if (!targetPatientId) {
-              targetPatientId = payerEmail ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`;
-            }
-
-            // Buscar dados existentes se ainda não foram buscados
-            if (existingPhone === '' && targetPatientId) {
-              try {
-                const userSnap = await getDoc(doc(db, "users", targetPatientId));
-                if (userSnap.exists()) {
-                  const uData = userSnap.data();
-                  if (uData.name) resolvedPatientName = uData.name;
-                  existingAnswers = uData.answers || {};
-                  existingPhone = uData.phone || '';
-                  existingCpf = uData.cpf || '';
-                  existingBirthDate = uData.birthDate || '';
-                }
-              } catch (err) {
-                console.warn("[WEBHOOK] Erro ao buscar user:", err);
-              }
-            }
-
-            // Inserir ou atualizar na coleção 'queue' para o médico atender
-            const queueDocRef = doc(db, "queue", targetPatientId);
-            const queueSnap = await getDoc(queueDocRef);
-            
-            if (!queueSnap.exists() || queueSnap.data()?.status !== 'in-consultation') {
-              await setDoc(queueDocRef, {
-                id: targetPatientId,
-                patientName: resolvedPatientName,
-                name: resolvedPatientName,
-                email: payerEmail || '',
-                phone: existingPhone,
-                cpf: existingCpf,
-                birthDate: existingBirthDate,
-                answers: existingAnswers,
-                isPremium: isPrem,
-                plan: isPrem ? 'premium' : 'basic',
-                joinedAt: payment.date_approved || new Date().toISOString(),
-                status: 'waiting',
-                pagamento_consulta: true,
-                pagamento_premium: isPrem
-              }, { merge: true });
-              console.log(`[WEBHOOK MP] Paciente ${payerName} (${targetPatientId}) adicionado à fila com sucesso!`);
-            }
-
-            // Atualizar o documento do usuário
-            await setDoc(doc(db, "users", targetPatientId), {
-              pagamento_consulta: true,
-              pagamento_premium: isPrem,
-              inQueue: true,
-              consultationStatus: 'waiting',
-              lastPaymentId: String(payment.id),
-              lastPaymentDate: new Date().toISOString()
-            }, { merge: true });
-
-            // Disparar Web Push para o médico
-            try {
-              const usersRef = collection(db, 'users');
-              const qAdmin = query(usersRef, where('role', '==', 'admin'));
-              const adminSnapshot = await getDocs(qAdmin);
-              adminSnapshot.forEach(docSnap => {
-                const uData = docSnap.data();
-                if (uData.pushSubscription) {
-                  webpush.sendNotification(
-                    uData.pushSubscription, 
-                    JSON.stringify({ 
-                      title: isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila', 
-                      body: `${payerName} realizou o pagamento e está aguardando atendimento.`, 
-                      url: '/doctor' 
-                    }), 
-                    { urgency: 'high', TTL: 86400 }
-                  ).catch(() => {});
-                }
-              });
-            } catch (pushErr) {
-              console.warn("[WEBHOOK MP] Erro ao disparar push:", pushErr);
-            }
+          if (payment && (payment.status === 'approved' || payment.status === 'completed')) {
+            await processApprovedPayment(payment);
           }
         }
       }

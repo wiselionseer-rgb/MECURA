@@ -28,7 +28,7 @@ import {
   Paperclip,
   Bot,
   User,
-  X, Key, AlertTriangle
+  X, Key, AlertTriangle, Search
 , Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
@@ -586,6 +586,28 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       addProduct(newMedicine.categoryId || 'associacoes_nacionais', prodObj);
       setShowAddMedicineModal(false);
     }
+
+    try {
+      const key = `mecura_bula_custom_${prodObj.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      localStorage.setItem(key, JSON.stringify({
+        name: prodObj.name,
+        manufacturer: prodObj.manufacturer,
+        origin: prodObj.origin,
+        type: prodObj.type,
+        concentration: prodObj.concentration,
+        pharmaceuticalForm: prodObj.pharmaceuticalForm,
+        quantity: prodObj.quantity,
+        administrationRoute: prodObj.administrationRoute,
+        posologyDetails: prodObj.usageInstructions,
+        usageInstructions: prodObj.usageInstructions,
+        indications: prodObj.indications,
+        description: prodObj.description
+      }));
+    } catch {
+      // ignore
+    }
+
+    setMedicineSearchTerm(prodObj.name);
   };
   
   // AI Chat States
@@ -1592,11 +1614,49 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               </div>
             </div>
             
+            {/* Search Bar for Admin Catalog */}
+            <div className="bg-[#161622] border border-[#262636] p-4 rounded-2xl flex items-center gap-3">
+              <Search className="w-5 h-5 text-mecura-neon shrink-0" />
+              <input
+                type="text"
+                placeholder="Pesquisar produto por nome, fabricante, concentração ou patologia..."
+                value={medicineSearchTerm}
+                onChange={(e) => setMedicineSearchTerm(e.target.value)}
+                className="bg-transparent border-none text-white text-sm focus:outline-none w-full"
+              />
+              {medicineSearchTerm && (
+                <button 
+                  type="button" 
+                  onClick={() => setMedicineSearchTerm('')} 
+                  className="text-xs text-[#8A8A9E] hover:text-white bg-[#262636] px-2.5 py-1 rounded-lg"
+                >
+                  Limpar Busca
+                </button>
+              )}
+            </div>
+
             <div className="space-y-8">
-              {productCategories.map(cat => (
+              {productCategories
+                .map(cat => {
+                  const q = (medicineSearchTerm || '').toLowerCase().trim();
+                  const filteredProds = cat.products.filter(prod => {
+                    if (!q) return true;
+                    return (
+                      (prod.name || '').toLowerCase().includes(q) ||
+                      (prod.manufacturer || '').toLowerCase().includes(q) ||
+                      (prod.type || '').toLowerCase().includes(q) ||
+                      (prod.description || '').toLowerCase().includes(q) ||
+                      (prod.indications || '').toLowerCase().includes(q) ||
+                      (prod.concentration || '').toLowerCase().includes(q)
+                    );
+                  });
+                  return { ...cat, products: filteredProds };
+                })
+                .filter(cat => cat.products.length > 0 || !medicineSearchTerm)
+                .map(cat => (
                 <div key={cat.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-mecura-neon">{cat.title}</h3>
+                    <h3 className="text-xl font-bold text-mecura-neon">{cat.title} ({cat.products.length})</h3>
                     <Button 
                       variant="outline" 
                       size="sm" 

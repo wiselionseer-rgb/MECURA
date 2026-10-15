@@ -71,23 +71,39 @@ export interface CBDProduct {
   pharmaceuticalForm?: string;
   quantity?: string;
   administrationRoute?: string;
+  carrierVehicle?: string;
+  dropsPerMl?: number | string;
+  mgPerDropCBD?: number | string;
+  mgPerDropTHC?: number | string;
+  mgPerDropDelta8?: number | string;
+  ratio?: string;
+  anvisaRdc?: string;
+  gmpCertified?: boolean;
+  hplcStandardized?: boolean;
   image?: string;
   details?: string[];
   italicText?: string;
   description?: string;
   usageInstructions?: string;
+  posologyDetails?: string;
+  titrationRule?: string;
+  prescriptionExample?: string;
+  contraindications?: string;
+  adverseEffects?: string;
   priceUSD?: number;
   priceBRL?: number;
   indications?: string;
+  categoryName?: string;
+  categoryIndications?: string[];
 }
 
 export interface CBDCategory {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   indicationsList?: string[];
   usageInstructions?: string;
-  dosageGuidance: string;
+  dosageGuidance?: string;
   products: CBDProduct[];
 }
 
@@ -2497,6 +2513,24 @@ export function enrichMedicationDetails(
     if (product.pharmaceuticalForm) result.pharmaceuticalForm = product.pharmaceuticalForm;
     if (product.quantity) result.quantity = product.quantity;
     if (product.administrationRoute) result.administrationRoute = product.administrationRoute;
+  }
+  
+  if (typeof window !== 'undefined' && productName) {
+    try {
+      const cleanKey = `mecura_bula_custom_${productName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const savedRaw = localStorage.getItem(cleanKey);
+      if (savedRaw) {
+        const saved = JSON.parse(savedRaw);
+        if (saved.posologyDetails) result.usageInstructions = saved.posologyDetails;
+        if (saved.activeIngredients) result.activeIngredients = saved.activeIngredients;
+        if (saved.concentration) result.concentration = saved.concentration;
+        if (saved.pharmaceuticalForm) result.pharmaceuticalForm = saved.pharmaceuticalForm;
+        if (saved.quantity) result.quantity = saved.quantity;
+        if (saved.administrationRoute) result.administrationRoute = saved.administrationRoute;
+      }
+    } catch {
+      // ignore
+    }
   }
   
   return result;

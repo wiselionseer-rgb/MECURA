@@ -39,7 +39,7 @@ export function mergeProductCatalogs(
             const cleanName = p.name.trim().toLowerCase();
 
             if (!targetProductNames.has(cleanName)) {
-              target.products.push({ ...p });
+              target.products.unshift({ ...p });
               targetProductNames.add(cleanName);
             } else {
               // Update existing product with newer properties without erasing rich base fields
@@ -107,7 +107,126 @@ export function mergeProductCatalogs(
     });
   }
 
+  // 5. Filter out all products deleted by the doctor across all categories
+  const deletedSet = getDeletedProductNames();
+  categoryMap.forEach(cat => {
+    cat.products = cat.products.filter(p => !deletedSet.has((p.name || '').trim().toLowerCase()));
+  });
+
+  // 6. Merge doctor-saved custom Bula overrides from localStorage
+  if (typeof window !== 'undefined') {
+    try {
+      categoryMap.forEach(cat => {
+        cat.products = cat.products.map(p => {
+          if (!p || !p.name) return p;
+          const cleanKey = `mecura_bula_custom_${p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          const savedRaw = localStorage.getItem(cleanKey);
+          if (savedRaw) {
+            try {
+              const saved = JSON.parse(savedRaw);
+              const anyP = p as any;
+              return {
+                ...p,
+                posologyDetails: saved.posologyDetails || p.posologyDetails,
+                usageInstructions: saved.posologyDetails || p.usageInstructions,
+                activeIngredients: saved.activeIngredients || p.activeIngredients,
+                pharmaceuticalForm: saved.pharmaceuticalForm || p.pharmaceuticalForm,
+                quantity: saved.quantity || p.quantity,
+                administrationRoute: saved.administrationRoute || p.administrationRoute,
+                carrierVehicle: saved.carrierVehicle || anyP.carrierVehicle,
+                dropsPerMl: saved.dropsPerMl !== undefined && saved.dropsPerMl !== '' ? Number(saved.dropsPerMl) || saved.dropsPerMl : anyP.dropsPerMl,
+                mgPerDropCBD: saved.mgPerDropCBD !== undefined && saved.mgPerDropCBD !== '' ? Number(saved.mgPerDropCBD) || saved.mgPerDropCBD : anyP.mgPerDropCBD,
+                mgPerDropTHC: saved.mgPerDropTHC !== undefined && saved.mgPerDropTHC !== '' ? Number(saved.mgPerDropTHC) || saved.mgPerDropTHC : anyP.mgPerDropTHC,
+                ratio: saved.ratio || anyP.ratio,
+                indications: saved.indications || p.indications,
+                description: saved.description || p.description,
+              };
+            } catch {
+              return p;
+            }
+          }
+          return p;
+        });
+      });
+    } catch {
+      // ignore
+    }
+  }
+
   return Array.from(categoryMap.values());
+}
+
+/**
+ * Returns a Set of lowercase product names that the doctor deleted
+ */
+export function getDeletedProductNames(): Set<string> {
+  const set = new Set<string>();
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('mecura_deleted_products');
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          list.forEach((item: string) => {
+            if (typeof item === 'string' && item.trim()) {
+              set.add(item.trim().toLowerCase());
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Error reading deleted products:", e);
+    }
+  }
+  return set;
+}
+
+/**
+ * Marks a product as deleted in localStorage and Firestore so it disappears permanently from the catalog
+ */
+export function markProductAsDeleted(productName: string): void {
+  if (typeof window === 'undefined' || !productName) return;
+  try {
+    const clean = productName.trim().toLowerCase();
+    const existing = getDeletedProductNames();
+    existing.add(clean);
+    const arr = Array.from(existing);
+    localStorage.setItem('mecura_deleted_products', JSON.stringify(arr));
+
+    // Also remove any saved bula overrides from localStorage
+    const storageKey = `mecura_bula_custom_${clean.replace(/[^a-z0-9]/g, '_')}`;
+    localStorage.removeItem(storageKey);
+
+    const docRef = doc(db, 'settings', 'productCatalog');
+    setDoc(docRef, {
+      deletedProductNames: arr,
+      updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(console.warn);
+  } catch (e) {
+    console.warn("Error marking product as deleted:", e);
+  }
+}
+
+/**
+ * Unmarks a product as deleted (e.g. if doctor re-creates or restores a product)
+ */
+export function unmarkProductAsDeleted(productName: string): void {
+  if (typeof window === 'undefined' || !productName) return;
+  try {
+    const clean = productName.trim().toLowerCase();
+    const existing = getDeletedProductNames();
+    existing.delete(clean);
+    const arr = Array.from(existing);
+    localStorage.setItem('mecura_deleted_products', JSON.stringify(arr));
+
+    const docRef = doc(db, 'settings', 'productCatalog');
+    setDoc(docRef, {
+      deletedProductNames: arr,
+      updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(console.warn);
+  } catch (e) {
+    console.warn("Error unmarking product as deleted:", e);
+  }
 }
 
 /**
@@ -207,8 +326,10 @@ export function extractAllTypes(categories: CBDCategory[]): string[] {
 export async function syncCatalogToFirestore(categories: CBDCategory[]): Promise<void> {
   try {
     const docRef = doc(db, 'settings', 'productCatalog');
+    const deletedList = Array.from(getDeletedProductNames());
     await setDoc(docRef, {
       categories,
+      deletedProductNames: deletedList,
       updatedAt: new Date().toISOString()
     }, { merge: true });
   } catch (err) {
@@ -225,6 +346,19 @@ export function subscribeToFirestoreCatalog(onUpdate: (categories: CBDCategory[]
     return onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        if (data && Array.isArray(data.deletedProductNames)) {
+          try {
+            const currentDeleted = getDeletedProductNames();
+            data.deletedProductNames.forEach((name: string) => {
+              if (typeof name === 'string' && name.trim()) {
+                currentDeleted.add(name.trim().toLowerCase());
+              }
+            });
+            localStorage.setItem('mecura_deleted_products', JSON.stringify(Array.from(currentDeleted)));
+          } catch (e) {
+            console.warn("Error updating local deleted products from firestore:", e);
+          }
+        }
         if (data && Array.isArray(data.categories) && data.categories.length > 0) {
           onUpdate(data.categories);
         }
@@ -237,3 +371,20 @@ export function subscribeToFirestoreCatalog(onUpdate: (categories: CBDCategory[]
     return () => {};
   }
 }
+
+/**
+ * Returns the best matching category ID for a given product origin and manufacturer/brand name
+ */
+export function getBestCategoryIdForProduct(origin?: string, manufacturer?: string): string {
+  const cleanM = (manufacturer || '').toLowerCase().trim();
+  if (cleanM.includes('soucannabis') || cleanM.includes('sou cannabis')) return 'soucannabis_oficial';
+  if (cleanM.includes('abrace')) return 'abrace_oficial';
+  if (cleanM.includes('abec')) return 'abecmed_oficial';
+  if (cleanM.includes('pangaia') || cleanM.includes('maná')) return 'pangaia_oficial';
+  if (cleanM.includes('flowermed')) return 'flowermed_oficial';
+  if (cleanM.includes('flor') || cleanM.includes('extração') || cleanM.includes('folheto')) return 'flores_extracoes';
+
+  if (origin === 'Importado') return 'pangaia_oficial';
+  return 'associacoes_nacionais';
+}
+

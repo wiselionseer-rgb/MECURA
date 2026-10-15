@@ -489,10 +489,13 @@ export function MedicalReportEditorModal({
                               const form = item.pharmaceuticalForm ? `\n   Apresentação / Via: ${item.pharmaceuticalForm} • ${item.quantity || '01 frasco'} • ${item.administrationRoute || 'Via Sublingual'}` : '';
                               const isGummy = /goma|gumm|comest[íi]vel/i.test(item.name || item.pharmaceuticalForm || '');
                               const isFlower = /flor|in natura/i.test(item.name || item.pharmaceuticalForm || '');
-                              const posologyHeader = (isGummy || isFlower) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)';
+                              const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${item.pharmaceuticalForm || ''} ${item.name} ${item.administrationRoute || ''} ${(item.dosage || []).join(' ')}`);
+                              const posologyHeader = item.posologyHeader !== undefined
+                                ? (item.posologyHeader.trim() ? item.posologyHeader.replace(/[:.]+$/, '').trim() : 'Posologia')
+                                : ((isGummy || isFlower || isSyringeOrMl) ? 'Posologia' : 'Posologia (Aproximadamente 25 gotas por mL)');
                               const cleanDosage = item.dosage.filter(d => {
                                 const t = d.trim();
-                                return t && !/^Aproximadamente 25 gotas por mL\.?$/i.test(t) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
+                                return t && (!posologyHeader.includes('25 gotas') || !/^Aproximadamente 25 gotas por mL\.?$/i.test(t)) && !/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(t);
                               });
                               const doseStr = (cleanDosage.length > 0 ? cleanDosage : item.dosage).join(' | ');
                               return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;

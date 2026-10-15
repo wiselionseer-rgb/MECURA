@@ -1,7 +1,7 @@
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog } from '../utils/productCatalog';
+import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted } from '../utils/productCatalog';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -219,15 +219,24 @@ export const useAdminStore = create<AdminState>()(
         syncCatalogToFirestore(merged);
       },
       addProduct: (categoryId, product) => {
+        unmarkProductAsDeleted(product.name);
         set((state) => {
-          let updated = state.productCategories.map(c => 
-            c.id === categoryId ? { ...c, products: [...c.products, product] } : c
-          );
-          // If category was not found in state, add product to first category or create one
-          if (!updated.some(c => c.id === categoryId)) {
-            if (updated.length > 0) {
-              updated[0] = { ...updated[0], products: [...updated[0].products, product] };
+          let categoryFound = false;
+          let updated = state.productCategories.map(c => {
+            if (c.id === categoryId) {
+              categoryFound = true;
+              const cleanP = (product.name || '').trim().toLowerCase();
+              const filtered = c.products.filter(p => (p.name || '').trim().toLowerCase() !== cleanP);
+              return { ...c, products: [product, ...filtered] };
             }
+            return c;
+          });
+          if (!categoryFound) {
+            updated.unshift({
+              id: categoryId,
+              title: categoryId === 'associacoes_nacionais' ? 'Associações Nacionais' : (categoryId === 'pangaia_oficial' ? 'Pangaia Biopharmaceuticals' : 'Produtos Cadastrados'),
+              products: [product]
+            });
           }
           const merged = mergeProductCatalogs(cbdGuideData, updated);
           syncCatalogToFirestore(merged);
@@ -235,28 +244,39 @@ export const useAdminStore = create<AdminState>()(
         });
       },
       updateProduct: (categoryId, productName, productData) => {
+        const oldClean = (productName || '').trim().toLowerCase();
+        const newClean = (productData.name || '').trim().toLowerCase();
+        if (newClean && newClean !== oldClean) {
+          markProductAsDeleted(productName);
+          unmarkProductAsDeleted(productData.name);
+        }
         set((state) => {
-          const updated = state.productCategories.map(c => 
-            c.id === categoryId ? { 
-              ...c, 
-              products: c.products.map(p => p.name === productName ? { ...p, ...productData } : p) 
-            } : c
-          );
+          const updated = state.productCategories.map(c => {
+            const isTargetCat = !categoryId || categoryId === 'all' || c.id === categoryId;
+            const hasProd = c.products.some(p => (p.name || '').trim().toLowerCase() === oldClean);
+            if (isTargetCat || hasProd) {
+              return { 
+                ...c, 
+                products: c.products.map(p => (p.name || '').trim().toLowerCase() === oldClean ? { ...p, ...productData } : p) 
+              };
+            }
+            return c;
+          });
           const merged = mergeProductCatalogs(cbdGuideData, updated);
           syncCatalogToFirestore(merged);
           return { productCategories: merged };
         });
       },
       deleteProduct: (categoryId, productName) => {
+        markProductAsDeleted(productName);
         set((state) => {
-          const updated = state.productCategories.map(c => 
-            c.id === categoryId ? { 
-              ...c, 
-              products: c.products.filter(p => p.name !== productName) 
-            } : c
-          );
-          syncCatalogToFirestore(updated);
-          return { productCategories: updated };
+          const updated = state.productCategories.map(c => ({
+            ...c,
+            products: c.products.filter(p => (p.name || '').trim().toLowerCase() !== productName.trim().toLowerCase())
+          }));
+          const merged = mergeProductCatalogs(cbdGuideData, updated);
+          syncCatalogToFirestore(merged);
+          return { productCategories: merged };
         });
       },
     }),
@@ -278,12 +298,7 @@ if (typeof window !== 'undefined') {
       if (cloudCats && Array.isArray(cloudCats) && cloudCats.length > 0) {
         const currentLocal = useAdminStore.getState().productCategories;
         const merged = mergeProductCatalogs(cbdGuideData, currentLocal, cloudCats);
-        // Only update state if count or ids differ to avoid re-render loops
-        const currentTotal = currentLocal.reduce((acc, c) => acc + c.products.length, 0);
-        const mergedTotal = merged.reduce((acc, c) => acc + c.products.length, 0);
-        if (currentTotal !== mergedTotal || currentLocal.length !== merged.length) {
-          useAdminStore.setState({ productCategories: merged });
-        }
+        useAdminStore.setState({ productCategories: merged });
       }
     });
   } catch (err) {

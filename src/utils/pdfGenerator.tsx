@@ -19,6 +19,7 @@ export interface PrescriptionItemData {
   pharmaceuticalForm?: string;
   quantity?: string;
   administrationRoute?: string;
+  posologyHeader?: string;
   dosage: string[];
   description?: string;
   priceUSD?: number;
@@ -680,15 +681,18 @@ export const generatePrescriptionPDF = async (
 
                         {/* Dosage */}
                         {(() => {
-                          const posologyHeader = (isGummy || isFlower)
-                            ? 'Posologia e Modo de Uso:'
-                            : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):';
+                          const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${pharmForm} ${item.name} ${admRoute} ${dosageLines.join(' ')}`);
+                          const posologyHeader = item.posologyHeader !== undefined
+                            ? (item.posologyHeader.trim() ? item.posologyHeader.trim() : 'Posologia e Modo de Uso:')
+                            : ((isGummy || isFlower || isSyringeOrMl)
+                                ? 'Posologia e Modo de Uso:'
+                                : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):');
 
                           // Filter out dosage lines that repeat the header note
                           const cleanedDosageLines = dosageLines.filter(d => {
                             const trimmed = d.trim();
                             if (!trimmed) return false;
-                            if (/^Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
+                            if (posologyHeader.includes('25 gotas') && /^Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
                             if (/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
                             return true;
                           });

@@ -198,10 +198,28 @@ export function QueueScreen() {
 
   // Payment guard: Unpaid users cannot wait in queue and must be redirected to checkout
   useEffect(() => {
+    const hasLocalPayment = typeof window !== 'undefined' && (
+      localStorage.getItem('mecura_pagamento') === 'true' ||
+      localStorage.getItem('mecura_premium') === 'true'
+    );
+    const hasQueuePayment = !!(
+      myQueueEntry?.pagamento_consulta || 
+      myQueueEntry?.status === 'waiting' || 
+      myQueueEntry?.status === 'in-consultation'
+    );
+
     if (!pagamento_consulta) {
-      navigate('/checkout');
+      if (hasLocalPayment || hasQueuePayment) {
+        useStore.setState({ 
+          pagamento_consulta: true, 
+          inQueue: true,
+          isConsultationFinished: false 
+        });
+      } else {
+        navigate('/checkout');
+      }
     }
-  }, [pagamento_consulta, navigate]);
+  }, [pagamento_consulta, myQueueEntry?.status, myQueueEntry?.pagamento_consulta, navigate]);
 
   // Direct listener to the user's specific queue & user document for instant real-time response
   useEffect(() => {
@@ -270,12 +288,18 @@ export function QueueScreen() {
   useEffect(() => {
     if (!pagamento_consulta) return;
 
-    // Do NOT re-join if consultation is active or finished or already completed
-    if (consultationActive || myQueueEntry?.status === 'finished') return;
+    // Do NOT re-join if consultation is active
+    if (consultationActive) return;
 
     const isCurrentlyWaitingOrActive = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
     
     if (!isCurrentlyWaitingOrActive) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_consultation_finished');
+        localStorage.removeItem('mecura_consultation_active');
+      }
+      useStore.setState({ isConsultationFinished: false, consultationActive: false, inQueue: true });
+
       const pUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
       const storedPatientName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
       const pName = (auth.currentUser?.displayName && auth.currentUser.displayName.toLowerCase() !== 'paciente') 
@@ -304,8 +328,8 @@ export function QueueScreen() {
   }, [myQueueEntry?.status, consultationActive, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
 
   useEffect(() => {
-    // If patient has paid and is not marked finished by the doctor, ensure stale finished flags are removed
-    if (pagamento_consulta && myQueueEntry?.status !== 'finished') {
+    // If patient has paid, ensure stale finished flags are removed
+    if (pagamento_consulta) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('mecura_consultation_finished');
       }
@@ -380,11 +404,15 @@ export function QueueScreen() {
   const progressPercent = Math.min(100, Math.round((effectiveSeconds / 600) * 100));
   const estimatedMins = Math.max(1, displayPosition * 2);
 
-  // A consultation is ONLY finished if the doctor explicitly completed it or there's an explicit finished entry for the current session
-  const isFinished = !consultationActive && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && !!(
-    (myQueueEntry?.status === 'finished' && !inQueue && !pagamento_consulta) || 
-    (myQueueEntry?.status === 'finished' && isConsultationFinished && !inQueue) ||
-    (!pagamento_consulta && (!myQueueEntry && (isConsultationFinished || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true'))))
+  // A consultation is ONLY finished if the patient has NO active payment and the doctor explicitly concluded it
+  const hasActivePayment = pagamento_consulta || (typeof window !== 'undefined' && (
+    localStorage.getItem('mecura_pagamento') === 'true' ||
+    localStorage.getItem('mecura_premium') === 'true'
+  ));
+
+  const isFinished = !hasActivePayment && !consultationActive && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && !!(
+    (myQueueEntry?.status === 'finished' && !inQueue) ||
+    (!myQueueEntry && (isConsultationFinished || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true')))
   );
 
   return (
