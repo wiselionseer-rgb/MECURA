@@ -61,7 +61,8 @@ import {
   Pill,
   Plus,
   Clock,
-  Lock
+  Lock,
+  Building2
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -101,6 +102,7 @@ import { StandaloneDocumentModal, StandalonePatientData } from '../components/St
 import { AreaPasswordModal } from '../components/AreaPasswordModal';
 import { ProgrammedPrescriptionsModal } from '../components/ProgrammedPrescriptionsModal';
 import { ProgrammedPrescriptionProfile, getProgrammedProfiles } from '../data/programmedPrescriptions';
+import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { generatePersonalizedClinicalReport } from '../utils/clinicalReportGenerator';
@@ -593,6 +595,7 @@ export function DoctorDashboardScreen() {
   const [isSendingPsychomotorToChat, setIsSendingPsychomotorToChat] = useState(false);
   const [isSendingAgronomicToChat, setIsSendingAgronomicToChat] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [showNeuroTestsBanner, setShowNeuroTestsBanner] = useState(true);
   const [actionToastMessage, setActionToastMessage] = useState<string | null>(null);
 
   const showActionToast = (msg: string) => {
@@ -1657,6 +1660,43 @@ export function DoctorDashboardScreen() {
 
     setCurrentPatient(enrichedPatient);
     setAnalysisResult(null); // Reset previous analysis to allow fresh generation
+
+    // Auto-synchronize doctor's brand/association preference filter with patient's triage choice
+    const pAns = enrichedPatient.answers || {};
+    const prefBrandsLower = Array.isArray(pAns.preferredBrands)
+      ? pAns.preferredBrands.map((b: string) => String(b).toLowerCase()).join(' | ')
+      : '';
+    const natPrefLower = String(pAns.preferredNationalAssociation || '').toLowerCase();
+    const impPrefLower = String(pAns.preferredImportedBrand || '').toLowerCase();
+    const combinedPref = `${prefBrandsLower} | ${natPrefLower} | ${impPrefLower}`;
+
+    if (combinedPref.includes('abrace')) {
+      setNationalPreference('abrace');
+      setBrandPreference('abrace');
+    } else if (combinedPref.includes('abec')) {
+      setNationalPreference('abecmed');
+      setBrandPreference('abecmed');
+    } else if (combinedPref.includes('soucannabis') || combinedPref.includes('sou cannabis')) {
+      setNationalPreference('soucannabis');
+      setBrandPreference('soucannabis');
+    }
+
+    if (combinedPref.includes('pangaia')) {
+      setImportedPreference('pangaia');
+      if (!combinedPref.includes('abrace') && !combinedPref.includes('abec') && !combinedPref.includes('soucannabis')) {
+        setBrandPreference('pangaia');
+      }
+    } else if (combinedPref.includes('greenbudz') || combinedPref.includes('green budz')) {
+      setImportedPreference('greenbudz');
+      if (!combinedPref.includes('abrace') && !combinedPref.includes('abec') && !combinedPref.includes('soucannabis')) {
+        setBrandPreference('greenbudz');
+      }
+    } else if (combinedPref.includes('flowermed')) {
+      setImportedPreference('flowermed');
+      if (!combinedPref.includes('abrace') && !combinedPref.includes('abec') && !combinedPref.includes('soucannabis')) {
+        setBrandPreference('flowermed');
+      }
+    }
 
     // Immediately update local store queue so patient leaves 'waiting' queue
     useStore.setState((state) => ({
@@ -3879,6 +3919,90 @@ export function DoctorDashboardScreen() {
     setAccessibleCustomMessage('');
   };
 
+  // Neurodivergent Test Handlers for Doctor
+  const handleSendDoctorAdhdToChat = async (adhdData: any) => {
+    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast('Nenhum paciente selecionado para envio do teste.');
+      return;
+    }
+    try {
+      const isInvite = adhdData?.isInvite;
+      const msgPayload: any = {
+        text: isInvite
+          ? `📋 Convite Clínico: O Dr. Guilherme solicita o preenchimento da Escala ASRS-18 (12 Perguntas) para mapeamento de TDAH.`
+          : `🧠 Laudo do Teste de TDAH (ASRS-18 — 12 Domínios Neurais):\n• Correspondência: ${adhdData.scorePercent}%\n• Classificação: ${adhdData.classification}\n• Pontuação: ${adhdData.totalPoints}/${adhdData.maxPoints || 36} pontos.`,
+        sender: 'doctor',
+        type: 'adhd_test_card',
+        adhdTestData: isInvite ? undefined : adhdData,
+      };
+      await addMessage(msgPayload, targetPatientId);
+      showActionToast('✓ Resultado do Teste de TDAH anexado ao chat da consulta!');
+    } catch (e) {
+      console.error('Erro ao enviar card de TDAH:', e);
+      showActionToast('Erro ao anexar teste no chat.');
+    }
+  };
+
+  const handleSendDoctorAutismToChat = async (autismData: any) => {
+    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast('Nenhum paciente selecionado para envio do teste.');
+      return;
+    }
+    try {
+      const isInvite = autismData?.isInvite;
+      const msgPayload: any = {
+        text: isInvite
+          ? `📋 Convite Clínico: O Dr. Guilherme solicita o preenchimento do Mapeamento Neurocomportamental para TEA / Autismo (12 Perguntas).`
+          : `🧩 Mapeamento de Autismo (TEA — 12 Perguntas):\n• Correspondência: ${autismData.scorePercent}%\n• Perfil: ${autismData.targetProfile || 'Adulto'}\n• Classificação: ${autismData.classification}\n• Pontuação: ${autismData.totalPoints}/${autismData.maxPoints || 36} pontos.`,
+        sender: 'doctor',
+        type: 'autism_test_card',
+        autismTestData: isInvite ? undefined : autismData,
+      };
+      await addMessage(msgPayload, targetPatientId);
+      showActionToast('✓ Resultado do Teste de Autismo anexado ao chat da consulta!');
+    } catch (e) {
+      console.error('Erro ao enviar card de Autismo:', e);
+      showActionToast('Erro ao anexar teste no chat.');
+    }
+  };
+
+  const handleSaveDoctorTestResult = async (testType: 'adhd' | 'autism', resultData: any) => {
+    const targetPatient = currentPatient || queue.find(p => p.id === activeConsultationId);
+    if (!targetPatient) return;
+    const testKey = testType === 'adhd' ? 'adhdTestResult' : 'autismTestResult';
+    const updatedAnswers = {
+      ...(targetPatient.answers || answers || {}),
+      [testKey]: resultData,
+    };
+    const updatedPatient = {
+      ...targetPatient,
+      answers: updatedAnswers,
+    };
+    setCurrentPatient(updatedPatient);
+
+    useStore.setState((state) => ({
+      answers: updatedAnswers,
+      queue: state.queue.map((p) =>
+        p.id === targetPatient.id ? { ...p, answers: updatedAnswers } : p
+      ),
+    }));
+
+    try {
+      await setDoc(doc(db, 'queue', targetPatient.id), { answers: updatedAnswers }, { merge: true });
+      await setDoc(doc(db, 'users', targetPatient.id), { answers: updatedAnswers }, { merge: true });
+      fetch('/api/queue/force-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPatient),
+      }).catch(() => {});
+    } catch (e) {
+      console.warn('Could not persist test in doctor dashboard:', e);
+    }
+    showActionToast(`✓ Avaliação de ${testType === 'adhd' ? 'TDAH' : 'Autismo'} salva com sucesso!`);
+  };
+
   const handleGenerateAnalysis = async (
     force: boolean = false,
     selectedBrand: 'flowermed' | 'greenbudz' | 'soucannabis' | 'abrace' | 'abecmed' | 'pangaia' | 'both' = brandPreference,
@@ -3965,6 +4089,10 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
           Pânico/Ansiedade (${patientAnswers?.panico || patientAnswers?.ansiedade_diag ? 'Sim' : 'Não'}), Estresse (${patientAnswers?.estresse ? 'Sim' : 'Não'}).
         - Hábitos de Vida: Fuma (${patientAnswers?.fuma ? 'Sim' : 'Não'}), Bebida Alcoólica (${patientAnswers?.bebida ? 'Sim' : 'Não'}), 
           Atividade Física (${patientAnswers?.exercicio ? 'Sim' : 'Não'}).
+        - Preferência de Fabricante / Associação Informada pelo Paciente na Triagem:
+          Status: ${(patientAnswers?.preferredTreatmentStatus === 'ja_faz' || patientAnswers?.preferredTreatmentStatus === 'ja_usa') ? 'JÁ FAZ TRATAMENTO COM ESTA MARCA/ASSOCIAÇÃO' : (patientAnswers?.preferredTreatmentStatus === 'pretende_fazer' || patientAnswers?.preferredTreatmentStatus === 'pretende_usar') ? 'PRETENDE INICIAR TRATAMENTO COM ESTA MARCA/ASSOCIAÇÃO' : 'Sem preferência prévia (aberto à recomendação médica)'}.
+          Fabricantes/Associações Escolhidos: ${(Array.isArray(patientAnswers?.preferredBrands) && patientAnswers.preferredBrands.length > 0) ? patientAnswers.preferredBrands.join(', ') : (patientAnswers?.preferredNationalAssociation || patientAnswers?.preferredImportedBrand || 'Nenhuma específica')}.
+          Observações do Paciente sobre Marca/Óleo: ${patientAnswers?.preferredBrandNotes || 'Nenhuma'}.
         
         DIRETRIZ DE PRESCRIÇÃO E EQUIVALÊNCIA (IMPORTADOS E NACIONAIS):
         Você DEVE sugerir DUAS frentes de tratamento INDEPENDENTES E COMPLETAS para o médico prescrever e o paciente escolher:
@@ -4749,6 +4877,25 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                      patient.status === 'in-consultation' ? 'Em Consulta' : 'Finalizado'}
                   </span>
                 </div>
+                {(() => {
+                  const pAns = patient.answers || {};
+                  const pBrands: string[] = Array.isArray(pAns.preferredBrands) ? pAns.preferredBrands : [];
+                  const statusLabel = (pAns.preferredTreatmentStatus === 'ja_faz' || pAns.preferredTreatmentStatus === 'ja_usa')
+                    ? 'Já trata com:'
+                    : (pAns.preferredTreatmentStatus === 'pretende_fazer' || pAns.preferredTreatmentStatus === 'pretende_usar')
+                      ? 'Pretende:'
+                      : 'Preferência:';
+                  const fallbackBrand = pAns.preferredNationalAssociation || pAns.preferredImportedBrand;
+                  const displayBrands = pBrands.length > 0 ? pBrands.join(', ') : fallbackBrand;
+                  if (!displayBrands && pAns.preferredTreatmentStatus !== 'sem_preferencia') return null;
+                  return (
+                    <div className="mb-2.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 truncate max-w-full">
+                        {displayBrands ? `🏷️ ${statusLabel} ${displayBrands}` : '🏷️ Aberto a indicação de marca'}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {patient.lastMessageText && (
                   <p className="text-xs text-mecura-silver truncate mb-3">
                     {patient.lastMessageText}
@@ -5236,6 +5383,24 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 >
                   <CheckCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Finalizar</span>
                 </button>
+                {/* Botão Testes TDAH & TEA */}
+                <button 
+                  type="button"
+                  onClick={() => setShowNeuroTestsBanner(!showNeuroTestsBanner)}
+                  className={`px-3 md:px-4 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-sm active:scale-95 cursor-pointer ${
+                    showNeuroTestsBanner
+                      ? 'bg-sky-500 text-black shadow-[0_0_15px_rgba(56,189,248,0.4)]'
+                      : 'bg-sky-500/15 border border-sky-400/40 text-sky-200 hover:bg-sky-500/25'
+                  }`}
+                  title="Mapeamento Neurodivergente do Paciente (TDAH & Autismo TEA)"
+                >
+                  <Brain className="w-3.5 h-3.5 md:w-4 md:h-4 text-sky-300" />
+                  <span className="hidden md:inline">Testes TDAH & TEA</span>
+                  <span className="md:hidden">TDAH/TEA</span>
+                  {((currentPatient?.answers?.adhdTestResult) || (currentPatient?.answers?.autismTestResult)) && (
+                    <span className="w-2 h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.8)]" />
+                  )}
+                </button>
                 {currentPatient && (
                   <button 
                     onClick={(e) => handleRemoveFromQueue(currentPatient, e)}
@@ -5247,6 +5412,41 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 )}
               </div>
             </div>
+
+            {/* Neurodivergent Tests Banner (TDAH & Autismo TEA) */}
+            {showNeuroTestsBanner && (
+              <div className="p-3 md:p-4 bg-[#090E14] border-b border-sky-400/25 shrink-0 max-h-[45vh] overflow-y-auto custom-scrollbar">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-sky-400" />
+                    <span className="text-xs font-black text-white uppercase tracking-wider">
+                      Resultados dos Testes Neurodivergentes (TDAH & Autismo TEA)
+                    </span>
+                    {((currentPatient?.answers?.adhdTestResult) || (currentPatient?.answers?.autismTestResult)) && (
+                      <span className="text-[10px] bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 px-2 py-0.5 rounded-full font-bold">
+                        Dados Clínicos Disponíveis
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowNeuroTestsBanner(false)}
+                    className="text-mecura-silver hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                    title="Minimizar painel de testes"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <NeurodivergentTestsCard
+                  patient={currentPatient}
+                  fallbackAnswers={answers}
+                  role="doctor"
+                  onSendAdhdToChat={handleSendDoctorAdhdToChat}
+                  onSendAutismToChat={handleSendDoctorAutismToChat}
+                  onSaveTestResult={handleSaveDoctorTestResult}
+                />
+              </div>
+            )}
 
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 z-0 min-h-0 custom-scrollbar">
@@ -5799,6 +5999,108 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                         <span className="pointer-events-none">Remover</span>
                       </button>
                     </div>
+                  ) : msg.type === 'adhd_test_card' ? (
+                    <div className="w-[90%] md:w-[75%] max-w-xl rounded-2xl bg-gradient-to-br from-[#0B1520] via-[#0D1826] to-[#070D14] border border-sky-400/40 p-5 text-white shadow-xl mb-2 space-y-3 relative group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Teste TDAH');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 z-20"
+                        title="Remover card do teste"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2.5 pr-20">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-400/40 flex items-center justify-center">
+                            <Brain className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-sky-300 font-bold uppercase tracking-wider bg-sky-500/15 border border-sky-400/30 px-2 py-0.5 rounded-full inline-block mb-1">
+                              Avaliação ASRS-18 • 12 Domínios
+                            </span>
+                            <h4 className="text-sm font-bold text-white">
+                              Laudo de Rastreio Neurocomportamental: TDAH
+                            </h4>
+                          </div>
+                        </div>
+                        {msg.adhdTestData?.scorePercent !== undefined && (
+                          <div className="text-right">
+                            <span className="text-2xl font-black text-mecura-neon font-mono">
+                              {msg.adhdTestData.scorePercent}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2 text-xs text-mecura-silver">
+                        <div className="text-white font-bold text-sm">
+                          {msg.adhdTestData?.classification || 'Avaliação Computada'}
+                        </div>
+                        {msg.adhdTestData?.totalPoints !== undefined && (
+                          <div className="text-xs text-sky-200">
+                            Pontuação Obtida: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                          </div>
+                        )}
+                        <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                          🎯 <strong>Diretriz Farmacológica:</strong> Modulação dopaminérgica no Córtex Pré-Frontal. Protocolo recomendado: CBD + CBG (Foco Diurno) com acompanhamento médico e psicológico integrado.
+                        </div>
+                      </div>
+                    </div>
+                  ) : msg.type === 'autism_test_card' ? (
+                    <div className="w-[90%] md:w-[75%] max-w-xl rounded-2xl bg-gradient-to-br from-[#160D22] via-[#1D102D] to-[#0E0716] border border-purple-400/40 p-5 text-white shadow-xl mb-2 space-y-3 relative group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Teste TEA');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 z-20"
+                        title="Remover card do teste"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2.5 pr-20">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-400/40 flex items-center justify-center">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider bg-purple-500/15 border border-purple-400/30 px-2 py-0.5 rounded-full inline-block mb-1">
+                              Mapeamento TEA (Autismo) • 12 Perguntas
+                            </span>
+                            <h4 className="text-sm font-bold text-white">
+                              Sensibilidade Sensorial & Rigidez Cognitiva
+                            </h4>
+                          </div>
+                        </div>
+                        {msg.autismTestData?.scorePercent !== undefined && (
+                          <div className="text-right">
+                            <span className="text-2xl font-black text-mecura-neon font-mono">
+                              {msg.autismTestData.scorePercent}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2 text-xs text-mecura-silver">
+                        <div className="text-white font-bold text-sm">
+                          {msg.autismTestData?.classification || 'Mapeamento Computado'}
+                        </div>
+                        {msg.autismTestData?.totalPoints !== undefined && (
+                          <div className="text-xs text-purple-200">
+                            Perfil: <strong>{msg.autismTestData?.targetProfile || 'Adulto'}</strong> • Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                          </div>
+                        )}
+                        <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                          🧩 <strong>Diretriz Farmacológica:</strong> Restauração do tônus de Anandamida e modulação do equilíbrio excitatório GABA/Glutamato. Protocolo recomendado: Full Spectrum com regulação sensorial.
+                        </div>
+                      </div>
+                    </div>
                   ) : msg.sender === 'doctor' ? (
                     <div className="max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-sm relative group bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20 flex flex-col mb-2">
                       <div className="flex items-center justify-between gap-3 mb-2 pb-2 border-b border-white/10">
@@ -6157,11 +6459,49 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
             
             {/* Linha 1: 🇧🇷 Associações Brasileiras (Nacionais) */}
             <div className="space-y-1.5">
+              {(() => {
+                const pAns = currentPatient?.answers || answers || {};
+                const pBrands: string[] = Array.isArray(pAns.preferredBrands) ? pAns.preferredBrands : [];
+                const fallbackBrand = pAns.preferredNationalAssociation || pAns.preferredImportedBrand;
+                const hasBrandInfo = pBrands.length > 0 || !!fallbackBrand || !!pAns.preferredTreatmentStatus || !!pAns.preferredBrandNotes;
+                if (!hasBrandInfo) return null;
+                const statusBadge = (pAns.preferredTreatmentStatus === 'ja_faz' || pAns.preferredTreatmentStatus === 'ja_usa')
+                  ? 'Já faz tratamento com'
+                  : (pAns.preferredTreatmentStatus === 'pretende_fazer' || pAns.preferredTreatmentStatus === 'pretende_usar')
+                    ? 'Pretende iniciar tratamento com'
+                    : 'Sem preferência fixa (Aberto à indicação)';
+                return (
+                  <div className="mb-2.5 p-2.5 rounded-xl bg-mecura-neon/10 border border-mecura-neon/35 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-mecura-neon flex items-center gap-1">
+                        🏷️ Escolha do Paciente na Triagem
+                      </span>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-black/50 text-white border border-mecura-neon/30">
+                        {statusBadge}
+                      </span>
+                    </div>
+                    {(pBrands.length > 0 || fallbackBrand) && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {(pBrands.length > 0 ? pBrands : [fallbackBrand]).map((b: string, i: number) => (
+                          <span key={i} className="text-[11px] font-extrabold bg-[#0A0A0F] text-white border border-mecura-neon/40 px-2 py-0.5 rounded-md">
+                            {b}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {pAns.preferredBrandNotes && (
+                      <p className="text-[10px] text-mecura-silver italic mt-0.5">
+                        Obs: "{pAns.preferredBrandNotes}"
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10px] font-extrabold text-mecura-neon uppercase tracking-wider flex items-center gap-1">
                   <span>🇧🇷</span> 1. Associação Nacional:
                 </span>
-                <span className="text-[9px] text-emerald-400/70">Escolha uma associação</span>
+                <span className="text-[9px] text-mecura-silver">Escolha uma associação</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 <button
@@ -6173,8 +6513,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   }}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
                     nationalPreference === 'soucannabis'
-                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
-                      : 'bg-[#0A1612] text-emerald-300 border-emerald-500/30 hover:border-emerald-400/60 hover:text-white'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.35)] font-black'
+                      : 'bg-mecura-surface text-mecura-pearl border-mecura-elevated hover:border-mecura-neon/50 hover:text-mecura-neon'
                   }`}
                   title="SouCannabis: laudos HPLC, óleos MCT, sprays nasais e extrações 60%/80%"
                 >
@@ -6190,8 +6530,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   }}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
                     nationalPreference === 'abrace'
-                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
-                      : 'bg-[#0A1612] text-emerald-300 border-emerald-500/30 hover:border-emerald-400/60 hover:text-white'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.35)] font-black'
+                      : 'bg-mecura-surface text-mecura-pearl border-mecura-elevated hover:border-mecura-neon/50 hover:text-mecura-neon'
                   }`}
                   title="ABRACE: pioneira nacional, óleos coloridos, gomas, pomadas 100g e spray resgate"
                 >
@@ -6207,8 +6547,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   }}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
                     nationalPreference === 'abecmed'
-                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
-                      : 'bg-[#0A1612] text-emerald-300 border-emerald-500/30 hover:border-emerald-400/60 hover:text-white'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.35)] font-black'
+                      : 'bg-mecura-surface text-mecura-pearl border-mecura-elevated hover:border-mecura-neon/50 hover:text-mecura-neon'
                   }`}
                   title="ABECMED: RSO em MCT, extrações sem solvente e inflorescências autorizadas"
                 >
@@ -6224,8 +6564,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   }}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
                     nationalPreference === 'all'
-                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.35)] font-black'
-                      : 'bg-mecura-surface/40 text-emerald-400/70 border-mecura-elevated hover:text-white'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.35)] font-black'
+                      : 'bg-mecura-surface text-mecura-silver border-mecura-elevated hover:text-white'
                   }`}
                   title="Todas as associações brasileiras integradas"
                 >
@@ -6237,10 +6577,10 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
             {/* Linha 2: 🌐 Marcas Importadas */}
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10px] font-extrabold text-mecura-neon uppercase tracking-wider flex items-center gap-1">
                   <span>🌐</span> 2. Marca Importada:
                 </span>
-                <span className="text-[9px] text-cyan-400/70">Escolha um importado</span>
+                <span className="text-[9px] text-mecura-silver">Escolha um importado</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 <button
@@ -6252,8 +6592,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   }}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
                     importedPreference === 'pangaia'
-                      ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.35)] font-black'
-                      : 'bg-mecura-surface/40 text-cyan-300 border-cyan-500/30 hover:border-cyan-400/60 hover:text-white'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.35)] font-black'
+                      : 'bg-mecura-surface text-mecura-pearl border-mecura-elevated hover:border-mecura-neon/50 hover:text-mecura-neon'
                   }`}
                   title="Pangaia Biopharmaceuticals (EUA • ANVISA RDC 660)"
                 >
@@ -6997,6 +7337,105 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 <span className="px-4 py-2 bg-mecura-surface border border-mecura-elevated text-mecura-silver rounded-lg text-base">Nenhum objetivo selecionado</span>
               )}
             </div>
+          </section>
+
+          {/* Section: Preferência de Marca / Associação (Triagem) */}
+          <section>
+            <h3 className="text-[13px] font-bold text-mecura-neon uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-mecura-neon" /> Preferência de Marca ou Associação (Triagem)
+            </h3>
+            {(() => {
+              const pAns = currentPatient?.answers || answers || {};
+              const pBrands: string[] = Array.isArray(pAns.preferredBrands) ? pAns.preferredBrands : [];
+              const natAssoc = pAns.preferredNationalAssociation;
+              const impBrand = pAns.preferredImportedBrand;
+              const tStatus = pAns.preferredTreatmentStatus;
+              const bNotes = pAns.preferredBrandNotes;
+              const hasAny = pBrands.length > 0 || !!natAssoc || !!impBrand || !!tStatus || !!bNotes;
+
+              const isJaFaz = tStatus === 'ja_faz' || tStatus === 'ja_usa';
+              const isPretende = tStatus === 'pretende_fazer' || tStatus === 'pretende_usar';
+              const statusText = isJaFaz
+                ? 'Já faz o tratamento com este fabricante / associação'
+                : isPretende
+                  ? 'Pretende iniciar o tratamento com este fabricante / associação'
+                  : tStatus === 'sem_preferencia'
+                    ? 'Não possui preferência prévia (aguarda indicação médica)'
+                    : 'Não informado na triagem';
+
+              return (
+                <div className="bg-mecura-surface border border-mecura-neon/30 rounded-2xl p-5 space-y-4 shadow-[0_0_20px_rgba(166,255,0,0.06)]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-mecura-elevated pb-3">
+                    <span className="text-xs font-bold text-mecura-silver uppercase tracking-wider">
+                      Vínculo / Intenção do Paciente:
+                    </span>
+                    <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
+                      isJaFaz
+                        ? 'bg-mecura-neon/20 text-mecura-neon border-mecura-neon/40 shadow-[0_0_12px_rgba(166,255,0,0.25)]'
+                        : isPretende
+                          ? 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/30'
+                          : 'bg-mecura-elevated text-mecura-pearl border-mecura-elevated'
+                    }`}>
+                      {statusText}
+                    </span>
+                  </div>
+
+                  {hasAny ? (
+                    <>
+                      <div className="space-y-2">
+                        <span className="text-xs text-mecura-silver block">
+                          Associações Nacionais / Empresas Importadas Selecionadas:
+                        </span>
+                        {(pBrands.length > 0 || natAssoc || impBrand) ? (
+                          <div className="flex flex-wrap gap-2">
+                            {(pBrands.length > 0 ? pBrands : [natAssoc, impBrand].filter(Boolean)).map((brand: string, idx: number) => (
+                              <div
+                                key={idx}
+                                className="px-3.5 py-2 rounded-xl bg-mecura-neon/15 border border-mecura-neon text-white font-bold text-sm flex items-center gap-2 shadow-[0_0_12px_rgba(166,255,0,0.15)]"
+                              >
+                                <span className="w-2 h-2 rounded-full bg-mecura-neon" />
+                                <span>{brand}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setProductBrandFilter(brand);
+                                    setProductSearchTerm('');
+                                    setShowPrescriptionModal(true);
+                                  }}
+                                  className="ml-1 text-[10px] font-black uppercase bg-mecura-neon text-black px-2 py-0.5 rounded-md hover:bg-white transition-colors cursor-pointer"
+                                  title="Abrir Receituário filtrando por este fabricante"
+                                >
+                                  Prescrever
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-white/80 italic">
+                            Paciente informou que prefere recomendação direta do médico.
+                          </p>
+                        )}
+                      </div>
+
+                      {bNotes && (
+                        <div className="bg-black/40 border border-white/10 rounded-xl p-3.5">
+                          <span className="text-[11px] font-bold text-mecura-neon uppercase tracking-wider block mb-1">
+                            Observações do Paciente sobre Produto / Associação:
+                          </span>
+                          <p className="text-sm text-white leading-relaxed italic">
+                            "{bNotes}"
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-mecura-silver italic">
+                      O paciente ainda não selecionou uma associação ou marca importada específica na triagem.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </section>
 
           {/* Section: Details */}

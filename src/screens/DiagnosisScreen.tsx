@@ -153,6 +153,42 @@ export function DiagnosisScreen() {
               </div>
             </div>
 
+            {((answers?.preferredBrands && answers.preferredBrands.length > 0) || answers?.preferredNationalAssociation || answers?.preferredImportedBrand || answers?.preferredTreatmentStatus) && (
+              <div className="flex gap-4 bg-mecura-surface border border-mecura-neon/30 rounded-2xl p-3.5 shadow-[0_0_20px_rgba(166,255,0,0.08)]">
+                <div className="w-1 h-auto bg-mecura-neon rounded-full shrink-0 shadow-[0_0_8px_rgba(166,255,0,0.8)]" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-[10px] text-mecura-neon font-black uppercase tracking-widest">
+                      Preferência de Marca / Associação Registrada
+                    </p>
+                    {answers?.preferredTreatmentStatus && (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30">
+                        {(answers.preferredTreatmentStatus === 'ja_faz' || answers.preferredTreatmentStatus === 'ja_usa') ? 'Já faz uso' : (answers.preferredTreatmentStatus === 'pretende_fazer' || answers.preferredTreatmentStatus === 'pretende_usar') ? 'Pretende iniciar' : 'Aberto a indicação'}
+                      </span>
+                    )}
+                  </div>
+                  {(answers?.preferredBrands && answers.preferredBrands.length > 0) ? (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {answers.preferredBrands.map((brand: string) => (
+                        <span key={brand} className="text-[11px] font-bold bg-mecura-bg text-mecura-pearl border border-mecura-neon/40 px-2.5 py-1 rounded-lg">
+                          {brand}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-mecura-silver mt-0.5">
+                      {answers?.preferredNationalAssociation || answers?.preferredImportedBrand || 'O médico indicará o melhor fabricante na consulta.'}
+                    </p>
+                  )}
+                  {answers?.preferredBrandNotes && (
+                    <p className="text-[11px] text-mecura-silver italic mt-1.5">
+                      Obs: "{answers.preferredBrandNotes}"
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Clinical Team Section Header */}
             <div className="mt-5 mb-2 flex items-center justify-between">
               <span className="text-[11px] text-mecura-silver font-bold uppercase tracking-widest">

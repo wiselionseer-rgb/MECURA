@@ -475,3 +475,96 @@ export function getBestCategoryIdForProduct(origin?: string, manufacturer?: stri
   return 'associacoes_nacionais';
 }
 
+export interface RegisteredManufacturerInfo {
+  id: string;
+  name: string;
+  shortName: string;
+  origin: 'Nacional' | 'Importado';
+  badgeText: string;
+  description: string;
+  highlights: string[];
+  nationalCode?: 'soucannabis' | 'abrace' | 'abecmed' | 'all';
+  importedCode?: 'pangaia' | 'flowermed' | 'greenbudz' | 'all';
+  productCount: number;
+}
+
+/**
+ * Returns the 6 official curated Associations (Nacionais) and Imported Companies (Importadas):
+ * - Nacional: SouCannabis, ABECMED, ABRACE
+ * - Importado: FlowerMed, Pangaia, GreenBudz
+ */
+export function getRegisteredManufacturers(_categories: CBDCategory[] = []): RegisteredManufacturerInfo[] {
+  return [
+    // Associações Brasileiras (Nacionais)
+    {
+      id: 'soucannabis',
+      name: 'SouCannabis',
+      shortName: 'SouCannabis',
+      origin: 'Nacional',
+      badgeText: 'Associação Nacional • Laudos HPLC',
+      description: 'Óleos Sublinguais em MCT (Azul, Lilás, Rosa, Laranja e Branco 0% THC), Extrações 60%/80%, Sprays e Flores.',
+      highlights: ['Laudo HPLC', 'Óleos MCT', 'Extrações & Flores'],
+      nationalCode: 'soucannabis',
+      productCount: 28
+    },
+    {
+      id: 'abecmed',
+      name: 'ABECMED',
+      shortName: 'ABECMED',
+      origin: 'Nacional',
+      badgeText: 'Associação Nacional • Extração RSO',
+      description: 'Óleos Full Spectrum RSO em MCT, Extrações Sem Solvente e Inflorescências Medicinais Autorizadas.',
+      highlights: ['Full Spectrum RSO', 'Sem Solvente', 'Inflorescências'],
+      nationalCode: 'abecmed',
+      productCount: 18
+    },
+    {
+      id: 'abrace',
+      name: 'ABRACE',
+      shortName: 'ABRACE',
+      origin: 'Nacional',
+      badgeText: 'Associação Nacional • Pioneira no Brasil',
+      description: 'Óleos Laranja, Vermelho, Preto, Azul e Roxo, Gomas Terapêuticas, Pomadas 100g, Spray Resgate e Flores.',
+      highlights: ['Pioneira Nacional', 'Óleos & Pomadas', 'Spray Resgate'],
+      nationalCode: 'abrace',
+      productCount: 16
+    },
+    // Empresas Importadas (EUA • ANVISA RDC 660)
+    {
+      id: 'flowermed',
+      name: 'FlowerMed',
+      shortName: 'FlowerMed',
+      origin: 'Importado',
+      badgeText: 'Importado EUA • FDA & RDC 660',
+      description: 'Hemp Oil 3000mg/6000mg, Linha Sphera Broad Spectrum, Óleos CBG, CBN, THCV, Gummies e Flores.',
+      highlights: ['Padrão FDA', 'Óleos 3000/6000mg', 'Gummies & Flores'],
+      importedCode: 'flowermed',
+      productCount: 19
+    },
+    {
+      id: 'pangaia',
+      name: 'Pangaia',
+      shortName: 'Pangaia',
+      origin: 'Importado',
+      badgeText: 'Importado EUA • ANVISA RDC 660',
+      description: 'Óleos Full Spectrum 5%, 10% e 20%, Óleo Maná com Copaíba, Pomada Táio, Softgels, Gummies e Live Rosin.',
+      highlights: ['RDC 660 ANVISA', 'Linha Maná & Táio', 'Live Rosin'],
+      importedCode: 'pangaia',
+      productCount: 18
+    },
+    {
+      id: 'greenbudz',
+      name: 'GreenBudz',
+      shortName: 'GreenBudz',
+      origin: 'Importado',
+      badgeText: 'Importado EUA • ANVISA RDC 660',
+      description: 'Calm Vibe 6000mg, Full Balance 3000mg, Isolate CBD 0% THC, Gomas Veganas Live Rosin e Flores THCa.',
+      highlights: ['RDC 660 ANVISA', 'Calm Vibe 6000mg', 'Drops Live Rosin'],
+      importedCode: 'greenbudz',
+      productCount: 12
+    }
+  ];
+}
+
+
+

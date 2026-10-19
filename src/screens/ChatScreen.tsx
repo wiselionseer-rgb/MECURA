@@ -1148,6 +1148,70 @@ export function ChatScreen() {
                   </Button>
                 </div>
               </div>
+            ) : msg.type === 'adhd_test_card' ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#0B1520] via-[#0D1826] to-[#070D14] border border-sky-400/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl text-white">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-14 h-14 bg-sky-500/20 border border-sky-400/40 text-sky-300 rounded-2xl flex items-center justify-center">
+                    <Brain className="w-7 h-7" />
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-sky-300 uppercase tracking-widest font-mono">ASRS-18 • 12 Domínios</span>
+                    {msg.adhdTestData?.scorePercent !== undefined && (
+                      <p className="text-2xl font-black text-mecura-neon font-mono">
+                        {msg.adhdTestData.scorePercent}%
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider block">
+                    Laudo de Rastreio Neurocomportamental: TDAH
+                  </span>
+                  <h3 className="text-lg font-bold text-white">
+                    {msg.adhdTestData?.classification || 'Avaliação Computada'}
+                  </h3>
+                  {msg.adhdTestData?.totalPoints !== undefined && (
+                    <p className="text-xs text-sky-200">
+                      Pontuação clínica: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                    </p>
+                  )}
+                  <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                    🎯 <strong>Conduta Integrada:</strong> Modulação endocanabinoide de foco sustentado no Córtex Pré-Frontal (CBD + CBG) associada a acompanhamento médico e psicológico.
+                  </div>
+                </div>
+              </div>
+            ) : msg.type === 'autism_test_card' ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#160D22] via-[#1D102D] to-[#0E0716] border border-purple-400/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl text-white">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-14 h-14 bg-purple-500/20 border border-purple-400/40 text-purple-300 rounded-2xl flex items-center justify-center">
+                    <Sparkles className="w-7 h-7" />
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-purple-300 uppercase tracking-widest font-mono">TEA • 12 Perguntas</span>
+                    {msg.autismTestData?.scorePercent !== undefined && (
+                      <p className="text-2xl font-black text-mecura-neon font-mono">
+                        {msg.autismTestData.scorePercent}%
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider block">
+                    Mapeamento de Sensibilidade Sensorial e TEA
+                  </span>
+                  <h3 className="text-lg font-bold text-white">
+                    {msg.autismTestData?.classification || 'Mapeamento Computado'}
+                  </h3>
+                  {msg.autismTestData?.totalPoints !== undefined && (
+                    <p className="text-xs text-purple-200">
+                      Perfil: <strong>{msg.autismTestData?.targetProfile || 'Adulto'}</strong> • Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                    </p>
+                  )}
+                  <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                    🧩 <strong>Conduta Integrada:</strong> Regulação do eixo sensorial e estabilização de humor/GABA com formulação Full Spectrum e suporte psicológico continuado.
+                  </div>
+                </div>
+              </div>
             ) : (msg.type === 'document' || msg.attachment) ? (
               <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#161622] to-[#0A0A0F] border border-white/20 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
                 <div className="relative z-10">

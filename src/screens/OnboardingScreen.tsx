@@ -1,16 +1,19 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Switch } from '../components/ui/Switch';
 import { useStore } from '../store/useStore';
-import { ChevronLeft, CheckCircle, Check, Info, Calendar, User, Phone, CreditCard } from 'lucide-react';
+import { useAdminStore } from '../store/useAdminStore';
+import { ChevronLeft, CheckCircle, Check, Info, Calendar, User, Phone, CreditCard, Building2, Globe, Sparkles } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { PasswordResetCpfModal } from '../components/PasswordResetCpfModal';
+import { cbdGuideData, CBDCategory } from '../data/cbdGuide';
+import { getRegisteredManufacturers, mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
 
 // --- HELPERS DE FORMATAÇÃO ---
 const formatBirthDate = (val: string) => {
@@ -122,6 +125,7 @@ const STEPS = [
   { id: 'name', title: 'Dados do Paciente', subtitle: 'Preencha seus dados para seu cadastro e emissão da receita médica.' },
   { id: 'objective', title: 'Selecione os objetivos que busca com o tratamento', subtitle: 'Você pode selecionar quantas opções quiser.' },
   { id: 'objective_details', title: 'Agora sobre os motivos selecionados:', subtitle: 'Detalhe um pouco mais para o médico.' },
+  { id: 'brand_preference', title: 'Preferência de Marca ou Associação', subtitle: 'Selecione abaixo para o médico já receber na sua ficha clínica.' },
   { id: 'physical', title: 'Informações sobre suas características físicas:', subtitle: 'Dados importantes para dosagem.' },
   { id: 'driving', title: 'Condução de Veículos e Riscos', subtitle: 'Importante para a nova Lei do Drogômetro e emissão do Laudo Psicomotor.' },
   { id: 'social', title: 'Sobre a sua vida social:', subtitle: 'Responda com muita atenção.', warning: true },
@@ -140,9 +144,55 @@ const STEPS = [
       setOnboardingStep, setHasCompletedOnboarding, incrementStreak, answers, setAnswer, reset,
       setPagamentoConsulta, setPagamentoPremium, inQueue, consultationActive
     } = useStore();
+    const storeProductCategories = useAdminStore((state) => state.productCategories);
     const [currentStep, setCurrentStep] = useState(0);
     const scrollRef = useRef<HTMLDivElement>(null);
-    
+    const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
+    const [manufacturerFilterTab, setManufacturerFilterTab] = useState<'all' | 'nacional' | 'importado'>('all');
+
+    useEffect(() => {
+      const unsub = subscribeToFirestoreCatalog((cats) => {
+        if (cats && cats.length > 0) setCloudCategories(cats);
+      });
+      return () => unsub();
+    }, []);
+
+    const registeredManufacturers = useMemo(() => {
+      const merged = mergeProductCatalogs(cbdGuideData, storeProductCategories, cloudCategories);
+      return getRegisteredManufacturers(merged);
+    }, [storeProductCategories, cloudCategories]);
+
+    const nationalManufacturers = useMemo(
+      () => registeredManufacturers.filter(m => m.origin === 'Nacional'),
+      [registeredManufacturers]
+    );
+    const importedManufacturers = useMemo(
+      () => registeredManufacturers.filter(m => m.origin === 'Importado'),
+      [registeredManufacturers]
+    );
+
+    const togglePreferredManufacturer = (item: ReturnType<typeof getRegisteredManufacturers>[number]) => {
+      const currentList: string[] = Array.isArray(answers.preferredBrands) ? answers.preferredBrands : [];
+      const exists = currentList.includes(item.name);
+      const nextList = exists
+        ? currentList.filter(n => n !== item.name)
+        : [...currentList, item.name];
+
+      setAnswer('preferredBrands', nextList);
+
+      // Update national / imported preference codes for the Doctor Dashboard
+      const selectedObjects = registeredManufacturers.filter(m => nextList.includes(m.name));
+      const natMatch = selectedObjects.find(m => m.origin === 'Nacional' && m.nationalCode);
+      const impMatch = selectedObjects.find(m => m.origin === 'Importado' && m.importedCode);
+
+      setAnswer('preferredNationalAssociation', natMatch?.nationalCode || '');
+      setAnswer('preferredImportedBrand', impMatch?.importedCode || '');
+
+      if (nextList.length > 0 && (!answers.preferredTreatmentStatus || answers.preferredTreatmentStatus === 'sem_preferencia')) {
+        setAnswer('preferredTreatmentStatus', 'pretende_fazer');
+      }
+    };
+
     // Auth state
     const [isLogin, setIsLogin] = useState(false);
     const [password, setPassword] = useState('');
@@ -543,9 +593,9 @@ const STEPS = [
               {step.title}
             </h2>
           
-          <div className={`flex items-center gap-2 mb-8 ${step.warning ? 'text-mecura-neon' : 'text-mecura-silver'}`}>
+          <div className={`flex items-center gap-2 ${step.id === 'brand_preference' ? 'mb-4' : 'mb-8'} ${step.warning ? 'text-mecura-neon' : 'text-mecura-silver'}`}>
             {step.warning && <Info className="w-4 h-4" />}
-            <p>{step.subtitle}</p>
+            <p className="text-sm leading-relaxed">{step.subtitle}</p>
           </div>
 
           {/* Step: Auth */}
@@ -794,6 +844,628 @@ const STEPS = [
             </div>
           )}
 
+          {/* Step: Brand & Association Preference Card */}
+          {step.id === 'brand_preference' && (() => {
+            const isJaFaz = answers.preferredTreatmentStatus === 'ja_faz' || answers.preferredTreatmentStatus === 'ja_usa';
+            const isPretende = answers.preferredTreatmentStatus === 'pretende_fazer' || answers.preferredTreatmentStatus === 'pretende_usar';
+            const isSemPref = answers.preferredTreatmentStatus === 'sem_preferencia';
+            const selectedBrandsList: string[] = Array.isArray(answers.preferredBrands) ? answers.preferredBrands : [];
+
+            return (
+              <div className="space-y-4">
+                {/* Main Luxury Glass Container - Pure Black and Fluorescent Green */}
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="relative overflow-hidden rounded-[28px] bg-gradient-to-b from-mecura-surface-light via-mecura-surface to-mecura-bg border border-mecura-elevated p-4 sm:p-5 shadow-[0_24px_60px_rgba(0,0,0,0.9)]"
+                >
+                  {/* Animated Shimmer Top Line (Fluorescent Green) */}
+                  <motion.div
+                    animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+                    style={{ backgroundSize: '200% 200%' }}
+                    className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-mecura-neon to-transparent"
+                  />
+                  {/* Floating Ambient Orbs (Fluorescent Green) */}
+                  <motion.div
+                    animate={{ scale: [1, 1.15, 1], opacity: [0.12, 0.22, 0.12] }}
+                    transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                    className="absolute -top-20 -right-20 w-48 h-48 rounded-full bg-mecura-neon/20 blur-3xl pointer-events-none"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.06, 0.14, 0.06] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
+                    className="absolute top-1/3 -left-20 w-44 h-44 rounded-full bg-mecura-neon/15 blur-3xl pointer-events-none"
+                  />
+
+                  {/* Infinite Motion Brand Showcase Ribbon */}
+                  <div className="relative z-10 overflow-hidden rounded-2xl bg-mecura-bg/95 border border-mecura-elevated py-2.5 mb-4">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-mecura-bg to-transparent z-10" />
+                    <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-mecura-bg to-transparent z-10" />
+                    <motion.div
+                      animate={{ x: ['0%', '-50%'] }}
+                      transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                      className="flex items-center gap-2.5 w-max px-3"
+                    >
+                      {[...registeredManufacturers, ...registeredManufacturers].map((m, i) => {
+                        const isNat = m.origin === 'Nacional';
+                        const isSel = selectedBrandsList.some(b => b.toLowerCase() === m.name.toLowerCase());
+                        return (
+                          <button
+                            key={`${m.id}-marquee-${i}`}
+                            type="button"
+                            onClick={() => togglePreferredManufacturer(m)}
+                            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer shrink-0 ${
+                              isSel
+                                ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_14px_rgba(166,255,0,0.5)]'
+                                : 'bg-mecura-surface text-mecura-pearl border-mecura-elevated hover:border-mecura-neon/40 hover:text-mecura-neon'
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              isSel ? 'bg-black' : 'bg-mecura-neon shadow-[0_0_6px_rgba(166,255,0,0.8)]'
+                            }`} />
+                            <span>{m.name}</span>
+                            <span className={`text-[9px] uppercase tracking-wider ${isSel ? 'text-black/80 font-black' : 'text-mecura-silver'}`}>
+                              {isNat ? 'BR' : 'EUA'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  </div>
+
+                  {/* STEP 1: Situação Atual */}
+                  <div className="space-y-2 relative z-10">
+                    <div className="flex items-center justify-between px-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-mecura-neon text-black text-[11px] font-black flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(166,255,0,0.4)]">
+                          1
+                        </span>
+                        <label className="text-xs font-extrabold text-white uppercase tracking-wider">
+                          Qual é a sua situação atual?
+                        </label>
+                      </div>
+                      <span className="text-[10px] text-mecura-neon font-bold">Passo 1 de 2</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      {/* Opção 1: Já faço tratamento */}
+                      <motion.button
+                        whileHover={{ scale: 1.008 }}
+                        whileTap={{ scale: 0.985 }}
+                        type="button"
+                        onClick={() => setAnswer('preferredTreatmentStatus', 'ja_faz')}
+                        className={`w-full px-3.5 py-3 rounded-2xl border text-left transition-all duration-200 flex items-center gap-3 cursor-pointer relative overflow-hidden ${
+                          isJaFaz
+                            ? 'bg-gradient-to-r from-mecura-neon/20 via-mecura-neon/10 to-mecura-surface border-mecura-neon shadow-[0_0_22px_rgba(166,255,0,0.22)]'
+                            : 'bg-mecura-surface/90 border-mecura-elevated hover:border-mecura-neon/40'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border transition-all ${
+                          isJaFaz
+                            ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_14px_rgba(166,255,0,0.5)]'
+                            : 'bg-mecura-bg text-mecura-neon border-mecura-elevated'
+                        }`}>
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm font-extrabold block leading-snug ${isJaFaz ? 'text-mecura-neon' : 'text-white'}`}>
+                            Já faço tratamento
+                          </span>
+                          <p className="text-[11px] text-mecura-silver leading-snug mt-0.5">
+                            Já utilizo produtos de uma associação ou marca abaixo
+                          </p>
+                        </div>
+                        <motion.div
+                          animate={{ scale: isJaFaz ? 1.08 : 1 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                          className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                            isJaFaz ? 'bg-mecura-neon border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.5)]' : 'border-mecura-elevated bg-mecura-bg'
+                          }`}
+                        >
+                          {isJaFaz && <Check className="w-3 h-3 text-black stroke-[3]" />}
+                        </motion.div>
+                      </motion.button>
+
+                      {/* Opção 2: Pretendo iniciar / Tenho preferência */}
+                      <motion.button
+                        whileHover={{ scale: 1.008 }}
+                        whileTap={{ scale: 0.985 }}
+                        type="button"
+                        onClick={() => setAnswer('preferredTreatmentStatus', 'pretende_fazer')}
+                        className={`w-full px-3.5 py-3 rounded-2xl border text-left transition-all duration-200 flex items-center gap-3 cursor-pointer relative overflow-hidden ${
+                          isPretende
+                            ? 'bg-gradient-to-r from-mecura-neon/20 via-mecura-neon/10 to-mecura-surface border-mecura-neon shadow-[0_0_22px_rgba(166,255,0,0.22)]'
+                            : 'bg-mecura-surface/90 border-mecura-elevated hover:border-mecura-neon/40'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border transition-all ${
+                          isPretende
+                            ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_14px_rgba(166,255,0,0.5)]'
+                            : 'bg-mecura-bg text-mecura-neon border-mecura-elevated'
+                        }`}>
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm font-extrabold block leading-snug ${isPretende ? 'text-mecura-neon' : 'text-white'}`}>
+                            Pretendo iniciar com uma marca
+                          </span>
+                          <p className="text-[11px] text-mecura-silver leading-snug mt-0.5">
+                            Tenho preferência por uma associação ou importadora
+                          </p>
+                        </div>
+                        <motion.div
+                          animate={{ scale: isPretende ? 1.08 : 1 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                          className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                            isPretende ? 'bg-mecura-neon border-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.5)]' : 'border-mecura-elevated bg-mecura-bg'
+                          }`}
+                        >
+                          {isPretende && <Check className="w-3 h-3 text-black stroke-[3]" />}
+                        </motion.div>
+                      </motion.button>
+
+                      {/* Opção 3: Sem preferência */}
+                      <motion.button
+                        whileHover={{ scale: 1.008 }}
+                        whileTap={{ scale: 0.985 }}
+                        type="button"
+                        onClick={() => {
+                          setAnswer('preferredTreatmentStatus', 'sem_preferencia');
+                          setAnswer('preferredBrands', []);
+                          setAnswer('preferredNationalAssociation', '');
+                          setAnswer('preferredImportedBrand', '');
+                        }}
+                        className={`w-full px-3.5 py-3 rounded-2xl border text-left transition-all duration-200 flex items-center gap-3 cursor-pointer relative overflow-hidden ${
+                          isSemPref
+                            ? 'bg-mecura-surface-light border-mecura-neon/70 shadow-[0_0_22px_rgba(166,255,0,0.15)]'
+                            : 'bg-mecura-surface/90 border-mecura-elevated hover:border-mecura-neon/40'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border transition-all ${
+                          isSemPref
+                            ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_14px_rgba(166,255,0,0.5)]'
+                            : 'bg-mecura-bg text-mecura-silver border-mecura-elevated'
+                        }`}>
+                          <Info className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm font-extrabold block leading-snug ${isSemPref ? 'text-mecura-neon' : 'text-white'}`}>
+                            Não tenho preferência (Indicação Médica)
+                          </span>
+                          <p className="text-[11px] text-mecura-silver leading-snug mt-0.5">
+                            Prefiro que o médico indique a melhor opção na consulta
+                          </p>
+                        </div>
+                        <motion.div
+                          animate={{ scale: isSemPref ? 1.08 : 1 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                          className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                            isSemPref ? 'bg-mecura-neon border-mecura-neon' : 'border-mecura-elevated bg-mecura-bg'
+                          }`}
+                        >
+                          {isSemPref && <Check className="w-3 h-3 text-black stroke-[3]" />}
+                        </motion.div>
+                      </motion.button>
+                    </div>
+                  </div>
+
+                  {/* VISUAL FLOW CONNECTOR BRIDGE BETWEEN QUESTION 1 AND QUESTION 2 */}
+                  <div className="relative z-10 flex flex-col items-center py-2">
+                    <div className="w-[2px] h-4 rounded-full bg-gradient-to-b from-mecura-neon/80 to-mecura-neon/30" />
+                    <motion.div
+                      animate={{ y: [0, 2, 0] }}
+                      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                      className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border flex items-center gap-1.5 ${
+                        isJaFaz || isPretende
+                          ? 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/40 shadow-[0_0_14px_rgba(166,255,0,0.2)]'
+                          : isSemPref
+                            ? 'bg-mecura-surface-light text-mecura-pearl border-mecura-neon/30'
+                            : 'bg-mecura-surface text-mecura-silver border-mecura-elevated'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full animate-ping ${
+                        isJaFaz || isPretende || isSemPref ? 'bg-mecura-neon' : 'bg-mecura-silver'
+                      }`} />
+                      <span>
+                        {isJaFaz
+                          ? '↓ Conectado: Selecione abaixo qual você já utiliza'
+                          : isPretende
+                            ? '↓ Conectado: Selecione abaixo qual você prefere'
+                            : isSemPref
+                              ? '✓ Conectado: Indicação direta pelo médico'
+                              : '↓ Passo 2: Escolha a marca correspondente'}
+                      </span>
+                    </motion.div>
+                    <div className="w-[2px] h-3 rounded-full bg-gradient-to-b from-mecura-neon/30 to-mecura-neon/80" />
+                  </div>
+
+                  {/* STEP 2: Dynamically Connected to Question 1 */}
+                  <AnimatePresence mode="wait">
+                    {isSemPref ? (
+                      <motion.div
+                        key="sem-pref-box"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className="relative z-10 rounded-2xl bg-mecura-surface border border-mecura-neon/40 p-4 text-center space-y-3 shadow-[0_0_25px_rgba(166,255,0,0.1)]"
+                      >
+                        <div className="w-10 h-10 rounded-2xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon mx-auto shadow-[0_0_12px_rgba(166,255,0,0.25)]">
+                          <CheckCircle className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-extrabold text-white">
+                            Perfeito! O médico indicará a melhor opção para você
+                          </h4>
+                          <p className="text-xs text-mecura-silver leading-relaxed">
+                            Na sua ficha aparecerá que você <strong className="text-mecura-neon">deseja recomendação médica</strong> entre as Associações Nacionais (SouCannabis, ABECMED, ABRACE) ou Importadas (FlowerMed, Pangaia, GreenBudz).
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAnswer('preferredTreatmentStatus', 'pretende_fazer')}
+                          className="text-[11px] font-bold text-mecura-neon hover:underline cursor-pointer"
+                        >
+                          Quero ver e escolher uma das 6 marcas mesmo assim →
+                        </button>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="choose-brand-box"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className={`space-y-3.5 rounded-2xl p-3.5 border transition-colors relative z-10 ${
+                          isJaFaz || isPretende
+                            ? 'bg-mecura-bg/90 border-mecura-neon/40 shadow-[0_0_30px_rgba(166,255,0,0.08)]'
+                            : 'bg-mecura-bg/70 border-mecura-elevated'
+                        }`}
+                      >
+                        {/* Dynamic Connected Header for Question 2 */}
+                        <div className="space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2">
+                              <span className="w-5 h-5 rounded-full text-black text-[11px] font-black flex items-center justify-center shrink-0 mt-0.5 bg-mecura-neon shadow-[0_0_10px_rgba(166,255,0,0.4)]">
+                                2
+                              </span>
+                              <div>
+                                <label className="text-xs font-extrabold text-white uppercase tracking-wide block leading-snug">
+                                  {isJaFaz
+                                    ? 'Qual Associação ou Marca você JÁ UTILIZA no tratamento?'
+                                    : isPretende
+                                      ? 'Qual Associação ou Marca você PRETENDE UTILIZAR?'
+                                      : 'Escolha a Associação ou Marca (Já usa ou pretende usar)'}
+                                </label>
+                                <p className="text-[11px] text-mecura-silver mt-0.5">
+                                  {isJaFaz
+                                    ? 'Marque abaixo a(s) marca(s) que você já faz uso atualmente:'
+                                    : 'Marque abaixo a(s) marca(s) de sua preferência para a receita:'}
+                                </p>
+                              </div>
+                            </div>
+                            {selectedBrandsList.length > 0 && (
+                              <span className="text-[10px] font-extrabold text-black bg-mecura-neon px-2.5 py-0.5 rounded-full shrink-0 shadow-[0_0_12px_rgba(166,255,0,0.4)]">
+                                {selectedBrandsList.length} {selectedBrandsList.length === 1 ? 'escolhida' : 'escolhidas'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Animated 3-Tab Segmented Control */}
+                          <div className="grid grid-cols-3 gap-1 p-1 bg-mecura-surface border border-mecura-elevated rounded-2xl relative">
+                            {[
+                              { id: 'all', label: 'Todas (6)' },
+                              { id: 'nacional', label: 'Nacional (3)' },
+                              { id: 'importado', label: 'Importado (3)' }
+                            ].map(tab => {
+                              const isActive = manufacturerFilterTab === tab.id;
+                              return (
+                                <motion.button
+                                  key={tab.id}
+                                  whileTap={{ scale: 0.96 }}
+                                  type="button"
+                                  onClick={() => setManufacturerFilterTab(tab.id as 'all' | 'nacional' | 'importado')}
+                                  className={`py-2 px-2 rounded-xl text-xs font-extrabold transition-all text-center cursor-pointer ${
+                                    isActive
+                                      ? 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.4)]'
+                                      : 'text-mecura-silver hover:text-white bg-transparent'
+                                  }`}
+                                >
+                                  {tab.label}
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Grupo 1: Associações Nacionais (SouCannabis, ABECMED, ABRACE) */}
+                        {(manufacturerFilterTab === 'all' || manufacturerFilterTab === 'nacional') && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="space-y-2"
+                          >
+                            <div className="flex items-center justify-between px-1">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.9)]" />
+                                <span className="text-[11px] font-extrabold text-mecura-neon uppercase tracking-widest">
+                                  Associações Nacionais
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold text-mecura-neon bg-mecura-neon/10 border border-mecura-neon/30 px-2 py-0.5 rounded-full">
+                                Brasil
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-2.5">
+                              {nationalManufacturers.map((item, idx) => {
+                                const isSelected = selectedBrandsList.some(
+                                  b => b.toLowerCase() === item.name.toLowerCase() || b.toLowerCase().includes(item.id)
+                                );
+                                return (
+                                  <motion.button
+                                    key={item.id}
+                                    initial={{ opacity: 0, y: 12 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3, delay: idx * 0.06 }}
+                                    whileHover={{ y: -2, scale: 1.005 }}
+                                    whileTap={{ scale: 0.985 }}
+                                    type="button"
+                                    onClick={() => togglePreferredManufacturer(item)}
+                                    className={`w-full p-3.5 rounded-2xl border text-left transition-all duration-200 flex items-start gap-3.5 cursor-pointer relative overflow-hidden ${
+                                      isSelected
+                                        ? 'bg-gradient-to-r from-mecura-neon/20 via-mecura-neon/10 to-mecura-surface border-mecura-neon shadow-[0_8px_28px_rgba(166,255,0,0.2)]'
+                                        : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50'
+                                    }`}
+                                  >
+                                    {/* Left Animated Emblem */}
+                                    <div className={`w-11 h-11 rounded-2xl flex flex-col items-center justify-center shrink-0 border font-black text-xs tracking-tight transition-all ${
+                                      isSelected
+                                        ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_18px_rgba(166,255,0,0.5)]'
+                                        : 'bg-mecura-bg text-mecura-neon border-mecura-neon/30'
+                                    }`}>
+                                      <span>{item.name.slice(0, 2).toUpperCase()}</span>
+                                      <span className={`text-[8px] font-extrabold uppercase ${isSelected ? 'text-black/80' : 'text-mecura-silver'}`}>BR</span>
+                                    </div>
+
+                                    {/* Center Content */}
+                                    <div className="flex-1 min-w-0 space-y-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className={`font-extrabold text-base tracking-tight ${isSelected ? 'text-mecura-neon' : 'text-white'}`}>
+                                          {item.name}
+                                        </h4>
+                                        {isSelected ? (
+                                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-mecura-neon text-black shadow-[0_0_10px_rgba(166,255,0,0.35)]">
+                                            {isJaFaz ? '✓ Já faço tratamento' : '★ Minha preferência'}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30">
+                                            Nacional
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <p className="text-xs text-mecura-silver leading-snug line-clamp-2">
+                                        {item.description}
+                                      </p>
+
+                                      {item.highlights && item.highlights.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 pt-0.5">
+                                          {item.highlights.map((tag, tIdx) => (
+                                            <span
+                                              key={tIdx}
+                                              className={`text-[9px] font-bold px-2 py-0.5 rounded-md border ${
+                                                isSelected
+                                                  ? 'bg-mecura-neon/20 text-mecura-pearl border-mecura-neon/40'
+                                                  : 'bg-mecura-bg text-mecura-silver border-mecura-elevated'
+                                              }`}
+                                            >
+                                              {tag}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Right Check Orb */}
+                                    <motion.div
+                                      animate={{ scale: isSelected ? 1.1 : 1 }}
+                                      transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                                      className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                                        isSelected ? 'bg-mecura-neon border-mecura-neon shadow-[0_0_12px_rgba(166,255,0,0.5)]' : 'border-mecura-elevated bg-mecura-bg'
+                                      }`}
+                                    >
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-black stroke-[3]" />}
+                                    </motion.div>
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* Grupo 2: Marcas Importadas (FlowerMed, Pangaia, GreenBudz) */}
+                        {(manufacturerFilterTab === 'all' || manufacturerFilterTab === 'importado') && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: 0.08 }}
+                            className="space-y-2 pt-1"
+                          >
+                            <div className="flex items-center justify-between px-1">
+                              <div className="flex items-center gap-2">
+                                <Globe className="w-3.5 h-3.5 text-mecura-neon animate-pulse" />
+                                <span className="text-[11px] font-extrabold text-mecura-neon uppercase tracking-widest">
+                                  Marcas Importadas (EUA)
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-bold text-mecura-neon bg-mecura-neon/10 border border-mecura-neon/30 px-2 py-0.5 rounded-full">
+                                RDC 660 ANVISA
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-2.5">
+                              {importedManufacturers.map((item, idx) => {
+                                const isSelected = selectedBrandsList.some(
+                                  b => b.toLowerCase() === item.name.toLowerCase() || b.toLowerCase().includes(item.id)
+                                );
+                                return (
+                                  <motion.button
+                                    key={item.id}
+                                    initial={{ opacity: 0, y: 12 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3, delay: idx * 0.06 }}
+                                    whileHover={{ y: -2, scale: 1.005 }}
+                                    whileTap={{ scale: 0.985 }}
+                                    type="button"
+                                    onClick={() => togglePreferredManufacturer(item)}
+                                    className={`w-full p-3.5 rounded-2xl border text-left transition-all duration-200 flex items-start gap-3.5 cursor-pointer relative overflow-hidden ${
+                                      isSelected
+                                        ? 'bg-gradient-to-r from-mecura-neon/20 via-mecura-neon/10 to-mecura-surface border-mecura-neon shadow-[0_8px_28px_rgba(166,255,0,0.2)]'
+                                        : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50'
+                                    }`}
+                                  >
+                                    {/* Left Animated Emblem */}
+                                    <div className={`w-11 h-11 rounded-2xl flex flex-col items-center justify-center shrink-0 border font-black text-xs tracking-tight transition-all ${
+                                      isSelected
+                                        ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_18px_rgba(166,255,0,0.5)]'
+                                        : 'bg-mecura-bg text-mecura-neon border-mecura-neon/30'
+                                    }`}>
+                                      <span>{item.name.slice(0, 2).toUpperCase()}</span>
+                                      <span className={`text-[8px] font-extrabold uppercase ${isSelected ? 'text-black/80' : 'text-mecura-silver'}`}>EUA</span>
+                                    </div>
+
+                                    {/* Center Content */}
+                                    <div className="flex-1 min-w-0 space-y-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className={`font-extrabold text-base tracking-tight ${isSelected ? 'text-mecura-neon' : 'text-white'}`}>
+                                          {item.name}
+                                        </h4>
+                                        {isSelected ? (
+                                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-mecura-neon text-black shadow-[0_0_10px_rgba(166,255,0,0.35)]">
+                                            {isJaFaz ? '✓ Já faço tratamento' : '★ Minha preferência'}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30">
+                                            RDC 660 ANVISA
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <p className="text-xs text-mecura-silver leading-snug line-clamp-2">
+                                        {item.description}
+                                      </p>
+
+                                      {item.highlights && item.highlights.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 pt-0.5">
+                                          {item.highlights.map((tag, tIdx) => (
+                                            <span
+                                              key={tIdx}
+                                              className={`text-[9px] font-bold px-2 py-0.5 rounded-md border ${
+                                                isSelected
+                                                  ? 'bg-mecura-neon/20 text-mecura-pearl border-mecura-neon/40'
+                                                  : 'bg-mecura-bg text-mecura-silver border-mecura-elevated'
+                                              }`}
+                                            >
+                                              {tag}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Right Check Orb */}
+                                    <motion.div
+                                      animate={{ scale: isSelected ? 1.1 : 1 }}
+                                      transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                                      className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                                        isSelected ? 'bg-mecura-neon border-mecura-neon shadow-[0_0_12px_rgba(166,255,0,0.5)]' : 'border-mecura-elevated bg-mecura-bg'
+                                      }`}
+                                    >
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-black stroke-[3]" />}
+                                    </motion.div>
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Resumo Conectado (Pergunta 1 + Pergunta 2) */}
+                  <AnimatePresence>
+                    {selectedBrandsList.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0, scale: 0.96 }}
+                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                        exit={{ opacity: 0, height: 0, scale: 0.96 }}
+                        className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-mecura-neon/20 via-mecura-neon/10 to-mecura-surface border border-mecura-neon flex flex-col gap-2 relative z-10 shadow-[0_0_20px_rgba(166,255,0,0.15)]"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-extrabold text-mecura-neon uppercase tracking-wider">
+                            {isJaFaz
+                              ? '✓ Resumo: Paciente JÁ FAZ TRATAMENTO com:'
+                              : '★ Resumo: Paciente PRETENDE INICIAR com:'}
+                          </span>
+                          <Sparkles className="w-4 h-4 text-mecura-neon shrink-0 animate-pulse" />
+                        </div>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-sm font-extrabold text-white">
+                            {selectedBrandsList.join(' • ')}
+                          </span>
+                          <div className="flex items-center gap-1 bg-mecura-bg p-1 rounded-lg border border-mecura-elevated">
+                            <button
+                              type="button"
+                              onClick={() => setAnswer('preferredTreatmentStatus', 'ja_faz')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                isJaFaz ? 'bg-mecura-neon text-black' : 'text-mecura-silver hover:text-white'
+                              }`}
+                            >
+                              Já uso
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAnswer('preferredTreatmentStatus', 'pretende_fazer')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                isPretende ? 'bg-mecura-neon text-black' : 'text-mecura-silver hover:text-white'
+                              }`}
+                            >
+                              Pretendo usar
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* 3. Campo para informar medicamento específico conectado à escolha */}
+                  {!isSemPref && (
+                    <div className="space-y-2 pt-4 mt-4 border-t border-mecura-elevated relative z-10">
+                      <label className="text-[11px] font-extrabold text-mecura-neon uppercase tracking-widest block">
+                        {isJaFaz
+                          ? `3. Qual produto ou dosagem ${selectedBrandsList.length > 0 ? `da ${selectedBrandsList.join(' / ')} ` : ''}você já utiliza? (Opcional)`
+                          : '3. Algum produto específico em mente para o médico? (Opcional)'}
+                      </label>
+                      <textarea
+                        value={answers.preferredBrandNotes || ''}
+                        onChange={(e) => setAnswer('preferredBrandNotes', e.target.value)}
+                        placeholder={
+                          isJaFaz
+                            ? 'Ex: Já tomo o Óleo Azul 5:1 da SouCannabis (5 gotas de 12/12h) e quero renovar minha receita...'
+                            : 'Ex: Gostaria de iniciar com óleo ou gummies da marca selecionada acima...'
+                        }
+                        className="w-full h-20 rounded-2xl border border-mecura-elevated bg-mecura-bg p-3.5 text-xs sm:text-sm text-mecura-pearl placeholder:text-mecura-silver/50 focus:outline-none focus:border-mecura-neon resize-none transition-colors"
+                      />
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            );
+          })()}
+
           {/* Step: Physical */}
           {step.id === 'physical' && (
             <div className="space-y-6">
@@ -865,7 +1537,7 @@ const STEPS = [
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#161622] border border-mecura-neon/30 rounded-3xl p-6 w-full max-w-md shadow-2xl"
+              className="bg-mecura-surface border border-mecura-neon/40 rounded-3xl p-6 w-full max-w-md shadow-[0_0_40px_rgba(166,255,0,0.15)]"
             >
               <div className="w-12 h-12 rounded-2xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center mb-4 text-mecura-neon">
                 <CheckCircle className="w-6 h-6" />

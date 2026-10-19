@@ -1,5 +1,121 @@
 [
   {
+    "id": "IBc7BYfid3WLInJAFCfJlsK3Bjl2",
+    "patientName": "off",
+    "email": "off1@gmail.com",
+    "phone": "(66) 99628-0883",
+    "cpf": "057.436.591-50",
+    "birthDate": "28/02/1997",
+    "tier": "Premium",
+    "isPremium": true,
+    "plan": "complete",
+    "queueType": "psychologist",
+    "selectedOffer": "complete",
+    "status": "waiting",
+    "joinedAt": "2026-10-18T20:22:15.173Z",
+    "hasUnread": true,
+    "lastMessageAt": "2026-10-19T18:03:59.164Z",
+    "lastMessageText": "Aguardando atendimento do Psicólogo",
+    "answers": {
+      "duration": "anos",
+      "preferredNationalAssociation": "soucannabis",
+      "intensity": "10",
+      "phone": "(66) 99628-0883",
+      "foco": true,
+      "preferredBrands": [
+        "SouCannabis",
+        "GreenBudz",
+        "Pangaia"
+      ],
+      "preferredTreatmentStatus": "ja_faz",
+      "tratamento_atual": true,
+      "dirige": true,
+      "remedios": true,
+      "sex": "M",
+      "cpf": "057.436.591-50",
+      "filhos": true,
+      "height": "180",
+      "birthDate": "28/02/1997",
+      "maquinario": true,
+      "preferredImportedBrand": "pangaia",
+      "casado": true,
+      "weight": "80",
+      "memoria": true,
+      "objectives": [
+        "Ansiedade, Estresse e Transtornos Mentais",
+        "Dor Crônica e Inflamação",
+        "TDAH",
+        "Autismo (TEA)"
+      ],
+      "adhdTestResult": {
+        "scorePercent": 83,
+        "totalPoints": 30,
+        "maxPoints": 36,
+        "questionsCount": 12,
+        "classification": "Alta Compatibilidade Neurocomportamental (TDAH)",
+        "completedAt": "2026-10-18T20:25:00.000Z",
+        "answers": {
+          "0": 3, "1": 3, "2": 3, "3": 2, "4": 2, "5": 3,
+          "6": 2, "7": 3, "8": 3, "9": 2, "10": 2, "11": 2
+        }
+      },
+      "autismTestResult": {
+        "scorePercent": 75,
+        "totalPoints": 27,
+        "maxPoints": 36,
+        "questionsCount": 12,
+        "targetProfile": "Adulto (Próprio Paciente)",
+        "classification": "Forte Indicativo de Traços do Espectro (TEA) & Hipersensibilidade",
+        "completedAt": "2026-10-18T20:28:00.000Z",
+        "answers": {
+          "0": 3, "1": 2, "2": 3, "3": 3, "4": 2, "5": 2,
+          "6": 2, "7": 2, "8": 3, "9": 2, "10": 2, "11": 1
+        }
+      }
+    },
+    "pagamento_consulta": true,
+    "pagamento_premium": true
+  },
+  {
+    "id": "C9wVhNQX4iM6xJDO9074jv2yavk1",
+    "patientName": "teste",
+    "email": "k5@gmail.com",
+    "phone": "(66) 99628-0883",
+    "cpf": "057.436.591-50",
+    "birthDate": "28/02/1979",
+    "tier": "Premium",
+    "isPremium": true,
+    "plan": "premium",
+    "queueType": "psychologist",
+    "selectedOffer": "premium",
+    "status": "in-consultation",
+    "joinedAt": "2026-10-03T14:40:44.676Z",
+    "hasUnread": false,
+    "lastMessageAt": "2026-10-19T18:03:58.107Z",
+    "lastMessageText": "Aguardando atendimento do Psicólogo",
+    "answers": {
+      "objectives": [
+        "Ansiedade, Estresse e Transtornos Mentais",
+        "Dor Crônica e Inflamação"
+      ],
+      "duration": "anos",
+      "sex": "M",
+      "intensity": "10",
+      "cpf": "057.436.591-50",
+      "phone": "(66) 99628-0883",
+      "weight": "80",
+      "aborto": true,
+      "doenca_cronica": true,
+      "memoria": true,
+      "height": "180",
+      "birthDate": "28/02/1979",
+      "trabalha": true,
+      "dirige": true
+    },
+    "pagamento_consulta": true,
+    "pagamento_premium": true
+  },
+  {
     "id": "YshJoqA5rmd3hQ9khUdJOxyQFMB3",
     "patientName": "Marcelo Henrique de Oliveira Filho",
     "name": "Marcelo Henrique de Oliveira Filho",
@@ -31,8 +147,19 @@
       "height": "178",
       "phone": "(19) 99361-6130",
       "birthDate": "16/09/1994",
-      "cpf": "434.808.768-70",
-      "diseaseOrigin": "Sempre tive dificuldade para dormir, acredito que seja um pouco dr ansiedade, nao consigo desligar pra ter um sono bom sem fumar"
+      "diseaseOrigin": "Sempre tive dificuldade para dormir, acredito que seja um pouco dr ansiedade, nao consigo desligar pra ter um sono bom sem fumar",
+      "adhdTestResult": {
+        "scorePercent": 78,
+        "totalPoints": 28,
+        "maxPoints": 36,
+        "questionsCount": 12,
+        "classification": "Alta Compatibilidade Neurocomportamental (TDAH)",
+        "completedAt": "2026-10-15T13:20:00.000Z",
+        "answers": {
+          "0": 3, "1": 3, "2": 2, "3": 2, "4": 2, "5": 2,
+          "6": 3, "7": 3, "8": 2, "9": 3, "10": 3, "11": 3
+        }
+      }
     }
   },
   {

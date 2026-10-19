@@ -1511,7 +1511,7 @@ export const StrategicToolsModal: React.FC<StrategicToolsModalProps> = ({
                   onClick={handleProceedFromHcCalculator}
                   className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-mecura-neon via-[#9EFF00] to-[#82E000] text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_6px_20px_rgba(166,255,0,0.25)] hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer"
                 >
-                  <span>Iniciar Consulta para Receita + Laudo HC</span>
+                  <span>Iniciar Consulta para Receita + Laudo Agronômico para HC</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </motion.div>

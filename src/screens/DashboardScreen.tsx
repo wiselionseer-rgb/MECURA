@@ -81,7 +81,19 @@ export function DashboardScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
-  const hasPaidConsultation = !!pagamento_consulta;
+  const hasPaidConsultation = !!(
+    pagamento_consulta ||
+    myQueueEntry?.status === 'waiting' ||
+    myQueueEntry?.status === 'in-consultation' ||
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+  );
+
+  const isPsicoQueue = !!(
+    myQueueEntry?.queueType === 'psychologist' ||
+    myQueueEntry?.plan === 'psychologist' ||
+    selectedOffer === 'psychologist' ||
+    (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist')
+  );
 
   const isDoctorCalling = hasPaidConsultation && (myQueueEntry?.status === 'in-consultation' || consultationActive);
   
@@ -199,28 +211,33 @@ export function DashboardScreen() {
           if (u.cpf) useStore.getState().setUserCpf(u.cpf);
           if (u.birthDate) useStore.getState().setUserBirthDate(u.birthDate);
 
-          const isAwaitingNewPayment = u.consultationStatus === 'awaiting_payment' || u.consultationStatus === 'not_started';
-          const isFinishedInDoc = !isAwaitingNewPayment && (u.consultationStatus === 'finished' || u.isConsultationFinished === true);
+          const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+          const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+
+          const currentQ = useStore.getState().queue.find(q => q.id === currentUid);
+          const isActivelyInQueue = isRecentlyApproved || currentQ?.status === 'waiting' || currentQ?.status === 'in-consultation' || u.inQueue === true || u.consultationStatus === 'waiting' || u.consultationStatus === 'in-consultation';
+          const isAwaitingNewPayment = !isActivelyInQueue && (u.consultationStatus === 'awaiting_payment' || u.consultationStatus === 'not_started');
+          const isFinishedInDoc = !isActivelyInQueue && !isAwaitingNewPayment && (u.consultationStatus === 'finished' || u.isConsultationFinished === true);
 
           if (isFinishedInDoc) {
             useStore.setState({ isConsultationFinished: true, inQueue: false, consultationActive: false });
             if (typeof window !== 'undefined') localStorage.setItem('mecura_consultation_finished', 'true');
           }
 
-          if (!isAwaitingNewPayment && !isFinishedInDoc && (u.pagamento_consulta === true || u.hasPaid === true || u.isPaid === true)) {
+          if (!isAwaitingNewPayment && !isFinishedInDoc && (isActivelyInQueue || u.pagamento_consulta === true || u.hasPaid === true || u.isPaid === true)) {
             setPagamentoConsulta(true);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
-          } else {
+          } else if (isAwaitingNewPayment || isFinishedInDoc) {
             setPagamentoConsulta(false);
             if (typeof window !== 'undefined') {
               localStorage.removeItem('mecura_pagamento');
               localStorage.removeItem('mecura_consultation_active');
             }
           }
-          if (!isAwaitingNewPayment && (u.pagamento_premium === true || u.isPremium === true || u.plan === 'premium' || u.plan === 'complete')) {
+          if (!isAwaitingNewPayment && (u.pagamento_premium === true || u.isPremium === true || u.plan === 'premium' || u.plan === 'complete' || (isRecentlyApproved && typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'))) {
             setPagamentoPremium(true);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
-          } else {
+          } else if (isAwaitingNewPayment) {
             setPagamentoPremium(false);
             if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
           }
@@ -269,49 +286,29 @@ export function DashboardScreen() {
           }
         }
 
-        const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
+        const patientUid = auth.currentUser?.uid || useStore.getState().patientId || localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id') || ('paciente_' + Date.now());
         const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
+        const patientEmail = auth.currentUser?.email || useStore.getState().userEmail || '';
 
         setPagamentoConsulta(true);
         setPagamentoPremium(isPremium);
         if (typeof window !== 'undefined') {
+          localStorage.setItem('mecura_patientId', patientUid);
           localStorage.setItem('mecura_pagamento', 'true');
+          localStorage.setItem('mecura_payment_approved_at', Date.now().toString());
           if (isPremium) {
             localStorage.setItem('mecura_premium', 'true');
           } else {
             localStorage.removeItem('mecura_premium');
           }
+          localStorage.removeItem('mecura_consultation_finished');
+          localStorage.removeItem('mecura_consultation_active');
         }
 
         const isPsicoOnly = savedOffer === 'psychologist';
         const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
 
-        await joinQueue({
-          id: patientUid,
-          patientName: patientName,
-          email: auth.currentUser?.email || '',
-          isPremium,
-          plan: savedOffer,
-          queueType: targetQueueType,
-          selectedOffer: savedOffer,
-          freshPayment: true,
-          pagamento_consulta: true,
-          hasPaid: true,
-          isPaid: true
-        } as any);
-
         try {
-          await addDoc(collection(db, 'payments'), {
-            mpId: paymentId || `mp_${savedOffer}_` + Date.now(),
-            type: planTitle,
-            value: planPrice,
-            plan: savedOffer,
-            queueType: targetQueueType,
-            isPremium,
-            patientName: patientName,
-            patientId: patientUid,
-            date: new Date().toISOString()
-          });
           if (patientUid) {
             await setDoc(doc(db, 'users', patientUid), {
               pagamento_consulta: true,
@@ -319,24 +316,60 @@ export function DashboardScreen() {
               hasPaid: true,
               isPaid: true,
               plan: savedOffer,
+              selectedOffer: savedOffer,
               queueType: targetQueueType,
               isPremium,
               consultationStatus: 'waiting',
               inQueue: true,
+              isConsultationFinished: false,
+              consultationActive: false,
               lastPaymentDate: new Date().toISOString()
             }, { merge: true });
           }
         } catch (e) {
+          console.error("Erro ao atualizar user doc no retorno MP:", e);
+        }
+
+        try {
+          await addDoc(collection(db, 'payments'), {
+            mpId: paymentId || `mp_${savedOffer}_` + Date.now(),
+            type: planTitle,
+            value: planPrice,
+            plan: savedOffer,
+            selectedOffer: savedOffer,
+            queueType: targetQueueType,
+            isPremium,
+            patientName: patientName || 'Paciente',
+            patientEmail: patientEmail || '',
+            patientId: patientUid || '',
+            date: new Date().toISOString()
+          });
+        } catch (e) {
           console.error("Erro ao registrar pagamento em payments:", e);
         }
+
+        await joinQueue({
+          id: patientUid,
+          patientName: patientName,
+          email: patientEmail,
+          isPremium,
+          plan: savedOffer,
+          queueType: targetQueueType,
+          selectedOffer: savedOffer,
+          freshPayment: true,
+          pagamento_consulta: true,
+          pagamento_premium: isPremium,
+          hasPaid: true,
+          isPaid: true
+        } as any);
 
         // Consume saved coupon if used
         const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
         if (savedCouponStr) {
           try {
             const couponToConsume = JSON.parse(savedCouponStr);
-            const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
-            const uemail = auth.currentUser?.email || undefined;
+            const uid = patientUid || 'paciente_' + Date.now().toString(36);
+            const uemail = patientEmail || undefined;
             await useAdminStore.getState().useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
             localStorage.removeItem('mecura_applied_coupon');
           } catch (e) {
@@ -501,10 +534,16 @@ export function DashboardScreen() {
                 </div>
                 
                 <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
-                  O Dr. Guilherme<br/>está aguardando
+                  {isPsicoQueue ? (
+                    <>O Psicólogo Marco Antônio<br/>está aguardando</>
+                  ) : (
+                    <>O Dr. Guilherme<br/>está aguardando</>
+                  )}
                 </h2>
-                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[200px]">
-                  Sua consulta está ativa e o médico está na sala de chat pronto para te atender.
+                <p className="text-[13px] text-[#8A8A9E] mb-8 leading-relaxed max-w-[220px]">
+                  {isPsicoQueue 
+                    ? 'Sua sessão psicológica está ativa e o profissional está na sala de chat pronto para te atender.'
+                    : 'Sua consulta está ativa e o médico está na sala de chat pronto para te atender.'}
                 </p>
                 
                 <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(166,255,0,0.3)] transition-all">
@@ -517,7 +556,7 @@ export function DashboardScreen() {
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              className="relative border border-white/5 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
+              className="relative border border-mecura-neon/30 rounded-[36px] p-8 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] group cursor-pointer bg-[#0A0A0F]"
               onClick={() => navigate('/queue')}
             >
               {/* Background Video */}
@@ -550,19 +589,21 @@ export function DashboardScreen() {
               </div>
               
               <div className="relative z-10 flex flex-col items-start">
-                <div className="inline-flex items-center gap-2 bg-[#FF8A00]/20 border border-[#FF8A00]/30 backdrop-blur-md px-3 py-1.5 rounded-full mb-6">
-                  <div className="w-2 h-2 rounded-full bg-[#FF8A00] animate-pulse" />
-                  <span className="text-[10px] font-bold text-white uppercase tracking-widest">FILA DE ESPERA</span>
+                <div className="inline-flex items-center gap-2 bg-mecura-neon/20 border border-mecura-neon/40 backdrop-blur-md px-3 py-1.5 rounded-full mb-6">
+                  <div className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse" />
+                  <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-widest">FILA DE ESPERA ATIVA</span>
                 </div>
                 
                 <h2 className="text-[28px] font-serif font-bold text-white mb-2 leading-[1.15] tracking-tight">
                   Aguardando<br/>Atendimento
                 </h2>
-                <p className="text-[13px] text-white/80 mb-8 leading-relaxed max-w-[200px]">
-                  O Dr. Guilherme te chamará em instantes para iniciar a consulta.
+                <p className="text-[13px] text-white/80 mb-8 leading-relaxed max-w-[220px]">
+                  {isPsicoQueue
+                    ? 'O Psicólogo Marco Antônio te chamará em instantes para iniciar seu atendimento.'
+                    : 'O Dr. Guilherme te chamará em instantes para iniciar a consulta.'}
                 </p>
                 
-                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-gradient-to-r from-[#FF8A00] to-[#FF9A26] px-6 py-3.5 rounded-full font-bold text-[13px] hover:shadow-[0_0_20px_rgba(255,138,0,0.2)] transition-all">
+                <button className="flex items-center justify-center gap-2 text-[#0A0A0F] bg-mecura-neon px-6 py-3.5 rounded-full font-extrabold text-[13px] shadow-[0_0_20px_rgba(166,255,0,0.3)] hover:brightness-110 transition-all">
                   Acompanhar Fila <ChevronRight className="w-4 h-4 ml-1" />
                 </button>
               </div>
@@ -732,9 +773,21 @@ export function DashboardScreen() {
             {/* Chat / Consultation */}
             <button 
               onClick={() => {
-                if (!hasPaidConsultation) {
+                if (!hasPaidConsultation && !hasActualPrescription && !isFinishedConsultation) {
                   setSelectedOffer('basic');
                   navigate('/checkout');
+                  return;
+                }
+                if (isDoctorCalling) {
+                  navigate('/chat');
+                  return;
+                }
+                if (isWaitingInQueue) {
+                  navigate('/queue');
+                  return;
+                }
+                if (canEnterWaitingQueue) {
+                  handleEnterQueue();
                   return;
                 }
                 navigate('/chat');
@@ -745,7 +798,9 @@ export function DashboardScreen() {
                 <MessageCircle className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
                 <div className="absolute inset-0 bg-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
-              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Consulta</span>
+              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">
+                {(isWaitingInQueue || canEnterWaitingQueue) && !isDoctorCalling ? 'Minha Fila' : 'Consulta'}
+              </span>
             </button>
 
             {/* Pharmacy */}

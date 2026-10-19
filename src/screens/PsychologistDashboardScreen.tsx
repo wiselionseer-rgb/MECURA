@@ -43,6 +43,7 @@ import { doc, setDoc, updateDoc, collection, onSnapshot, query, where, getDocs, 
 import { PsychologicalReportEditorModal } from '../components/PsychologicalReportEditorModal';
 import { AreaPasswordModal } from '../components/AreaPasswordModal';
 import { generatePsychologicalReportPDF } from '../utils/pdfGenerator';
+import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 import { format } from 'date-fns';
 
 const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -57,7 +58,7 @@ export function PsychologistDashboardScreen() {
     userName, queue, startConsultation, subscribeToQueue, 
     messages, addMessage, activeConsultationId,
     consultationHistory, subscribeToAllConsultationHistory,
-    transferPatientQueue
+    transferPatientQueue, answers
   } = useStore();
 
   const [currentPatient, setCurrentPatient] = useState<any>(null);
@@ -68,6 +69,7 @@ export function PsychologistDashboardScreen() {
   const [isFinishingConsultation, setIsFinishingConsultation] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showTriageInfo, setShowTriageInfo] = useState(false);
+  const [showNeuroTestsBanner, setShowNeuroTestsBanner] = useState(true);
 
   // Modal de Senha para Alternar para Área Médica
   const [isDoctorAuthModalOpen, setIsDoctorAuthModalOpen] = useState(false);
@@ -441,6 +443,81 @@ export function PsychologistDashboardScreen() {
     } catch (e) {
       console.warn("Could not save to localStorage:", e);
     }
+  };
+  // Neurodivergent Test Handlers
+  const handleSendAdhdToChat = async (adhdData: any) => {
+    if (!currentPatient) return;
+    try {
+      const isInvite = adhdData?.isInvite;
+      const msgPayload: any = {
+        text: isInvite
+          ? `📋 Convite Clínico: O psicólogo Marco Antônio solicitou o preenchimento da Escala ASRS-18 (12 Perguntas) para mapeamento de TDAH.`
+          : `🧠 Laudo do Teste de TDAH (ASRS-18 — 12 Domínios Neurais):\n• Correspondência: ${adhdData.scorePercent}%\n• Classificação: ${adhdData.classification}\n• Pontuação: ${adhdData.totalPoints}/${adhdData.maxPoints || 36} pontos.`,
+        sender: 'doctor',
+        type: 'adhd_test_card',
+        adhdTestData: isInvite ? undefined : adhdData,
+      };
+      await addMessage(msgPayload, currentPatient.id);
+      showToast('✓ Resultado do Teste de TDAH anexado ao chat!');
+    } catch (e) {
+      console.error('Erro ao enviar card de TDAH:', e);
+      showToast('Erro ao anexar teste no chat.');
+    }
+  };
+
+  const handleSendAutismToChat = async (autismData: any) => {
+    if (!currentPatient) return;
+    try {
+      const isInvite = autismData?.isInvite;
+      const msgPayload: any = {
+        text: isInvite
+          ? `📋 Convite Clínico: O psicólogo Marco Antônio solicitou o preenchimento do Mapeamento Neurocomportamental para Autismo / TEA (12 Perguntas).`
+          : `🧩 Mapeamento de Autismo (TEA — 12 Perguntas):\n• Correspondência: ${autismData.scorePercent}%\n• Perfil: ${autismData.targetProfile || 'Adulto'}\n• Classificação: ${autismData.classification}\n• Pontuação: ${autismData.totalPoints}/${autismData.maxPoints || 36} pontos.`,
+        sender: 'doctor',
+        type: 'autism_test_card',
+        autismTestData: isInvite ? undefined : autismData,
+      };
+      await addMessage(msgPayload, currentPatient.id);
+      showToast('✓ Resultado do Teste de Autismo anexado ao chat!');
+    } catch (e) {
+      console.error('Erro ao enviar card de Autismo:', e);
+      showToast('Erro ao anexar teste no chat.');
+    }
+  };
+
+  const handleSaveTestResult = async (testType: 'adhd' | 'autism', resultData: any) => {
+    if (!currentPatient) return;
+    const testKey = testType === 'adhd' ? 'adhdTestResult' : 'autismTestResult';
+    const updatedAnswers = {
+      ...(currentPatient.answers || {}),
+      [testKey]: resultData,
+    };
+    const updatedPatient = {
+      ...currentPatient,
+      answers: updatedAnswers,
+    };
+    setCurrentPatient(updatedPatient);
+
+    // Update locally in useStore
+    useStore.setState((state) => ({
+      queue: state.queue.map((p) =>
+        p.id === currentPatient.id ? { ...p, answers: updatedAnswers } : p
+      ),
+    }));
+
+    // Persist to Firestore and Server
+    try {
+      await setDoc(doc(db, 'queue', currentPatient.id), { answers: updatedAnswers }, { merge: true });
+      await setDoc(doc(db, 'users', currentPatient.id), { answers: updatedAnswers }, { merge: true });
+      fetch('/api/queue/force-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPatient),
+      }).catch(() => {});
+    } catch (e) {
+      console.warn('Could not persist test to firestore:', e);
+    }
+    showToast(`✓ Avaliação de ${testType === 'adhd' ? 'TDAH' : 'Autismo'} salva com sucesso no prontuário!`);
   };
 
   // Audio recording handlers
@@ -888,6 +965,25 @@ export function PsychologistDashboardScreen() {
                   <span className="xl:hidden">Médico</span>
                 </button>
 
+                {/* Botão Testes TDAH & TEA */}
+                <button
+                  type="button"
+                  onClick={() => setShowNeuroTestsBanner(!showNeuroTestsBanner)}
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${
+                    showNeuroTestsBanner
+                      ? 'bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]'
+                      : 'bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/35 text-purple-200'
+                  }`}
+                  title="Exibir ou ocultar resultados dos testes de TDAH e Autismo"
+                >
+                  <Brain className="w-3.5 h-3.5 text-purple-300" />
+                  <span className="hidden sm:inline">Testes TDAH & TEA</span>
+                  <span className="sm:hidden">TDAH/TEA</span>
+                  {((currentPatient?.answers?.adhdTestResult) || (currentPatient?.answers?.autismTestResult)) && (
+                    <span className="w-2 h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.8)]" />
+                  )}
+                </button>
+
                 {/* Visualizar Triagem */}
                 <button
                   type="button"
@@ -926,7 +1022,7 @@ export function PsychologistDashboardScreen() {
 
             {/* Triage Info Banner (if toggled) */}
             {showTriageInfo && currentPatient?.answers && (
-              <div className="p-4 bg-[#141420] border-b border-purple-500/30 text-xs text-purple-100 space-y-2 animate-fadeIn">
+              <div className="p-4 bg-[#141420] border-b border-purple-500/30 text-xs text-purple-100 space-y-3 animate-fadeIn shrink-0">
                 <div className="flex items-center justify-between border-b border-purple-500/20 pb-2">
                   <h4 className="font-bold text-purple-300 flex items-center gap-1.5">
                     <ClipboardList className="w-4 h-4 text-purple-400" />
@@ -950,6 +1046,39 @@ export function PsychologistDashboardScreen() {
                     <span className="font-semibold text-white">{currentPatient.answers.sleep || 'Insônia / sono não reparador'}</span>
                   </div>
                 </div>
+
+                {/* TDAH and Autism indicators inside triage */}
+                {(currentPatient.answers.adhdTestResult || currentPatient.answers.autismTestResult) && (
+                  <div className="pt-2 border-t border-purple-500/20 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {currentPatient.answers.adhdTestResult && (
+                      <div className="p-2.5 rounded-xl bg-sky-950/40 border border-sky-400/30 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold text-sky-300 block">🧠 Teste TDAH (ASRS-18)</span>
+                          <span className="text-xs text-white font-semibold">
+                            {currentPatient.answers.adhdTestResult.classification}
+                          </span>
+                        </div>
+                        <span className="text-lg font-black text-mecura-neon font-mono">
+                          {currentPatient.answers.adhdTestResult.scorePercent}%
+                        </span>
+                      </div>
+                    )}
+                    {currentPatient.answers.autismTestResult && (
+                      <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-400/30 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold text-purple-300 block">🧩 Mapeamento TEA (Autismo)</span>
+                          <span className="text-xs text-white font-semibold">
+                            {currentPatient.answers.autismTestResult.classification}
+                          </span>
+                        </div>
+                        <span className="text-lg font-black text-mecura-neon font-mono">
+                          {currentPatient.answers.autismTestResult.scorePercent}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="pt-2 border-t border-purple-500/20 flex justify-end">
                   <button
                     type="button"
@@ -960,6 +1089,41 @@ export function PsychologistDashboardScreen() {
                     <span>Chamar Paciente no WhatsApp Agora</span>
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Neurodivergent Tests Banner (TDAH & Autismo TEA) */}
+            {showNeuroTestsBanner && (
+              <div className="p-3 sm:p-4 bg-[#0D0D16] border-b border-purple-500/25 shrink-0 max-h-[45vh] overflow-y-auto custom-scrollbar">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-extrabold text-white tracking-wide uppercase">
+                      Resultados dos Testes Neurodivergentes (TDAH & Autismo TEA)
+                    </span>
+                    {((currentPatient?.answers?.adhdTestResult) || (currentPatient?.answers?.autismTestResult)) && (
+                      <span className="text-[10px] bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 px-2 py-0.5 rounded-full font-bold">
+                        Dados Clínicos Disponíveis
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowNeuroTestsBanner(false)}
+                    className="text-mecura-silver hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                    title="Minimizar painel de testes"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <NeurodivergentTestsCard
+                  patient={currentPatient}
+                  fallbackAnswers={answers}
+                  role="psychologist"
+                  onSendAdhdToChat={handleSendAdhdToChat}
+                  onSendAutismToChat={handleSendAutismToChat}
+                  onSaveTestResult={handleSaveTestResult}
+                />
               </div>
             )}
 
@@ -997,42 +1161,124 @@ export function PsychologistDashboardScreen() {
                     key={msg.id || idx}
                     className={`flex flex-col ${isFromPsychologist ? 'items-end' : 'items-start'}`}
                   >
-                    <div
-                      className={`max-w-[85%] sm:max-w-lg rounded-2xl p-3 sm:p-4 text-xs leading-relaxed shadow-md ${
-                        isFromPsychologist
-                          ? 'bg-purple-600 text-white rounded-br-none'
-                          : 'bg-[#161622] text-mecura-pearl border border-white/10 rounded-bl-none'
-                      }`}
-                    >
-                      {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
-
-                      {/* Attachment Document (e.g. Psychological Report) */}
-                      {msg.attachment && (
-                        <div className="mt-2.5 p-3 rounded-xl bg-black/30 border border-white/10 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <FileText className="w-4 h-4 text-purple-300 shrink-0" />
-                            <span className="text-[11px] font-bold text-white truncate">
-                              {msg.attachment.title || msg.attachment.name}
-                            </span>
+                    {msg.type === 'adhd_test_card' ? (
+                      <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-[#0B1520] via-[#0D1826] to-[#070D14] border border-sky-400/40 p-4 text-white shadow-xl mb-1 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-400/40 flex items-center justify-center">
+                              <Brain className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                                Laudo de Rastreio TDAH
+                              </h4>
+                              <span className="text-[10px] text-sky-300">Escala ASRS-18 • 12 Domínios</span>
+                            </div>
                           </div>
-                          {msg.attachment.url && (
-                            <a
-                              href={msg.attachment.url}
-                              download={msg.attachment.name}
-                              className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-[10px] font-bold transition-colors shrink-0"
-                            >
-                              Baixar
-                            </a>
+                          {msg.adhdTestData?.scorePercent !== undefined && (
+                            <span className="text-xl font-black text-mecura-neon font-mono">
+                              {msg.adhdTestData.scorePercent}%
+                            </span>
                           )}
                         </div>
-                      )}
+                        <div className="space-y-1.5 text-xs text-mecura-silver">
+                          <div className="text-white font-bold text-xs">
+                            {msg.adhdTestData?.classification || 'Avaliação Computada'}
+                          </div>
+                          {msg.adhdTestData?.totalPoints !== undefined && (
+                            <div className="text-[11px] text-sky-200">
+                              Pontuação: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                            </div>
+                          )}
+                          <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-mecura-pearl leading-relaxed">
+                            🎯 <strong>Diretriz Clínica:</strong> Modulação dopaminérgica e noradrenérgica no Córtex Pré-Frontal. Protocolo sugerido: CBD + CBG (Foco Diurno) com acompanhamento psicológico integrado.
+                          </div>
+                        </div>
+                        <span className="block text-[9px] text-right text-sky-300/70 pt-1">
+                          {msg.timestamp instanceof Date 
+                            ? msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                            : ''}
+                        </span>
+                      </div>
+                    ) : msg.type === 'autism_test_card' ? (
+                      <div className="w-full max-w-md rounded-2xl bg-gradient-to-br from-[#160D22] via-[#1D102D] to-[#0E0716] border border-purple-400/40 p-4 text-white shadow-xl mb-1 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-400/40 flex items-center justify-center">
+                              <Sparkles className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                                Mapeamento TEA (Autismo)
+                              </h4>
+                              <span className="text-[10px] text-purple-300">
+                                Perfil: {msg.autismTestData?.targetProfile || 'Adulto'} • 12 Perguntas
+                              </span>
+                            </div>
+                          </div>
+                          {msg.autismTestData?.scorePercent !== undefined && (
+                            <span className="text-xl font-black text-mecura-neon font-mono">
+                              {msg.autismTestData.scorePercent}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 text-xs text-mecura-silver">
+                          <div className="text-white font-bold text-xs">
+                            {msg.autismTestData?.classification || 'Mapeamento Computado'}
+                          </div>
+                          {msg.autismTestData?.totalPoints !== undefined && (
+                            <div className="text-[11px] text-purple-200">
+                              Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                            </div>
+                          )}
+                          <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-mecura-pearl leading-relaxed">
+                            🧩 <strong>Diretriz Clínica:</strong> Regulação da homeostase do tônus de Anandamida e equilíbrio excitatório/inibitório GABA-Glutamato. Protocolo sugerido: Full Spectrum com acompanhamento biopsicossocial.
+                          </div>
+                        </div>
+                        <span className="block text-[9px] text-right text-purple-300/70 pt-1">
+                          {msg.timestamp instanceof Date 
+                            ? msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                            : ''}
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`max-w-[85%] sm:max-w-lg rounded-2xl p-3 sm:p-4 text-xs leading-relaxed shadow-md ${
+                          isFromPsychologist
+                            ? 'bg-purple-600 text-white rounded-br-none'
+                            : 'bg-[#161622] text-mecura-pearl border border-white/10 rounded-bl-none'
+                        }`}
+                      >
+                        {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
 
-                      <span className={`block text-[9px] mt-1 text-right ${isFromPsychologist ? 'text-purple-200/80' : 'text-mecura-silver/70'}`}>
-                        {msg.timestamp instanceof Date 
-                          ? msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                          : ''}
-                      </span>
-                    </div>
+                        {/* Attachment Document (e.g. Psychological Report) */}
+                        {msg.attachment && (
+                          <div className="mt-2.5 p-3 rounded-xl bg-black/30 border border-white/10 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="w-4 h-4 text-purple-300 shrink-0" />
+                              <span className="text-[11px] font-bold text-white truncate">
+                                {msg.attachment.title || msg.attachment.name}
+                              </span>
+                            </div>
+                            {msg.attachment.url && (
+                              <a
+                                href={msg.attachment.url}
+                                download={msg.attachment.name}
+                                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-[10px] font-bold transition-colors shrink-0"
+                              >
+                                Baixar
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        <span className={`block text-[9px] mt-1 text-right ${isFromPsychologist ? 'text-purple-200/80' : 'text-mecura-silver/70'}`}>
+                          {msg.timestamp instanceof Date 
+                            ? msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                            : ''}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

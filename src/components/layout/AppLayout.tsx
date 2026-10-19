@@ -88,7 +88,7 @@ export function AppLayout() {
   }, [navigate]);
 
   useEffect(() => {
-    // Check if user has state or is logged in
+    // Check if user has state, stored session, or is returning from payment gateway
     const isPublicRoute = 
       location.pathname === '/' || 
       location.pathname === '/onboarding' ||
@@ -98,7 +98,15 @@ export function AppLayout() {
       location.pathname === '/termos';
     
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (!isPublicRoute && !user && !userName) {
+      const hasStoredSession = typeof window !== 'undefined' && !!(
+        localStorage.getItem('mecura_patientId') ||
+        localStorage.getItem('mecura_patient_name') ||
+        localStorage.getItem('mecura_pagamento') === 'true' ||
+        window.location.search.includes('payment') ||
+        window.location.search.includes('status=') ||
+        window.location.search.includes('collection_')
+      );
+      if (!isPublicRoute && !user && !userName && !hasStoredSession) {
         // User refreshed the page and lost state, and is not logged in
         navigate('/');
       }

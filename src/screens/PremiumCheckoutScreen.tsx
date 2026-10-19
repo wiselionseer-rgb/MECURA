@@ -244,11 +244,19 @@ export function PremiumCheckoutScreen() {
   const handleSuccess = async (mpIdCustom?: string) => {
     setIsLoading(false);
     setSuccessToast("Acesso VIP Premium liberado com sucesso! Entrando na fila prioritária...");
+
+    const patientUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : '') || ('paciente_' + Date.now());
+    const patientName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente VIP';
+    const patientEmail = auth.currentUser?.email || useStore.getState().userEmail || '';
+
     setPagamentoPremium(true);
     setPagamentoConsulta(true);
     if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_patientId', patientUid);
       localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.setItem('mecura_payment_approved_at', Date.now().toString());
       localStorage.setItem('mecura_premium', 'true');
+      localStorage.setItem('last_offer', 'premium');
       localStorage.removeItem('mecura_consultation_finished');
       localStorage.removeItem('mecura_consultation_active');
       localStorage.removeItem('mecura_queue_display_pos');
@@ -256,29 +264,17 @@ export function PremiumCheckoutScreen() {
       localStorage.removeItem('mecura_queue_notified_10m');
     }
     useStore.setState({
+      patientId: patientUid,
       isConsultationFinished: false,
       consultationActive: false,
       inQueue: true,
       pagamento_consulta: true,
-      pagamento_premium: true
+      pagamento_premium: true,
+      selectedOffer: 'premium'
     });
 
-    const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
-    const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente VIP';
-
+    // 1. Update user document first
     try {
-      await addDoc(collection(db, 'payments'), {
-        mpId: mpIdCustom || pixData?.id || 'mp_premium_' + Date.now(),
-        type: 'Consulta Premium',
-        value: finalPrice || 249.90,
-        plan: 'premium',
-        isPremium: true,
-        patientName: patientName,
-        patientEmail: auth.currentUser?.email || undefined,
-        patientId: patientUid,
-        date: new Date().toISOString()
-      });
-
       if (patientUid) {
         await setDoc(doc(db, 'users', patientUid), {
           pagamento_consulta: true,
@@ -286,26 +282,49 @@ export function PremiumCheckoutScreen() {
           hasPaid: true,
           isPaid: true,
           plan: 'premium',
+          selectedOffer: 'premium',
+          tier: 'Premium',
+          queueType: 'doctor',
           isPremium: true,
           consultationStatus: 'waiting',
           inQueue: true,
           isConsultationFinished: false,
+          consultationActive: false,
           lastPaymentDate: new Date().toISOString()
         }, { merge: true });
       }
     } catch (e) {
+      console.error("Erro ao atualizar documento do usuário premium:", e);
+    }
+
+    // 2. Record payment in payments collection (no undefined values)
+    try {
+      await addDoc(collection(db, 'payments'), {
+        mpId: mpIdCustom || pixData?.id || 'mp_premium_' + Date.now(),
+        type: 'Consulta Premium',
+        value: finalPrice || 249.90,
+        plan: 'premium',
+        selectedOffer: 'premium',
+        isPremium: true,
+        patientName: patientName || 'Paciente VIP',
+        patientEmail: patientEmail || '',
+        patientId: patientUid || '',
+        professional: 'Dr. Guilherme T. Dias (CRM 17259)',
+        date: new Date().toISOString()
+      });
+    } catch (e) {
       console.error("Erro ao registrar pagamento premium:", e);
     }
 
-    // Consume coupon for this user
+    // 3. Consume coupon for this user
     const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
     const couponToConsume = appliedCoupon || (savedCouponStr ? JSON.parse(savedCouponStr) : null);
 
     if (couponToConsume) {
       try {
-        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
-        const uemail = auth.currentUser?.email || undefined;
-        useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
+        const uid = patientUid || 'paciente_' + Date.now().toString(36);
+        const uemail = patientEmail || undefined;
+        await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
           planName: 'Premium',
           price: finalPrice || 249.90,
           isPremium: true
@@ -316,15 +335,19 @@ export function PremiumCheckoutScreen() {
       }
     }
 
+    // 4. Join waiting queue immediately
     try {
       await joinQueue({
         id: patientUid,
         patientName: patientName,
-        email: auth.currentUser?.email || '',
+        email: patientEmail,
         isPremium: true,
         plan: 'premium',
+        queueType: 'doctor',
+        selectedOffer: 'premium',
         freshPayment: true,
         pagamento_consulta: true,
+        pagamento_premium: true,
         hasPaid: true,
         isPaid: true
       } as any);
@@ -340,7 +363,7 @@ export function PremiumCheckoutScreen() {
     
     setTimeout(() => {
       navigate('/queue');
-    }, 1200);
+    }, 900);
   };
 
   useEffect(() => {

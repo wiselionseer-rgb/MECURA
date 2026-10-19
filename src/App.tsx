@@ -103,8 +103,11 @@ export default function App() {
               useStore.setState({ patientId: user.uid });
               if (typeof window !== 'undefined') localStorage.setItem('mecura_patientId', user.uid);
 
-              const isAwaitingNewPayment = uData.consultationStatus === 'awaiting_payment' || uData.consultationStatus === 'not_started';
-              const hasActualPayment = !isAwaitingNewPayment && !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true);
+              const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+              const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+
+              const isAwaitingNewPayment = !isRecentlyApproved && (uData.consultationStatus === 'awaiting_payment' || uData.consultationStatus === 'not_started');
+              const hasActualPayment = isRecentlyApproved || (!isAwaitingNewPayment && !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true));
 
               if (hasActualPayment) {
                 useStore.getState().setPagamentoConsulta(true);
@@ -117,7 +120,7 @@ export default function App() {
                 }
               }
 
-              if (!isAwaitingNewPayment && (uData.pagamento_premium === true || uData.isPremium === true || uData.plan === 'premium')) {
+              if (!isAwaitingNewPayment && (uData.pagamento_premium === true || uData.isPremium === true || uData.plan === 'premium' || uData.plan === 'complete' || (isRecentlyApproved && typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'))) {
                 useStore.getState().setPagamentoPremium(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
               } else {
@@ -137,7 +140,7 @@ export default function App() {
                   activeConsultationId: user.uid, 
                   pagamento_consulta: true 
                 });
-              } else if (hasActualPayment && (uData.consultationStatus === 'waiting' || uData.inQueue)) {
+              } else if (hasActualPayment && (uData.consultationStatus === 'waiting' || uData.inQueue || isRecentlyApproved)) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.removeItem('mecura_consultation_active');
@@ -150,7 +153,7 @@ export default function App() {
                   activeConsultationId: user.uid,
                   pagamento_consulta: true 
                 });
-              } else if (!isAwaitingNewPayment && (uData.consultationStatus === 'finished' || uData.isConsultationFinished === true)) {
+              } else if (!isAwaitingNewPayment && !isRecentlyApproved && (uData.consultationStatus === 'finished' || uData.isConsultationFinished === true)) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_consultation_finished', 'true');
                   localStorage.removeItem('mecura_consultation_active');

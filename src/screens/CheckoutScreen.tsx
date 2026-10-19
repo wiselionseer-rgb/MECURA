@@ -272,11 +272,21 @@ export function CheckoutScreen() {
     setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
     const resolvedOffer = (selectedOffer || (typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null) || 'basic') as 'basic' | 'premium' | 'psychologist' | 'complete';
     const isPrem = resolvedOffer === 'premium' || resolvedOffer === 'complete';
+    const isPsicoOnly = resolvedOffer === 'psychologist' || finalPrice === 150;
+    const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
+    const finalPlan = isPsicoOnly ? 'psychologist' : resolvedOffer;
+
+    const patientUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : '') || ('paciente_' + Date.now());
+    const patientName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
+    const patientEmail = auth.currentUser?.email || useStore.getState().userEmail || '';
+
     setPagamentoPremium(isPrem);
     setPagamentoConsulta(true);
     if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_patientId', patientUid);
       localStorage.setItem('mecura_pagamento', 'true');
-      localStorage.setItem('last_offer', resolvedOffer);
+      localStorage.setItem('mecura_payment_approved_at', Date.now().toString());
+      localStorage.setItem('last_offer', finalPlan);
       if (isPrem) {
         localStorage.setItem('mecura_premium', 'true');
       } else {
@@ -289,16 +299,14 @@ export function CheckoutScreen() {
       localStorage.removeItem('mecura_queue_notified_10m');
     }
     useStore.setState({
+      patientId: patientUid,
       isConsultationFinished: false,
       consultationActive: false,
       inQueue: true,
       pagamento_consulta: true,
       pagamento_premium: isPrem,
-      selectedOffer: resolvedOffer
+      selectedOffer: finalPlan
     });
-
-    const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
-    const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
 
     const planTypeNames: Record<string, string> = {
       complete: 'Plano Completo VIP (Médico + Psicólogo)',
@@ -314,25 +322,8 @@ export function CheckoutScreen() {
       basic: 'Dr. Guilherme T. Dias (CRM 17259)'
     };
 
+    // 1. Update user document first so queue guards immediately see active paid status
     try {
-      await addDoc(collection(db, 'payments'), {
-        mpId: mpIdCustom || pixData?.id || 'mp_' + resolvedOffer + '_' + Date.now(),
-        type: planTypeNames[resolvedOffer] || 'Consulta Médica',
-        value: finalPrice || basePrice,
-        plan: resolvedOffer,
-        selectedOffer: resolvedOffer,
-        isPremium: isPrem,
-        patientName: patientName,
-        patientEmail: auth.currentUser?.email || undefined,
-        patientId: patientUid,
-        professional: professionalNames[resolvedOffer],
-        date: new Date().toISOString()
-      });
-
-      const isPsicoOnly = resolvedOffer === 'psychologist' || finalPrice === 150;
-      const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
-      const finalPlan = isPsicoOnly ? 'psychologist' : resolvedOffer;
-
       if (patientUid) {
         await setDoc(doc(db, 'users', patientUid), {
           pagamento_consulta: true,
@@ -347,23 +338,43 @@ export function CheckoutScreen() {
           consultationStatus: 'waiting',
           inQueue: true,
           isConsultationFinished: false,
+          consultationActive: false,
           lastPaymentDate: new Date().toISOString()
         }, { merge: true });
       }
     } catch (e) {
+      console.error("Erro ao atualizar documento do usuário:", e);
+    }
+
+    // 2. Record payment in payments collection (no undefined values)
+    try {
+      await addDoc(collection(db, 'payments'), {
+        mpId: mpIdCustom || pixData?.id || 'mp_' + finalPlan + '_' + Date.now(),
+        type: planTypeNames[finalPlan] || 'Consulta Médica',
+        value: finalPrice || basePrice,
+        plan: finalPlan,
+        selectedOffer: finalPlan,
+        isPremium: isPrem,
+        patientName: patientName || 'Paciente',
+        patientEmail: patientEmail || '',
+        patientId: patientUid || '',
+        professional: professionalNames[finalPlan] || 'Dr. Guilherme T. Dias (CRM 17259)',
+        date: new Date().toISOString()
+      });
+    } catch (e) {
       console.error("Erro ao registrar pagamento em payments:", e);
     }
 
-    // Consume coupon for this user
+    // 3. Consume coupon for this user
     const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
     const couponToConsume = appliedCoupon || (savedCouponStr ? JSON.parse(savedCouponStr) : null);
 
     if (couponToConsume) {
       try {
-        const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
-        const uemail = auth.currentUser?.email || undefined;
+        const uid = patientUid || 'paciente_' + Date.now().toString(36);
+        const uemail = patientEmail || undefined;
         await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
-          planName: planTypeNames[resolvedOffer] || 'Consulta Mecura',
+          planName: planTypeNames[finalPlan] || 'Consulta Mecura',
           price: finalPrice || basePrice,
           isPremium: isPrem
         });
@@ -373,16 +384,15 @@ export function CheckoutScreen() {
       }
     }
 
+    // 4. Join waiting queue immediately
     try {
-      const isPsicoOnly = resolvedOffer === 'psychologist' || finalPrice === 150;
-      const finalPlan = isPsicoOnly ? 'psychologist' : resolvedOffer;
       await joinQueue({
         id: patientUid,
         patientName: patientName,
-        email: auth.currentUser?.email || '',
+        email: patientEmail,
         isPremium: isPrem,
         plan: finalPlan,
-        queueType: isPsicoOnly ? 'psychologist' : 'doctor',
+        queueType: targetQueueType,
         selectedOffer: finalPlan,
         freshPayment: true,
         pagamento_consulta: true,
@@ -396,7 +406,7 @@ export function CheckoutScreen() {
 
     setTimeout(() => {
       navigate('/queue');
-    }, 1200);
+    }, 900);
   };
 
   React.useEffect(() => {

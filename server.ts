@@ -307,12 +307,12 @@ async function startServer() {
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
         isPremium: isPrem,
-        status: payment.status,
+        status: payment.status || 'approved',
         date: payment.date_approved || payment.date_created || new Date().toISOString(),
-        payerEmail: payerEmail,
-        payerName: payerName,
-        patientId: patientId || undefined,
-        paymentMethod: payment.payment_method_id
+        payerEmail: payerEmail || '',
+        payerName: payerName || 'Paciente',
+        patientId: patientId || '',
+        paymentMethod: payment.payment_method_id || 'pix'
       };
 
       await setDoc(doc(db, "payments", String(payment.id)), paymentDoc, { merge: true });
@@ -733,7 +733,7 @@ async function startServer() {
       const data = await response.json();
       const results = (data.results || []).map((p: any) => {
         const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, typeLabel, val } = resolvePaymentPlan(p);
-        const patientId = p.external_reference || p.metadata?.patient_id || undefined;
+        const patientId = p.external_reference || p.metadata?.patient_id || '';
         return {
           mpId: String(p.id),
           type: typeLabel,
@@ -742,12 +742,12 @@ async function startServer() {
           selectedOffer: resolvedPlan,
           queueType: resolvedQueueType,
           isPremium: isPrem,
-          status: p.status,
-          date: p.date_approved || p.date_created,
-          payerEmail: p.payer?.email,
-          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ''}`.trim() : (p.metadata?.patient_name || undefined),
+          status: p.status || 'approved',
+          date: p.date_approved || p.date_created || new Date().toISOString(),
+          payerEmail: p.payer?.email || '',
+          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ''}`.trim() : (p.metadata?.patient_name || 'Paciente'),
           patientId: patientId,
-          paymentMethod: p.payment_method_id
+          paymentMethod: p.payment_method_id || ''
         };
       });
 

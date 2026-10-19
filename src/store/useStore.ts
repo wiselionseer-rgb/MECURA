@@ -34,7 +34,7 @@ export interface Message {
   text?: string;
   sender: 'user' | 'doctor';
   timestamp: Date;
-  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'psychological_report' | 'document';
+  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'psychological_report' | 'document' | 'adhd_test_card' | 'autism_test_card';
   docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
   attachment?: {
     name: string;
@@ -42,6 +42,27 @@ export interface Message {
     type: string;
     docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
     title?: string;
+  };
+  adhdTestData?: {
+    scorePercent: number;
+    totalPoints: number;
+    maxPoints: number;
+    questionsCount: number;
+    classification: string;
+    completedAt?: string;
+    answers?: Record<string, number>;
+    summaryNotes?: string;
+  };
+  autismTestData?: {
+    scorePercent: number;
+    totalPoints: number;
+    maxPoints: number;
+    questionsCount: number;
+    targetProfile?: string;
+    classification: string;
+    completedAt?: string;
+    answers?: Record<string, number>;
+    summaryNotes?: string;
   };
   receitaPreviaData?: {
     doctorName?: string;
@@ -229,8 +250,13 @@ import { playNotificationSound } from '../utils/sound';
 import { showNativeNotification, triggerBackgroundPush, triggerAdminBackgroundPush } from '../utils/notifications';
 
 export const useStore = create<AppState>((set, get) => ({
-  userName: '',
-  setUserName: (name) => set({ userName: name }),
+  userName: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_name') || '') : '',
+  setUserName: (name) => {
+    if (typeof window !== 'undefined' && name && name.trim() && name.trim().toLowerCase() !== 'paciente') {
+      localStorage.setItem('mecura_patient_name', name.trim());
+    }
+    set({ userName: name });
+  },
   userEmail: '',
   setUserEmail: (email) => set({ userEmail: email }),
   userPhone: '',
@@ -256,7 +282,7 @@ export const useStore = create<AppState>((set, get) => ({
     answers: { ...state.answers, [key]: value } 
   })),
   
-  pagamento_consulta: false,
+  pagamento_consulta: typeof window !== 'undefined' ? localStorage.getItem('mecura_pagamento') === 'true' : false,
   setPagamentoConsulta: (status) => { 
     if (typeof window !== 'undefined') { 
       if (status) localStorage.setItem('mecura_pagamento', 'true');
@@ -265,10 +291,22 @@ export const useStore = create<AppState>((set, get) => ({
     set({ pagamento_consulta: status }); 
     if (status) set({ isConsultationFinished: false }); 
   },
-  pagamento_premium: false,
-  setPagamentoPremium: (status) => { set({ pagamento_premium: status }); if (status) set({ isConsultationFinished: false }); },
-  selectedOffer: null,
-  setSelectedOffer: (offer) => set({ selectedOffer: offer }),
+  pagamento_premium: typeof window !== 'undefined' ? localStorage.getItem('mecura_premium') === 'true' : false,
+  setPagamentoPremium: (status) => { 
+    if (typeof window !== 'undefined') {
+      if (status) localStorage.setItem('mecura_premium', 'true');
+      else localStorage.removeItem('mecura_premium');
+    }
+    set({ pagamento_premium: status }); 
+    if (status) set({ isConsultationFinished: false }); 
+  },
+  selectedOffer: typeof window !== 'undefined' ? ((localStorage.getItem('last_offer') as any) || null) : null,
+  setSelectedOffer: (offer) => {
+    if (typeof window !== 'undefined' && offer) {
+      localStorage.setItem('last_offer', offer);
+    }
+    set({ selectedOffer: offer });
+  },
   
   scheduledConsultation: null,
   setScheduledConsultation: (consultation) => set({ scheduledConsultation: consultation }),
@@ -505,7 +543,11 @@ export const useStore = create<AppState>((set, get) => ({
       console.warn("Failed to fetch user data for queue hydration:", e);
     }
 
+    const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+
     const isExplicitFreshPayment = !!(
+      isRecentlyApproved ||
       (patient as any)?.freshPayment === true ||
       (patient as any)?.pagamento_consulta === true ||
       (patient as any)?.hasPaid === true ||
@@ -513,7 +555,7 @@ export const useStore = create<AppState>((set, get) => ({
     );
 
     const isAwaitingNewPaymentInDoc = !!(
-      uData && (
+      !isExplicitFreshPayment && uData && (
         uData.consultationStatus === 'awaiting_payment' ||
         uData.consultationStatus === 'not_started' ||
         uData.consultationStatus === 'finished' ||
@@ -524,7 +566,7 @@ export const useStore = create<AppState>((set, get) => ({
     const hasVerifiedPayment = !!(
       isExplicitFreshPayment ||
       isDocPaid ||
-      (!uData && !isAwaitingNewPaymentInDoc && (
+      (!isAwaitingNewPaymentInDoc && (
         state.pagamento_consulta === true ||
         (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
       ))

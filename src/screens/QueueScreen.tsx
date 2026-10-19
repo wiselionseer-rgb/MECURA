@@ -200,7 +200,10 @@ export function QueueScreen() {
 
   // Payment guard: Unpaid users or already-finished consultations cannot wait in queue without a new payment
   useEffect(() => {
-    if (isConsultationFinished || myQueueEntry?.status === 'finished') {
+    const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+
+    if (!isRecentlyApproved && (isConsultationFinished || myQueueEntry?.status === 'finished')) {
       if (!pagamento_consulta) {
         navigate('/checkout');
       } else {
@@ -210,7 +213,7 @@ export function QueueScreen() {
     }
 
     const hasLocalPayment = typeof window !== 'undefined' && (
-      localStorage.getItem('mecura_pagamento') === 'true'
+      localStorage.getItem('mecura_pagamento') === 'true' || isRecentlyApproved
     );
     const isEntryActiveOrWaiting = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
     const hasQueuePayment = !!(
@@ -262,14 +265,17 @@ export function QueueScreen() {
     const unsubUserDoc = onSnapshot(doc(db, 'users', currentUserId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        const isAwaitingPayment = data.consultationStatus === 'awaiting_payment' || data.consultationStatus === 'not_started';
-        const isFinished = !isAwaitingPayment && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
-        const hasValidPayment = !isAwaitingPayment && !isFinished && !!(
+        const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+        const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+
+        const isAwaitingPayment = !isRecentlyApproved && (data.consultationStatus === 'awaiting_payment' || data.consultationStatus === 'not_started');
+        const isFinished = !isRecentlyApproved && !isAwaitingPayment && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
+        const hasValidPayment = isRecentlyApproved || (!isAwaitingPayment && !isFinished && !!(
           data.pagamento_consulta === true || 
           data.hasPaid === true || 
           data.isPaid === true || 
           data.bypassedPayment === true
-        );
+        ));
 
         if (isFinished) {
           useStore.setState({ inQueue: false, isConsultationFinished: true, pagamento_consulta: false });
@@ -349,7 +355,8 @@ export function QueueScreen() {
         isPremium: isPrem,
         plan: resolvedOffer,
         selectedOffer: resolvedOffer,
-        queueType: isPsico ? 'psychologist' : 'doctor'
+        queueType: isPsico ? 'psychologist' : 'doctor',
+        freshPayment: true
       });
     }
   }, [myQueueEntry?.status, myQueueEntry?.plan, consultationActive, isConsultationFinished, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
@@ -781,12 +788,20 @@ export function QueueScreen() {
                 >
                   <Zap className="w-3 h-3 fill-current" /> PREPARANDO SALA
                 </motion.span>
+              ) : (myQueueEntry?.plan === 'complete' || selectedOffer === 'complete' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'complete')) ? (
+                <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/50 shadow-[0_0_12px_rgba(166,255,0,0.3)] tracking-wider flex items-center gap-1">
+                  👑 PLANO COMPLETO 360° VIP
+                </span>
+              ) : (myQueueEntry?.queueType === 'psychologist' || myQueueEntry?.plan === 'psychologist' || selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist')) ? (
+                <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-400/50 shadow-[0_0_12px_rgba(168,85,247,0.3)] tracking-wider flex items-center gap-1">
+                  🧠 ATENDIMENTO PSICOLÓGICO
+                </span>
               ) : isVip ? (
                 <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)] tracking-wider flex items-center gap-1">
                   ⭐ PACIENTE VIP (PRIORITÁRIO)
                 </span>
               ) : (
-                <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider">
+                <span className="mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#A6FF00] border border-[#A6FF00]/40 tracking-wider">
                   🌱 PLANO ESSENCIAL
                 </span>
               )}
