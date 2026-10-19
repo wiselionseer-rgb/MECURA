@@ -56,7 +56,7 @@ export function DiagnosisScreen() {
   const compatibilityScore = Math.min(99, baseScore + dynamicBonus + Math.floor(Math.random() * 3));
 
   return (
-    <div className="flex flex-col min-h-full bg-[#050508] text-mecura-pearl font-sans relative overflow-y-auto pb-12">
+    <div className="flex flex-col min-h-full bg-[#000000] text-mecura-pearl font-sans relative overflow-y-auto pb-12">
       {/* Header */}
       <header className="flex items-center justify-between p-6 pt-8">
         <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white" title="Voltar">
@@ -153,38 +153,97 @@ export function DiagnosisScreen() {
               </div>
             </div>
 
-            {/* Doctor Status Banner */}
-            <div className="bg-mecura-neon/10 rounded-2xl p-4 border border-mecura-neon/20 mt-4">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]">
-                    <img src="/doctor-avatar.png" alt="Médico" className="w-full h-full object-cover" />
+            {/* Clinical Team Section Header */}
+            <div className="mt-5 mb-2 flex items-center justify-between">
+              <span className="text-[11px] text-mecura-silver font-bold uppercase tracking-widest">
+                Corpo Clínico Especializado
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-mecura-neon font-black uppercase tracking-wider bg-mecura-neon/10 border border-mecura-neon/20 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
+                2 Especialistas On-line
+              </span>
+            </div>
+
+            {/* Clinical Team Cards Grid */}
+            <div className="space-y-3">
+              {/* Doctor Status Banner */}
+              <div className="bg-gradient-to-r from-mecura-neon/10 via-[#161622] to-[#12121A] rounded-2xl p-4 border border-mecura-neon/25 shadow-lg relative overflow-hidden">
+                <div className="flex items-start gap-3.5">
+                  <div className="relative shrink-0">
+                    <div className="w-13 h-13 rounded-2xl overflow-hidden border-2 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.25)] bg-[#0A0A0F]">
+                      <img src="/doctor-avatar.png" alt="Dr. Guilherme T. Dias" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mecura-neon rounded-full border-2 border-[#161622] animate-pulse" />
                   </div>
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mecura-neon rounded-full border-2 border-[#161622] animate-pulse" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-bold text-sm">Dr. Guilherme T. Dias</p>
-                  <p className="text-mecura-neon text-[10px] font-bold uppercase tracking-widest">Disponível Agora</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-white font-bold text-sm tracking-tight truncate">Dr. Guilherme T. Dias</p>
+                      <span className="text-[9px] bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 px-2 py-0.5 rounded-full font-black uppercase shrink-0">
+                        Médico • CRM/MT 17259
+                      </span>
+                    </div>
+                    <p className="text-mecura-neon text-[10px] font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon inline-block" />
+                      Disponível Agora
+                    </p>
+                    <p className="text-[11px] text-[#A1A1AA] mt-1.5 leading-relaxed">
+                      Especialista em medicina canabinoide. Responsável pela prescrição digital oficial ICP-Brasil, dosagem terapêutica e laudos periciais médicos.
+                    </p>
+                  </div>
                 </div>
               </div>
-              <p className="text-[11px] text-mecura-silver mt-3 leading-relaxed">
-                O médico já recebeu o alerta do seu perfil e está aguardando para validar sua prescrição digital.
-              </p>
+
+              {/* Psychologist Status Banner */}
+              <div className="bg-gradient-to-r from-purple-500/10 via-[#161622] to-[#12121A] rounded-2xl p-4 border border-purple-500/25 shadow-lg relative overflow-hidden">
+                <div className="flex items-start gap-3.5">
+                  <div className="relative shrink-0">
+                    <div className="w-13 h-13 rounded-2xl overflow-hidden border-2 border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.25)] bg-[#0A0A0F]">
+                      <img src="/pscologo.jpeg" alt="Marco Antônio Boastik" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-400 rounded-full border-2 border-[#161622] animate-pulse" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-white font-bold text-sm tracking-tight truncate">Marco Antônio Boastik</p>
+                      <span className="text-[9px] bg-purple-500/15 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-black uppercase shrink-0">
+                        Psicólogo • CRP 08/49215
+                      </span>
+                    </div>
+                    <p className="text-purple-300 text-[10px] font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block" />
+                      Disponível Agora
+                    </p>
+                    <p className="text-[11px] text-[#A1A1AA] mt-1.5 leading-relaxed">
+                      Psicólogo clínico e pericial. Avaliação de saúde mental, suporte emocional e emissão de laudo psicológico completo para tratamento e Habeas Corpus.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </motion.div>
 
         {/* Benefits Grid */}
-        <div className="grid grid-cols-2 gap-3 mb-10 w-full">
-          <div className="p-4 rounded-2xl bg-[#161622]/40 border border-[#262636] flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-3 mb-8 w-full">
+          <div className="p-3.5 rounded-2xl bg-[#161622]/60 border border-[#262636] flex flex-col gap-1.5">
             <MessageSquare className="w-5 h-5 text-mecura-neon" />
-            <h4 className="text-white font-bold text-xs">Chat Seguro</h4>
-            <p className="text-[#8A8A9E] text-[10px]">Sem vídeo, 100% discreto.</p>
+            <h4 className="text-white font-bold text-xs">Chat & Vídeo Seguro</h4>
+            <p className="text-[#8A8A9E] text-[10px] leading-snug">Atendimento humanizado e sigiloso.</p>
           </div>
-          <div className="p-4 rounded-2xl bg-[#161622]/40 border border-[#262636] flex flex-col gap-2">
+          <div className="p-3.5 rounded-2xl bg-[#161622]/60 border border-[#262636] flex flex-col gap-1.5">
             <Activity className="w-5 h-5 text-mecura-neon" />
             <h4 className="text-white font-bold text-xs">Receita Digital</h4>
-            <p className="text-[#8A8A9E] text-[10px]">Válida em todo o Brasil.</p>
+            <p className="text-[#8A8A9E] text-[10px] leading-snug">ICP-Brasil válida em todo o país.</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-[#161622]/60 border border-purple-500/20 flex flex-col gap-1.5">
+            <ShieldCheck className="w-5 h-5 text-purple-400" />
+            <h4 className="text-white font-bold text-xs">Laudo Psicológico</h4>
+            <p className="text-[#8A8A9E] text-[10px] leading-snug">Avaliação com Marco Antônio (CRP 08/49215).</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-[#161622]/60 border border-mecura-neon/20 flex flex-col gap-1.5">
+            <CheckCircle2 className="w-5 h-5 text-mecura-neon" />
+            <h4 className="text-white font-bold text-xs">Dossiê Habeas Corpus</h4>
+            <p className="text-[#8A8A9E] text-[10px] leading-snug">Laudos periciais fundamentados.</p>
           </div>
         </div>
 
@@ -199,14 +258,23 @@ export function DiagnosisScreen() {
             onClick={handleNext}
             className="w-full h-16 text-lg font-bold shadow-[0_0_30px_rgba(166,255,0,0.25)] hover:shadow-[0_0_40px_rgba(166,255,0,0.4)] transition-all group"
           >
-            Falar com o Médico Agora
+            Escolher Plano e Iniciar Atendimento
             <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
           </Button>
-          <div className="flex items-center justify-center gap-2 mt-5 opacity-40">
-            <ShieldCheck className="w-3 h-3 text-mecura-neon" />
-            <p className="text-[9px] text-mecura-silver uppercase tracking-[0.3em] font-bold">
-              Conselho Federal de Medicina
-            </p>
+          <div className="flex items-center justify-center gap-3 mt-4 opacity-50 text-center">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-mecura-neon" />
+              <p className="text-[9px] text-mecura-silver uppercase tracking-[0.2em] font-bold">
+                CFM (Medicina)
+              </p>
+            </div>
+            <span className="text-white/30">•</span>
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+              <p className="text-[9px] text-mecura-silver uppercase tracking-[0.2em] font-bold">
+                CFP (Psicologia)
+              </p>
+            </div>
           </div>
         </motion.div>
       </div>

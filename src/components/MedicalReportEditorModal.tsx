@@ -23,7 +23,7 @@ import {
   Check
 } from 'lucide-react';
 import { PrescriptionItemData } from '../utils/pdfGenerator';
-import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
+import { NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, GREENBUDZ_PRODUCTS, FLOWERMED_PRODUCTS, enrichMedicationDetails } from '../data/cbdGuide';
 
 interface MedicalReportEditorModalProps {
   isOpen: boolean;
@@ -50,8 +50,32 @@ interface MedicalReportEditorModalProps {
   setTreatmentPlan: (val: string) => void;
   monitoring: string;
   setMonitoring: (val: string) => void;
-  onDownloadPDF: () => void;
-  onSendToChat?: () => Promise<void> | void;
+  onDownloadPDF: (currentData?: {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+  }) => void;
+  onSendToChat?: (currentData?: {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+  }) => Promise<void> | void;
   onSave?: (savedData: {
     diagnosis: string;
     rationale: string;
@@ -120,7 +144,7 @@ export function MedicalReportEditorModal({
   const [localTreatmentPlan, setLocalTreatmentPlan] = useState(treatmentPlan);
   const [localMonitoring, setLocalMonitoring] = useState(monitoring);
 
-  // Keep local state in sync when modal opens
+  // Keep local state in sync when modal opens or reportType changes
   useEffect(() => {
     if (isOpen) {
       setLocalPatientName(patientName);
@@ -135,7 +159,7 @@ export function MedicalReportEditorModal({
       setLocalTreatmentPlan(treatmentPlan);
       setLocalMonitoring(monitoring);
     }
-  }, [isOpen]);
+  }, [isOpen, reportType]);
 
   // Synchronize all edited fields back to parent
   const syncToParent = () => {
@@ -178,6 +202,20 @@ export function MedicalReportEditorModal({
 
   if (!isOpen) return null;
 
+  const buildCurrentData = (overrideTreatmentPlan?: string) => ({
+    diagnosis: localDiagnosis,
+    rationale: localRationale,
+    treatmentPlan: overrideTreatmentPlan !== undefined ? overrideTreatmentPlan : localTreatmentPlan,
+    monitoring: localMonitoring,
+    patientName: localPatientName,
+    birthDate: localBirthDate,
+    cpf: localCpf,
+    emissionDate: localEmissionDate,
+    doctorName: localDoctorName,
+    doctorCrm: localDoctorCrm,
+    doctorSpecialty: localDoctorSpecialty
+  });
+
   const handleClose = () => {
     syncToParent();
     onClose();
@@ -185,20 +223,9 @@ export function MedicalReportEditorModal({
 
   const handleSaveChanges = () => {
     syncToParent();
+    const currentData = buildCurrentData();
     if (onSave) {
-      onSave({
-        diagnosis: localDiagnosis,
-        rationale: localRationale,
-        treatmentPlan: localTreatmentPlan,
-        monitoring: localMonitoring,
-        patientName: localPatientName,
-        birthDate: localBirthDate,
-        cpf: localCpf,
-        emissionDate: localEmissionDate,
-        doctorName: localDoctorName,
-        doctorCrm: localDoctorCrm,
-        doctorSpecialty: localDoctorSpecialty
-      });
+      onSave(currentData);
     }
     setIsSavedFeedback(true);
     const now = new Date();
@@ -208,9 +235,13 @@ export function MedicalReportEditorModal({
 
   const handleDownload = () => {
     syncToParent();
+    const currentData = buildCurrentData();
+    if (onSave) {
+      onSave(currentData);
+    }
     setIsGenerating(true);
     try {
-      onDownloadPDF();
+      onDownloadPDF(currentData);
     } finally {
       setTimeout(() => setIsGenerating(false), 800);
     }
@@ -219,7 +250,11 @@ export function MedicalReportEditorModal({
   const handleSendToChatAction = async () => {
     if (!onSendToChat) return;
     syncToParent();
-    await onSendToChat();
+    const currentData = buildCurrentData();
+    if (onSave) {
+      onSave(currentData);
+    }
+    await onSendToChat(currentData);
   };
 
   return (
@@ -501,6 +536,14 @@ export function MedicalReportEditorModal({
                               return `${idx + 1}. ${item.name} (${item.brand} - ${item.origin})${ing}${form}\n   ${posologyHeader}: ${doseStr}\n   Finalidade: ${item.description || 'Modulação fitocanabinoide contínua.'}`;
                             }).join('\n\n');
                             setLocalTreatmentPlan(formatted);
+                            setTreatmentPlan(formatted);
+                            if (onSave) {
+                              onSave(buildCurrentData(formatted));
+                            }
+                            setIsSavedFeedback(true);
+                            const now = new Date();
+                            setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+                            setTimeout(() => setIsSavedFeedback(false), 2500);
                           }}
                           className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                           title="Sincronizar medicamentos da receita atual para este laudo"
@@ -515,7 +558,9 @@ export function MedicalReportEditorModal({
                         onChange={(e) => {
                           const val = e.target.value;
                           if (!val) return;
-                          const found = PANGAIA_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                          const found = GREENBUDZ_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                                        FLOWERMED_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
+                                        PANGAIA_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
                                         SOUCANNABIS_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
                                         NATIONAL_ASSOCIATION_PRODUCTS.find(p => p.name === val || p.name.includes(val)) ||
                                         ABECMED_PRODUCTS.find(p => p.name === val) ||
@@ -528,12 +573,14 @@ export function MedicalReportEditorModal({
                             const route = found.administrationRoute || enriched.administrationRoute;
                             const isGummy = /goma/i.test(found.name || form);
                             const isFlower = /flor|in natura/i.test(found.name || form);
-                            const isTopical = /pomada|t[óo]pico/i.test(found.name || form);
+                            const isTopical = /pomada|t[óo]pico|roll-on|gel/i.test(found.name || form);
                             const isNasal = /spray|nasal/i.test(found.name || form);
                             const isSupp = /suposit/i.test(found.name || form);
-                            const isExt = /extrato|seringa/i.test(found.name || form);
+                            const isExt = /extrato|seringa|live rosin|wax|diamond/i.test(found.name || form);
                             const isSou = (found.manufacturer || '').toLowerCase().includes('soucannabis') || found.name.toLowerCase().includes('soucannabis');
                             const isPangaia = (found.manufacturer || '').toLowerCase().includes('pangaia') || found.name.toLowerCase().includes('pangaia');
+                            const isGreenbudz = (found.manufacturer || '').toLowerCase().includes('greenbudz') || found.name.toLowerCase().includes('greenbudz');
+                            const isFlowermed = (found.manufacturer || '').toLowerCase().includes('flowermed') || found.name.toLowerCase().includes('flowermed');
                             
                             const posHeader = (isGummy || isFlower || isTopical || isNasal || isSupp || isExt) 
                               ? 'Posologia' 
@@ -541,6 +588,8 @@ export function MedicalReportEditorModal({
                               ? 'Posologia (Média de 26 gotas por mL em veículo MCT)' 
                               : isPangaia
                               ? 'Posologia (Média de 20 gotas por mL em veículo MCT / Anvisa RDC 660)'
+                              : (isGreenbudz || isFlowermed)
+                              ? 'Posologia (Conta-gotas graduado em mL / Anvisa RDC 660)'
                               : 'Posologia (Aproximadamente 25 gotas por mL)';
                             const dose = (found.usageInstructions || 'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.')
                               .replace(/Aproximadamente 25 gotas por mL\.?/gi, '')
@@ -548,7 +597,9 @@ export function MedicalReportEditorModal({
                               .replace(/Média de 20 gotas por mL\.?/gi, '')
                               .trim();
                             const newBlock = `• ${found.name} (${found.manufacturer || 'Laboratório / Fabricante'} - ${found.origin || 'Nacional'})\n   Princípio Ativo: ${ing}\n   Apresentação / Via: ${form} • ${qty} • ${route}\n   ${posHeader}: ${dose}\n   Finalidade: ${found.description || 'Modulação canabinoide.'}`;
-                            setLocalTreatmentPlan(localTreatmentPlan ? `${localTreatmentPlan}\n\n${newBlock}` : newBlock);
+                            const updated = localTreatmentPlan ? `${localTreatmentPlan}\n\n${newBlock}` : newBlock;
+                            setLocalTreatmentPlan(updated);
+                            setTreatmentPlan(updated);
                           }
                           e.target.value = '';
                         }}
@@ -557,6 +608,16 @@ export function MedicalReportEditorModal({
                         <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
                           + Inserir Medicamento do Catálogo...
                         </option>
+                        <optgroup label="🌿 Linha GreenBudz (Importado USA • RDC 660 Anvisa)" className="bg-[#0A0A0F] text-emerald-400 font-bold">
+                          {GREENBUDZ_PRODUCTS.map((p, idx) => (
+                            <option key={`gb-${idx}`} value={p.name}>{p.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="🌺 Linha Flowermed (Importado USA • RDC 660 Anvisa)" className="bg-[#0A0A0F] text-purple-400 font-bold">
+                          {FLOWERMED_PRODUCTS.map((p, idx) => (
+                            <option key={`fm-${idx}`} value={p.name}>{p.name}</option>
+                          ))}
+                        </optgroup>
                         <optgroup label="🌐 Linha Pangaia Biopharmaceuticals (Importado • RDC 660)" className="bg-[#0A0A0F] text-indigo-400 font-bold">
                           <option value="Óleo CBD Full Spectrum Pangaia 5% — 1500 mg (30 mL)">Óleo CBD 5% — 1500 mg (30 mL • Pangaia)</option>
                           <option value="Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)">Óleo CBD 10% — 3000 mg (30 mL • Pangaia — Mais Prescrito)</option>

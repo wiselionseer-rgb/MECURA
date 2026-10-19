@@ -119,33 +119,7 @@ export function mergeProductCatalogs(
       categoryMap.forEach(cat => {
         cat.products = cat.products.map(p => {
           if (!p || !p.name) return p;
-          const cleanKey = `mecura_bula_custom_${p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-          const savedRaw = localStorage.getItem(cleanKey);
-          if (savedRaw) {
-            try {
-              const saved = JSON.parse(savedRaw);
-              const anyP = p as any;
-              return {
-                ...p,
-                posologyDetails: saved.posologyDetails || p.posologyDetails,
-                usageInstructions: saved.posologyDetails || p.usageInstructions,
-                activeIngredients: saved.activeIngredients || p.activeIngredients,
-                pharmaceuticalForm: saved.pharmaceuticalForm || p.pharmaceuticalForm,
-                quantity: saved.quantity || p.quantity,
-                administrationRoute: saved.administrationRoute || p.administrationRoute,
-                carrierVehicle: saved.carrierVehicle || anyP.carrierVehicle,
-                dropsPerMl: saved.dropsPerMl !== undefined && saved.dropsPerMl !== '' ? Number(saved.dropsPerMl) || saved.dropsPerMl : anyP.dropsPerMl,
-                mgPerDropCBD: saved.mgPerDropCBD !== undefined && saved.mgPerDropCBD !== '' ? Number(saved.mgPerDropCBD) || saved.mgPerDropCBD : anyP.mgPerDropCBD,
-                mgPerDropTHC: saved.mgPerDropTHC !== undefined && saved.mgPerDropTHC !== '' ? Number(saved.mgPerDropTHC) || saved.mgPerDropTHC : anyP.mgPerDropTHC,
-                ratio: saved.ratio || anyP.ratio,
-                indications: saved.indications || p.indications,
-                description: saved.description || p.description,
-              };
-            } catch {
-              return p;
-            }
-          }
-          return p;
+          return applyCustomBulaToProduct(p);
         });
       });
     } catch {
@@ -154,6 +128,119 @@ export function mergeProductCatalogs(
   }
 
   return Array.from(categoryMap.values());
+}
+
+/**
+ * Retrieves custom Bula overrides for a product by name or object
+ */
+export function getCustomBulaData(productOrName: string | any): any | null {
+  if (typeof window === 'undefined' || !productOrName) return null;
+  try {
+    const rawName = typeof productOrName === 'string' ? productOrName : (productOrName.name || productOrName.id || '');
+    if (!rawName && typeof productOrName !== 'object') return null;
+
+    if (rawName) {
+      const cleanKey = `mecura_bula_custom_${String(rawName).trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const savedRaw = localStorage.getItem(cleanKey);
+      if (savedRaw) {
+        return JSON.parse(savedRaw);
+      }
+    }
+
+    // Also try checking by id if an object was provided
+    if (typeof productOrName === 'object' && productOrName.id) {
+      const idKey = `mecura_bula_custom_${String(productOrName.id).trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const idSavedRaw = localStorage.getItem(idKey);
+      if (idSavedRaw) {
+        return JSON.parse(idSavedRaw);
+      }
+    }
+
+    // Also try checking if productOrName is object with name
+    if (typeof productOrName === 'object' && productOrName.name) {
+      const nameKey = `mecura_bula_custom_${String(productOrName.name).trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const nameSaved = localStorage.getItem(nameKey);
+      if (nameSaved) {
+        return JSON.parse(nameSaved);
+      }
+    }
+
+    // Resilient fallback: scan localStorage keys starting with mecura_bula_custom_
+    const targetNameClean = (typeof productOrName === 'string' ? productOrName : (productOrName.name || '')).trim().toLowerCase();
+    const targetIdClean = (typeof productOrName === 'object' && productOrName.id ? String(productOrName.id) : '').trim().toLowerCase();
+
+    if (targetNameClean || targetIdClean) {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('mecura_bula_custom_')) {
+          try {
+            const itemRaw = localStorage.getItem(k);
+            if (itemRaw) {
+              const parsed = JSON.parse(itemRaw);
+              const pName = (parsed.name || '').trim().toLowerCase();
+              const pId = (parsed.id || '').trim().toLowerCase();
+              if (targetNameClean && (pName === targetNameClean || pName.includes(targetNameClean) || targetNameClean.includes(pName))) {
+                return parsed;
+              }
+              if (targetIdClean && (pId === targetIdClean || k.includes(targetIdClean))) {
+                return parsed;
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Error reading custom bula:", e);
+  }
+  return null;
+}
+
+/**
+ * Applies all custom fields saved from the Bula modal onto a product object
+ */
+export function applyCustomBulaToProduct<T extends { name: string }>(product: T): T {
+  if (!product || !product.name) return product;
+  const custom = getCustomBulaData(product);
+  if (!custom) return product;
+
+  const anyP = product as any;
+  const cleanConcentration = (custom.concentration || custom.activeIngredients || anyP.concentration || '').trim();
+  const cleanActive = (custom.activeIngredients || cleanConcentration || anyP.activeIngredients || '').trim();
+  const cleanPosology = (custom.posologyDetails || custom.usageInstructions || anyP.posologyDetails || anyP.usageInstructions || '').trim();
+
+  return {
+    ...product,
+    name: custom.name && custom.name.trim() ? custom.name.trim() : product.name,
+    manufacturer: custom.manufacturer && custom.manufacturer.trim() ? custom.manufacturer.trim() : anyP.manufacturer,
+    origin: custom.origin || anyP.origin,
+    type: custom.type || anyP.type,
+    concentration: cleanConcentration,
+    activeIngredients: cleanActive,
+    pharmaceuticalForm: custom.pharmaceuticalForm || anyP.pharmaceuticalForm,
+    quantity: custom.quantity || anyP.quantity,
+    administrationRoute: custom.administrationRoute || anyP.administrationRoute,
+    carrierVehicle: custom.carrierVehicle || anyP.carrierVehicle,
+    posologyDetails: cleanPosology,
+    usageInstructions: cleanPosology,
+    prescriptionExample: custom.prescriptionExample || anyP.prescriptionExample,
+    indications: custom.indications || anyP.indications,
+    description: custom.description || anyP.description,
+    priceBRL: custom.priceBRL !== undefined && custom.priceBRL !== '' ? Number(String(custom.priceBRL).replace(/[^0-9.]/g, '')) : anyP.priceBRL,
+    priceUSD: custom.priceUSD !== undefined && custom.priceUSD !== '' ? Number(String(custom.priceUSD).replace(/[^0-9.]/g, '')) : anyP.priceUSD,
+    dropsPerMl: custom.dropsPerMl !== undefined && custom.dropsPerMl !== '' ? (Number(custom.dropsPerMl) || custom.dropsPerMl) : anyP.dropsPerMl,
+    mgPerDropCBD: custom.mgPerDropCBD !== undefined && custom.mgPerDropCBD !== '' ? (Number(custom.mgPerDropCBD) || custom.mgPerDropCBD) : anyP.mgPerDropCBD,
+    mgPerDropTHC: custom.mgPerDropTHC !== undefined && custom.mgPerDropTHC !== '' ? (Number(custom.mgPerDropTHC) || custom.mgPerDropTHC) : anyP.mgPerDropTHC,
+    mgPerDropDelta8: custom.mgPerDropDelta8 !== undefined && custom.mgPerDropDelta8 !== '' ? (Number(custom.mgPerDropDelta8) || custom.mgPerDropDelta8) : anyP.mgPerDropDelta8,
+    ratio: custom.ratio || anyP.ratio,
+    details: [
+      cleanConcentration,
+      custom.pharmaceuticalForm || anyP.pharmaceuticalForm,
+      custom.quantity || anyP.quantity,
+      custom.administrationRoute || anyP.administrationRoute,
+      custom.carrierVehicle || anyP.carrierVehicle
+    ].filter(Boolean) as string[]
+  };
 }
 
 /**

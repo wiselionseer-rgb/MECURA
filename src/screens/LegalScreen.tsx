@@ -68,12 +68,12 @@ export const LegalScreen: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col min-h-full bg-[#0A0A0F] text-mecura-pearl relative font-sans">
+    <div className="flex flex-col min-h-full bg-[#060D08] text-mecura-pearl relative font-sans">
       {/* Header */}
-      <header className="flex items-center justify-between p-4 sm:p-6 pt-6 border-b border-[#1A1A26] bg-[#0A0A0F]/90 backdrop-blur-md sticky top-0 z-30">
+      <header className="flex items-center justify-between p-4 sm:p-6 pt-6 border-b border-white/10 bg-[#060D08]/90 backdrop-blur-md sticky top-0 z-30">
         <button 
           onClick={() => navigate(-1)}
-          className="w-10 h-10 rounded-full bg-[#161622] flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A26] transition-colors border border-[#262636]"
+          className="w-10 h-10 rounded-full bg-[#0E1711] flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#142118] transition-colors border border-white/10"
           title="Voltar"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -90,7 +90,7 @@ export const LegalScreen: React.FC = () => {
 
         <button
           onClick={() => window.print()}
-          className="w-10 h-10 rounded-full bg-[#161622] flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A26] transition-colors border border-[#262636]"
+          className="w-10 h-10 rounded-full bg-[#0E1711] flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#142118] transition-colors border border-white/10"
           title="Imprimir / Salvar PDF"
         >
           <Printer className="w-4 h-4" />
@@ -101,7 +101,7 @@ export const LegalScreen: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 space-y-5">
         
         {/* CNPJ Card */}
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#14141E] via-[#161624] to-[#12121A] border border-white/10 shadow-lg relative overflow-hidden">
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#0E1711] via-[#121E16] to-[#060D08] border border-white/10 shadow-lg relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-mecura-neon/10 blur-[30px] rounded-full pointer-events-none" />
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
             <div className="flex items-center gap-3">
@@ -141,7 +141,7 @@ export const LegalScreen: React.FC = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#12121A] rounded-2xl border border-white/5 text-xs font-semibold">
+        <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#0A120C] rounded-2xl border border-white/10 text-xs font-semibold">
           <button
             onClick={() => setActiveTab('parecer')}
             className={`py-2.5 px-1 rounded-xl text-center transition-all cursor-pointer truncate ${
@@ -192,7 +192,7 @@ export const LegalScreen: React.FC = () => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Pesquisar leis, artigos, normas ou direitos..."
-            className="w-full bg-[#14141E] border border-white/5 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-[#6A6A7E] focus:outline-none focus:border-mecura-neon transition-colors"
+            className="w-full bg-[#0E1711] border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-[#6A6A7E] focus:outline-none focus:border-mecura-neon transition-colors"
           />
         </div>
 
@@ -200,7 +200,7 @@ export const LegalScreen: React.FC = () => {
         {activeTab === 'parecer' && (
           <div className="space-y-4">
             {/* Lawyer Header */}
-            <div className="p-4 rounded-2xl bg-[#14141E] border border-mecura-neon/25 shadow-[0_0_20px_rgba(166,255,0,0.05)] space-y-2">
+            <div className="p-4 rounded-2xl bg-[#0E1711] border border-mecura-neon/25 shadow-[0_0_20px_rgba(166,255,0,0.05)] space-y-2">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center shrink-0">
                   <ShieldCheck className="w-5 h-5 text-mecura-neon" />
@@ -224,7 +224,7 @@ export const LegalScreen: React.FC = () => {
               {filteredPillars.map((pillar) => (
                 <div 
                   key={pillar.id}
-                  className="p-4 rounded-2xl bg-[#12121A] border border-white/5 hover:border-mecura-neon/30 transition-all space-y-2.5"
+                  className="p-4 rounded-2xl bg-[#0E1711] border border-white/10 hover:border-mecura-neon/30 transition-all space-y-2.5"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                     <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight">

@@ -265,21 +265,47 @@ async function startServer() {
     console.warn("[QUEUE SEED] Warning:", err);
   }
 
+  const resolvePaymentPlan = (payment: any) => {
+    const val = Number(payment.transaction_amount) || 0;
+    const desc = (payment.description || '').toLowerCase();
+    const metaPlan = payment.metadata?.plan;
+    let plan: 'basic' | 'premium' | 'complete' | 'psychologist' = 'basic';
+    if (metaPlan === 'complete' || metaPlan === 'premium' || metaPlan === 'psychologist' || metaPlan === 'basic') {
+      plan = metaPlan;
+    } else if (desc.includes('completo') || desc.includes('360') || val >= 300) {
+      plan = 'complete';
+    } else if (desc.includes('psicólogo') || desc.includes('psicologo') || desc.includes('marco antônio') || (val >= 140 && val <= 180 && !desc.includes('vip') && !desc.includes('premium'))) {
+      plan = 'psychologist';
+    } else if (desc.includes('vip') || desc.includes('premium') || desc.includes('acompanhamento') || val >= 200 || payment.metadata?.is_premium === true) {
+      plan = 'premium';
+    } else {
+      plan = 'basic';
+    }
+    const isPrem = plan === 'premium' || plan === 'complete';
+    const queueType = plan === 'psychologist' ? 'psychologist' : 'doctor';
+    const typeLabel =
+      plan === 'complete' ? 'Plano Completo VIP (Médico + Psicólogo)' :
+      plan === 'premium' ? 'Acompanhamento VIP (Médico)' :
+      plan === 'psychologist' ? 'Consulta com Psicólogo + Laudo' :
+      'Consulta Essencial (Médico)';
+    return { plan, isPrem, queueType, typeLabel, val };
+  };
+
   const processApprovedPayment = async (payment: any) => {
     try {
       if (!payment || (payment.status !== 'approved' && payment.status !== 'completed')) return;
-      const val = Number(payment.transaction_amount) || 0;
-      const desc = (payment.description || '').toLowerCase();
-      const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento') || payment.metadata?.is_premium;
+      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, typeLabel, val } = resolvePaymentPlan(payment);
       const payerEmail = payment.payer?.email;
       const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : (payment.metadata?.patient_name || 'Paciente');
       const patientId = payment.external_reference || payment.metadata?.patient_id;
 
       const paymentDoc = {
         mpId: String(payment.id),
-        type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
+        type: typeLabel,
         value: val,
-        plan: isPrem ? 'premium' : 'basic',
+        plan: resolvedPlan,
+        selectedOffer: resolvedPlan,
+        queueType: resolvedQueueType,
         isPremium: isPrem,
         status: payment.status,
         date: payment.date_approved || payment.date_created || new Date().toISOString(),
@@ -349,25 +375,30 @@ async function startServer() {
         answers: existingAnswers,
         tier: isPrem ? 'Premium' : 'basic',
         isPremium: isPrem,
-        plan: isPrem ? 'premium' : 'basic',
+        plan: resolvedPlan,
+        selectedOffer: resolvedPlan,
+        queueType: resolvedQueueType,
         joinedAt: payment.date_approved || new Date().toISOString(),
         status: 'waiting',
         pagamento_consulta: true,
         pagamento_premium: isPrem,
         hasUnread: true,
-        lastMessageText: 'Paciente aguardando atendimento médico',
+        lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Paciente aguardando atendimento médico',
         lastMessageAt: new Date().toISOString()
       };
 
       await setDoc(queueDocRef, queuePayload, { merge: true });
-      console.log(`[PAYMENT APPROVED] Paciente ${resolvedPatientName} (${targetPatientId}) colocado na fila de espera com sucesso!`);
+      console.log(`[PAYMENT APPROVED] Paciente ${resolvedPatientName} (${targetPatientId}) colocado na fila de espera com plano ${resolvedPlan}!`);
 
       // Atualizar o documento do usuário
       await setDoc(doc(db, "users", targetPatientId), {
         pagamento_consulta: true,
         pagamento_premium: isPrem,
         isPremium: isPrem,
-        plan: isPrem ? 'premium' : 'basic',
+        plan: resolvedPlan,
+        selectedOffer: resolvedPlan,
+        queueType: resolvedQueueType,
+        tier: isPrem ? 'Premium' : 'basic',
         inQueue: true,
         isConsultationFinished: false,
         consultationActive: false,
@@ -464,30 +495,51 @@ async function startServer() {
       try {
         const userSnap = await getDoc(doc(db, "users", patient.id));
         const u = userSnap.exists() ? userSnap.data() : null;
+        const isAwaitingOrFinishedInDoc = !!(
+          u && (
+            u.consultationStatus === 'awaiting_payment' ||
+            u.consultationStatus === 'not_started' ||
+            u.consultationStatus === 'finished' ||
+            u.isConsultationFinished === true
+          )
+        );
         const hasRealPayment = !!(
-          (u && (
-            u.pagamento_consulta === true || 
-            u.hasPaid === true || 
-            u.isPaid === true || 
-            u.bypassedPayment === true
-          )) ||
-          patient.pagamento_consulta === true ||
-          patient.hasPaid === true ||
-          patient.isPaid === true
+          patient.freshPayment === true ||
+          (!isAwaitingOrFinishedInDoc && (
+            (u && (
+              u.pagamento_consulta === true || 
+              u.hasPaid === true || 
+              u.isPaid === true || 
+              u.bypassedPayment === true
+            )) ||
+            patient.pagamento_consulta === true ||
+            patient.hasPaid === true ||
+            patient.isPaid === true
+          ))
         );
         if (!hasRealPayment) {
-          console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id} sem pagamento confirmado.`);
-          return res.status(403).json({ error: "Pagamento não confirmado para este paciente" });
+          console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id} sem pagamento confirmado para nova consulta.`);
+          return res.status(403).json({ error: "Pagamento não confirmado para esta consulta" });
         }
 
-        // Se verificado, garantir que o status do usuário em users reflita pagamento ativo
+        const rawPatientPlan = patient.plan || patient.selectedOffer;
+        const resolvedPatientPlan: 'basic' | 'premium' | 'complete' | 'psychologist' =
+          (rawPatientPlan === 'complete' || rawPatientPlan === 'premium' || rawPatientPlan === 'psychologist' || rawPatientPlan === 'basic')
+            ? rawPatientPlan
+            : (patient.isPremium === true ? 'premium' : 'basic');
+        const isUserPrem = resolvedPatientPlan === 'premium' || resolvedPatientPlan === 'complete';
+        const resolvedQueueType = patient.queueType || (resolvedPatientPlan === 'psychologist' ? 'psychologist' : 'doctor');
+
+        // Se verificado, garantir que o status do usuário em users reflita pagamento e plano ativo
         if (userSnap.exists()) {
-          const isUserPrem = !!(patient.isPremium || patient.plan === 'premium' || u?.pagamento_premium || u?.isPremium);
           setDoc(doc(db, "users", patient.id), {
             pagamento_consulta: true,
             pagamento_premium: isUserPrem,
             isPremium: isUserPrem,
-            plan: isUserPrem ? 'premium' : 'basic',
+            plan: resolvedPatientPlan,
+            queueType: resolvedQueueType,
+            selectedOffer: resolvedPatientPlan,
+            tier: isUserPrem ? 'Premium' : 'basic',
             inQueue: true,
             consultationStatus: 'waiting'
           }, { merge: true }).catch(() => {});
@@ -496,6 +548,14 @@ async function startServer() {
         console.warn("[QUEUE FORCE-JOIN] Erro ao verificar usuário:", err);
       }
 
+      const rawCleanPlan = patient.plan || patient.selectedOffer;
+      const finalCleanPlan: 'basic' | 'premium' | 'complete' | 'psychologist' =
+        (rawCleanPlan === 'complete' || rawCleanPlan === 'premium' || rawCleanPlan === 'psychologist' || rawCleanPlan === 'basic')
+          ? rawCleanPlan
+          : (patient.isPremium === true ? 'premium' : 'basic');
+      const finalIsPrem = finalCleanPlan === 'premium' || finalCleanPlan === 'complete';
+      const finalQueueType = patient.queueType || (finalCleanPlan === 'psychologist' ? 'psychologist' : 'doctor');
+
       const cleanPatient = {
         id: patient.id,
         patientName: (patient.patientName || patient.name || 'Paciente').trim(),
@@ -503,17 +563,19 @@ async function startServer() {
         phone: patient.phone || '',
         cpf: patient.cpf || '',
         birthDate: patient.birthDate || '',
-        tier: patient.tier || (patient.isPremium ? 'Premium' : 'basic'),
-        isPremium: !!(patient.isPremium || patient.plan === 'premium' || patient.tier === 'Premium'),
-        plan: (patient.isPremium || patient.plan === 'premium' || patient.tier === 'Premium') ? 'premium' : 'basic',
+        tier: finalIsPrem ? 'Premium' : 'basic',
+        isPremium: finalIsPrem,
+        plan: finalCleanPlan,
+        queueType: finalQueueType,
+        selectedOffer: finalCleanPlan,
         status: patient.status || 'waiting',
         joinedAt: patient.joinedAt || new Date().toISOString(),
         hasUnread: patient.hasUnread !== undefined ? patient.hasUnread : true,
         lastMessageAt: new Date().toISOString(),
-        lastMessageText: patient.lastMessageText || 'Aguardando atendimento médico',
+        lastMessageText: patient.lastMessageText || (finalQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Aguardando atendimento médico'),
         answers: patient.answers || {},
         pagamento_consulta: true,
-        pagamento_premium: !!(patient.isPremium || patient.plan === 'premium')
+        pagamento_premium: finalIsPrem
       };
 
       let currentQueue = loadServerQueue();
@@ -523,7 +585,24 @@ async function startServer() {
         (cleanEmail && p.email && p.email.trim().toLowerCase() === cleanEmail)
       );
       if (existingIdx >= 0) {
-        currentQueue[existingIdx] = { ...currentQueue[existingIdx], ...cleanPatient };
+        const existing = currentQueue[existingIdx];
+        const mergedName = (cleanPatient.patientName && cleanPatient.patientName !== 'Paciente')
+          ? cleanPatient.patientName
+          : (existing.patientName && existing.patientName !== 'Paciente')
+            ? existing.patientName
+            : (cleanPatient.patientName || existing.patientName || 'Paciente');
+
+        currentQueue[existingIdx] = { 
+          ...existing, 
+          ...cleanPatient,
+          patientName: mergedName,
+          name: mergedName,
+          cpf: cleanPatient.cpf || existing.cpf || '',
+          phone: cleanPatient.phone || existing.phone || '',
+          birthDate: cleanPatient.birthDate || existing.birthDate || '',
+          email: cleanPatient.email || existing.email || '',
+          answers: { ...(existing.answers || {}), ...(cleanPatient.answers || {}) }
+        };
       } else {
         currentQueue.unshift(cleanPatient);
       }
@@ -544,6 +623,9 @@ async function startServer() {
           pagamento_premium: cleanPatient.isPremium,
           isPremium: cleanPatient.isPremium,
           plan: cleanPatient.plan,
+          tier: cleanPatient.tier,
+          queueType: cleanPatient.queueType,
+          selectedOffer: cleanPatient.selectedOffer,
           lastUpdated: new Date().toISOString()
         }, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
@@ -557,7 +639,7 @@ async function startServer() {
   // ROTA: Atualizar status do paciente na fila
   app.post("/api/queue/update-status", async (req, res) => {
     try {
-      const { patientId, status, hasUnread } = req.body;
+      const { patientId, status, hasUnread, queueType, plan, selectedOffer, isPremium, pagamento_premium, tier } = req.body;
       if (!patientId) return res.status(400).json({ error: "Missing patientId" });
 
       const currentQueue = loadServerQueue();
@@ -565,6 +647,12 @@ async function startServer() {
       if (idx >= 0) {
         if (status) currentQueue[idx].status = status;
         if (hasUnread !== undefined) currentQueue[idx].hasUnread = hasUnread;
+        if (queueType) currentQueue[idx].queueType = queueType;
+        if (plan) currentQueue[idx].plan = plan;
+        if (selectedOffer) currentQueue[idx].selectedOffer = selectedOffer;
+        if (isPremium !== undefined) currentQueue[idx].isPremium = isPremium;
+        if (pagamento_premium !== undefined) currentQueue[idx].pagamento_premium = pagamento_premium;
+        if (tier) currentQueue[idx].tier = tier;
         saveServerQueue(currentQueue);
       }
 
@@ -572,20 +660,37 @@ async function startServer() {
 
       const updateData: any = {};
       if (status) updateData.status = status;
+      if (status === 'finished') updateData.pagamento_consulta = false;
       if (hasUnread !== undefined) updateData.hasUnread = hasUnread;
+      if (queueType) updateData.queueType = queueType;
+      if (plan) updateData.plan = plan;
+      if (selectedOffer) updateData.selectedOffer = selectedOffer;
+      if (isPremium !== undefined) updateData.isPremium = isPremium;
+      if (pagamento_premium !== undefined) updateData.pagamento_premium = pagamento_premium;
+      if (tier) updateData.tier = tier;
+
       Promise.race([
         setDoc(doc(db, "queue", patientId), updateData, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
       ]).catch(() => {});
 
       // Keep users document updated so patient dashboard and queue screen update immediately
+      const userUpdateData: any = {
+        inQueue: status === 'waiting',
+        consultationStatus: status,
+        consultationActive: status === 'in-consultation',
+        lastUpdated: new Date().toISOString()
+      };
+      if (status === 'finished') {
+        userUpdateData.isConsultationFinished = true;
+        userUpdateData.pagamento_consulta = false;
+        userUpdateData.hasPaid = false;
+        userUpdateData.isPaid = false;
+        userUpdateData.bypassedPayment = false;
+        userUpdateData.hadPreviousConsultation = true;
+      }
       Promise.race([
-        setDoc(doc(db, "users", patientId), {
-          inQueue: status === 'waiting',
-          consultationStatus: status,
-          consultationActive: status === 'in-consultation',
-          lastUpdated: new Date().toISOString()
-        }, { merge: true }),
+        setDoc(doc(db, "users", patientId), userUpdateData, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
       ]).catch(() => {});
     } catch (e: any) {
@@ -627,15 +732,15 @@ async function startServer() {
 
       const data = await response.json();
       const results = (data.results || []).map((p: any) => {
-        const val = Number(p.transaction_amount) || 0;
-        const desc = (p.description || '').toLowerCase();
-        const isPrem = val >= 150 || desc.includes('premium') || desc.includes('vip') || desc.includes('acompanhamento') || p.metadata?.is_premium;
+        const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, typeLabel, val } = resolvePaymentPlan(p);
         const patientId = p.external_reference || p.metadata?.patient_id || undefined;
         return {
           mpId: String(p.id),
-          type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
+          type: typeLabel,
           value: val,
-          plan: isPrem ? 'premium' : 'basic',
+          plan: resolvedPlan,
+          selectedOffer: resolvedPlan,
+          queueType: resolvedQueueType,
           isPremium: isPrem,
           status: p.status,
           date: p.date_approved || p.date_created,
@@ -674,42 +779,63 @@ async function startServer() {
               targetId = p.payerEmail ? `user_${p.payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${p.mpId}`;
             }
 
-            // Atualiza usuário se encontrado
-            if (existingUserData && targetId) {
-              setDoc(doc(db, "users", targetId), {
-                pagamento_consulta: true,
-                pagamento_premium: p.isPremium,
-                hasPaid: true,
-                isPaid: true,
-                plan: p.plan,
-                isPremium: p.isPremium,
-                inQueue: true,
-                consultationStatus: 'waiting'
-              }, { merge: true }).catch(() => {});
+            if (!existingUserData && targetId) {
+              try {
+                const uSnapById = await getDoc(doc(db, "users", targetId));
+                if (uSnapById.exists()) existingUserData = uSnapById.data();
+              } catch (_) {}
             }
 
             const queueDoc = await getDoc(doc(db, "queue", targetId));
-            if (!queueDoc.exists()) {
-              // Checar se já não está finalizado em active_consultations
-              const activeDoc = await getDoc(doc(db, "active_consultations", targetId));
-              if (!activeDoc.exists() || activeDoc.data()?.status !== 'finished') {
-                const patientName = existingUserData?.name || p.payerName || 'Paciente';
-                await setDoc(doc(db, "queue", targetId), {
-                  id: targetId,
-                  patientName: patientName,
-                  name: patientName,
-                  email: p.payerEmail || existingUserData?.email || '',
-                  phone: existingUserData?.phone || '',
-                  cpf: existingUserData?.cpf || '',
-                  birthDate: existingUserData?.birthDate || '',
-                  answers: existingUserData?.answers || {},
-                  isPremium: p.isPremium,
-                  plan: p.plan,
-                  joinedAt: p.date || new Date().toISOString(),
-                  status: 'waiting',
+            const queueStatus = queueDoc.exists() ? queueDoc.data()?.status : null;
+            const isAlreadyFinishedOrNewTriage = !!(
+              queueStatus === 'finished' ||
+              existingUserData?.isConsultationFinished === true ||
+              existingUserData?.consultationStatus === 'finished' ||
+              existingUserData?.consultationStatus === 'awaiting_payment' ||
+              (existingUserData?.lastTriageAt && new Date(existingUserData.lastTriageAt).getTime() > paymentDate.getTime())
+            );
+
+            // Only put user in waiting queue if this payment hasn't already been consumed by a finished consultation or superseded by a newer triage
+            if (!isAlreadyFinishedOrNewTriage) {
+              if (existingUserData && targetId) {
+                setDoc(doc(db, "users", targetId), {
                   pagamento_consulta: true,
-                  pagamento_premium: p.isPremium
-                }, { merge: true });
+                  pagamento_premium: p.isPremium,
+                  hasPaid: true,
+                  isPaid: true,
+                  plan: p.plan,
+                  selectedOffer: p.plan,
+                  queueType: p.queueType,
+                  isPremium: p.isPremium,
+                  inQueue: true,
+                  consultationStatus: 'waiting'
+                }, { merge: true }).catch(() => {});
+              }
+
+              if (!queueDoc.exists()) {
+                const activeDoc = await getDoc(doc(db, "active_consultations", targetId));
+                if (!activeDoc.exists() || activeDoc.data()?.status !== 'finished') {
+                  const patientName = existingUserData?.name || p.payerName || 'Paciente';
+                  await setDoc(doc(db, "queue", targetId), {
+                    id: targetId,
+                    patientName: patientName,
+                    name: patientName,
+                    email: p.payerEmail || existingUserData?.email || '',
+                    phone: existingUserData?.phone || '',
+                    cpf: existingUserData?.cpf || '',
+                    birthDate: existingUserData?.birthDate || '',
+                    answers: existingUserData?.answers || {},
+                    isPremium: p.isPremium,
+                    plan: p.plan,
+                    selectedOffer: p.plan,
+                    queueType: p.queueType,
+                    joinedAt: p.date || new Date().toISOString(),
+                    status: 'waiting',
+                    pagamento_consulta: true,
+                    pagamento_premium: p.isPremium
+                  }, { merge: true });
+                }
               }
             }
           }
@@ -753,7 +879,7 @@ async function startServer() {
     const origin = req.headers.origin || (host ? `${proto}://${host}` : '') || process.env.APP_URL || 'http://localhost:3000';
 
     try {
-      const { title, price, quantity = 1, payerEmail, payerName, patientId, isPremium } = req.body;
+      const { title, price, quantity = 1, payerEmail, payerName, patientId, isPremium, plan } = req.body;
       const mpInfo = await getMpClient();
 
       if (!mpInfo) {
@@ -798,7 +924,8 @@ async function startServer() {
           metadata: {
             patient_id: patientId || '',
             patient_name: payerName || '',
-            is_premium: !!isPremium
+            is_premium: !!isPremium,
+            plan: plan || (isPremium ? 'premium' : 'basic')
           },
           ...(isHttps ? {
             back_urls: {
@@ -840,7 +967,7 @@ async function startServer() {
 
   app.post("/api/create-pix-payment", async (req, res) => {
     try {
-      const { title, price, email, firstName, lastName, patientId, isPremium } = req.body;
+      const { title, price, email, firstName, lastName, patientId, isPremium, plan } = req.body;
       const mpInfo = await getMpClient();
 
       if (!mpInfo) {
@@ -852,7 +979,7 @@ async function startServer() {
         return res.status(400).json({ error: "O valor da transação deve ser maior que R$ 0,00." });
       }
 
-      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${email}`);
+      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${email} (Plano: ${plan || 'basic'})`);
 
       const payment = new Payment(mpInfo.client);
       const isSellerEmail = email && (
@@ -883,7 +1010,8 @@ async function startServer() {
           metadata: {
             patient_id: patientId || '',
             patient_name: firstName || '',
-            is_premium: !!isPremium
+            is_premium: !!isPremium,
+            plan: plan || (isPremium ? 'premium' : 'basic')
           },
           notification_url: (process.env.APP_URL || origin).startsWith('https://') ? `${process.env.APP_URL || origin}/api/webhook` : undefined,
         }

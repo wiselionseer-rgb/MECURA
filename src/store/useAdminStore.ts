@@ -251,17 +251,57 @@ export const useAdminStore = create<AdminState>()(
           unmarkProductAsDeleted(productData.name);
         }
         set((state) => {
+          let found = false;
           const updated = state.productCategories.map(c => {
             const isTargetCat = !categoryId || categoryId === 'all' || c.id === categoryId;
             const hasProd = c.products.some(p => (p.name || '').trim().toLowerCase() === oldClean);
             if (isTargetCat || hasProd) {
+              const updatedProds = c.products.map(p => {
+                if ((p.name || '').trim().toLowerCase() === oldClean) {
+                  found = true;
+                  return { ...p, ...productData };
+                }
+                return p;
+              });
               return { 
                 ...c, 
-                products: c.products.map(p => (p.name || '').trim().toLowerCase() === oldClean ? { ...p, ...productData } : p) 
+                products: updatedProds
               };
             }
             return c;
           });
+
+          if (!found) {
+            let targetIdx = -1;
+            if (categoryId && categoryId !== 'all') {
+              targetIdx = updated.findIndex(c => c.id === categoryId);
+            }
+            if (targetIdx === -1) {
+              const manuf = (productData.manufacturer || '').toLowerCase();
+              const origin = (productData.origin || '').toLowerCase();
+              if (manuf.includes('pangaia')) targetIdx = updated.findIndex(c => c.id === 'pangaia_oficial');
+              else if (manuf.includes('soucannabis')) targetIdx = updated.findIndex(c => c.id === 'soucannabis_oficial');
+              else if (origin === 'nacional' || manuf.includes('associação')) targetIdx = updated.findIndex(c => c.id === 'associacoes_nacionais');
+            }
+            if (targetIdx === -1 && updated.length > 0) {
+              targetIdx = 0;
+            }
+
+            if (targetIdx !== -1) {
+              const fullProd: CBDProduct = {
+                name: productData.name || productName,
+                manufacturer: productData.manufacturer || 'Associação Brasileira',
+                type: productData.type || 'Óleo Sublingual',
+                origin: productData.origin || 'Nacional',
+                ...productData
+              };
+              updated[targetIdx] = {
+                ...updated[targetIdx],
+                products: [fullProd, ...updated[targetIdx].products.filter(p => (p.name || '').trim().toLowerCase() !== oldClean)]
+              };
+            }
+          }
+
           const merged = mergeProductCatalogs(cbdGuideData, updated);
           syncCatalogToFirestore(merged);
           return { productCategories: merged };

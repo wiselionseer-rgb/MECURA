@@ -25,7 +25,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={cn(
-              "flex h-14 w-full rounded-xl border border-mecura-elevated bg-mecura-surface-light px-4 py-2 text-base text-mecura-pearl placeholder:text-mecura-silver focus:outline-none focus:ring-1 focus:ring-mecura-neon focus:border-mecura-neon transition-all",
+              "flex h-14 w-full rounded-xl border border-mecura-elevated bg-mecura-surface-light px-4 py-2 text-base text-mecura-pearl placeholder:text-mecura-silver focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all",
               icon && "pl-12",
               error && "border-red-500/50 focus:ring-red-500/50",
               className

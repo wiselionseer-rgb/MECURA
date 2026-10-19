@@ -201,11 +201,25 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave, onDel
 
   const handleSave = () => {
     try {
-      localStorage.setItem(currentStorageKey, JSON.stringify(formData));
-      if (formData.name && formData.name.trim() !== product.name.trim()) {
-        const newKey = getStorageKey({ name: formData.name.trim() });
-        localStorage.setItem(newKey, JSON.stringify(formData));
+      const keysToSave = new Set<string>();
+      if (currentStorageKey) keysToSave.add(currentStorageKey);
+      if (product.name) {
+        keysToSave.add(`mecura_bula_custom_${String(product.name).trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
       }
+      if (formData.name) {
+        keysToSave.add(`mecura_bula_custom_${String(formData.name).trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
+      }
+      if ((product as any)?.id) {
+        keysToSave.add(`mecura_bula_custom_${String((product as any).id).trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
+      }
+
+      const jsonStr = JSON.stringify(formData);
+      keysToSave.forEach(k => {
+        try {
+          localStorage.setItem(k, jsonStr);
+        } catch {}
+      });
+
       setHasSavedCustom(true);
       setIsDirty(false);
 
@@ -224,6 +238,7 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave, onDel
           administrationRoute: formData.administrationRoute,
           indications: formData.indications,
           usageInstructions: formData.posologyDetails,
+          posologyDetails: formData.posologyDetails,
           description: formData.description,
           priceBRL: formData.priceBRL ? Number(String(formData.priceBRL).replace(/[^0-9.]/g, '')) : undefined,
           priceUSD: formData.priceUSD ? Number(String(formData.priceUSD).replace(/[^0-9.]/g, '')) : undefined,
@@ -237,6 +252,16 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave, onDel
         });
       } catch (storeErr) {
         console.warn("Could not direct update product in admin store:", storeErr);
+      }
+
+      // Dispatch global window event so any open modal, library or prescription editor instantly syncs
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mecura_bula_updated', {
+          detail: {
+            oldName: product.name,
+            updated: formData
+          }
+        }));
       }
 
       showToast('Alterações da Bula e Doses salvas com sucesso! Ao sair e voltar, os dados permanecerão gravados.');
@@ -256,6 +281,14 @@ export function ProductBulaModal({ product, onClose, exchangeRate, onSave, onDel
       setFormData(defaults);
       setHasSavedCustom(false);
       setIsDirty(false);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mecura_bula_updated', {
+          detail: {
+            oldName: product.name,
+            reset: true
+          }
+        }));
+      }
       showToast('Bula restaurada para as especificações originais de catálogo.');
     } catch (e) {
       console.error('Falha ao resetar bula:', e);

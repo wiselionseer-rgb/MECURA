@@ -34,13 +34,13 @@ export interface Message {
   text?: string;
   sender: 'user' | 'doctor';
   timestamp: Date;
-  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document';
-  docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento';
+  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'psychological_report' | 'document';
+  docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
   attachment?: {
     name: string;
     url: string;
     type: string;
-    docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento';
+    docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
     title?: string;
   };
   receitaPreviaData?: {
@@ -119,8 +119,8 @@ interface AppState {
   setPagamentoConsulta: (status: boolean) => void;
   pagamento_premium: boolean;
   setPagamentoPremium: (status: boolean) => void;
-  selectedOffer: 'basic' | 'premium' | null;
-  setSelectedOffer: (offer: 'basic' | 'premium' | null) => void;
+  selectedOffer: 'basic' | 'premium' | 'psychologist' | 'complete' | null;
+  setSelectedOffer: (offer: 'basic' | 'premium' | 'psychologist' | 'complete' | null) => void;
   
   // Scheduled Consultation
   scheduledConsultation: { date: string; time: string } | null;
@@ -176,9 +176,12 @@ interface AppState {
     plan?: string;
     tier?: string;
     isAlerted?: number | boolean;
+    queueType?: string;
+    selectedOffer?: string;
   }>;
-  joinQueue: (patient?: { id: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string; isPremium?: boolean; plan?: string }) => Promise<void>;
+  joinQueue: (patient?: { id?: string; patientName: string; email: string; answers?: any; birthDate?: string; cpf?: string; phone?: string; isPremium?: boolean; plan?: string; queueType?: string; selectedOffer?: string; freshPayment?: boolean }) => Promise<void>;
   leaveQueue: (patientId: string) => void;
+  transferPatientQueue: (patientId: string, targetQueueType: 'doctor' | 'psychologist') => Promise<void>;
   updateQueue: (position: number, waitTime: number) => void;
   subscribeToQueue: () => () => void;
   subscribeToAppointments: () => () => void;
@@ -456,11 +459,19 @@ export const useStore = create<AppState>((set, get) => ({
         const userDoc = await getDoc(doc(db, 'users', targetUid));
         if (userDoc.exists()) {
           uData = userDoc.data();
+          const isAwaitingOrFinished = (
+            uData.consultationStatus === 'awaiting_payment' ||
+            uData.consultationStatus === 'not_started' ||
+            uData.consultationStatus === 'finished' ||
+            uData.isConsultationFinished === true
+          );
           isDocPaid = !!(
-            uData.pagamento_consulta === true || 
-            uData.hasPaid === true || 
-            uData.isPaid === true || 
-            uData.bypassedPayment === true
+            !isAwaitingOrFinished && (
+              uData.pagamento_consulta === true || 
+              uData.hasPaid === true || 
+              uData.isPaid === true || 
+              uData.bypassedPayment === true
+            )
           );
 
           if (uData.name && typeof uData.name === 'string' && uData.name.trim().toLowerCase() !== 'paciente') {
@@ -494,21 +505,33 @@ export const useStore = create<AppState>((set, get) => ({
       console.warn("Failed to fetch user data for queue hydration:", e);
     }
 
-    const hasVerifiedPayment = !!(
-      isDocPaid ||
+    const isExplicitFreshPayment = !!(
+      (patient as any)?.freshPayment === true ||
       (patient as any)?.pagamento_consulta === true ||
       (patient as any)?.hasPaid === true ||
-      (patient as any)?.isPaid === true ||
-      state.pagamento_consulta === true ||
-      state.pagamento_premium === true ||
-      (typeof window !== 'undefined' && (
-        localStorage.getItem('mecura_pagamento') === 'true' ||
-        localStorage.getItem('mecura_premium') === 'true'
+      (patient as any)?.isPaid === true
+    );
+
+    const isAwaitingNewPaymentInDoc = !!(
+      uData && (
+        uData.consultationStatus === 'awaiting_payment' ||
+        uData.consultationStatus === 'not_started' ||
+        uData.consultationStatus === 'finished' ||
+        uData.isConsultationFinished === true
+      )
+    );
+
+    const hasVerifiedPayment = !!(
+      isExplicitFreshPayment ||
+      isDocPaid ||
+      (!uData && !isAwaitingNewPaymentInDoc && (
+        state.pagamento_consulta === true ||
+        (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
       ))
     );
 
     if (!hasVerifiedPayment) {
-      console.warn('[JOIN QUEUE] Bloqueado: Paciente tentou entrar na fila sem pagamento confirmado.');
+      console.warn('[JOIN QUEUE] Bloqueado: Paciente tentou entrar na fila sem pagamento confirmado para esta consulta.');
       set({ inQueue: false, pagamento_consulta: false });
       if (typeof window !== 'undefined') {
         localStorage.removeItem('mecura_pagamento');
@@ -536,16 +559,37 @@ export const useStore = create<AppState>((set, get) => ({
       messages: []
     });
     
-    const isPremium = !!(
-      state.pagamento_premium || 
-      state.selectedOffer === 'premium' || 
-      (patient as any)?.isPremium || 
-      (patient as any)?.plan === 'premium' || 
-      (patient as any)?.pagamento_premium ||
-      uData?.pagamento_premium || 
-      uData?.isPremium ||
-      (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium'))
-    );
+    // Resolve the paid plan strictly in priority order (explicit patient plan > store selectedOffer > localStorage last_offer > active Firestore doc)
+    const validPlans = ['basic', 'premium', 'complete', 'psychologist'];
+    const explicitPatientPlan = (patient as any)?.plan || (patient as any)?.selectedOffer;
+    const localOffer = typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null;
+    const docPlan = !isAwaitingNewPaymentInDoc ? (uData?.plan || uData?.selectedOffer) : null;
+
+    let resolvedPlan: 'basic' | 'premium' | 'complete' | 'psychologist' = 'basic';
+    if (explicitPatientPlan && validPlans.includes(explicitPatientPlan)) {
+      resolvedPlan = explicitPatientPlan as any;
+    } else if ((patient as any)?.isPremium !== undefined) {
+      resolvedPlan = (patient as any).isPremium ? 'premium' : 'basic';
+    } else if (state.selectedOffer && validPlans.includes(state.selectedOffer)) {
+      resolvedPlan = state.selectedOffer;
+    } else if (localOffer && validPlans.includes(localOffer)) {
+      resolvedPlan = localOffer as any;
+    } else if (docPlan && validPlans.includes(docPlan)) {
+      resolvedPlan = docPlan as any;
+    } else if (!isAwaitingNewPaymentInDoc && (state.pagamento_premium || uData?.pagamento_premium || uData?.isPremium)) {
+      resolvedPlan = 'premium';
+    }
+
+    const isPremium = resolvedPlan === 'premium' || resolvedPlan === 'complete';
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('last_offer', resolvedPlan);
+      if (isPremium) {
+        localStorage.setItem('mecura_premium', 'true');
+      } else {
+        localStorage.removeItem('mecura_premium');
+      }
+    }
 
     if (!resolvedPatientName) {
       const storedName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
@@ -558,6 +602,13 @@ export const useStore = create<AppState>((set, get) => ({
 
     const finalPatientName = resolvedPatientName;
 
+    const isPsychologistConsultation = !!(
+      (patient as any)?.queueType === 'psychologist' ||
+      resolvedPlan === 'psychologist'
+    );
+
+    const resolvedQueueType = (patient as any)?.queueType || (isPsychologistConsultation ? 'psychologist' : 'doctor');
+
     let newPatient = { 
       id: currentUserId, 
       patientName: finalPatientName, 
@@ -567,7 +618,10 @@ export const useStore = create<AppState>((set, get) => ({
       cpf: resolvedCpf,
       birthDate: resolvedBirthDate,
       isPremium: isPremium,
-      plan: isPremium ? 'premium' : 'basic',
+      plan: resolvedPlan,
+      selectedOffer: resolvedPlan,
+      tier: isPremium ? 'Premium' : 'basic',
+      queueType: resolvedQueueType,
       answers: {
         ...resolvedAnswers,
         birthDate: resolvedBirthDate,
@@ -575,8 +629,9 @@ export const useStore = create<AppState>((set, get) => ({
         phone: resolvedPhone
       },
       ...(patient || {}),
-      // Ensure real name is never overwritten by 'Paciente' in patient object
-      ...(finalPatientName !== 'Paciente' ? { patientName: finalPatientName, name: finalPatientName } : {})
+      // Ensure real name and resolved plan are never overwritten by stale values
+      ...(finalPatientName !== 'Paciente' ? { patientName: finalPatientName, name: finalPatientName } : {}),
+      pagamento_premium: isPremium
     };
 
     const queuePayload = {
@@ -584,13 +639,16 @@ export const useStore = create<AppState>((set, get) => ({
       id: currentUserId,
       patientId: currentUserId,
       isPremium,
-      plan: isPremium ? 'premium' : 'basic',
+      plan: resolvedPlan,
+      selectedOffer: resolvedPlan,
+      tier: isPremium ? 'Premium' : 'basic',
+      queueType: resolvedQueueType,
       joinedAt: new Date().toISOString(),
       status: 'waiting',
       pagamento_consulta: true,
       pagamento_premium: isPremium,
       hasUnread: true,
-      lastMessageText: 'Aguardando atendimento médico',
+      lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Aguardando atendimento médico',
       lastMessageAt: new Date().toISOString()
     };
 
@@ -656,7 +714,10 @@ export const useStore = create<AppState>((set, get) => ({
           isConsultationFinished: false,
           consultationActive: false,
           isPremium,
-          plan: isPremium ? 'premium' : 'basic',
+          plan: resolvedPlan,
+          selectedOffer: resolvedPlan,
+          tier: isPremium ? 'Premium' : 'basic',
+          queueType: resolvedQueueType,
           lastUpdated: new Date().toISOString()
         };
 
@@ -728,6 +789,144 @@ export const useStore = create<AppState>((set, get) => ({
       };
     });
   },
+  transferPatientQueue: async (patientId: string, targetQueueType: 'doctor' | 'psychologist') => {
+    if (!patientId) return;
+
+    // Fetch existing docs from Firestore first to guarantee complete data retention
+    let fsQueueData: any = {};
+    let fsUserData: any = {};
+    try {
+      const qSnap = await getDoc(doc(db, 'queue', patientId));
+      if (qSnap.exists()) fsQueueData = qSnap.data() || {};
+      const uSnap = await getDoc(doc(db, 'users', patientId));
+      if (uSnap.exists()) fsUserData = uSnap.data() || {};
+    } catch (e) {
+      console.warn("Could not pre-fetch docs for transfer:", e);
+    }
+
+    const currentQueueState = get().queue || [];
+    const existingPatient = (currentQueueState.find(p => p.id === patientId) || {}) as any;
+
+    // Merge in priority order: user doc < queue doc < store state
+    const combined = { ...fsUserData, ...fsQueueData, ...existingPatient };
+
+    const rawName = combined.patientName || combined.name || combined.full_name || combined.fullName || combined.nome || fsUserData.patientName || fsUserData.name || fsUserData.full_name || fsQueueData.patientName || fsQueueData.name || '';
+    const patientName = (rawName && typeof rawName === 'string' && rawName.trim().toLowerCase() !== 'paciente')
+      ? rawName.trim()
+      : (combined.patientName || combined.name || 'Paciente').trim();
+
+    const cpf = combined.cpf || combined.answers?.cpf || fsUserData.cpf || fsQueueData.cpf || '';
+    const phone = combined.phone || combined.whatsapp || combined.answers?.phone || fsUserData.phone || fsUserData.whatsapp || fsQueueData.phone || '';
+    const birthDate = combined.birthDate || combined.answers?.birthDate || fsUserData.birthDate || fsQueueData.birthDate || '';
+    const email = combined.email || fsUserData.email || fsQueueData.email || '';
+    const answers = { ...(fsUserData.answers || {}), ...(fsQueueData.answers || {}), ...(existingPatient.answers || {}) };
+
+    // PRESERVE original plan and premium status!
+    const isPrem = !!(combined.isPremium || combined.plan === 'premium' || combined.plan === 'complete' || combined.tier === 'Premium' || combined.selectedOffer === 'premium' || fsUserData.isPremium || fsUserData.plan === 'premium' || fsUserData.plan === 'complete');
+    const existingPlan = combined.plan || combined.selectedOffer || fsUserData.plan || fsQueueData.plan || (isPrem ? 'premium' : (targetQueueType === 'psychologist' ? 'psychologist' : 'basic'));
+
+    const targetLabel = targetQueueType === 'psychologist' ? 'Psicólogo (Marco Antônio Boastik)' : 'Médico (Dr. Guilherme)';
+    const lastMsg = targetQueueType === 'psychologist' 
+      ? 'Aguardando atendimento do Psicólogo' 
+      : 'Aguardando atendimento do Médico';
+
+    const updateData = {
+      ...combined,
+      id: patientId,
+      patientId: patientId,
+      patientName,
+      name: patientName,
+      cpf,
+      phone,
+      birthDate,
+      email,
+      answers,
+      isPremium: isPrem,
+      plan: existingPlan,
+      selectedOffer: existingPlan,
+      queueType: targetQueueType,
+      pagamento_consulta: true,
+      hasPaid: true,
+      isPaid: true,
+      status: 'waiting',
+      inQueue: true,
+      consultationStatus: 'waiting',
+      consultationActive: false,
+      hasUnread: true,
+      lastMessageText: lastMsg,
+      lastMessageAt: new Date().toISOString()
+    };
+
+    // 1. Update local store state immediately
+    set((state) => {
+      const updatedQueue = (state.queue || []).map(p => {
+        if (p.id === patientId) {
+          return {
+            ...p,
+            ...updateData
+          };
+        }
+        return p;
+      });
+      return { queue: updatedQueue };
+    });
+
+    // 2. Update Firestore queue document safely
+    try {
+      await setDoc(doc(db, 'queue', patientId), updateData, { merge: true });
+    } catch (e) {
+      console.warn("Error updating queue doc for queue transfer:", e);
+    }
+
+    // 3. Update Firestore user document safely
+    try {
+      await setDoc(doc(db, 'users', patientId), {
+        patientName,
+        name: patientName,
+        cpf,
+        phone,
+        birthDate,
+        email,
+        answers,
+        queueType: targetQueueType,
+        plan: existingPlan,
+        selectedOffer: existingPlan,
+        isPremium: isPrem,
+        pagamento_consulta: true,
+        hasPaid: true,
+        isPaid: true,
+        consultationStatus: 'waiting',
+        consultationActive: false,
+        inQueue: true,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.warn("Error updating user doc for queue transfer:", e);
+    }
+
+    // 4. Sync with server queue
+    try {
+      await fetch('/api/queue/force-join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+    } catch (e) {
+      // Non-critical
+    }
+
+    // 5. Send automated message to chat notifying the patient
+    try {
+      const { addMessage } = get();
+      await addMessage({
+        text: `📋 ENCAMINHAMENTO DE FILA: Seu atendimento foi transferido para a fila do ${targetLabel}. Por favor, aguarde que o profissional de saúde irá te atender em breve.`,
+        sender: 'doctor',
+        type: 'text'
+      }, patientId);
+    } catch (e) {
+      console.warn("Error sending transfer message:", e);
+    }
+  },
   updateQueue: (position, waitTime) => set({ queuePosition: position, estimatedWaitTime: waitTime }),
   
   subscribeToQueue: () => {
@@ -751,21 +950,39 @@ export const useStore = create<AppState>((set, get) => ({
             resData.queue.forEach((item: any) => {
               if (!item || !item.id) return;
               const prev = map.get(item.id) || {};
-              const isPrem = !!(item.isPremium || item.plan === 'premium' || item.tier === 'Premium' || item.answers?.isPremium || prev.isPremium);
+              const rawItemPlan = item.plan || item.selectedOffer || prev.plan || prev.selectedOffer;
+              const resolvedItemPlan = (rawItemPlan === 'complete' || rawItemPlan === 'premium' || rawItemPlan === 'psychologist' || rawItemPlan === 'basic')
+                ? rawItemPlan
+                : (item.isPremium === true ? 'premium' : 'basic');
+              const isPrem = resolvedItemPlan === 'premium' || resolvedItemPlan === 'complete';
               let parsedDate = item.joinedAt ? new Date(item.joinedAt) : (prev.joinedAt || new Date());
               if (isNaN(parsedDate.getTime())) parsedDate = new Date();
-              const pName = (item.patientName || item.name || prev.patientName || prev.name || 'Paciente').trim();
+              
+              const resolvedName = (item.patientName && typeof item.patientName === 'string' && item.patientName.trim().toLowerCase() !== 'paciente')
+                ? item.patientName.trim()
+                : (prev.patientName && typeof prev.patientName === 'string' && prev.patientName.trim().toLowerCase() !== 'paciente')
+                  ? prev.patientName.trim()
+                  : (item.patientName || prev.patientName || 'Paciente').trim();
+
               const resolvedStatus = (prev.status === 'in-consultation' || prev.status === 'finished') && item.status === 'waiting'
                 ? prev.status
                 : (item.status || prev.status || 'waiting');
+
               map.set(item.id, {
                 ...prev,
                 ...item,
                 status: resolvedStatus,
-                patientName: pName,
-                name: pName,
+                patientName: resolvedName,
+                name: resolvedName,
+                cpf: item.cpf || prev.cpf || '',
+                phone: item.phone || prev.phone || '',
+                birthDate: item.birthDate || prev.birthDate || '',
+                email: item.email || prev.email || '',
+                answers: { ...(prev.answers || {}), ...(item.answers || {}) },
                 isPremium: isPrem,
-                plan: isPrem ? 'premium' : 'basic',
+                pagamento_premium: isPrem,
+                plan: resolvedItemPlan,
+                selectedOffer: resolvedItemPlan,
                 joinedAt: parsedDate
               });
             });
@@ -797,7 +1014,11 @@ export const useStore = create<AppState>((set, get) => ({
 
       let queueData = snapshot.docs.map(doc => {
         const data = doc.data();
-        const isPrem = !!(data.isPremium || data.plan === 'premium' || data.selectedOffer === 'premium' || data.answers?.isPremium || data.pagamento_premium);
+        const rawDocPlan = data.plan || data.selectedOffer;
+        const resolvedDocPlan = (rawDocPlan === 'complete' || rawDocPlan === 'premium' || rawDocPlan === 'psychologist' || rawDocPlan === 'basic')
+          ? rawDocPlan
+          : (data.isPremium === true || data.pagamento_premium === true ? 'premium' : 'basic');
+        const isPrem = resolvedDocPlan === 'premium' || resolvedDocPlan === 'complete';
         let parsedJoinedAt = new Date();
         if (data.joinedAt?.toDate) {
           parsedJoinedAt = data.joinedAt.toDate();
@@ -813,7 +1034,9 @@ export const useStore = create<AppState>((set, get) => ({
           patientName: pName,
           name: pName,
           isPremium: isPrem,
-          plan: isPrem ? 'premium' : 'basic',
+          pagamento_premium: isPrem,
+          plan: resolvedDocPlan,
+          selectedOffer: resolvedDocPlan,
           joinedAt: parsedJoinedAt
         };
       }) as any[];
@@ -839,7 +1062,12 @@ export const useStore = create<AppState>((set, get) => ({
             ...prev, 
             ...p,
             patientName: resolvedName,
-            name: resolvedName
+            name: resolvedName,
+            cpf: p.cpf || prev.cpf || '',
+            phone: p.phone || prev.phone || '',
+            birthDate: p.birthDate || prev.birthDate || '',
+            email: p.email || prev.email || '',
+            answers: { ...(prev.answers || {}), ...(p.answers || {}) }
           });
         }
       });
@@ -1241,8 +1469,9 @@ export const useStore = create<AppState>((set, get) => ({
   startConsultation: async (patientId?: string) => {
     const prevId = get().activeConsultationId;
     const isSwitchingPatient = !!(patientId && prevId && patientId !== prevId);
+    const isCurrentPatientSelf = !patientId || patientId === (auth.currentUser?.uid || get().patientId);
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && isCurrentPatientSelf) {
       localStorage.setItem('mecura_consultation_active', 'true');
       localStorage.setItem('mecura_pagamento', 'true');
     }
@@ -1250,7 +1479,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => ({ 
       consultationActive: true, 
       inQueue: false,
-      pagamento_consulta: true,
+      ...(isCurrentPatientSelf ? { pagamento_consulta: true } : {}),
       ...(patientId ? { 
         activeConsultationId: patientId,
         queue: state.queue.map(p => p.id === patientId ? { ...p, status: 'in-consultation', hasUnread: false } : p)
@@ -1354,12 +1583,13 @@ export const useStore = create<AppState>((set, get) => ({
         await addDoc(historyRef, sanitizedPayload);
         console.log('Consultation history saved to Firestore');
         
-        // Clean up active consultation - change status to finished instead of deleting
+        // Clean up active consultation - change status to finished and consume active consultation credit
         await updateDoc(doc(db, 'queue', consultationId), {
           status: 'finished',
-          hasUnread: false
+          hasUnread: false,
+          pagamento_consulta: false
         }).catch(async () => {
-          await setDoc(doc(db, 'queue', consultationId), { status: 'finished', hasUnread: false }, { merge: true });
+          await setDoc(doc(db, 'queue', consultationId), { status: 'finished', hasUnread: false, pagamento_consulta: false }, { merge: true });
         });
 
         await setDoc(doc(db, 'users', consultationId), {
@@ -1367,6 +1597,11 @@ export const useStore = create<AppState>((set, get) => ({
           consultationStatus: 'finished',
           isConsultationFinished: true,
           consultationActive: false,
+          pagamento_consulta: false,
+          hasPaid: false,
+          isPaid: false,
+          bypassedPayment: false,
+          hadPreviousConsultation: true,
           lastUpdated: new Date().toISOString()
         }, { merge: true }).catch(() => {});
 
@@ -1377,7 +1612,7 @@ export const useStore = create<AppState>((set, get) => ({
         }).catch(() => {});
 
         set((state) => ({
-          queue: state.queue.map(p => p.id === consultationId ? { ...p, status: 'finished' } : p),
+          queue: state.queue.map(p => p.id === consultationId ? { ...p, status: 'finished', pagamento_consulta: false } as any : p),
           consultationActive: false,
           isConsultationFinished: true,
           inQueue: false
@@ -1397,7 +1632,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.removeItem('mecura_pagamento');
       localStorage.setItem('mecura_consultation_finished', 'true');
       localStorage.removeItem('mecura_consultation_active');
     }
@@ -1405,7 +1640,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => ({ 
       consultationActive: false, 
       isConsultationFinished: true,
-      pagamento_consulta: true,
+      pagamento_consulta: false,
       inQueue: false,
       activeConsultationId: null,
       consultationHistory: [
@@ -1787,11 +2022,31 @@ export const useStore = create<AppState>((set, get) => ({
   },
   
   clearTriage: () => {
+    const targetUid = auth.currentUser?.uid || get().patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_pagamento');
+      localStorage.removeItem('mecura_premium');
+      localStorage.removeItem('last_offer');
       localStorage.removeItem('mecura_applied_coupon');
       localStorage.removeItem('mecura_consultation_finished');
       localStorage.removeItem('mecura_consultation_active');
+      localStorage.removeItem('mecura_queue_display_pos');
+      localStorage.removeItem('mecura_queue_entered_at');
+      localStorage.removeItem('mecura_queue_notified_10m');
+    }
+    if (targetUid) {
+      setDoc(doc(db, 'users', targetUid), {
+        pagamento_consulta: false,
+        pagamento_premium: false,
+        hasPaid: false,
+        isPaid: false,
+        bypassedPayment: false,
+        inQueue: false,
+        consultationActive: false,
+        isConsultationFinished: false,
+        consultationStatus: 'awaiting_payment',
+        lastUpdated: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
     }
     return set({
       answers: { objectives: [] },
@@ -1802,35 +2057,50 @@ export const useStore = create<AppState>((set, get) => ({
       consultationActive: false,
       pagamento_consulta: false,
       pagamento_premium: false,
+      selectedOffer: null,
       inQueue: false,
       activeConsultationId: null,
       messages: []
     });
   },
   
-  reset: () => { if (typeof window !== 'undefined') { localStorage.removeItem('mecura_patientId'); localStorage.removeItem('mecura_pagamento'); localStorage.removeItem('mecura_consultation_finished'); localStorage.removeItem('mecura_consultation_active'); } return set({
-    userName: '',
-    userEmail: '',
-    userPhone: '',
-    userCpf: '',
-    userBirthDate: '',
-    userTier: 'Essencial',
-    onboardingStep: 0,
-    hasCompletedOnboarding: false,
-    healthStreak: 0,
-    answers: { objectives: [] },
-    pagamento_consulta: false,
-    pagamento_premium: false,
-    selectedOffer: null,
-    scheduledConsultation: null,
-    consultationStatus: 'pending',
-    inQueue: false,
-    queuePosition: 0,
-    estimatedWaitTime: 0,
-    queue: [],
-    consultationActive: false,
-    isConsultationFinished: false,
-    activeConsultationId: null,
-    messages: []
-  }) },
+  reset: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('mecura_patientId');
+      localStorage.removeItem('mecura_pagamento');
+      localStorage.removeItem('mecura_premium');
+      localStorage.removeItem('last_offer');
+      localStorage.removeItem('mecura_applied_coupon');
+      localStorage.removeItem('mecura_consultation_finished');
+      localStorage.removeItem('mecura_consultation_active');
+      localStorage.removeItem('mecura_queue_display_pos');
+      localStorage.removeItem('mecura_queue_entered_at');
+      localStorage.removeItem('mecura_queue_notified_10m');
+    }
+    return set({
+      userName: '',
+      userEmail: '',
+      userPhone: '',
+      userCpf: '',
+      userBirthDate: '',
+      userTier: 'Essencial',
+      onboardingStep: 0,
+      hasCompletedOnboarding: false,
+      healthStreak: 0,
+      answers: { objectives: [] },
+      pagamento_consulta: false,
+      pagamento_premium: false,
+      selectedOffer: null,
+      scheduledConsultation: null,
+      consultationStatus: 'pending',
+      inQueue: false,
+      queuePosition: 0,
+      estimatedWaitTime: 0,
+      queue: [],
+      consultationActive: false,
+      isConsultationFinished: false,
+      activeConsultationId: null,
+      messages: []
+    });
+  },
 }));

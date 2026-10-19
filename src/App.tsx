@@ -20,6 +20,7 @@ import { ChatScreen } from './screens/ChatScreen';
 import { PrescriptionScreen } from './screens/PrescriptionScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { DoctorDashboardScreen } from './screens/DoctorDashboardScreen';
+import { PsychologistDashboardScreen } from './screens/PsychologistDashboardScreen';
 import { AdminDashboardScreen } from './screens/AdminDashboardScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { ProtocolScreen } from './screens/ProtocolScreen';
@@ -51,6 +52,26 @@ export default function App() {
       }
 
       if (user) {
+        if (typeof window !== 'undefined') {
+          const prevPatientId = localStorage.getItem('mecura_patientId');
+          if (prevPatientId && prevPatientId !== user.uid) {
+            localStorage.removeItem('mecura_pagamento');
+            localStorage.removeItem('mecura_premium');
+            localStorage.removeItem('mecura_consultation_active');
+            localStorage.removeItem('mecura_consultation_finished');
+            localStorage.removeItem('mecura_queue_display_pos');
+            localStorage.removeItem('mecura_queue_entered_at');
+            localStorage.removeItem('mecura_queue_notified_10m');
+            useStore.setState({
+              pagamento_consulta: false,
+              pagamento_premium: false,
+              inQueue: false,
+              consultationActive: false,
+              isConsultationFinished: false
+            });
+          }
+        }
+
         if (typeof window !== 'undefined' && 'Notification' in window) {
           if (Notification.permission === 'granted') {
             try {
@@ -82,7 +103,8 @@ export default function App() {
               useStore.setState({ patientId: user.uid });
               if (typeof window !== 'undefined') localStorage.setItem('mecura_patientId', user.uid);
 
-              const hasActualPayment = !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true);
+              const isAwaitingNewPayment = uData.consultationStatus === 'awaiting_payment' || uData.consultationStatus === 'not_started';
+              const hasActualPayment = !isAwaitingNewPayment && !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true);
 
               if (hasActualPayment) {
                 useStore.getState().setPagamentoConsulta(true);
@@ -95,7 +117,7 @@ export default function App() {
                 }
               }
 
-              if (uData.pagamento_premium === true || uData.isPremium === true || uData.plan === 'premium') {
+              if (!isAwaitingNewPayment && (uData.pagamento_premium === true || uData.isPremium === true || uData.plan === 'premium')) {
                 useStore.getState().setPagamentoPremium(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
               } else {
@@ -128,17 +150,16 @@ export default function App() {
                   activeConsultationId: user.uid,
                   pagamento_consulta: true 
                 });
-              } else if (hasActualPayment && uData.consultationStatus === 'finished') {
+              } else if (!isAwaitingNewPayment && (uData.consultationStatus === 'finished' || uData.isConsultationFinished === true)) {
                 if (typeof window !== 'undefined') {
-                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.setItem('mecura_consultation_finished', 'true');
                   localStorage.removeItem('mecura_consultation_active');
                 }
                 useStore.setState({ 
                   isConsultationFinished: true, 
                   consultationActive: false, 
                   inQueue: false, 
-                  activeConsultationId: user.uid, 
-                  pagamento_consulta: true 
+                  activeConsultationId: user.uid
                 });
               } else if (!hasActualPayment) {
                 if (typeof window !== 'undefined') {
@@ -209,8 +230,10 @@ export default function App() {
           {/* Full Screen Routes */}
           <Route path="/pharmacy" element={<PharmacyScreen />} />
 
-          {/* Doctor/Admin Route (No mobile layout) */}
+          {/* Doctor/Psychologist/Admin Route (No mobile layout) */}
           <Route path="/doctor" element={<DoctorDashboardScreen />} />
+          <Route path="/psychologist" element={<PsychologistDashboardScreen />} />
+          <Route path="/psicologo" element={<PsychologistDashboardScreen />} />
           <Route path="/admin" element={<AdminDashboardScreen />} />
         </Routes>
       </Router>

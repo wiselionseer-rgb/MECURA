@@ -71,12 +71,26 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     return false;
   }
 
-  // 2. Explicit import brands when origin is unspecified
+  // 2. Explicit import brands and product lines when origin is unspecified
   if (
     brandLower.includes('flowermed') ||
+    nameLower.includes('flowermed') ||
     brandLower.includes('pangaia') ||
     nameLower.includes('pangaia') ||
     brandLower.includes('greenbudz') ||
+    nameLower.includes('greenbudz') ||
+    nameLower.includes('drops by') ||
+    nameLower.includes('calm vibe') ||
+    nameLower.includes('full balance') ||
+    nameLower.includes('looking glass') ||
+    nameLower.includes('beethoven') ||
+    nameLower.includes('evergreen') ||
+    nameLower.includes('nightshade') ||
+    nameLower.includes('chill vibe') ||
+    nameLower.includes('dried hemp') ||
+    nameLower.includes('stirred hemp') ||
+    nameLower.includes('sphera') ||
+    nameLower.includes('nano syrup') ||
     brandLower.includes('cannariver') ||
     brandLower.includes('canna river') ||
     brandLower.includes('lazarus') ||
@@ -178,6 +192,55 @@ const getColorCanvasContext = (): CanvasRenderingContext2D | null => {
 
 const colorConversionCache = new Map<string, string>();
 
+// Mathematical conversion from OKLCH space to sRGB for html2canvas compatibility
+function oklchToRgb(l: number, c: number, h: number): string {
+  const hRad = (h * Math.PI) / 180;
+  const a = c * Math.cos(hRad);
+  const b = c * Math.sin(hRad);
+
+  const l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+
+  const l3 = l_ * l_ * l_;
+  const m3 = m_ * m_ * m_;
+  const s3 = s_ * s_ * s_;
+
+  let rLin = +4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3;
+  let gLin = -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3;
+  let bLin = -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3;
+
+  const gamma = (x: number) => (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
+
+  const r = Math.min(255, Math.max(0, Math.round(gamma(rLin) * 255)));
+  const g = Math.min(255, Math.max(0, Math.round(gamma(gLin) * 255)));
+  const bVal = Math.min(255, Math.max(0, Math.round(gamma(bLin) * 255)));
+
+  return `rgb(${r}, ${g}, ${bVal})`;
+}
+
+export const parseOklchString = (str: string): string | null => {
+  if (!str) return null;
+  const match = str.match(/oklch\(\s*([\d.%]+)\s+([\d.%]+)\s+([\d.]+)(?:\s*\/\s*([\d.%]+))?\s*\)/i);
+  if (!match) return null;
+  const [, lStr, cStr, hStr, aStr] = match;
+  let l = lStr.endsWith('%') ? parseFloat(lStr) / 100 : parseFloat(lStr);
+  let c = cStr.endsWith('%') ? parseFloat(cStr) / 100 : parseFloat(cStr);
+  let h = parseFloat(hStr) || 0;
+  let alpha = aStr ? (aStr.endsWith('%') ? parseFloat(aStr) / 100 : parseFloat(aStr)) : 1;
+
+  if (isNaN(l) || isNaN(c) || isNaN(h)) return null;
+
+  const rgbStr = oklchToRgb(l, c, h);
+  if (alpha < 1) {
+    const rgbMatch = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (rgbMatch) {
+      return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${alpha})`;
+    }
+  }
+  return rgbStr;
+};
+
 export const convertSingleColorToRgb = (colorStr: string): string => {
   if (!colorStr) return colorStr;
   const trimmed = colorStr.trim();
@@ -185,13 +248,22 @@ export const convertSingleColorToRgb = (colorStr: string): string => {
     return colorConversionCache.get(trimmed)!;
   }
 
+  // Direct mathematical parse for OKLCH strings
+  if (trimmed.includes('oklch')) {
+    const parsed = parseOklchString(trimmed);
+    if (parsed) {
+      colorConversionCache.set(trimmed, parsed);
+      return parsed;
+    }
+  }
+
   const ctx = getColorCanvasContext();
   if (ctx) {
     try {
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = '#123456';
       ctx.fillStyle = trimmed;
       const converted = ctx.fillStyle;
-      if (converted && !converted.includes('oklch') && !converted.includes('oklab') && !converted.includes('color(')) {
+      if (converted && converted !== '#123456' && !converted.includes('oklch') && !converted.includes('oklab') && !converted.includes('color(')) {
         colorConversionCache.set(trimmed, converted);
         return converted;
       }
@@ -200,12 +272,15 @@ export const convertSingleColorToRgb = (colorStr: string): string => {
     }
   }
 
-  // Fallbacks if native canvas conversion fails or is unsupported
-  let fallback = '#111827';
-  if (/^oklch\s*\(\s*0\b/i.test(trimmed)) {
-    fallback = '#000000';
-  } else if (/^oklch\s*\(\s*1\b/i.test(trimmed)) {
-    fallback = '#FFFFFF';
+  let fallback = '#FAF5FF';
+  if (/^oklch\s*\(\s*(0|0?\.\d+)\b/i.test(trimmed)) {
+    const match = trimmed.match(/oklch\(\s*([\d.%]+)/i);
+    if (match) {
+      const l = match[1].endsWith('%') ? parseFloat(match[1]) / 100 : parseFloat(match[1]);
+      if (l < 0.4) fallback = '#3B0764'; // dark purple / black
+      else if (l > 0.8) fallback = '#FAF5FF'; // light background
+      else fallback = '#7E22CE';
+    }
   } else if (/slate-200|border/i.test(trimmed)) {
     fallback = '#E2E8F0';
   }
@@ -439,6 +514,7 @@ export const generatePrescriptionPDF = async (
 
   const hasNational = nationalItems.length > 0;
   const hasImported = importedItems.length > 0;
+  const hasNotes = Boolean(customNotesText && customNotesText.trim());
 
   interface PrescriptionPageData {
     guideTitle: string;
@@ -449,328 +525,154 @@ export const generatePrescriptionPDF = async (
     items: PrescriptionItemData[];
     itemStartIndex: number;
     notesText?: string;
+    isCompactGuide: boolean;
+    isDenseGuide: boolean;
   }
 
-  const allPagesToRender: PrescriptionPageData[] = [];
-  const hasNotes = Boolean(customNotesText && customNotesText.trim());
-
-  // Helper to create pages for each guide (ensuring national and imported are strictly separated on distinct sheets)
-  const addGuidePages = (
-    guideItems: PrescriptionItemData[],
-    guideTitle: string,
-    subtitleBase: string,
-    badgeBase: string
+  const renderPrescriptionItemCard = (
+    item: PrescriptionItemData,
+    displayIndex: number,
+    isDense: boolean,
+    isCompact: boolean,
+    key: string | number,
+    measureAttr?: { [k: string]: any }
   ) => {
-    if (guideItems.length === 0) return;
+    const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
+    const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(item.name || item.type || '');
+    const isFlower = /flor|in natura/i.test(item.name || item.type || '');
+    const isNational = isNationalProduct(item);
+    const activeIng = (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients;
+    const concentration = (item.concentration !== undefined && item.concentration !== null && item.concentration !== '') ? item.concentration : enriched.concentration;
+    const pharmForm = isGummy ? (item.pharmaceuticalForm && !/solução/i.test(item.pharmaceuticalForm) ? item.pharmaceuticalForm : 'Gomas Mastigáveis Veganas') : (item.pharmaceuticalForm || enriched.pharmaceuticalForm);
+    const quantity = isGummy ? (item.quantity && !/frasco/i.test(item.quantity) ? item.quantity : '01 Pote com 20 a 30 gomas') : (item.quantity || enriched.quantity);
+    const admRoute = isGummy ? 'Via Oral' : (item.administrationRoute || enriched.administrationRoute);
 
-    // Smart pagination: ensure items + clinical notes never exceed the A4 page height (1123px),
-    // which was causing the signature block to be cut off at the bottom border.
-    // - Pages with clinical notes: max 4 items to leave ample room for notes & signature block.
-    // - Pages without clinical notes: max 5 items.
-    const maxItemsWithNotes = 4;
-    const maxItemsWithoutNotes = 5;
-
-    const totalItems = guideItems.length;
-    let numPages = 1;
-
-    if (hasNotes) {
-      if (totalItems > maxItemsWithNotes) {
-        numPages = 1 + Math.ceil((totalItems - maxItemsWithNotes) / maxItemsWithoutNotes);
-      }
-    } else {
-      numPages = Math.ceil(totalItems / maxItemsWithoutNotes);
-    }
-
-    const itemsPerPage = Math.ceil(totalItems / numPages);
-    const chunks: PrescriptionItemData[][] = [];
-    for (let i = 0; i < totalItems; i += itemsPerPage) {
-      chunks.push(guideItems.slice(i, i + itemsPerPage));
-    }
-
-    let startIdx = 0;
-    chunks.forEach((chunk, chunkIdx) => {
-      const isLast = chunkIdx === chunks.length - 1;
-      const subtitle = chunks.length > 1
-        ? `${subtitleBase} (PARTE ${chunkIdx + 1})`
-        : subtitleBase;
-      const badge = chunks.length > 1
-        ? `${badgeBase} • Pág ${chunkIdx + 1}`
-        : badgeBase;
-
-      allPagesToRender.push({
-        guideTitle,
-        guideSubtitle: subtitle,
-        badge,
-        pageNumber: 0,
-        totalPages: 0,
-        items: chunk,
-        itemStartIndex: startIdx,
-        notesText: isLast && hasNotes ? customNotesText : undefined
+    let dosageLines = item.dosage;
+    if (isGummy) {
+      dosageLines = dosageLines.map(d => {
+        if (/sublingual|gota|pingar/i.test(d)) {
+          return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
+        }
+        return d;
       });
-      startIdx += chunk.length;
+    }
+
+    const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${pharmForm} ${item.name} ${admRoute} ${dosageLines.join(' ')}`);
+    const posologyHeader = item.posologyHeader !== undefined
+      ? (item.posologyHeader.trim() ? item.posologyHeader.trim() : 'Posologia e Modo de Uso:')
+      : ((isGummy || isFlower || isSyringeOrMl)
+          ? 'Posologia e Modo de Uso:'
+          : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):');
+
+    const cleanedDosageLines = dosageLines.filter(d => {
+      const trimmed = d.trim();
+      if (!trimmed) return false;
+      if (posologyHeader.includes('25 gotas') && /^Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
+      if (/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
+      return true;
     });
-  };
+    const linesToRender = cleanedDosageLines.length > 0 ? cleanedDosageLines : dosageLines;
 
-  if (hasNational && hasImported) {
-    // Exactly 2 sheets when hasNational & hasImported (or partitioned if > 4 items in either)
-    addGuidePages(
-      nationalItems,
-      "RECEITA MÉDICA",
-      "GUIA 1: PRODUTOS NACIONAIS (ASSOCIAÇÃO BRASILEIRA)",
-      "Guia 1 - Nacional"
-    );
-    addGuidePages(
-      importedItems,
-      "RECEITA MÉDICA",
-      "GUIA 2: PRODUTOS IMPORTADOS (ANVISA RDC 660)",
-      "Guia 2 - Importado"
-    );
-  } else if (hasNational) {
-    addGuidePages(
-      nationalItems,
-      "RECEITA MÉDICA",
-      "PRODUTOS NACIONAIS / ASSOCIAÇÃO BRASILEIRA",
-      "Guia Única - Nacional"
-    );
-  } else if (hasImported) {
-    addGuidePages(
-      importedItems,
-      "RECEITA MÉDICA",
-      "PRODUTOS IMPORTADOS / ANVISA (RDC 660)",
-      "Guia Única - Importado"
-    );
-  } else {
-    addGuidePages(
-      itemsToRender,
-      "RECEITA MÉDICA",
-      "RECEITUÁRIO MÉDICO ESPECIALIZADO",
-      "Guia de Prescrição"
-    );
-  }
-
-  // Calculate global page numbering across the whole document (e.g. Página 1 de 2, Página 2 de 2)
-  const totalDocPages = allPagesToRender.length;
-  allPagesToRender.forEach((page, idx) => {
-    page.pageNumber = idx + 1;
-    page.totalPages = totalDocPages;
-  });
-
-  const PdfComponent = () => {
     return (
-      <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
-        {allPagesToRender.map((page, pIdx) => (
-          <div 
-            key={pIdx} 
-            className="prescription-pdf-page relative box-border flex flex-col justify-between" 
-            style={{ 
-              width: "794px", 
-              height: "1123px", 
-              maxHeight: "1123px", 
-              padding: page.items.length >= 5 ? "14px 38px 20px 38px" : page.items.length >= 4 ? "16px 40px 22px 40px" : "18px 40px 24px 40px", 
-              backgroundColor: "#FFFFFF", 
-              color: "#111827",
-              boxSizing: "border-box",
-              overflow: "hidden"
-            }}
-          >
-            <div className="flex-1 flex flex-col min-h-0">
-              {/* Top Bar with Page Indicator & Guide Badge in-flow (never overlaps doctor info) */}
-              <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
-                <span className="text-[9.5px] text-[#64748B] font-semibold">
-                  Documento Médico Oficial MECURA • Página {page.pageNumber} de {page.totalPages}
-                </span>
-                <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                  {page.badge}
-                </span>
-              </div>
+      <div
+        key={key}
+        {...(measureAttr || {})}
+        className={
+          isDense
+            ? "bg-[#F8FAFC] border border-[#E2E8F0] rounded px-2 py-1"
+            : isCompact
+              ? "bg-[#F8FAFC] border border-[#E2E8F0] rounded px-2.5 py-1.5"
+              : "bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+        }
+      >
+        <div className="flex items-baseline justify-between mb-0.5 gap-2">
+          <span className={`font-bold text-[#0F172A] m-0 ${isDense ? 'text-[9.5px]' : isCompact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
+            {displayIndex}. {item.name}
+          </span>
+          <span className={`bg-[#EEF2F6] text-[#334155] font-bold px-1.5 py-0.2 rounded border border-[#CBD5E1] m-0 shrink-0 ${isDense ? 'text-[7px]' : isCompact ? 'text-[7.5px]' : 'text-[8px]'}`}>
+            {item.brand || enriched.brand} • {isNational ? 'Nacional (Associação)' : 'Importado (Anvisa RDC 660)'}
+          </span>
+        </div>
 
-              {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-1.5">
-                <div>
-                  <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
-                    CENTRO INTEGRADO DE MEDICINA CANABINOIDE
-                  </p>
-                </div>
-                <div className="text-right">
-                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
-                  <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
-                  <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
-                </div>
-              </div>
+        <div className={`pl-1 mb-0.5 space-y-0 text-[#475569] leading-tight ${isDense ? 'text-[7.5px]' : isCompact ? 'text-[8px]' : 'text-[8.5px]'}`}>
+          <p className="m-0"><span className="font-semibold text-[#1E293B]">Princípio Ativo:</span> {activeIng}</p>
+          {concentration && (
+            <p className="m-0"><span className="font-semibold text-[#1E293B]">Composição / Concentração:</span> {concentration}</p>
+          )}
+          <p className="m-0"><span className="font-semibold text-[#1E293B]">Apresentação & Via:</span> {pharmForm} • Qtd: {quantity} • {admRoute}</p>
+        </div>
 
-              {/* Title & Subtitle */}
-              <div className="text-center my-1">
-                <h1 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
-                  {page.guideTitle}
-                </h1>
-                <p className="text-[10px] font-bold text-[#059669] tracking-wider uppercase mt-0.5 m-0">
-                  {page.guideSubtitle}
-                </p>
-                <div className="w-12 h-0.5 bg-[#059669] mx-auto mt-0.5 mb-1" />
-              </div>
-
-              {/* Patient Info Box */}
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-1 mb-1.5 flex justify-between items-center">
-                <div>
-                  <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">Paciente</span>
-                  <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">CPF / Nasc.</span>
-                  <span className="font-semibold text-[#334155] text-[10px] leading-none">{cpfText} • {birthDateText}</span>
-                </div>
-              </div>
-
-              {/* Items List for this page */}
-              {page.items.length > 0 && (
-                <div className={page.items.length >= 6 ? "space-y-0.5 my-0.5" : page.items.length >= 4 ? "space-y-1 my-0.5" : "space-y-2 my-1"}>
-                  {page.items.map((item, idx) => {
-                    const count = page.items.length;
-                    const isDense = count >= 6;
-                    const isCompact = count >= 4;
-                    const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
-                    const isGummy = /goma|gumm|comest[íi]vel|mastig[áa]vel/i.test(item.name || item.type || '');
-                    const isFlower = /flor|in natura/i.test(item.name || item.type || '');
-                    const isNational = isNationalProduct(item);
-                    const activeIng = (item.activeIngredients !== undefined && item.activeIngredients !== null && item.activeIngredients !== '') ? item.activeIngredients : enriched.activeIngredients;
-                    const concentration = (item.concentration !== undefined && item.concentration !== null && item.concentration !== '') ? item.concentration : enriched.concentration;
-                    const pharmForm = isGummy ? (item.pharmaceuticalForm && !/solução/i.test(item.pharmaceuticalForm) ? item.pharmaceuticalForm : 'Gomas Mastigáveis Veganas') : (item.pharmaceuticalForm || enriched.pharmaceuticalForm);
-                    const quantity = isGummy ? (item.quantity && !/frasco/i.test(item.quantity) ? item.quantity : '01 Pote com 20 a 30 gomas') : (item.quantity || enriched.quantity);
-                    const admRoute = isGummy ? 'Via Oral' : (item.administrationRoute || enriched.administrationRoute);
-                    const displayIndex = page.itemStartIndex + idx + 1;
-
-                    let dosageLines = item.dosage;
-                    if (isGummy) {
-                      dosageLines = dosageLines.map(d => {
-                        if (/sublingual|gota|pingar/i.test(d)) {
-                          return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
-                        }
-                        return d;
-                      });
-                    }
-
-                    return (
-                      <div 
-                        key={idx} 
-                        className={
-                          isDense 
-                            ? "border-b border-[#F1F5F9] pb-0.5 mb-0.5" 
-                            : isCompact 
-                              ? "border-b border-[#F1F5F9] pb-1 mb-0.5" 
-                              : "bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5 mb-2 shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
-                        }
-                      >
-                        <div className="flex items-baseline justify-between mb-0.5">
-                          <span className={`font-bold text-[#0F172A] m-0 ${isDense ? 'text-[10px]' : isCompact ? 'text-[11px]' : 'text-[12px]'}`}>
-                            {displayIndex}. {item.name}
-                          </span>
-                          <span className={`bg-[#EEF2F6] text-[#334155] font-bold px-1.5 py-0.2 rounded border border-[#CBD5E1] m-0 shrink-0 ${isDense ? 'text-[7.5px]' : isCompact ? 'text-[8px]' : 'text-[8.5px]'}`}>
-                            {item.brand || enriched.brand} • {isNational ? 'Nacional (Associação)' : 'Importado (Anvisa RDC 660)'}
-                          </span>
-                        </div>
-
-                        {/* Active Ingredient, Composition & Presentation */}
-                        <div className={`pl-1 mb-0.5 space-y-0 text-[#475569] leading-tight ${isDense ? 'text-[7.5px]' : isCompact ? 'text-[8.5px]' : 'text-[9px]'}`}>
-                          <p className="m-0"><span className="font-semibold text-[#1E293B]">Princípio Ativo:</span> {activeIng}</p>
-                          {concentration && (
-                            <p className="m-0"><span className="font-semibold text-[#1E293B]">Composição / Concentração:</span> {concentration}</p>
-                          )}
-                          <p className="m-0"><span className="font-semibold text-[#1E293B]">Apresentação & Via:</span> {pharmForm} • Qtd: {quantity} • {admRoute}</p>
-                        </div>
-
-                        {/* Dosage */}
-                        {(() => {
-                          const isSyringeOrMl = /seringa|marcação de ml|via oral sublingual 0|em ml/i.test(`${pharmForm} ${item.name} ${admRoute} ${dosageLines.join(' ')}`);
-                          const posologyHeader = item.posologyHeader !== undefined
-                            ? (item.posologyHeader.trim() ? item.posologyHeader.trim() : 'Posologia e Modo de Uso:')
-                            : ((isGummy || isFlower || isSyringeOrMl)
-                                ? 'Posologia e Modo de Uso:'
-                                : 'Posologia e Modo de Uso (Aproximadamente 25 gotas por mL):');
-
-                          // Filter out dosage lines that repeat the header note
-                          const cleanedDosageLines = dosageLines.filter(d => {
-                            const trimmed = d.trim();
-                            if (!trimmed) return false;
-                            if (posologyHeader.includes('25 gotas') && /^Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
-                            if (/^Posologia e Modo de Uso:\s*Aproximadamente 25 gotas por mL\.?$/i.test(trimmed)) return false;
-                            return true;
-                          });
-                          const linesToRender = cleanedDosageLines.length > 0 ? cleanedDosageLines : dosageLines;
-
-                          return (
-                            <div className={`pl-1 space-y-0 text-[#334155] ${isDense ? 'text-[7.5px]' : isCompact ? 'text-[8.5px]' : 'text-[9px]'}`}>
-                              <span className={`font-semibold text-[#1E293B] block ${isDense ? 'text-[8px]' : isCompact ? 'text-[9px] mb-0.5' : 'text-[9.5px] mb-0.5'}`}>{posologyHeader}</span>
-                              {linesToRender.map((d, dIdx) => (
-                                <p key={dIdx} className={`m-0 ${isDense ? 'leading-tight text-[7.5px]' : isCompact ? 'leading-tight text-[8.5px]' : 'leading-snug text-[9px]'}`}>• {d}</p>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Notes block if present on this page */}
-              {page.notesText && (
-                <div className={`bg-[#F8FAFC] border-l-2 border-[#1E1B4B] rounded-r ${page.items.length >= 6 ? 'p-1 text-[7.5px] mt-0.5' : page.items.length >= 4 ? 'p-1.5 text-[8.5px] mt-1' : 'p-2.5 text-[9px] mt-2'} text-[#334155]`}>
-                  <span className={`font-bold block uppercase text-[#475569] mb-0.5 ${page.items.length >= 6 ? 'text-[8px]' : page.items.length >= 4 ? 'text-[8.5px]' : 'text-[9.5px]'}`}>Orientações Farmacológicas e Clínicas</span>
-                  <div className="flex flex-col gap-0.5">
-                    {page.notesText.split('\n').map((p, i) => p.trim() ? (
-                      <p key={i} className={`${page.items.length >= 6 ? 'text-[7.5px]' : page.items.length >= 4 ? 'text-[8px]' : 'text-[9px]'} leading-tight m-0`} dangerouslySetInnerHTML={{ __html: p }} />
-                    ) : null)}
-                  </div>
-                </div>
-              )}
-
-              {/* Dispensação e Validade card when 1, 2 or 3 items and NO notes to prevent awkward blank gap */}
-              {page.items.length <= 3 && !page.notesText && (
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2.5 mt-2 text-[8.5px] text-[#475569] leading-snug">
-                  <span className="font-bold block text-[9px] uppercase text-[#1E1B4B] mb-0.5">
-                    Dispensação e Acompanhamento Farmacoterapêutico
-                  </span>
-                  <p className="m-0">• Prescrição médica individualizada com validade nacional em conformidade com as RDC Anvisa 327/2019 e 660/2022.</p>
-                  <p className="m-0">• Tratamento contínuo sob supervisão médica. Não interromper nem modificar a posologia sem prévia reavaliação clínica.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Doctor Signature & Emission Footer present on EVERY SINGLE PAGE */}
-            <div className="pt-2 border-t border-[#E2E8F0] mt-auto flex justify-between items-end shrink-0 w-full">
-              <div className="text-[9px] text-[#64748B] space-y-0.5">
-                <p className="m-0 font-medium">Data de Emissão: {emissionDateStr}</p>
-                <p className="text-[8px] text-[#94A3B8] mt-0.5 m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
-              </div>
-
-              {/* ICP Brasil Badge & Signature */}
-              <div className="flex items-end gap-3">
-                <div style={{ border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', borderRadius: '4px', padding: '3px 6px', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <div style={{ width: '18px', height: '18px', borderRadius: '3px', backgroundColor: '#059669', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '7.5px', flexShrink: 0 }}>
-                      ICP
-                    </div>
-                    <div>
-                      <p style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#065F46', lineHeight: 1, margin: 0 }}>Documento Assinado Digitalmente</p>
-                      <p style={{ fontSize: '7px', color: '#047857', fontFamily: 'monospace', lineHeight: 1, margin: '2px 0 0 0' }}>Padrão ICP-Brasil • Validade Jurídica</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-center w-52">
-                  <div className="border-b border-[#94A3B8] mb-2" style={{ height: '0px' }} />
-                  <p className="text-[11px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
-                  <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
-                  <p className="text-[8.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>Assinatura Digital / Prescritor</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+        <div className={`pl-1 space-y-0 text-[#334155] ${isDense ? 'text-[7.5px]' : isCompact ? 'text-[8px]' : 'text-[8.5px]'}`}>
+          <span className={`font-semibold text-[#1E293B] block ${isDense ? 'text-[7.5px]' : isCompact ? 'text-[8.5px]' : 'text-[9px]'}`}>{posologyHeader}</span>
+          {linesToRender.map((d, dIdx) => (
+            <p key={dIdx} className="m-0 leading-tight">• {d}</p>
+          ))}
+        </div>
       </div>
     );
   };
+
+  const renderNotesBlock = (notesText: string, isDense: boolean, isCompact: boolean) => (
+    <div className={`bg-[#F8FAFC] border-l-2 border-[#1E1B4B] rounded-r ${isDense ? 'p-1.5 text-[7.5px] mt-1' : isCompact ? 'p-2 text-[8px] mt-1.5' : 'p-2.5 text-[8.5px] mt-2'} text-[#334155]`}>
+      <span className={`font-bold block uppercase text-[#1E1B4B] mb-0.5 ${isDense ? 'text-[8px]' : isCompact ? 'text-[8.5px]' : 'text-[9px]'}`}>
+        Orientações Farmacológicas e Clínicas
+      </span>
+      <div className="flex flex-col gap-0.5">
+        {notesText.split('\n').map((p, i) => p.trim() ? (
+          <p key={i} className="leading-tight m-0" dangerouslySetInnerHTML={{ __html: p }} />
+        ) : null)}
+      </div>
+    </div>
+  );
+
+  const renderDispensacaoBlock = (isNationalGuide: boolean, isCompact: boolean) => (
+    <div className={`bg-[#F8FAFC] border border-[#E2E8F0] rounded-md ${isCompact ? 'p-2 mt-1.5 text-[8px]' : 'p-2.5 mt-2 text-[8.5px]'} text-[#475569] leading-snug`}>
+      <span className="font-bold block text-[8.5px] uppercase text-[#1E1B4B] mb-0.5">
+        {isNationalGuide
+          ? 'Dispensação Associativa & Conformidade Farmacoterapêutica (Brasil)'
+          : 'Autorização de Importação Excepcional & Conformidade Sanitária (RDC Anvisa nº 660/2022)'}
+      </span>
+      <p className="m-0">
+        {isNationalGuide
+          ? '• Prescrição médica oficial destinada à dispensação exclusiva junto a Associações de Pacientes legalmente constituídas no território nacional.'
+          : '• Prescrição médica oficial habilitada para importação excepcional de produtos derivados de Cannabis por pessoa física para uso próprio sob fiscalização da ANVISA (RDC nº 660/2022).'}
+      </p>
+      <p className="m-0">
+        • Tratamento individualizado de uso contínuo sob estrita supervisão médica. Manter o produto em sua embalagem original ao abrigo de luz e calor.
+      </p>
+    </div>
+  );
+
+  const renderPrescriptionSignatureBlock = () => (
+    <div className="pt-2.5 border-t border-[#E2E8F0] flex justify-between items-end shrink-0 w-full">
+      <div className="text-[8.5px] text-[#64748B] space-y-0.5">
+        <p className="m-0 font-bold text-[#1E1B4B]">Validade Legal em Todo o Território Nacional</p>
+        <p className="m-0">Data de Emissão: <strong>{emissionDateStr}</strong></p>
+        <p className="text-[7.5px] text-[#94A3B8] m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022 • CFM</p>
+      </div>
+
+      <div className="flex items-end gap-3">
+        <div style={{ border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', borderRadius: '4px', padding: '3px 6px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ width: '18px', height: '18px', borderRadius: '3px', backgroundColor: '#059669', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '7.5px', flexShrink: 0 }}>
+              ICP
+            </div>
+            <div>
+              <p style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#065F46', lineHeight: 1, margin: 0 }}>Documento Assinado Digitalmente</p>
+              <p style={{ fontSize: '7px', color: '#047857', fontFamily: 'monospace', lineHeight: 1, margin: '2px 0 0 0' }}>Padrão ICP-Brasil • Validade Jurídica</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center w-52">
+          <div className="border-b border-[#94A3B8] mb-1.5" style={{ height: '0px' }} />
+          <p className="text-[10.5px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.25' }}>{docName}</p>
+          <p className="text-[9px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm}</p>
+          <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>Assinatura Digital / Prescritor</p>
+        </div>
+      </div>
+    </div>
+  );
 
   const container = document.createElement('div');
   container.style.position = 'fixed';
@@ -780,15 +682,347 @@ export const generatePrescriptionPDF = async (
   container.style.zIndex = '-9999';
   container.style.opacity = '0';
   container.style.pointerEvents = 'none';
-  
   document.body.appendChild(container);
 
   const root = createRoot(container);
-  root.render(<PdfComponent />);
 
   try {
-    // Wait for React to render and Tailwind to apply styles
-    await new Promise(resolve => setTimeout(resolve, 800));
+    interface GuideGroupSpec {
+      items: PrescriptionItemData[];
+      guideTitle: string;
+      subtitleBase: string;
+      badgeBase: string;
+    }
+
+    const guideGroups: GuideGroupSpec[] = [];
+    if (hasNational && hasImported) {
+      guideGroups.push({
+        items: nationalItems,
+        guideTitle: "RECEITA MÉDICA",
+        subtitleBase: "GUIA 1: PRODUTOS NACIONAIS (ASSOCIAÇÃO BRASILEIRA)",
+        badgeBase: "Guia 1 - Nacional"
+      });
+      guideGroups.push({
+        items: importedItems,
+        guideTitle: "RECEITA MÉDICA",
+        subtitleBase: "GUIA 2: PRODUTOS IMPORTADOS (ANVISA RDC 660)",
+        badgeBase: "Guia 2 - Importado"
+      });
+    } else if (hasNational) {
+      guideGroups.push({
+        items: nationalItems,
+        guideTitle: "RECEITA MÉDICA",
+        subtitleBase: "PRODUTOS NACIONAIS / ASSOCIAÇÃO BRASILEIRA",
+        badgeBase: "Guia Única - Nacional"
+      });
+    } else if (hasImported) {
+      guideGroups.push({
+        items: importedItems,
+        guideTitle: "RECEITA MÉDICA",
+        subtitleBase: "PRODUTOS IMPORTADOS / ANVISA (RDC 660)",
+        badgeBase: "Guia Única - Importado"
+      });
+    } else {
+      guideGroups.push({
+        items: itemsToRender,
+        guideTitle: "RECEITA MÉDICA",
+        subtitleBase: "RECEITUÁRIO MÉDICO ESPECIALIZADO",
+        badgeBase: "Guia de Prescrição"
+      });
+    }
+
+    // PASS 1: Measure DOM heights of header chrome, signature, notes, and each guide's items in compact/dense/normal modes
+    const MeasureRxComponent = () => (
+      <div
+        style={{
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          width: '794px',
+          padding: '14px 36px 16px 36px',
+          boxSizing: 'border-box',
+          backgroundColor: '#FFFFFF',
+          color: '#111827'
+        }}
+      >
+        <div id="rx-measure-chrome">
+          <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
+            <span className="text-[9.5px] text-[#64748B] font-semibold">Documento Médico Oficial MECURA • Página 1 de 1</span>
+            <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">Guia</span>
+          </div>
+          <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-1.5">
+            <div>
+              <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
+              <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">CENTRO INTEGRADO DE MEDICINA CANABINOIDE</p>
+            </div>
+            <div className="text-right">
+              <h3 className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</h3>
+              <p className="text-[10px] text-[#475569] font-semibold m-0">{docCrm}</p>
+              <p className="text-[9px] text-[#64748B] m-0">{docSpec}</p>
+            </div>
+          </div>
+          <div className="text-center my-1">
+            <h1 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">RECEITA MÉDICA</h1>
+            <p className="text-[10px] font-bold text-[#059669] tracking-wider uppercase mt-0.5 m-0">SUBTÍTULO</p>
+            <div className="w-12 h-0.5 bg-[#059669] mx-auto mt-0.5 mb-1" />
+          </div>
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-1 mb-1.5 flex justify-between items-center">
+            <div>
+              <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">Paciente</span>
+              <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">CPF / Nasc.</span>
+              <span className="font-semibold text-[#334155] text-[10px] leading-none">{cpfText} • {birthDateText}</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="rx-measure-sig">{renderPrescriptionSignatureBlock()}</div>
+        <div id="rx-measure-notes-dense">{hasNotes ? renderNotesBlock(customNotesText, true, true) : null}</div>
+        <div id="rx-measure-notes-normal">{hasNotes ? renderNotesBlock(customNotesText, false, false) : null}</div>
+
+        {guideGroups.map((g, gIdx) => {
+          const isDense = g.items.length >= 5;
+          const isCompact = g.items.length >= 4;
+          return (
+            <div key={gIdx}>
+              {g.items.map((it, iIdx) =>
+                renderPrescriptionItemCard(it, iIdx + 1, isDense, isCompact, `m-${gIdx}-${iIdx}`, {
+                  'data-rx-group': gIdx,
+                  'data-rx-idx': iIdx
+                })
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    root.render(<MeasureRxComponent />);
+    await new Promise(resolve => setTimeout(resolve, 140));
+
+    const chromeH = container.querySelector<HTMLElement>('#rx-measure-chrome')?.offsetHeight || 168;
+    const sigH = container.querySelector<HTMLElement>('#rx-measure-sig')?.offsetHeight || 62;
+    const notesDenseH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-dense')?.offsetHeight || 68) : 0;
+    const notesNormalH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-normal')?.offsetHeight || 78) : 0;
+
+    // A4 inner height = 1123 - 30 (top/bottom padding) - 20 (bottom rodapé bar) = 1073px
+    const RX_PAGE_INNER_H = 1070;
+    const availWithoutNotes = RX_PAGE_INNER_H - chromeH - sigH - 10;
+
+    const allPagesToRender: PrescriptionPageData[] = [];
+
+    guideGroups.forEach((group, gIdx) => {
+      const gItems = group.items;
+      if (gItems.length === 0) return;
+
+      const isDense = gItems.length >= 5;
+      const isCompact = gItems.length >= 4;
+      const gap = isDense ? 4 : isCompact ? 5 : 8;
+      const notesH = isDense || isCompact ? notesDenseH : notesNormalH;
+      const availWithNotes = availWithoutNotes - notesH - (hasNotes ? 6 : 0);
+
+      const itemHeights: number[] = gItems.map((_, iIdx) => {
+        const el = container.querySelector<HTMLElement>(`[data-rx-group="${gIdx}"][data-rx-idx="${iIdx}"]`);
+        return el?.offsetHeight || 95;
+      });
+
+      const totalItemsH = itemHeights.reduce((sum, h, i) => sum + h + (i > 0 ? gap : 0), 0);
+
+      // If all items in this guide + notes fit on 1 single page, keep them on 1 single page!
+      if (totalItemsH <= availWithNotes) {
+        allPagesToRender.push({
+          guideTitle: group.guideTitle,
+          guideSubtitle: group.subtitleBase,
+          badge: group.badgeBase,
+          pageNumber: 0,
+          totalPages: 0,
+          items: gItems,
+          itemStartIndex: 0,
+          notesText: hasNotes ? customNotesText : undefined,
+          isCompactGuide: isCompact,
+          isDenseGuide: isDense
+        });
+      } else {
+        // Pack items greedily per page using exact measured DOM heights
+        const chunks: PrescriptionItemData[][] = [];
+        let cursor = 0;
+
+        while (cursor < gItems.length) {
+          const chunk: PrescriptionItemData[] = [];
+          let usedH = 0;
+
+          // Check if remaining items from cursor to end fit together with notes on a single final page
+          const remH = itemHeights
+            .slice(cursor)
+            .reduce((sum, h, i) => sum + h + (i > 0 ? gap : 0), 0);
+
+          if (remH <= availWithNotes) {
+            chunks.push(gItems.slice(cursor));
+            break;
+          }
+
+          while (cursor < gItems.length) {
+            const h = itemHeights[cursor];
+            const addGap = chunk.length > 0 ? gap : 0;
+            if (chunk.length > 0 && usedH + addGap + h > availWithoutNotes) {
+              break;
+            }
+            chunk.push(gItems[cursor]);
+            usedH += addGap + h;
+            cursor++;
+          }
+          chunks.push(chunk);
+        }
+
+        // Verify if the last chunk + notes exceeds availWithNotes; if so, move 1 item or notes to a final page
+        let startIdx = 0;
+        chunks.forEach((chunk, chunkIdx) => {
+          const isLast = chunkIdx === chunks.length - 1;
+          const subtitle = chunks.length > 1
+            ? `${group.subtitleBase} (PARTE ${chunkIdx + 1})`
+            : group.subtitleBase;
+          const badge = chunks.length > 1
+            ? `${group.badgeBase} • Pág ${chunkIdx + 1}`
+            : group.badgeBase;
+
+          allPagesToRender.push({
+            guideTitle: group.guideTitle,
+            guideSubtitle: subtitle,
+            badge,
+            pageNumber: 0,
+            totalPages: 0,
+            items: chunk,
+            itemStartIndex: startIdx,
+            notesText: isLast && hasNotes ? customNotesText : undefined,
+            isCompactGuide: chunk.length >= 4,
+            isDenseGuide: chunk.length >= 5
+          });
+          startIdx += chunk.length;
+        });
+      }
+    });
+
+    const totalDocPages = allPagesToRender.length;
+    allPagesToRender.forEach((page, idx) => {
+      page.pageNumber = idx + 1;
+      page.totalPages = totalDocPages;
+    });
+
+    // PASS 2: Render Final Prescription Pages
+    const PdfComponent = () => {
+      return (
+        <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
+          {allPagesToRender.map((page, pIdx) => {
+            const isDense = page.isDenseGuide;
+            const isCompact = page.isCompactGuide;
+            const isNationalGuide = page.badge.toLowerCase().includes('nacional') || (page.items[0] ? isNationalProduct(page.items[0]) : true);
+
+            return (
+              <div
+                key={pIdx}
+                className="prescription-pdf-page relative box-border flex flex-col justify-between"
+                style={{
+                  width: "794px",
+                  height: "1123px",
+                  maxHeight: "1123px",
+                  padding: isDense ? "14px 36px 16px 36px" : isCompact ? "15px 36px 16px 36px" : "16px 38px 18px 38px",
+                  backgroundColor: "#FFFFFF",
+                  color: "#111827",
+                  boxSizing: "border-box",
+                  overflow: "hidden"
+                }}
+              >
+                <div className="flex-1 flex flex-col justify-start min-h-0">
+                  {/* Top Bar with Page Indicator & Guide Badge */}
+                  <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
+                    <span className="text-[9.5px] text-[#64748B] font-semibold">
+                      Documento Médico Oficial MECURA • Página {page.pageNumber} de {page.totalPages}
+                    </span>
+                    <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                      {page.badge}
+                    </span>
+                  </div>
+
+                  {/* Header */}
+                  <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-1.5">
+                    <div>
+                      <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
+                      <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+                        CENTRO INTEGRADO DE MEDICINA CANABINOIDE
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
+                      <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
+                      <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
+                    </div>
+                  </div>
+
+                  {/* Title & Subtitle */}
+                  <div className="text-center my-1">
+                    <h1 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
+                      {page.guideTitle}
+                    </h1>
+                    <p className="text-[10px] font-bold text-[#059669] tracking-wider uppercase mt-0.5 m-0">
+                      {page.guideSubtitle}
+                    </p>
+                    <div className="w-12 h-0.5 bg-[#059669] mx-auto mt-0.5 mb-1" />
+                  </div>
+
+                  {/* Patient Info Box */}
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-1 mb-1.5 flex justify-between items-center">
+                    <div>
+                      <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">Paciente</span>
+                      <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">CPF / Nasc. • Emissão</span>
+                      <span className="font-semibold text-[#334155] text-[10px] leading-none">{cpfText} • {birthDateText} • {emissionDateStr}</span>
+                    </div>
+                  </div>
+
+                  {/* Items List for this page */}
+                  {page.items.length > 0 && (
+                    <div className="flex flex-col" style={{ gap: isDense ? '4px' : isCompact ? '5px' : '8px' }}>
+                      {page.items.map((item, idx) =>
+                        renderPrescriptionItemCard(
+                          item,
+                          page.itemStartIndex + idx + 1,
+                          isDense,
+                          isCompact,
+                          `${page.pageNumber}-item-${idx}`
+                        )
+                      )}
+                    </div>
+                  )}
+
+                  {/* Clinical Notes block */}
+                  {page.notesText && renderNotesBlock(page.notesText, isDense, isCompact)}
+
+                  {/* Dispensação & Regulatory box when <= 3 items so the page feels complete and never has an empty void */}
+                  {page.items.length <= 3 && renderDispensacaoBlock(isNationalGuide, isCompact)}
+
+                  {/* Place Doctor Signature & ICP-Brasil Badge directly below content when <= 4 items, or anchored above rodapé when dense */}
+                  <div className={page.items.length <= 4 ? "mt-4" : "mt-auto pt-1.5"}>
+                    {renderPrescriptionSignatureBlock()}
+                  </div>
+                </div>
+
+                {/* Slim Institutional Rodapé anchored at the very bottom */}
+                <div className="shrink-0 mt-auto pt-1 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
+                  <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+                  <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
+                  <span>Receituário Oficial • Folha {page.pageNumber} de {page.totalPages}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    root.render(<PdfComponent />);
+    await new Promise(resolve => setTimeout(resolve, 600));
 
     const pageElements = container.querySelectorAll<HTMLElement>('.prescription-pdf-page');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -846,7 +1080,36 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     patientData?.isEvolutivo !== false
   );
 
-  const fallback = (!patientData?.customDiagnosis || !patientData?.customRationale)
+  // Fallback to saved report in localStorage if custom fields were not explicitly passed
+  let savedStorageReport: any = null;
+  try {
+    const rawSaved = localStorage.getItem('mecura_saved_reports_v2');
+    if (rawSaved) {
+      const parsed = JSON.parse(rawSaved);
+      const reportKeyType = isEvolutivo ? 'evolutivo' : 'inicial';
+      const candidateKeys = [
+        (patientData?.patientId || '').toLowerCase().trim(),
+        sanitizedUserName.toLowerCase().trim(),
+        (rawUserName || '').toLowerCase().trim(),
+        'paciente_atual'
+      ].filter(Boolean);
+      for (const k of candidateKeys) {
+        if (parsed?.[k]?.[reportKeyType]) {
+          savedStorageReport = parsed[k][reportKeyType];
+          break;
+        }
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  const effectiveCustomDiagnosis = patientData?.customDiagnosis || savedStorageReport?.diagnosis;
+  const effectiveCustomRationale = patientData?.customRationale || savedStorageReport?.rationale;
+  const effectiveCustomTreatmentPlan = patientData?.customTreatmentPlan || savedStorageReport?.treatmentPlan;
+  const effectiveCustomMonitoring = patientData?.customMonitoring || savedStorageReport?.monitoring;
+
+  const fallback = (!effectiveCustomDiagnosis || !effectiveCustomRationale || !effectiveCustomTreatmentPlan)
     ? generatePersonalizedClinicalReport({
         patientName: sanitizedUserName,
         birthDate: birthDateText,
@@ -867,10 +1130,10 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       }, isEvolutivo ? 'evolutivo' : 'inicial')
     : null;
 
-  const diag = patientData?.customDiagnosis || fallback?.clinicalSummary || 'Quadro clínico crônico sob acompanhamento médico continuado.';
-  const rat = patientData?.customRationale || fallback?.therapeuticRationale || 'Modulação do Sistema Endocanabinoide (SEC).';
-  const plan = patientData?.customTreatmentPlan || fallback?.treatmentPlan || 'Terapêutica fitocanabinoide individualizada.';
-  const mon = patientData?.customMonitoring || fallback?.monitoringText || 'Acompanhamento clínico periódico.';
+  const diag = effectiveCustomDiagnosis || fallback?.clinicalSummary || 'Quadro clínico crônico sob acompanhamento médico continuado.';
+  const rat = effectiveCustomRationale || fallback?.therapeuticRationale || 'Modulação do Sistema Endocanabinoide (SEC).';
+  const plan = effectiveCustomTreatmentPlan || fallback?.treatmentPlan || 'Terapêutica fitocanabinoide individualizada.';
+  const mon = effectiveCustomMonitoring || fallback?.monitoringText || 'Acompanhamento clínico periódico.';
 
   const totalLength = diag.length + rat.length + plan.length + mon.length;
 
@@ -889,419 +1152,336 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
 
   const splitPlanItems = (text: string): string[] => {
     if (!text) return [];
-    const blocks = text.split(/\n\n+|(?=\n\s*\d+\.\s+)/).map(b => b.trim()).filter(Boolean);
-    return blocks.length > 0 ? blocks : [text.trim()];
+    const rawBlocks = text.split(/\n\n+|(?=\n\s*(?:\d+\.|•)\s+)/).map(b => b.trim()).filter(Boolean);
+    if (rawBlocks.length === 0) return [text.trim()];
+
+    return rawBlocks.map((block, idx) => {
+      const withoutLeadingPrefix = block.replace(/^(?:\d+\.|•)\s*/, '').trim();
+      return `${idx + 1}. ${withoutLeadingPrefix}`;
+    });
   };
 
-  const reportPages: ReportPageData[] = [];
   const planItems = splitPlanItems(plan);
 
-  // Dynamic adaptive report pagination:
-  // Optimize page utilization to avoid awkward blank spaces and unnecessary extra pages.
-  // Standard Laudo Inicial fits cleanly on 1 single page (up to ~3.600 chars and up to 3 plan items).
-  const isSinglePageInicial = !isEvolutivo && (
-    (totalLength <= 3600 && planItems.length <= 3) ||
-    (totalLength <= 2900 && planItems.length <= 4) ||
-    (totalLength <= 2000)
-  );
-
-  if (isSinglePageInicial) {
-    // =========================================================================
-    // LAUDO INICIAL — 1 ÚNICA PÁGINA (COMPACTA, ELEGANTE E COMPLETA)
-    // =========================================================================
-    const p1Sections = [
-      { 
-        title: 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
-        content: diag 
-      }
-    ];
-    if (rat) {
-      p1Sections.push({
-        title: 'Raciocínio Fisiopatológico & Indicação de Tratamento',
-        content: rat
-      });
-    }
-    if (plan) {
-      p1Sections.push({
-        title: 'Plano de Tratamento Canabinoide Individualizado',
-        content: plan
-      });
-    }
-    if (mon) {
-      p1Sections.push({
-        title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-        content: mon
-      });
-    }
-
-    reportPages.push({
-      pageNumber: 1,
-      totalPages: 1,
-      title: baseReportTitle,
-      sections: p1Sections
-    });
-  } else if (!isEvolutivo) {
-    // =========================================================================
-    // LAUDO INICIAL (EXTENSO) — EXATAMENTE 2 PÁGINAS BALANCEADAS (ZERO ESPAÇOS EM BRANCO)
-    // =========================================================================
-    // Distribui o plano de tratamento entre as páginas para que a Página 1 não fique com vácuo em branco!
-    const p1PlanCount = Math.min(2, Math.max(1, Math.floor(planItems.length / 2)));
-    const p1PlanItems = planItems.slice(0, p1PlanCount);
-    const p2PlanItems = planItems.slice(p1PlanCount);
-
-    const p1Sections = [
-      { 
-        title: 'Diagnóstico Clínico & Comprovação de Início de Tratamento', 
-        content: diag 
-      }
-    ];
-    if (rat) {
-      p1Sections.push({
-        title: 'Raciocínio Fisiopatológico & Indicação de Tratamento',
-        content: rat
-      });
-    }
-    if (p1PlanItems.length > 0) {
-      p1Sections.push({
-        title: 'Plano de Tratamento Canabinoide Individualizado',
-        content: p1PlanItems.join('\n\n')
-      });
-    }
-
-    reportPages.push({
-      pageNumber: 1,
-      totalPages: 2,
-      title: baseReportTitle,
-      sections: p1Sections
-    });
-
-    // Página 2: Continuação do Plano de Tratamento + Diretrizes de Acompanhamento & Segurança + Assinatura Oficial
-    const p2Sections = [];
-    if (p2PlanItems.length > 0) {
-      p2Sections.push({
-        title: 'Continuação do Plano de Tratamento Canabinoide',
-        content: p2PlanItems.join('\n\n')
-      });
-    }
-    if (mon) {
-      p2Sections.push({
-        title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-        content: mon
-      });
-    }
-
-    reportPages.push({
-      pageNumber: 2,
-      totalPages: 2,
-      title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
-      sections: p2Sections
-    });
-  } else {
-    // =========================================================================
-    // LAUDO EVOLUTIVO (DOSSIÊ JUDICIAL / HABEAS CORPUS) — DISTRIBUIÇÃO ADAPTATIVA
-    // =========================================================================
-    // Página 1: Diagnóstico Clínico, HMA e Histórico Convencional (Quesitos 1, 2 e 3)
-    let diagP1 = diag;
-    let diagP2 = '';
-
-    // Detecta início exato dos Quesitos 4, 5 e 6 de evolução e autocultivo
-    const evolMarker = diag.search(/(?:Evolu[çc][ãa]o Cl[íi]nica e Resposta|Evolu[çc][ãa]o Cl[íi]nica|4\.\s*Quanto [àa] evolu[çc][ãa]o|Quesitos?\s*4)/i);
-    if (evolMarker > 150) {
-      diagP1 = diag.substring(0, evolMarker).trim();
-      diagP2 = diag.substring(evolMarker).trim();
-    } else if (diag.length > 1400) {
-      const pBreak = diag.lastIndexOf('\n\n', 1300);
-      const splitIdx = pBreak > 600 ? pBreak : diag.indexOf('\n\n', 950);
-      if (splitIdx !== -1) {
-        diagP1 = diag.substring(0, splitIdx).trim();
-        diagP2 = diag.substring(splitIdx).trim();
-      }
-    }
-
-    reportPages.push({
-      pageNumber: 1,
-      totalPages: 0,
-      title: baseReportTitle,
-      sections: [
-        { 
-          title: 'Diagnóstico Clínico, Histórico Convencional & Refratariedade (Quesitos 1, 2 e 3)', 
-          content: diagP1 
-        }
-      ]
-    });
-
-    // Página 2: Quesitos 4, 5 e 6 (Evolução com Canabinoides e Autocultivo) + Fundamentação & Quesito 7 + CID-10
-    const p2Sections = [];
-    if (diagP2) {
-      p2Sections.push({
-        title: 'Evolução Clínica e Resposta com Canabinoides e Autocultivo (Quesitos 4, 5 e 6)',
-        content: diagP2
-      });
-    }
-    if (rat) {
-      p2Sections.push({
-        title: 'Fundamentação Farmacológica, Continuidade (Quesito 7) & Enquadramento CID-10',
-        content: rat
-      });
-    }
-
-    reportPages.push({
-      pageNumber: 2,
-      totalPages: 0,
-      title: `${baseReportTitle} (CONTINUAÇÃO) — EVOLUÇÃO CLÍNICA & FUNDAMENTAÇÃO`,
-      sections: p2Sections
-    });
-
-    // Página 3: Plano de Tratamento (até 5 itens) + Diretrizes de Monitoramento + Assinatura Oficial
-    if (planItems.length <= 5) {
-      const p3Sections = [];
-      if (plan) {
-        p3Sections.push({
-          title: 'Plano de Tratamento Canabinoide Individualizado',
-          content: plan
-        });
-      }
-      if (mon) {
-        p3Sections.push({
-          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-          content: mon
-        });
-      }
-      reportPages.push({
-        pageNumber: 3,
-        totalPages: 0,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA & MONITORAMENTO`,
-        sections: p3Sections
-      });
-    } else {
-      // 6 ou mais itens prescritos:
-      const p3Items = planItems.slice(0, 4);
-      const remainingPlanItems = planItems.slice(4);
-
-      reportPages.push({
-        pageNumber: 3,
-        totalPages: 0,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — CONDUTA TERAPÊUTICA`,
-        sections: [
-          {
-            title: 'Plano de Tratamento Canabinoide (Parte 1)',
-            content: p3Items.join('\n\n')
-          }
-        ]
-      });
-
-      const p4Sections = [
-        {
-          title: 'Continuação do Plano de Tratamento Canabinoide',
-          content: remainingPlanItems.join('\n\n')
-        }
-      ];
-      if (mon) {
-        p4Sections.push({
-          title: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
-          content: mon
-        });
-      }
-
-      reportPages.push({
-        pageNumber: 4,
-        totalPages: 0,
-        title: `${baseReportTitle} (CONTINUAÇÃO) — MONITORAMENTO & DIRETRIZES`,
-        sections: p4Sections
-      });
-    }
+  interface FlowBlock {
+    id: string;
+    type: 'section-header' | 'subheader' | 'paragraph' | 'plan-item';
+    sectionKey: 'diag' | 'rat' | 'plan' | 'mon';
+    text?: string;
+    planTitle?: string;
+    planDetails?: string[];
+    keepWithNext?: boolean;
   }
 
-  // Ensure totalPages and pageNumber are exact across all pages
-  reportPages.forEach((p, idx) => {
-    p.pageNumber = idx + 1;
-    p.totalPages = reportPages.length;
-  });
+  const isSubheaderLine = (trimmed: string): boolean => {
+    return /^(Hist[óo]rico|Evolu[çc][ãa]o|Indica[çc][ãa]o|CID|Quesito|\d+\.\s*Quanto|Racioc[íi]nio|Diretrizes|Seguran[çc]a|Retorno|Comprova[çc][ãa]o|Em resposta|Enquadramento|[a-d]\)\s*Inviabilidade|[a-d]\)\s*Especificidade|[a-d]\)\s*Indisponibilidade|[a-d]\)\s*Autonomia|\d+\.\s*[A-ZÁÉÍÓÚ])/i.test(trimmed);
+  };
 
-  const PdfComponent = () => {
-    return (
-      <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
-        {reportPages.map((page, pIdx) => (
-          <div 
-            key={pIdx}
-            className="medical-report-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
-            style={{ 
-              width: "794px", 
-              minHeight: "1123px", 
-              height: "1123px", 
-              maxHeight: "1123px",
-              padding: page.totalPages === 1 ? "14px 34px 18px 34px" : "16px 34px 18px 34px", 
-              backgroundColor: "#FFFFFF", 
-              color: "#111827",
-              boxSizing: "border-box",
-              overflow: "hidden"
-            }}
-          >
-            <div className="flex-1 flex flex-col justify-start min-h-0">
-              {/* Top Bar with Page Indicator in-flow (never overlaps doctor info) */}
-              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
-                <span className="text-[9.5px] text-[#64748B] font-semibold">
-                  Documento Médico Oficial MECURA
-                </span>
-                <span className="text-[9.5px] text-[#64748B] font-bold">
-                  Página {page.pageNumber} de {page.totalPages}
-                </span>
-              </div>
+  const isShortHeadingLine = (trimmed: string): boolean => {
+    if (!isSubheaderLine(trimmed)) return false;
+    return trimmed.endsWith(':') || trimmed.length < 105;
+  };
 
-              {/* Header */}
-              <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2.5 mb-2">
-                <div>
-                  <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                  <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
-                    CENTRO INTEGRADO DE MEDICINA CANABINOIDE
-                  </p>
-                </div>
-                <div className="text-right">
-                  <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
-                  <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
-                  <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
-                </div>
-              </div>
+  const pushTextParagraphBlocks = (
+    target: FlowBlock[],
+    rawText: string,
+    sectionKey: 'diag' | 'rat' | 'mon',
+    prefixId: string,
+    redundantHeaderPattern?: RegExp
+  ) => {
+    const lines = rawText
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
 
-              {/* Title & Patient Identification */}
-              {page.pageNumber === 1 ? (
-                <div className="text-center mb-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md p-2">
-                  <div className="flex items-center justify-between mb-1 px-1">
-                    <span className="text-[9px] font-bold tracking-widest text-[#059669] uppercase">
-                      {baseReportSubtitle}
-                    </span>
-                    <span className={`font-bold text-[8.5px] px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                      isEvolutivo 
-                        ? 'bg-[#DBEAFE] text-[#1E40AF] border-[#BFDBFE]' 
-                        : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
-                    }`}>
-                      {baseReportBadge}
-                    </span>
-                  </div>
-                  <h1 className="text-sm font-black text-[#1E1B4B] tracking-widest uppercase mb-1">{page.title}</h1>
-                  <div className="flex flex-col items-center gap-0.5">
-                    <div className="flex items-center gap-2 text-xs text-[#475569]">
-                      <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
-                      <span className="font-semibold text-[#0F172A]">{sanitizedUserName}</span>
-                    </div>
-                    <div className="flex items-center justify-center gap-4 text-[10px] text-[#64748B]">
-                      {birthDateText !== 'Não informada' && (
-                        <span className="flex items-center gap-1">
-                          <span className="font-bold text-[#475569]">NASCIMENTO:</span> {birthDateText}
-                        </span>
-                      )}
-                      {cpfText !== 'Não informado' && (
-                        <span className="flex items-center gap-1">
-                          <span className="font-bold text-[#475569]">CPF:</span> {cpfText}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <span className="font-bold text-[#475569]">EMISSÃO:</span> {emissionDateStr}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between mb-2 px-3 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md">
-                  <span className="text-[10px] font-black text-[#1E1B4B] tracking-wider uppercase">{page.title}</span>
-                  <span className="text-[9px] font-bold text-[#475569]">PACIENTE: <strong className="text-[#0F172A]">{sanitizedUserName}</strong></span>
-                </div>
-              )}
+    lines.forEach((line, idx) => {
+      if (idx === 0 && redundantHeaderPattern && redundantHeaderPattern.test(line)) {
+        return;
+      }
+      const sub = isSubheaderLine(line);
+      target.push({
+        id: `${prefixId}-p-${idx}`,
+        type: sub ? 'subheader' : 'paragraph',
+        sectionKey,
+        text: line,
+        keepWithNext: isShortHeadingLine(line)
+      });
+    });
+  };
 
-              {/* Sections for this page */}
-              <div className={page.totalPages === 1 ? "space-y-1.5" : "space-y-2"}>
-                {page.sections.map((sec, sIdx) => {
-                  const isPlanSection = sec.title.toLowerCase().includes('plano de tratamento');
+  const flowBlocks: FlowBlock[] = [];
 
-                  return (
-                    <div key={sIdx}>
-                      <h4 className="text-[10px] font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#E2E8F0] pb-0.5 mb-1 flex items-center justify-between">
-                        <span>{sec.title}</span>
-                      </h4>
+  // 1. Diagnóstico & Evolução (continuous flow without forced page break after Quesito 3)
+  if (isEvolutivo) {
+    let diagPart1 = diag;
+    let diagPart2 = '';
+    const evolMarker = diag.search(/(?:Evolu[çc][ãa]o Cl[íi]nica e Resposta|Evolu[çc][ãa]o Cl[íi]nica|4\.\s*Quanto [àa] evolu[çc][ãa]o|Quesitos?\s*4)/i);
+    if (evolMarker > 100) {
+      diagPart1 = diag.substring(0, evolMarker).trim();
+      diagPart2 = diag.substring(evolMarker).trim();
+    }
 
-                      {isPlanSection ? (
-                        <div className={page.totalPages === 1 || planItems.length >= 3 ? "space-y-1" : "space-y-1.5"}>
-                          {splitPlanItems(sec.content).map((itemBlock, iIdx) => {
-                            const lines = itemBlock.split('\n').map(l => l.trim()).filter(Boolean);
-                            const titleLine = lines[0] || '';
-                            const detailLines = lines.slice(1);
+    flowBlocks.push({
+      id: 'sec-diag-1',
+      type: 'section-header',
+      sectionKey: 'diag',
+      text: diagPart2
+        ? 'Diagnóstico Clínico, Histórico Convencional & Refratariedade (Quesitos 1, 2 e 3)'
+        : 'Diagnóstico Clínico, Histórico Convencional & Evolução Terapêutica',
+      keepWithNext: true
+    });
+    pushTextParagraphBlocks(flowBlocks, diagPart1, 'diag', 'diag1');
 
-                            return (
-                              <div key={iIdx} className={`bg-[#F8FAFC] border border-[#E2E8F0] rounded leading-snug ${page.totalPages === 1 || planItems.length >= 3 ? 'p-1.5 text-[8.5px]' : 'p-2 text-[9px] text-[#334155]'}`}>
-                                <p className={`font-bold text-[#0F172A] mb-0.5 m-0 ${page.totalPages === 1 || planItems.length >= 3 ? 'text-[8.5px]' : 'text-[9.5px]'}`}>{titleLine}</p>
-                                <div className={`space-y-0.5 pl-1 text-[#475569] ${page.totalPages === 1 || planItems.length >= 3 ? 'text-[8px]' : 'text-[8.5px]'}`}>
-                                  {detailLines.map((line, lIdx) => (
-                                    <p key={lIdx} className="m-0 leading-tight">{line}</p>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className={`${page.totalPages === 1 ? 'text-[8.5px]' : 'text-[9.5px]'} text-[#334155] leading-snug flex flex-col gap-1 text-justify`}>
-                          {sec.content.split('\n').filter((p, i, arr) => {
-                            const trimmed = p.trim();
-                            if (!trimmed && (i === 0 || !arr[i - 1].trim())) return false;
-                            return true;
-                          }).map((p, i) => {
-                            const trimmed = p.trim();
-                            if (!trimmed) return <div key={i} className="h-0.5" />;
-                            
-                            const isSubheader = /^(Hist[óo]rico|Evolu[çc][ãa]o|Indica[çc][ãa]o|CID|Quesito|\d+\.\s*Quanto|Racioc[íi]nio|Diretrizes|Seguran[çc]a|Retorno|Comprova[çc][ãa]o|Em resposta|[a-d]\)\s*Inviabilidade|[a-d]\)\s*Especificidade|[a-d]\)\s*Indisponibilidade|[a-d]\)\s*Autonomia|\d+\.\s*[A-ZÁÉÍÓÚ])/i.test(trimmed);
-                            if (isSubheader) {
-                              return (
-                                <p key={i} className={`font-bold text-[#1E1B4B] ${page.totalPages === 1 ? 'text-[9px]' : 'text-[9.5px]'} mt-0.5 mb-0.5`}>
-                                  {trimmed}
-                                </p>
-                              );
-                            }
-                            return (
-                              <p key={i} className="m-0 leading-snug text-justify">
-                                {trimmed}
-                              </p>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+    if (diagPart2) {
+      flowBlocks.push({
+        id: 'sec-diag-2',
+        type: 'section-header',
+        sectionKey: 'diag',
+        text: 'Evolução Clínica e Resposta com Canabinoides e Autocultivo (Quesitos 4, 5 e 6)',
+        keepWithNext: true
+      });
+      pushTextParagraphBlocks(
+        flowBlocks,
+        diagPart2,
+        'diag',
+        'diag2',
+        /^Evolu[çc][ãa]o Cl[íi]nica e Resposta com Canabinoides/i
+      );
+    }
+  } else {
+    flowBlocks.push({
+      id: 'sec-diag-init',
+      type: 'section-header',
+      sectionKey: 'diag',
+      text: 'Diagnóstico Clínico & Comprovação de Início de Tratamento',
+      keepWithNext: true
+    });
+    pushTextParagraphBlocks(flowBlocks, diag, 'diag', 'diagInit');
+  }
 
-            {/* Doctor Signature & Emission Footer — Signature only on final page so doctor does not have to sign every intermediate page */}
-            {page.pageNumber === page.totalPages ? (
-              <div className="shrink-0 mt-auto pt-2 border-t border-[#E2E8F0]">
-                <div className="flex flex-col items-center">
-                  <div className="w-52 border-b border-[#CBD5E1] mb-2" style={{ height: '0px' }}></div>
-                  <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
-                  <p className="text-[9px] text-[#64748B] font-semibold m-0" style={{ marginTop: '2px', marginBottom: '3px', lineHeight: '1.2' }}>{docCrm} • Assinatura Digital / Prescritor</p>
-                  <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-semibold mt-1">
-                    <span>Data de Emissão: {emissionDateStr}</span>
-                    <span>Documento Médico Oficial • Válido em todo o território nacional</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="shrink-0 mt-auto pt-2 border-t border-[#E2E8F0]">
-                <div className="flex items-center justify-between text-[8px] text-[#64748B] font-semibold">
-                  <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
-                  <span className="text-[#1E1B4B] font-bold">Documento Médico Oficial — Continua na folha {page.pageNumber + 1}...</span>
-                  <span>Folha {page.pageNumber} de {page.totalPages}</span>
-                </div>
-                <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-medium mt-1">
-                  <span>Paciente: {sanitizedUserName}</span>
-                  <span>Médico Assistente: {docName} ({docCrm})</span>
-                  <span>Emissão: {emissionDateStr}</span>
-                </div>
-              </div>
-            )}
+  // 2. Fundamentação Farmacológica / Raciocínio Fisiopatológico
+  if (rat && rat.trim()) {
+    flowBlocks.push({
+      id: 'sec-rat',
+      type: 'section-header',
+      sectionKey: 'rat',
+      text: isEvolutivo
+        ? 'Fundamentação Farmacológica, Continuidade (Quesito 7) & Enquadramento CID-10'
+        : 'Raciocínio Fisiopatológico & Indicação de Tratamento',
+      keepWithNext: true
+    });
+    pushTextParagraphBlocks(
+      flowBlocks,
+      rat,
+      'rat',
+      'rat',
+      /^Racioc[íi]nio Fisiopatol[óo]gico e Fundamenta[çc][ãa]o/i
+    );
+  }
+
+  // 3. Plano de Tratamento Canabinoide Individualizado
+  if (planItems.length > 0) {
+    flowBlocks.push({
+      id: 'sec-plan',
+      type: 'section-header',
+      sectionKey: 'plan',
+      text: 'Plano de Tratamento Canabinoide Individualizado',
+      keepWithNext: true
+    });
+    planItems.forEach((itemBlock, iIdx) => {
+      const lines = itemBlock.split('\n').map(l => l.trim()).filter(Boolean);
+      const titleLine = lines[0] || '';
+      const detailLines = lines.slice(1);
+      flowBlocks.push({
+        id: `plan-item-${iIdx}`,
+        type: 'plan-item',
+        sectionKey: 'plan',
+        planTitle: titleLine,
+        planDetails: detailLines,
+        keepWithNext: false
+      });
+    });
+  }
+
+  // 4. Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança
+  if (mon && mon.trim()) {
+    flowBlocks.push({
+      id: 'sec-mon',
+      type: 'section-header',
+      sectionKey: 'mon',
+      text: 'Diretrizes de Acompanhamento Clínico, Farmacovigilância e Segurança',
+      keepWithNext: true
+    });
+    pushTextParagraphBlocks(flowBlocks, mon, 'mon', 'mon');
+  }
+
+  const isCompactMode = totalLength > 2600 || planItems.length >= 4;
+
+  const renderBlockElement = (block: FlowBlock, key: string | number, dataIdx?: number) => {
+    const commonProps = dataIdx !== undefined ? { 'data-flow-idx': dataIdx } : {};
+
+    if (block.type === 'section-header') {
+      return (
+        <div key={key} {...commonProps} className="pt-1">
+          <h4 className="text-[10px] font-bold text-[#1E1B4B] uppercase tracking-wider border-b border-[#CBD5E1] pb-0.5 m-0 flex items-center justify-between">
+            <span>{block.text}</span>
+          </h4>
+        </div>
+      );
+    }
+
+    if (block.type === 'plan-item') {
+      return (
+        <div
+          key={key}
+          {...commonProps}
+          className={`bg-[#F8FAFC] border border-[#E2E8F0] rounded leading-snug ${
+            isCompactMode ? 'px-2 py-1 text-[8.5px]' : 'p-2 text-[9px]'
+          } text-[#334155]`}
+        >
+          <p className={`font-bold text-[#0F172A] mb-0.5 m-0 ${isCompactMode ? 'text-[8.5px]' : 'text-[9.5px]'}`}>
+            {block.planTitle}
+          </p>
+          <div className={`space-y-0.5 pl-1 text-[#475569] ${isCompactMode ? 'text-[8px]' : 'text-[8.5px]'}`}>
+            {(block.planDetails || []).map((line, lIdx) => (
+              <p key={lIdx} className="m-0 leading-tight">
+                {line}
+              </p>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      );
+    }
+
+    if (block.type === 'subheader') {
+      return (
+        <p
+          key={key}
+          {...commonProps}
+          className={`font-bold text-[#1E1B4B] ${
+            isCompactMode ? 'text-[9px]' : 'text-[9.5px]'
+          } m-0 leading-snug text-justify`}
+        >
+          {block.text}
+        </p>
+      );
+    }
+
+    return (
+      <p
+        key={key}
+        {...commonProps}
+        className={`${
+          isCompactMode ? 'text-[9px]' : 'text-[9.5px]'
+        } text-[#334155] m-0 leading-snug text-justify`}
+      >
+        {block.text}
+      </p>
     );
   };
+
+  const renderPageHeaderChrome = (pageNum: number, totalPagesCount: number, pageTitle: string) => (
+    <div>
+      {/* Top Bar with Page Indicator in-flow */}
+      <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
+        <span className="text-[9.5px] text-[#64748B] font-semibold">
+          Documento Médico Oficial MECURA
+        </span>
+        <span className="text-[9.5px] text-[#64748B] font-bold">
+          Página {pageNum} de {totalPagesCount}
+        </span>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-1.5">
+        <div>
+          <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
+          <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
+            CENTRO INTEGRADO DE MEDICINA CANABINOIDE
+          </p>
+        </div>
+        <div className="text-right">
+          <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
+          <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
+          <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
+        </div>
+      </div>
+
+      {/* Title & Patient Identification */}
+      {pageNum === 1 ? (
+        <div className="text-center mb-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2.5 py-1.5">
+          <div className="flex items-center justify-between mb-0.5 px-1">
+            <span className="text-[8.5px] font-bold tracking-widest text-[#059669] uppercase">
+              {baseReportSubtitle}
+            </span>
+            <span className={`font-bold text-[8px] px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+              isEvolutivo 
+                ? 'bg-[#DBEAFE] text-[#1E40AF] border-[#BFDBFE]' 
+                : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+            }`}>
+              {baseReportBadge}
+            </span>
+          </div>
+          <h1 className="text-sm font-black text-[#1E1B4B] tracking-widest uppercase mb-0.5">{pageTitle}</h1>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 text-[10px] text-[#64748B]">
+            <span className="text-[11px] text-[#475569]">
+              <strong className="text-[#1E1B4B]">PACIENTE:</strong> <strong className="text-[#0F172A]">{sanitizedUserName}</strong>
+            </span>
+            {birthDateText !== 'Não informada' && (
+              <span>
+                <strong className="text-[#475569]">NASCIMENTO:</strong> {birthDateText}
+              </span>
+            )}
+            {cpfText !== 'Não informado' && (
+              <span>
+                <strong className="text-[#475569]">CPF:</strong> {cpfText}
+              </span>
+            )}
+            <span>
+              <strong className="text-[#475569]">EMISSÃO:</strong> {emissionDateStr}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between mb-1.5 px-3 py-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md">
+          <span className="text-[9.5px] font-black text-[#1E1B4B] tracking-wider uppercase">{pageTitle}</span>
+          <span className="text-[9px] font-bold text-[#475569]">PACIENTE: <strong className="text-[#0F172A]">{sanitizedUserName}</strong></span>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderContinuationFooter = (pageNum: number, totalPagesCount: number) => (
+    <div className="shrink-0 mt-auto pt-1.5 border-t border-[#E2E8F0]">
+      <div className="flex items-center justify-between text-[8px] text-[#64748B] font-semibold">
+        <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+        <span className="text-[#1E1B4B] font-bold">Documento Médico Oficial — Continua na folha {pageNum + 1}...</span>
+        <span>Folha {pageNum} de {totalPagesCount}</span>
+      </div>
+      <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-medium mt-0.5">
+        <span>Paciente: {sanitizedUserName}</span>
+        <span>Médico Assistente: {docName} ({docCrm})</span>
+        <span>Emissão: {emissionDateStr}</span>
+      </div>
+    </div>
+  );
+
+  const renderFinalSignatureAndFooter = (pageNum: number, totalPagesCount: number) => (
+    <div className="shrink-0 pt-2">
+      <div className="pt-2.5 border-t border-[#E2E8F0] flex items-end justify-between gap-4">
+        <div className="text-[8px] text-[#64748B] space-y-0.5">
+          <p className="m-0 font-bold text-[#1E1B4B] text-[8.5px]">Validade Assistencial e Pericial</p>
+          <p className="m-0">Laudo médico emitido em conformidade com as diretrizes do CFM e RDC Anvisa nº 327/2019 e nº 660/2022.</p>
+          <p className="m-0 text-[#94A3B8]">Data de Emissão: {emissionDateStr} • Folha {pageNum} de {totalPagesCount}</p>
+        </div>
+        <div className="flex flex-col items-center shrink-0 w-56">
+          <div className="w-48 border-b border-[#94A3B8] mb-1.5" style={{ height: '0px' }}></div>
+          <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</p>
+          <p className="text-[8.5px] text-[#64748B] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Assinatura Digital / Prescritor</p>
+        </div>
+      </div>
+    </div>
+  );
 
   const container = document.createElement('div');
   container.style.position = 'fixed';
@@ -1314,10 +1494,245 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   document.body.appendChild(container);
 
   const root = createRoot(container);
-  root.render(<PdfComponent />);
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // PASS 1: Render all flow blocks & chrome elements in real DOM at exact 726px content width to measure exact heights
+    const MeasureComponent = () => (
+      <div
+        style={{
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          width: '794px',
+          padding: '14px 34px 16px 34px',
+          boxSizing: 'border-box',
+          backgroundColor: '#FFFFFF',
+          color: '#111827'
+        }}
+      >
+        <div id="measure-chrome-p1">{renderPageHeaderChrome(1, 2, baseReportTitle)}</div>
+        <div id="measure-chrome-cont">{renderPageHeaderChrome(2, 2, `${baseReportTitle} (CONTINUAÇÃO)`)}</div>
+        <div id="measure-footer-cont">{renderContinuationFooter(1, 2)}</div>
+        <div id="measure-footer-final">{renderFinalSignatureAndFooter(2, 2)}</div>
+        <div id="measure-cont-plan-header">
+          {renderBlockElement(
+            {
+              id: 'cont-plan-hdr',
+              type: 'section-header',
+              sectionKey: 'plan',
+              text: 'Continuação do Plano de Tratamento Canabinoide'
+            },
+            'cont-plan-hdr'
+          )}
+        </div>
+        <div id="measure-blocks" className="flex flex-col" style={{ gap: '4px' }}>
+          {flowBlocks.map((b, idx) => renderBlockElement(b, b.id, idx))}
+        </div>
+      </div>
+    );
+
+    root.render(<MeasureComponent />);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const p1ChromeH = container.querySelector<HTMLElement>('#measure-chrome-p1')?.offsetHeight || 165;
+    const contChromeH = container.querySelector<HTMLElement>('#measure-chrome-cont')?.offsetHeight || 110;
+    const contFooterH = container.querySelector<HTMLElement>('#measure-footer-cont')?.offsetHeight || 36;
+    const finalFooterH = container.querySelector<HTMLElement>('#measure-footer-final')?.offsetHeight || 64;
+    const contPlanHeaderH = container.querySelector<HTMLElement>('#measure-cont-plan-header')?.offsetHeight || 22;
+
+    const blockEls = container.querySelectorAll<HTMLElement>('[data-flow-idx]');
+    const blockHeights: number[] = new Array(flowBlocks.length).fill(24);
+    blockEls.forEach(el => {
+      const idx = Number(el.getAttribute('data-flow-idx'));
+      if (!isNaN(idx)) {
+        blockHeights[idx] = el.offsetHeight;
+      }
+    });
+
+    // Total A4 height = 1123px; top padding (14px) + bottom padding (16px) = 30px -> inner height = 1093px
+    const PAGE_INNER_H = 1093;
+    const BLOCK_GAP = 4;
+    const SAFETY_BUFFER = 6;
+
+    const availSinglePage = PAGE_INNER_H - p1ChromeH - finalFooterH - SAFETY_BUFFER;
+    const availP1 = PAGE_INNER_H - p1ChromeH - contFooterH - SAFETY_BUFFER;
+    const availIntermediate = PAGE_INNER_H - contChromeH - contFooterH - SAFETY_BUFFER;
+    const availFinal = PAGE_INNER_H - contChromeH - finalFooterH - SAFETY_BUFFER;
+
+    interface PackedPage {
+      blocks: FlowBlock[];
+      usedH: number;
+    }
+
+    const totalAllBlocksH = blockHeights.reduce((sum, h, i) => sum + h + (i > 0 ? BLOCK_GAP : 0), 0);
+    const packedPages: PackedPage[] = [];
+
+    if (totalAllBlocksH <= availSinglePage) {
+      packedPages.push({
+        blocks: [...flowBlocks],
+        usedH: totalAllBlocksH
+      });
+    } else {
+      let cursor = 0;
+
+      while (cursor < flowBlocks.length) {
+        const isFirstPage = packedPages.length === 0;
+        const maxH = isFirstPage ? availP1 : availIntermediate;
+        const currentBlocks: FlowBlock[] = [];
+        let usedH = 0;
+
+        // If a new page starts right in the middle of plan-item blocks, prepend a continuation section header
+        if (cursor > 0 && flowBlocks[cursor].type === 'plan-item') {
+          currentBlocks.push({
+            id: `cont-plan-p-${packedPages.length + 1}`,
+            type: 'section-header',
+            sectionKey: 'plan',
+            text: 'Continuação do Plano de Tratamento Canabinoide',
+            keepWithNext: true
+          });
+          usedH += contPlanHeaderH;
+        }
+
+        while (cursor < flowBlocks.length) {
+          const b = flowBlocks[cursor];
+          const gapBefore = currentBlocks.length > 0 ? BLOCK_GAP : 0;
+          const bHeight = blockHeights[cursor];
+
+          // Calculate chain height if keepWithNext is set so headings are never orphaned at page bottom
+          let chainHeight = gapBefore + bHeight;
+          if (b.keepWithNext) {
+            let lookahead = cursor + 1;
+            let chainCount = 1;
+            while (lookahead < flowBlocks.length && chainCount < 3) {
+              chainHeight += BLOCK_GAP + blockHeights[lookahead];
+              if (!flowBlocks[lookahead].keepWithNext) {
+                break;
+              }
+              lookahead++;
+              chainCount++;
+            }
+          }
+
+          if (currentBlocks.length > 0 && usedH + chainHeight > maxH) {
+            // Avoid leaving only a synthetic continuation header alone on the page
+            const hasRealContent = currentBlocks.some(cb => !cb.id.startsWith('cont-plan-p-'));
+            if (hasRealContent) {
+              break;
+            }
+          }
+
+          currentBlocks.push(b);
+          usedH += gapBefore + bHeight;
+          cursor++;
+        }
+
+        packedPages.push({
+          blocks: currentBlocks,
+          usedH
+        });
+      }
+
+      // Check if the final page exceeds availFinal (since finalFooterH is slightly taller than contFooterH)
+      if (packedPages.length > 1) {
+        const lastPage = packedPages[packedPages.length - 1];
+        const maxFinalH = availFinal;
+        if (lastPage.usedH > maxFinalH && lastPage.blocks.length > 1) {
+          const overflowBlocks: FlowBlock[] = [];
+          while (lastPage.blocks.length > 1 && lastPage.usedH > maxFinalH) {
+            const popped = lastPage.blocks.pop()!;
+            const origIdx = flowBlocks.findIndex(fb => fb.id === popped.id);
+            const poppedH = origIdx !== -1 ? blockHeights[origIdx] : 28;
+            lastPage.usedH -= (poppedH + BLOCK_GAP);
+            overflowBlocks.unshift(popped);
+          }
+          // Also move any trailing keepWithNext heading from the end of lastPage to the new page
+          while (lastPage.blocks.length > 1 && lastPage.blocks[lastPage.blocks.length - 1].keepWithNext) {
+            const poppedHdr = lastPage.blocks.pop()!;
+            const origIdx = flowBlocks.findIndex(fb => fb.id === poppedHdr.id);
+            const poppedH = origIdx !== -1 ? blockHeights[origIdx] : 22;
+            lastPage.usedH -= (poppedH + BLOCK_GAP);
+            overflowBlocks.unshift(poppedHdr);
+          }
+          if (overflowBlocks.length > 0) {
+            const newPageUsedH = overflowBlocks.reduce((acc, ob, i) => {
+              const oIdx = flowBlocks.findIndex(fb => fb.id === ob.id);
+              return acc + (oIdx !== -1 ? blockHeights[oIdx] : 28) + (i > 0 ? BLOCK_GAP : 0);
+            }, 0);
+            packedPages.push({
+              blocks: overflowBlocks,
+              usedH: newPageUsedH
+            });
+          }
+        }
+      }
+    }
+
+    const totalPagesCount = packedPages.length;
+
+    // PASS 2: Render final paginated document
+    const FinalPdfComponent = () => (
+      <div
+        className="flex flex-col items-center"
+        style={{
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          width: '794px',
+          backgroundColor: '#F8FAFC'
+        }}
+      >
+        {packedPages.map((page, pIdx) => {
+          const pageNumber = pIdx + 1;
+          const isLastPage = pageNumber === totalPagesCount;
+          const pageTitle =
+            pageNumber === 1
+              ? baseReportTitle
+              : `${baseReportTitle} (CONTINUAÇÃO — FOLHA ${pageNumber} DE ${totalPagesCount})`;
+
+          return (
+            <div
+              key={pIdx}
+              className="medical-report-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between"
+              style={{
+                width: '794px',
+                minHeight: '1123px',
+                height: '1123px',
+                maxHeight: '1123px',
+                padding: '14px 34px 16px 34px',
+                backgroundColor: '#FFFFFF',
+                color: '#111827',
+                boxSizing: 'border-box',
+                overflow: 'hidden'
+              }}
+            >
+              <div className="flex-1 flex flex-col justify-start min-h-0">
+                {renderPageHeaderChrome(pageNumber, totalPagesCount, pageTitle)}
+
+                <div className="flex flex-col" style={{ gap: `${BLOCK_GAP}px` }}>
+                  {page.blocks.map((block, bIdx) => renderBlockElement(block, `${pageNumber}-${block.id}-${bIdx}`))}
+                </div>
+
+                {/* On the last page, place signature directly below content if there is ample space so there is never an empty void */}
+                {isLastPage && (
+                  <div className="mt-4">
+                    {renderFinalSignatureAndFooter(pageNumber, totalPagesCount)}
+                  </div>
+                )}
+              </div>
+
+              {!isLastPage ? (
+                renderContinuationFooter(pageNumber, totalPagesCount)
+              ) : (
+                <div className="shrink-0 mt-auto pt-1.5 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
+                  <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+                  <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
+                  <span>Documento Médico Oficial • Folha {pageNumber}/{totalPagesCount}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    root.render(<FinalPdfComponent />);
+    await new Promise(resolve => setTimeout(resolve, 600));
 
     const pageElements = container.querySelectorAll<HTMLElement>('.medical-report-pdf-page');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -1367,97 +1782,203 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
   const defaultParagraphs = [
-    `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${sanitizedUserName}</strong>, inscrito(a) no CPF <strong>${cpfText}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.`,
-    `O(a) paciente faz uso terapêutico de produtos derivados de Cannabis, estritamente conforme prescrição médica, sob supervisão e com acompanhamento clínico contínuo.`,
-    `Atesto, baseado em exames clínicos e testes de rastreio de capacidade psicomotora realizados durante as consultas de monitoramento, que o uso das medicações prescritas, nas doses estipuladas, <strong>NÃO RESULTA</strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou comprometimento dos reflexos e estado de alerta do paciente.`,
-    `O tratamento prescrito não interfere em sua capacidade de operar máquinas complexas, conduzir veículos automotores ou exercer atividades laborais que exijam atenção e precisão, não configurando infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).`,
-    `Ressalto que os canabinoides prescritos têm finalidade exclusivamente terapêutica, sendo legalmente importados (RDC 660/2022 ANVISA) e/ou adquiridos via Associações de Pacientes, e não se enquadram como substâncias psicoativas entorpecentes de uso recreativo capazes de causar dependência ou prejuízo sensório-motor nas doses tituladas.`
+    `Declaro, para os devidos fins de direito, salvaguarda clínica e comprovação perante autoridades de trânsito, medicina do trabalho e órgãos públicos, que o(a) paciente <strong>${sanitizedUserName}</strong>, inscrito(a) no CPF sob o nº <strong>${cpfText}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.`,
+    `O(a) paciente faz uso estritamente terapêutico e controlado de produtos à base de <em>Cannabis</em> medicinal, mediante prescrição médica individualizada, com titulação posológica gradual e monitoramento clínico contínuo de resposta terapêutica e segurança neurocognitiva.`,
+    `Atesto, com base em anamnese dirigida, exame clínico neurológico e aplicação de testes clínicos de rastreio da função psicomotora e cognitiva realizados nas consultas de acompanhamento, que o uso regular das medicações prescritas, nas doses e horários estabelecidos, <strong>NÃO PRODUZ</strong> alteração da capacidade psicomotora, sedação residual diurna, prejuízo cognitivo, lentificação de reflexos ou comprometimento do estado de vigília e atenção sustentada.`,
+    `O protocolo terapêutico instituído <strong>não interfere</strong> na aptidão física e mental do(a) paciente para conduzir veículos automotores em vias públicas, operar máquinas ou equipamentos de precisão, bem como exercer atividades laborais de alta exigência cognitiva, não configurando sob nenhuma hipótese a alteração da capacidade psicomotora prevista no <strong>Art. 165 e Art. 277 do Código de Trânsito Brasileiro (Lei nº 9.503/1997)</strong> e na <strong>Resolução CONTRAN nº 432/2013</strong>.`,
+    `Ressalta-se tecnicamente que a eventual detecção de metabólitos inativos (como o <em>11-nor-9-carboxi-THC / THC-COOH</em>) em exames toxicológicos de matriz biológica de larga janela (queratina/cabelo, urina ou fluido oral) reflete exclusivamente o uso médico continuado e legalmente amparado pela <strong>RDC nº 660/2022 e RDC nº 327/2019 da ANVISA</strong>, não guardando correlação com intoxicação aguda, uso recreativo ou comprometimento sensório-motor.`
   ];
 
   const customText = patientData?.customPsychomotorText;
-  const paragraphs = customText ? customText.split('\n').filter((p: string) => p.trim()) : defaultParagraphs;
+  const paragraphs: string[] = customText
+    ? customText.split('\n').map((p: string) => p.trim()).filter(Boolean)
+    : defaultParagraphs;
 
-  const PdfComponent = () => {
-    return (
-      <div className="flex flex-col items-center" style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif", width: "794px", backgroundColor: "#F8FAFC" }}>
-        <div 
-          className="psychomotor-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between" 
-          style={{ 
-            width: "794px", 
-            height: "1123px", 
-            minHeight: "1123px", 
-            maxHeight: "1123px", 
-            padding: "36px 44px", 
-            backgroundColor: "#FFFFFF", 
-            color: "#111827",
-            boxSizing: "border-box",
-            overflow: "hidden"
-          }}
-        >
-          <div>
-            {/* Header */}
-            <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-3 mb-4 pt-1">
+  interface PsychomotorBlock {
+    id: string;
+    kind: 'intro-card' | 'paragraph' | 'eval-table' | 'legal-box' | 'conclusion-card';
+    html?: string;
+  }
+
+  const allBlocks: PsychomotorBlock[] = [
+    { id: 'intro-card', kind: 'intro-card' },
+    ...paragraphs.map((p, idx) => ({
+      id: `p-${idx}`,
+      kind: 'paragraph' as const,
+      html: p
+    })),
+    { id: 'eval-table', kind: 'eval-table' },
+    { id: 'legal-box', kind: 'legal-box' },
+    { id: 'conclusion-card', kind: 'conclusion-card' }
+  ];
+
+  const renderPsychomotorBlock = (block: PsychomotorBlock) => {
+    switch (block.kind) {
+      case 'intro-card':
+        return (
+          <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '10px 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '8px', fontSize: '10.5px', color: '#1E293B' }}>
               <div>
-                <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
-                <p className="text-[10px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
-                  CENTRO INTEGRADO DE MEDICINA CANABINOIDE
+                <p style={{ margin: '0 0 3px 0' }}>
+                  <span style={{ fontWeight: 800, color: '#1E1B4B' }}>PACIENTE AVALIADO(A): </span>
+                  <span style={{ fontWeight: 700 }}>{sanitizedUserName}</span>
+                </p>
+                <p style={{ margin: 0 }}>
+                  <span style={{ fontWeight: 800, color: '#1E1B4B' }}>FINALIDADE PERICIAL: </span>
+                  <span>Atestado de Aptidão Psicomotora, Cognitiva e Laboral (CTB / Medicina do Trabalho)</span>
                 </p>
               </div>
-              <div className="text-right">
-                <h3 className="text-sm font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
-                <p className="text-xs text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
-                <p className="text-[10px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
-              </div>
-            </div>
-
-            {/* Title */}
-            <div className="text-center mb-6">
-              <h1 className="text-lg font-black text-[#1E1B4B] tracking-widest uppercase mb-1">LAUDO PSICOMOTOR</h1>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#059669] mb-3">AVALIAÇÃO DA LEI DO DROGÔMETRO / APTIDÃO</p>
-              <div className="flex flex-col items-center gap-0.5">
-                <div className="flex items-center gap-2 text-sm text-[#475569]">
-                  <span className="font-bold text-[#1E1B4B]">PACIENTE:</span>
-                  <span className="font-semibold">{sanitizedUserName}</span>
-                </div>
-                <div className="flex items-center justify-center gap-6 text-xs text-[#64748B]">
-                  {birthDateText !== 'Não informada' && (
-                    <span className="flex items-center gap-1">
-                      <span className="font-bold text-[#475569]">NASCIMENTO:</span> {birthDateText}
-                    </span>
-                  )}
-                  {cpfText !== 'Não informado' && (
-                    <span className="flex items-center gap-1">
-                      <span className="font-bold text-[#475569]">CPF:</span> {cpfText}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Statement Paragraphs */}
-            <div className="space-y-3.5 text-xs text-[#334155] leading-relaxed text-justify">
-              {paragraphs.map((p: string, i: number) => (
-                <p key={i} className="m-0 leading-relaxed" dangerouslySetInnerHTML={{ __html: p }} />
-              ))}
-            </div>
-          </div>
-
-          {/* Doctor Signature & Emission Footer */}
-          <div className="mt-auto pt-4 border-t border-[#E2E8F0]">
-            <div className="flex flex-col items-center">
-              <div className="w-56 border-b border-[#CBD5E1] mb-2.5" style={{ height: '0px' }}></div>
-              <p className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</p>
-              <p className="text-[10px] text-[#64748B] font-semibold m-0" style={{ marginTop: '2px', marginBottom: '4px', lineHeight: '1.2' }}>{docCrm} • Assinatura Digital / Prescritor</p>
-              <div className="flex justify-between w-full text-[9px] text-[#94A3B8] font-semibold mt-1">
-                <span>Data de Emissão: {emissionDateStr}</span>
-                <span>Válido em todo o território nacional</span>
+              <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '12px' }}>
+                <p style={{ margin: '0 0 3px 0' }}>
+                  <span style={{ fontWeight: 800, color: '#1E1B4B' }}>CPF: </span>
+                  <span>{cpfText}</span>
+                </p>
+                <p style={{ margin: 0 }}>
+                  <span style={{ fontWeight: 800, color: '#1E1B4B' }}>NASCIMENTO: </span>
+                  <span>{birthDateText}</span>
+                </p>
               </div>
             </div>
           </div>
+        );
+
+      case 'paragraph':
+        return (
+          <p
+            style={{
+              margin: 0,
+              fontSize: '11.2px',
+              lineHeight: '1.58',
+              color: '#1E293B',
+              textAlign: 'justify',
+              textIndent: '20px'
+            }}
+            dangerouslySetInnerHTML={{ __html: block.html || '' }}
+          />
+        );
+
+      case 'eval-table':
+        return (
+          <div style={{ marginTop: '2px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+              <h3 style={{ margin: 0, fontSize: '10.5px', fontWeight: 800, color: '#1E1B4B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                Protocolo de Avaliação Clínica das Funções Psicomotoras e Neurocognitivas
+              </h3>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.8px', border: '1px solid #CBD5E1' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#F1F5F9', color: '#1E1B4B' }}>
+                  <th style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'left', fontWeight: 800 }}>Domínio Neuropsicomotor Avaliado</th>
+                  <th style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'left', fontWeight: 800 }}>Parâmetro Clínico / Exame Físico</th>
+                  <th style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center', fontWeight: 800, width: '140px' }}>Resultado Clínico</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', fontWeight: 700 }}>Estado de Alerta e Vigília</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', color: '#334155' }}>Orientação têmporo-espacial, atenção sustentada e prontidão</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'center', fontWeight: 800, color: '#059669' }}>PRESERVADO / NORMAL</td>
+                </tr>
+                <tr style={{ backgroundColor: '#F8FAFC' }}>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', fontWeight: 700 }}>Coordenação Motora Fina e Global</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', color: '#334155' }}>Provas índex-nariz, diadococinesia, marcha e equilíbrio estático</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'center', fontWeight: 800, color: '#059669' }}>SEM ALTERAÇÕES</td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', fontWeight: 700 }}>Tempo de Reação e Reflexos</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', color: '#334155' }}>Resposta sensório-motora a estímulos visuais e auditivos</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'center', fontWeight: 800, color: '#059669' }}>PRESERVADO / NORMAL</td>
+                </tr>
+                <tr style={{ backgroundColor: '#F8FAFC' }}>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', fontWeight: 700 }}>Funções Executivas e Julgamento</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', color: '#334155' }}>Tomada de decisão rápida, memória operacional e percepção de risco</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'center', fontWeight: 800, color: '#059669' }}>PLENAMENTE APTO</td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', fontWeight: 700 }}>Sinais de Intoxicação Aguda / Sedação</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', color: '#334155' }}>Pesquisa de sonolência patológica, disartria, nistagmo ou euforia</td>
+                  <td style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'center', fontWeight: 800, color: '#059669' }}>AUSENTES</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        );
+
+      case 'legal-box':
+        return (
+          <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderLeft: '3.5px solid #1E1B4B', borderRadius: '6px', padding: '9px 12px', fontSize: '9.8px', lineHeight: '1.48', color: '#334155' }}>
+            <p style={{ margin: '0 0 3px 0', fontWeight: 800, color: '#1E1B4B', textTransform: 'uppercase', fontSize: '9.5px' }}>
+              Fundamentação Técnico-Científica e Enquadramento Normativo
+            </p>
+            <p style={{ margin: 0, textAlign: 'justify' }}>
+              • <strong>Código de Trânsito Brasileiro (Art. 165 e Art. 277) & Res. CONTRAN nº 432/2013:</strong> A caracterização de infração ou impedimento à condução veicular exige comprovação clínica de <em>alteração da capacidade psicomotora</em>. O uso terapêutico estabilizado sob prescrição médica, na ausência de sinais clínicos de comprometimento psicomotor, preserva integralmente a aptidão legal do condutor e trabalhador.
+            </p>
+          </div>
+        );
+
+      case 'conclusion-card':
+        return (
+          <div style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', borderLeft: '3.5px solid #059669', borderRadius: '6px', padding: '9px 12px', fontSize: '10px', lineHeight: '1.48', color: '#064E3B' }}>
+            <p style={{ margin: 0, textAlign: 'justify' }}>
+              <strong>PARECER MÉDICO CONCLUSIVO:</strong> O(a) paciente <strong>{sanitizedUserName}</strong> encontra-se <strong>CLÍNICA E PSICOMOTORAMENTE APTO(A)</strong> para conduzir veículos automotores, operar equipamentos e exercer suas atividades profissionais regulares em vigência de seu tratamento médico canabinoide prescrito.
+            </p>
+          </div>
+        );
+    }
+  };
+
+  const renderHeader = (isContinuation: boolean) => (
+    <div style={{ marginBottom: isContinuation ? '12px' : '14px' }}>
+      <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2.5 mb-3 pt-0.5">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none">MECURA</h2>
+            <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#ECFDF5', color: '#059669', padding: '2px 7px', borderRadius: '4px', border: '1px solid #A7F3D0', textTransform: 'uppercase' }}>
+              PERÍCIA MÉDICA & APTIDÃO
+            </span>
+          </div>
+          <p className="text-[9.5px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none mt-1">
+            CENTRO INTEGRADO DE MEDICINA CANABINOIDE
+          </p>
+        </div>
+        <div className="text-right">
+          <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
+          <p className="text-[10.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm}</p>
+          <p className="text-[9.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
         </div>
       </div>
-    );
-  };
+
+      {!isContinuation && (
+        <div className="text-center mb-2">
+          <h1 className="text-base font-black text-[#1E1B4B] tracking-widest uppercase mb-0.5 m-0">
+            LAUDO MÉDICO DE APTIDÃO PSICOMOTORA E COGNITIVA
+          </h1>
+          <p className="text-[9.5px] font-bold uppercase tracking-wider text-[#059669] m-0">
+            AVALIAÇÃO CLÍNICA — LEI DO DROGÔMETRO (ART. 165 CTB) & MEDICINA OCUPACIONAL
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSignature = () => (
+    <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #CBD5E1' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div style={{ fontSize: '9px', color: '#64748B', lineHeight: '1.4' }}>
+          <p style={{ margin: 0, fontWeight: 700, color: '#1E1B4B' }}>Mecura • Centro Integrado de Medicina Canabinoide</p>
+          <p style={{ margin: 0 }}>Documento médico emitido com fé pública e validade em todo o território nacional.</p>
+          <p style={{ margin: 0 }}>Data de Emissão: <strong>{emissionDateStr}</strong> • Prescritor Responsável: <strong>{docCrm}</strong></p>
+        </div>
+        <div style={{ textAlign: 'center', minWidth: '230px' }}>
+          <div style={{ borderBottom: '1.5px solid #1E1B4B', marginBottom: '5px', height: '14px' }}></div>
+          <p style={{ margin: 0, fontSize: '11px', fontWeight: 800, color: '#1E1B4B' }}>{docName}</p>
+          <p style={{ margin: '1px 0 0 0', fontSize: '9.5px', fontWeight: 600, color: '#475569' }}>{docCrm} • {docSpec}</p>
+          <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#059669', fontWeight: 700 }}>Assinatura Digital Qualificada ICP-Brasil</p>
+        </div>
+      </div>
+    </div>
+  );
 
   const container = document.createElement('div');
   container.style.position = 'fixed';
@@ -1470,10 +1991,104 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   document.body.appendChild(container);
 
   const root = createRoot(container);
-  root.render(<PdfComponent />);
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // 1. Measure real DOM heights to pack pages without blank gaps or clipping
+    const MeasurePass = () => (
+      <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', width: '794px', padding: '32px 42px', boxSizing: 'border-box', backgroundColor: '#FFFFFF' }}>
+        <div id="psy-measure-header-first">{renderHeader(false)}</div>
+        <div id="psy-measure-header-cont">{renderHeader(true)}</div>
+        <div id="psy-measure-sig">{renderSignature()}</div>
+        <div id="psy-measure-blocks" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {allBlocks.map((b, idx) => (
+            <div key={b.id} data-psy-idx={idx}>
+              {renderPsychomotorBlock(b)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    root.render(<MeasurePass />);
+    await new Promise(resolve => setTimeout(resolve, 250));
+
+    const headerFirstH = container.querySelector<HTMLElement>('#psy-measure-header-first')?.offsetHeight || 110;
+    const headerContH = container.querySelector<HTMLElement>('#psy-measure-header-cont')?.offsetHeight || 65;
+    const sigH = container.querySelector<HTMLElement>('#psy-measure-sig')?.offsetHeight || 85;
+    const blockEls = Array.from(container.querySelectorAll<HTMLElement>('[data-psy-idx]'));
+    const blockHeights = blockEls.map(el => el.offsetHeight);
+
+    const USABLE_PAGE_H = 1123 - 64 - 28; // 1123 - top/bottom padding (64px) - footer bar (28px)
+    const GAP = 10;
+
+    const pages: PsychomotorBlock[][] = [];
+    let cursor = 0;
+
+    while (cursor < allBlocks.length) {
+      const isFirst = pages.length === 0;
+      const availH = USABLE_PAGE_H - (isFirst ? headerFirstH : headerContH);
+      const pageBlocks: PsychomotorBlock[] = [];
+      let usedH = 0;
+
+      while (cursor < allBlocks.length) {
+        const h = blockHeights[cursor] || 45;
+        const g = pageBlocks.length > 0 ? GAP : 0;
+        const isLastBlock = cursor === allBlocks.length - 1;
+        const extraSig = isLastBlock ? sigH + 14 : 0;
+
+        if (pageBlocks.length > 0 && usedH + g + h + extraSig > availH) {
+          break;
+        }
+        pageBlocks.push(allBlocks[cursor]);
+        usedH += g + h;
+        cursor++;
+      }
+      pages.push(pageBlocks);
+    }
+
+    const PdfComponent = () => (
+      <div className="flex flex-col items-center" style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', width: '794px', backgroundColor: '#F8FAFC' }}>
+        {pages.map((pageBlocks, pIdx) => {
+          const isLastPage = pIdx === pages.length - 1;
+          return (
+            <div
+              key={pIdx}
+              className="psychomotor-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between"
+              style={{
+                width: '794px',
+                height: '1123px',
+                minHeight: '1123px',
+                maxHeight: '1123px',
+                padding: '32px 42px',
+                backgroundColor: '#FFFFFF',
+                color: '#111827',
+                boxSizing: 'border-box',
+                overflow: 'hidden'
+              }}
+            >
+              <div>
+                {renderHeader(pIdx > 0)}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
+                  {pageBlocks.map(b => (
+                    <div key={b.id}>{renderPsychomotorBlock(b)}</div>
+                  ))}
+                </div>
+                {isLastPage && renderSignature()}
+              </div>
+
+              <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B' }}>
+                <span>Mecura • Laudo Médico de Aptidão Psicomotora e Cognitiva</span>
+                <span style={{ fontWeight: 700, color: '#1E1B4B' }}>Página {pIdx + 1} de {pages.length}</span>
+                <span>Válido em todo o território nacional (Art. 165 CTB / RDC 660 ANVISA)</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    root.render(<PdfComponent />);
+    await new Promise(resolve => setTimeout(resolve, 600));
 
     const pageElements = container.querySelectorAll<HTMLElement>('.psychomotor-pdf-page');
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -1482,7 +2097,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
         const canvas = await safeHtml2Canvas(pageEl);
-        const imgData = canvas.toDataURL('image/jpeg', 0.82);
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -1493,6 +2108,348 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
     const filename = `Laudo_Psicomotor_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
     const resultBlob = pdf.output('blob');
     if (!patientData?.returnBlob) {
+      await deliverPdfBlob(resultBlob, filename);
+    }
+    return resultBlob;
+  } finally {
+    root.unmount();
+    if (container.parentNode) {
+      document.body.removeChild(container);
+    }
+  }
+};
+
+export interface PsychologicalReportData {
+  customPatientName?: string;
+  cpf?: string;
+  birthDate?: string;
+  emissionDate?: string;
+  psychologistName?: string;
+  psychologistCrp?: string;
+  purpose?: string;
+  demandDescription?: string;
+  technicalProcedures?: string;
+  clinicalAnalysis?: string;
+  diagnosticHypothesis?: string;
+  conclusion?: string;
+  observations?: string;
+  returnBlob?: boolean;
+}
+
+export const generatePsychologicalReportPDF = async (userName: string, reportData?: PsychologicalReportData) => {
+  const sanitize = (text: string) => {
+    return (text || '').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
+  };
+
+  const rawUserName = reportData?.customPatientName || userName || 'Paciente';
+  const sanitizedUserName = sanitize(rawUserName);
+  
+  const birthDateText = sanitize(reportData?.birthDate || 'Não informada');
+  const cpfText = sanitize(reportData?.cpf || 'Não informado');
+  const emissionDateStr = reportData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
+  
+  const psicoName = reportData?.psychologistName || "Marco Antônio Boastik";
+  const psicoCrp = reportData?.psychologistCrp || "CRP 08/49215";
+
+  const purposeText = sanitize(reportData?.purpose || "Avaliação Psicológica Clínica e Pericial para Fins de Tratamento Multidisciplinar, Acompanhamento Emocional e Salvaguarda Terapêutica");
+  const demandText = sanitize(reportData?.demandDescription || "Paciente comparece para avaliação psicológica especializada, relatando quadro clínico marcado por sintomas persistentes de ansiedade, sobrecarga emocional, tensão psicofísica crônica e episódios de insônia fragmentada com prejuízo na qualidade de vida, regulação emocional e desempenho laboral.");
+  const procText = sanitize(reportData?.technicalProcedures || "Realizada entrevista psicológica clínica semiestruturada, anamnese direcionada, exame pormenorizado das funções psíquicas superiores e rastreio psicométrico de sintomas ansiosos, depressivos e qualidade do sono conforme as diretrizes técnico-científicas da Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.");
+  const analysisText = sanitize(reportData?.clinicalAnalysis || "Ao exame psíquico, o(a) paciente apresenta-se lúcido(a) e orientado(a) autopsiquicamente e alopsiquicamente, com discurso coerente, curso de pensamento preservado e atitude colaborativa. Observa-se afeto congruente com humor predominantemente ansioso e hiper-reativo ao estresse, queixas cognitivas secundárias à fadiga mental e hipervigilância noturna. Não há evidência de desagregação do pensamento, alterações sensoperceptivas, delírios ou alucinações. Constata-se sofrimento psicológico clinicamente significativo com impacto direto na arquitetura do sono e homeostase emocional.");
+  const diagText = sanitize(reportData?.diagnosticHypothesis || "F41.1 - Transtorno de Ansiedade Generalizada / F43.2 - Transtorno de Adaptação com Sintomas Ansiosos e Depressivos Reativos");
+  const conclusionText = sanitize(reportData?.conclusion || "Conclui-se que o(a) paciente preenche critérios clínicos compatíveis com sofrimento emocional crônico que justificam acompanhamento psicológico continuado em conjunto com suporte médico e farmacológico integrativo. Recomenda-se a manutenção de estratégias de regulação emocional, higiene do sono e terapêutica multidisciplinar para promoção de sua estabilidade biopsicossocial.");
+  const observationsText = sanitize(reportData?.observations || "De acordo com a Resolução CFP nº 06/2019, este documento psicológico possui caráter sigiloso e técnico-científico, refletindo o estado psíquico atual do(a) avaliado(a) no contexto da avaliação clínica. Recomenda-se reavaliação periódica e acompanhamento psicoterápico regular.");
+
+  interface PsychBlock {
+    id: string;
+    kind: 'patient-card' | 'section' | 'mental-exam-grid' | 'diag-box' | 'normative-note';
+    title?: string;
+    content?: string;
+  }
+
+  const allBlocks: PsychBlock[] = [
+    { id: 'patient-card', kind: 'patient-card' },
+    { id: 'sec-1', kind: 'section', title: '1. IDENTIFICAÇÃO DO SOLICITANTE E FINALIDADE PERICIAL', content: purposeText },
+    { id: 'sec-2', kind: 'section', title: '2. DESCRIÇÃO DA DEMANDA E HISTÓRICO CLÍNICO-PSICOLÓGICO', content: demandText },
+    { id: 'sec-3', kind: 'section', title: '3. PROCEDIMENTOS E INSTRUMENTOS TÉCNICO-CIENTÍFICOS (RES. CFP Nº 06/2019)', content: procText },
+    { id: 'sec-4', kind: 'section', title: '4. ANÁLISE PSICOLÓGICA E EXAME DO ESTADO MENTAL', content: analysisText },
+    { id: 'mental-grid', kind: 'mental-exam-grid' },
+    { id: 'sec-5', kind: 'diag-box', title: '5. HIPÓTESE DIAGNÓSTICA NOSOLÓGICA (CID-10 / CID-11)', content: diagText },
+    { id: 'sec-6', kind: 'section', title: '6. CONCLUSÃO TÉCNICA E ENCAMINHAMENTO TERAPÊUTICO', content: conclusionText },
+    { id: 'sec-7', kind: 'normative-note', title: '7. RECOMENDAÇÕES CLÍNICAS, SIGILO E VALIDADE TÉCNICA', content: observationsText }
+  ];
+
+  const renderPsychBlock = (block: PsychBlock) => {
+    switch (block.kind) {
+      case 'patient-card':
+        return (
+          <div style={{ backgroundColor: '#FAF5FF', border: '1px solid #D8B4FE', borderRadius: '8px', padding: '10px 14px', fontSize: '10.5px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '8px' }}>
+              <div>
+                <p style={{ margin: '0 0 3px 0' }}>
+                  <span style={{ fontWeight: 800, color: '#3B0764' }}>PACIENTE AVALIADO(A): </span>
+                  <span style={{ fontWeight: 700, color: '#1F2937' }}>{sanitizedUserName}</span>
+                </p>
+                <p style={{ margin: 0 }}>
+                  <span style={{ fontWeight: 800, color: '#3B0764' }}>DATA DE NASCIMENTO: </span>
+                  <span style={{ color: '#1F2937' }}>{birthDateText}</span>
+                </p>
+              </div>
+              <div style={{ borderLeft: '1px solid #E9D5FF', paddingLeft: '12px' }}>
+                <p style={{ margin: '0 0 3px 0' }}>
+                  <span style={{ fontWeight: 800, color: '#3B0764' }}>CPF: </span>
+                  <span style={{ color: '#1F2937', fontWeight: 600 }}>{cpfText}</span>
+                </p>
+                <p style={{ margin: 0 }}>
+                  <span style={{ fontWeight: 800, color: '#3B0764' }}>DATA DA EMISSÃO: </span>
+                  <span style={{ color: '#1F2937', fontWeight: 600 }}>{emissionDateStr}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'section':
+        return (
+          <div>
+            <h4 style={{ margin: '0 0 4px 0', paddingBottom: '3px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', color: '#581C87', borderBottom: '1px solid #E9D5FF' }}>
+              {block.title}
+            </h4>
+            <p style={{ margin: 0, fontSize: '10.8px', lineHeight: '1.52', textAlign: 'justify', color: '#334155' }}>
+              {block.content}
+            </p>
+          </div>
+        );
+
+      case 'mental-exam-grid':
+        return (
+          <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}>
+            <p style={{ margin: '0 0 5px 0', fontSize: '9.5px', fontWeight: 800, color: '#3B0764', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+              Síntese Estruturada das Funções Psíquicas Avaliadas
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', fontSize: '9.5px', color: '#334155' }}>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '4px 7px' }}>
+                <span style={{ fontWeight: 800, color: '#581C87', display: 'block', fontSize: '8.8px' }}>CONSCIÊNCIA & ORIENTAÇÃO</span>
+                <span>Lúcido(a), orientado(a) no tempo e espaço</span>
+              </div>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '4px 7px' }}>
+                <span style={{ fontWeight: 800, color: '#581C87', display: 'block', fontSize: '8.8px' }}>PENSAMENTO & JUÍZO CRÍTICO</span>
+                <span>Curso lógico, coerente, juízo preservado</span>
+              </div>
+              <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '4px 7px' }}>
+                <span style={{ fontWeight: 800, color: '#581C87', display: 'block', fontSize: '8.8px' }}>HUMOR, AFETO & SONO</span>
+                <span>Ansiedade reativa, hipervigilância / insônia</span>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'diag-box':
+        return (
+          <div style={{ backgroundColor: '#FAF5FF', border: '1.5px solid #D8B4FE', borderLeft: '4px solid #6B21A8', borderRadius: '6px', padding: '9px 12px' }}>
+            <h4 style={{ margin: '0 0 3px 0', fontSize: '9.5px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', color: '#581C87' }}>
+              {block.title}
+            </h4>
+            <p style={{ margin: 0, fontSize: '11px', fontWeight: 800, color: '#3B0764', lineHeight: '1.4' }}>
+              {block.content}
+            </p>
+          </div>
+        );
+
+      case 'normative-note':
+        return (
+          <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}>
+            <h4 style={{ margin: '0 0 3px 0', fontSize: '9.5px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.4px', color: '#581C87' }}>
+              {block.title}
+            </h4>
+            <p style={{ margin: 0, fontSize: '9.8px', lineHeight: '1.45', textAlign: 'justify', color: '#475569' }}>
+              {block.content}
+            </p>
+          </div>
+        );
+    }
+  };
+
+  const renderHeader = (isContinuation: boolean) => (
+    <div style={{ marginBottom: isContinuation ? '10px' : '12px' }}>
+      <div className="flex items-start justify-between pb-2.5 mb-2.5 pt-0" style={{ borderBottom: '2px solid #3B0764' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 className="text-2xl font-black tracking-tight m-0 leading-none" style={{ color: '#3B0764' }}>MECURA</h2>
+            <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#FAF5FF', color: '#6B21A8', padding: '2px 7px', borderRadius: '4px', border: '1px solid #D8B4FE', textTransform: 'uppercase' }}>
+              AVALIAÇÃO PSICOLÓGICA
+            </span>
+          </div>
+          <p className="text-[9.5px] font-bold tracking-wider uppercase m-0 leading-none mt-1" style={{ color: '#6B21A8' }}>
+            DEPARTAMENTO DE PSICOLOGIA CLÍNICA & SAÚDE MENTAL
+          </p>
+        </div>
+        <div className="text-right">
+          <h3 className="text-xs font-bold m-0" style={{ color: '#3B0764', lineHeight: '1.25' }}>{psicoName}</h3>
+          <p className="text-[10px] font-semibold m-0" style={{ color: '#6B21A8', marginTop: '1px', lineHeight: '1.2' }}>Psicólogo Clínico & Pericial</p>
+          <p className="text-[10px] font-bold m-0" style={{ color: '#64748B', marginTop: '1px', lineHeight: '1.2' }}>{psicoCrp}</p>
+        </div>
+      </div>
+
+      {!isContinuation && (
+        <div className="text-center mb-1">
+          <h1 className="text-base font-black tracking-widest uppercase mb-0.5 m-0" style={{ color: '#3B0764' }}>
+            LAUDO PSICOLÓGICO CLÍNICO E PERICIAL
+          </h1>
+          <p className="text-[9px] font-bold uppercase tracking-wider m-0" style={{ color: '#6B21A8' }}>
+            ELABORADO EM CONFORMIDADE COM A RESOLUÇÃO CFP Nº 06/2019
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSignature = () => (
+    <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #E9D5FF' }}>
+      <div className="flex items-end justify-between">
+        <div className="text-[9px] space-y-0.5" style={{ color: '#64748B', lineHeight: '1.4' }}>
+          <p className="m-0 font-bold" style={{ color: '#3B0764' }}>Mecura Saúde Mental • Atendimento Psicológico Especializado</p>
+          <p className="m-0">Documento técnico com validade clínica e pericial conforme Código de Ética Profissional do Psicólogo.</p>
+          <p className="m-0">Data de Emissão: <strong>{emissionDateStr}</strong> • Registro Profissional: <strong>{psicoCrp}</strong></p>
+        </div>
+
+        <div className="text-center flex flex-col items-center" style={{ minWidth: '220px' }}>
+          <div style={{ width: '190px', borderBottom: '1.5px solid #3B0764', marginBottom: '5px', height: '12px' }} />
+          <p className="text-xs font-bold m-0 leading-tight" style={{ color: '#3B0764' }}>{psicoName}</p>
+          <p className="text-[9.5px] font-semibold m-0 leading-tight" style={{ color: '#6B21A8' }}>Psicólogo Clínico & Pericial</p>
+          <p className="text-[9.5px] font-mono m-0 leading-tight" style={{ color: '#4B5563' }}>{psicoCrp}</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '794px';
+  container.style.zIndex = '-9999';
+  container.style.opacity = '1';
+  container.style.pointerEvents = 'none';
+  document.body.appendChild(container);
+
+  const root = createRoot(container);
+
+  try {
+    const MeasurePass = () => (
+      <div style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif', width: '794px', padding: '28px 38px', boxSizing: 'border-box', backgroundColor: '#FFFFFF' }}>
+        <div id="psico-measure-header-first">{renderHeader(false)}</div>
+        <div id="psico-measure-header-cont">{renderHeader(true)}</div>
+        <div id="psico-measure-sig">{renderSignature()}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+          {allBlocks.map((b, idx) => (
+            <div key={b.id} data-psico-idx={idx}>
+              {renderPsychBlock(b)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    root.render(<MeasurePass />);
+    await new Promise(resolve => setTimeout(resolve, 250));
+
+    const headerFirstH = container.querySelector<HTMLElement>('#psico-measure-header-first')?.offsetHeight || 105;
+    const headerContH = container.querySelector<HTMLElement>('#psico-measure-header-cont')?.offsetHeight || 65;
+    const sigH = container.querySelector<HTMLElement>('#psico-measure-sig')?.offsetHeight || 80;
+    const blockEls = Array.from(container.querySelectorAll<HTMLElement>('[data-psico-idx]'));
+    const blockHeights = blockEls.map(el => el.offsetHeight);
+
+    const USABLE_PAGE_H = 1123 - 56 - 26;
+    const GAP = 9;
+
+    const pages: PsychBlock[][] = [];
+    let cursor = 0;
+
+    while (cursor < allBlocks.length) {
+      const isFirst = pages.length === 0;
+      const availH = USABLE_PAGE_H - (isFirst ? headerFirstH : headerContH);
+      const pageBlocks: PsychBlock[] = [];
+      let usedH = 0;
+
+      while (cursor < allBlocks.length) {
+        const h = blockHeights[cursor] || 45;
+        const g = pageBlocks.length > 0 ? GAP : 0;
+        const isLastBlock = cursor === allBlocks.length - 1;
+        const extraSig = isLastBlock ? sigH + 14 : 0;
+
+        if (pageBlocks.length > 0 && usedH + g + h + extraSig > availH) {
+          break;
+        }
+        pageBlocks.push(allBlocks[cursor]);
+        usedH += g + h;
+        cursor++;
+      }
+      pages.push(pageBlocks);
+    }
+
+    const PdfComponent = () => (
+      <div style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif', width: '794px', backgroundColor: '#F8FAFC', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {pages.map((pageBlocks, pIdx) => {
+          const isLastPage = pIdx === pages.length - 1;
+          return (
+            <div
+              key={pIdx}
+              className="psychological-pdf-page relative box-border flex flex-col justify-between"
+              style={{
+                width: '794px',
+                height: '1123px',
+                minHeight: '1123px',
+                maxHeight: '1123px',
+                padding: '28px 38px',
+                backgroundColor: '#FFFFFF',
+                color: '#111827',
+                boxSizing: 'border-box',
+                border: '1px solid #E2E8F0',
+                overflow: 'hidden'
+              }}
+            >
+              <div>
+                {renderHeader(pIdx > 0)}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
+                  {pageBlocks.map(b => (
+                    <div key={b.id}>{renderPsychBlock(b)}</div>
+                  ))}
+                </div>
+                {isLastPage && renderSignature()}
+              </div>
+
+              <div style={{ borderTop: '1px solid #E9D5FF', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#6B7280' }}>
+                <span>Mecura Saúde Mental • Departamento de Psicologia Clínica & Pericial</span>
+                <span style={{ fontWeight: 700, color: '#3B0764' }}>Página {pIdx + 1} de {pages.length}</span>
+                <span>Resolução CFP nº 06/2019 • Documento Sigiloso</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    root.render(<PdfComponent />);
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const pageElements = container.querySelectorAll<HTMLElement>('.psychological-pdf-page');
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+    if (pageElements.length > 0) {
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i];
+        const canvas = await safeHtml2Canvas(pageEl);
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      }
+    }
+
+    const filename = `Laudo_Psicologico_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
+    const resultBlob = pdf.output('blob');
+    if (!reportData?.returnBlob) {
       await deliverPdfBlob(resultBlob, filename);
     }
     return resultBlob;
@@ -1552,477 +2509,485 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   const annualGramsNum = (annualMg / 1000);
 
   // Fitoquímica: teor médio de 10% nas inflorescências secas; extração caseira recupera ~80%
-  const dryFlowerKgBase = Number(((annualGramsNum / 0.10) / 1000).toFixed(3)); // ex: 18.250 kg
-  const dryFlowerKgStr = dryFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const dryFlowerKgBase = Number(((annualGramsNum / 0.10) / 1000).toFixed(3));
+  const dryFlowerKgStr = agronomicData?.dryFlowerKg || dryFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   // Margem de segurança agronômica de 30% contra pragas, doenças e perdas de cultivo
-  const dryFlowerMarginKgBase = Number((dryFlowerKgBase * 1.3038).toFixed(3)); // ex: 23.795 kg
-  const dryFlowerMarginKgStr = dryFlowerMarginKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const dryFlowerMarginKgBase = Number((dryFlowerKgBase * 1.3038).toFixed(3));
+  const dryFlowerMarginKgStr = agronomicData?.dryFlowerMarginKg || dryFlowerMarginKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   // Perda de umidade na secagem: as inflorescências perdem entre 70% a 80% do peso em água
-  // Flores frescas molhadas necessárias:
-  const wetFlowerKgBase = Number((dryFlowerMarginKgBase / 0.30).toFixed(3)); // ex: 79.319 kg
-  const wetFlowerKgStr = wetFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  const wetFlowerKgBase = Number((dryFlowerMarginKgBase / 0.30).toFixed(3));
+  const wetFlowerKgStr = agronomicData?.wetFlowerKg || wetFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   // Rendimento médio por planta no cultivo indoor (paciente): 100g a 150g de flores secas por ciclo de 120 dias
-  const calculatedPlants = Math.round((dryFlowerMarginKgBase * 1000) / 150); // ex: 158 plantas
+  const calculatedPlants = Math.round((dryFlowerMarginKgBase * 1000) / 150);
   const targetPlants = agronomicData?.targetPlants || calculatedPlants || 158;
 
-  // Divisão em 3 momentos de colheita ao longo do ano: 38 a 40 plantas por ciclo de floração
+  // Divisão em 3 momentos de colheita ao longo do ano
   const plantsPerCycle = agronomicData?.plantsPerCycle || Math.round(targetPlants / 4) || 40;
 
-  // Importação estimada de sementes feminizadas com taxa de segurança de 30%:
+  // Importação estimada de sementes feminizadas com taxa de segurança de 30%
   const seedsNeeded = agronomicData?.seedsNeeded || Math.round(targetPlants * 1.3038) || 206;
 
-  const PdfComponent = () => {
-    if (agronomicData?.htmlContent) {
+  interface AgroBlock {
+    id: string;
+    render: () => React.ReactNode;
+  }
+
+  const agroBlocks: AgroBlock[] = [
+    {
+      id: 'qualificacao',
+      render: () => (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '12px', backgroundColor: '#FFFFFF', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '10px 14px' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '8.5px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Identificação do Paciente Requerente</p>
+            <p style={{ margin: '2px 0 0 0', fontSize: '12px', fontWeight: '800', color: '#0F172A' }}>Paciente: {sanitizedUserName}</p>
+            <p style={{ margin: '1px 0 0 0', fontSize: '10.5px', color: '#334155' }}>CPF PACIENTE: <strong>{patientCpf}</strong></p>
+            <p style={{ margin: '1px 0 0 0', fontSize: '10px', color: '#475569' }}>
+              Indicação Clínica: <strong>{diagnosis}</strong>
+            </p>
+          </div>
+          <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '12px' }}>
+            <p style={{ margin: 0, fontSize: '8.5px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Responsável Técnico Pericial</p>
+            <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', fontWeight: '800', color: '#0F172A' }}>Consultor e Eng. Agr: {agronomistName}</p>
+            <p style={{ margin: '1px 0 0 0', fontSize: '10.5px', color: '#334155' }}>Registro Profissional: <strong>{agronomistCrea}</strong></p>
+            <p style={{ margin: '1px 0 0 0', fontSize: '9.5px', color: '#059669', fontWeight: '600' }}>
+              Perito em Fitotecnia & Fitoquímica Canabinoide
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-1',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              1. Resumo & Enquadramento Regulatório (ANVISA)
+            </h2>
+          </div>
+          <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
+            <p style={{ margin: '0 0 5px 0', textIndent: '18px' }}>
+              A ANVISA definiu, por meio da <strong>Resolução da Diretoria Colegiada (RDC) nº 335/2020</strong>, alterada pela <strong>RDC nº 570/2021</strong> e consolidada na <strong>RDC nº 660/2022</strong>, os critérios e os procedimentos para a importação de Produto derivado de <em>Cannabis</em>, por pessoa física, para uso próprio, mediante prescrição de profissional legalmente habilitado, para tratamento de saúde. Dessa forma, ainda que o produto não tenha registro para comercialização no Brasil, a importação poderá ser autorizada se os critérios e procedimentos definidos na mencionada RDC forem cumpridos, conforme a <strong>Nota Técnica nº 37/2021/SEI/COCIC/GPCON/GGMON/DIRE5/ANVISA</strong>.
+            </p>
+            <p style={{ margin: 0, textIndent: '18px' }}>
+              A fim de proporcionar uma orientação adequada para um cultivo em pequena escala, conhecido comumente como <strong>"cultivo caseiro"</strong>, para paciente que necessita utilizar as moléculas produzidas pela espécie vegetal — nomeadamente o <strong>Δ9–Tetrahidrocanabinol (THC)</strong>, o <strong>Cannabidiol (CBD)</strong> e o <strong>Canabigerol (CBG)</strong>, reconhecidas por suas propriedades terapêuticas —, foi elaborado este parecer com indicações técnicas para o cultivo sob as boas práticas comercialmente conhecidas por <strong>GACP (Good Agriculture and Collection Practices)</strong>, aplicadas para garantir produtividade, pureza biológica e sanidade adequada dos cultivos.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-2',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              2. Dimensionamento do Cultivo e Soberania Terapêutica
+            </h2>
+          </div>
+          <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
+            <p style={{ margin: '0 0 5px 0', textIndent: '18px' }}>
+              O cultivo caseiro é a maneira indicada de garantir o acesso continuado aos medicamentos para pacientes que não têm condições de arcar com os elevados custos dos fármacos atualmente disponíveis no mercado, que normalmente <strong>ultrapassam a barreira dos R$ 2.000,00 a R$ 5.000,00 mensais</strong> para produtos comercializados nacionalmente ou importados.
+            </p>
+            <p style={{ margin: 0, textIndent: '18px' }}>
+              Ademais, a segurança da autossuficiência na produção e na manipulação artesanal do próprio fitofármaco garante que o paciente não sofra com desabastecimentos, retenções alfandegárias, quebras de importação ou descontinuidade posológica do seu tratamento médico.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-3',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              3. Prescrição Médica e Demanda Terapêutica Individual
+            </h2>
+          </div>
+          <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
+            <p style={{ margin: 0, textIndent: '18px' }}>
+              Estes medicamentos contêm, em média, entre 5-6g de fitocanabinoides em sua composição por frasco de 30 ml (200 mg/ml), com teores modulados de CBD, THC e CBG. No caso do(a) paciente <strong>{sanitizedUserName}</strong>, conforme recomendações médicas oficiais que balizam este parecer técnico, o quadro clínico de <strong>{diagnosis}</strong> visa ser tratado com o uso concomitante de extratos integrais (Full Spectrum) com predominância de CBD/THC, CBD, THC e CBG, além de inflorescências secas padronizadas para vaporização terapêutica em crises álgicas ou insônia aguda, instruindo a memória de cálculo fitoquímico e de biomassa a seguir demonstrada.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-4',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              4. Dosimetria Farmacológica e Consumo Anual Estimado
+            </h2>
+          </div>
+          <p style={{ margin: '0 0 5px 0', fontSize: '10.2px', color: '#334155', textAlign: 'justify', textIndent: '18px' }}>
+            Extrapolando o consumo dos extratos artesanais integrais prescritos para intervalos diários, mensais e anuais de uso terapêutico ininterrupto, temos a seguinte dosimetria de substância ativa (CBD/THC/CBG):
+          </p>
+          <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '8px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '10px', fontSize: '10px' }}>
+            <div>
+              <span style={{ fontSize: '8.5px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>Consumo Diário:</span>
+              <p style={{ margin: '1px 0 0 0', fontWeight: '800', color: '#065F46', fontSize: '11.5px' }}>{dailyMg} mg / dia</p>
+              <span style={{ fontSize: '8.5px', color: '#64748B' }}>Óleo integral + extrato bruto</span>
+            </div>
+            <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '10px' }}>
+              <span style={{ fontSize: '8.5px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>Consumo Mensal (31 dias):</span>
+              <p style={{ margin: '1px 0 0 0', fontWeight: '800', color: '#0F172A', fontSize: '11.5px' }}>{monthlyGrams} g / mês</p>
+              <span style={{ fontSize: '8.5px', color: '#64748B' }}>{monthlyMg.toLocaleString('pt-BR')} mg ativos</span>
+            </div>
+            <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '10px' }}>
+              <span style={{ fontSize: '8.5px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>Consumo Anual (365 dias):</span>
+              <p style={{ margin: '1px 0 0 0', fontWeight: '800', color: '#0F172A', fontSize: '11.5px' }}>{annualGrams} g / ano</p>
+              <span style={{ fontSize: '8.5px', color: '#64748B' }}>{annualMg.toLocaleString('pt-BR')} mg fitocanabinoides</span>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-5',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              5. Fitoquímica, Eficiência de Extração & Relação Flor Seca / Molhada
+            </h2>
+          </div>
+          <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
+            <p style={{ margin: '0 0 5px 0', textIndent: '18px' }}>
+              Considerando que o conteúdo médio de canabinoides nas variedades terapêuticas de <em>Cannabis</em> é de <strong>10% em peso seco de flores</strong>, e que a extração artesanal na residência do paciente (sem equipamentos industriais de CO2 supercrítico) atinge uma <strong>eficiência média de recuperação de 80%</strong> das moléculas presentes na biomassa vegetal, a cada 100g de flores secas obtêm-se 10g de extrato bruto concentrado.
+            </p>
+            <p style={{ margin: 0, textIndent: '18px' }}>
+              Para obter os {annualGrams}g anuais prescritos, o cultivo exigiria {dryFlowerKgStr} kg de flores secas anuais. Aplicando-se a <strong>taxa de segurança agronômica de 30% de perdas</strong> (pragas, fungos e oscilações climáticas), o cultivo deve garantir a colheita de <strong>{dryFlowerMarginKgStr} kg de flores secas por ano</strong>. Considerando que as inflorescências perdem entre <strong>70% a 80% de seu peso em água na secagem</strong> e que cada planta indoor rende de 100g a 150g secas por ciclo de 120 dias, o paciente deverá colher <strong>{wetFlowerKgStr} kg de flores molhadas (frescas)</strong>.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'quadro-1',
+      render: () => (
+        <div>
+          <h3 style={{ margin: '0 0 5px 0', fontSize: '10px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            Quadro 1 — Memória de Cálculo & Dimensionamento Agronômico Oficial
+          </h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5px', border: '1.5px solid #CBD5E1', marginBottom: '8px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#F1F5F9', color: '#0F172A' }}>
+                <th style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'left', fontWeight: '800' }}>Parâmetro Agronômico / Terapêutico</th>
+                <th style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'center', fontWeight: '800' }}>Base de Cálculo e Referência Técnica</th>
+                <th style={{ border: '1px solid #CBD5E1', padding: '4.5px 8px', textAlign: 'right', fontWeight: '800' }}>Quantitativo Técnico</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Demanda Diária de Princípio Ativo</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>Posologia Médica Prescrita</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right', fontWeight: 'bold' }}>{dailyMg} mg / dia</td>
+              </tr>
+              <tr style={{ backgroundColor: '#F8FAFC' }}>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Consumo Anual de Extrato / Ativos</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>365 dias de tratamento ininterrupto</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right', fontWeight: 'bold' }}>{annualGrams} g / ano</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Teor Fitoquímico & Eficiência de Extração</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>10% peso seco • ~80% recuperação artesanal</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right' }}>{dryFlowerKgStr} kg base seca</td>
+              </tr>
+              <tr style={{ backgroundColor: '#F8FAFC' }}>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Biomassa Seca Requerida (com 30% de margem)</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>Segurança contra pragas, fungos e clima</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right', fontWeight: 'bold', color: '#065F46' }}>{dryFlowerMarginKgStr} kg secas / ano</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Biomassa Fresca (Flores Molhadas)</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>70% a 80% de perda hídrica na secagem</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right', fontWeight: 'bold' }}>{wetFlowerKgStr} kg molhadas / ano</td>
+              </tr>
+              <tr style={{ backgroundColor: '#ECFDF5', fontWeight: 'bold' }}>
+                <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', color: '#065F46' }}>Total de Plantas Recomendadas para Salvo-Conduto</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center', color: '#065F46' }}>120 dias/ciclo (100-150g secas/planta)</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', color: '#065F46', fontSize: '10.5px' }}>{targetPlants} plantas anuais</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Plantas em Floração por Ciclo & Sementes Anuais</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>3 colheitas/ano • +30% margem germinativa</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right', fontWeight: 'bold', color: '#065F46' }}>{plantsPerCycle} plantas/ciclo • {seedsNeeded} sementes</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '6px 10px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: '8px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Flor Seca Anual</span>
+              <p style={{ margin: '1px 0 0 0', fontSize: '11.5px', fontWeight: '900', color: '#065F46' }}>{dryFlowerMarginKgStr} kg</p>
+            </div>
+            <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
+              <span style={{ fontSize: '8px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Flor Molhada Anual</span>
+              <p style={{ margin: '1px 0 0 0', fontSize: '11.5px', fontWeight: '900', color: '#0F172A' }}>{wetFlowerKgStr} kg</p>
+            </div>
+            <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
+              <span style={{ fontSize: '8px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Plantas Totais / Ano</span>
+              <p style={{ margin: '1px 0 0 0', fontSize: '11.5px', fontWeight: '900', color: '#065F46' }}>{targetPlants} espécimes</p>
+            </div>
+            <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
+              <span style={{ fontSize: '8px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Sementes Importadas</span>
+              <p style={{ margin: '1px 0 0 0', fontSize: '11.5px', fontWeight: '900', color: '#0F172A' }}>{seedsNeeded} un.</p>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-6',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              6. Designer de Cultivo e Planejamento Operacional Rotativo
+            </h2>
+          </div>
+          <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
+            <p style={{ margin: 0, textIndent: '18px' }}>
+              Para garantir que o cultivo atenda ao consumo anual do paciente de forma contínua, estabelece-se um plano dividido em <strong>3 momentos de colheita ao longo do ano</strong> (ciclo médio de 120 dias), conduzindo aproximadamente <strong>{plantsPerCycle} plantas em floração por ciclo rotativo</strong>. Considerando que apenas plantas em floração sintetizam canabinoides em concentração terapêutica, o paciente poderá manter plantas-mãe em estado vegetativo (fotoperíodo &gt;18h de luz) para clonagem ou realizar o cultivo a partir de <strong>{seedsNeeded} sementes feminizadas anuais</strong>.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-7',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              7. Boas Práticas Agrícolas e de Coleta (GACP) & Parâmetros Indoor
+            </h2>
+          </div>
+          <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', fontSize: '9.8px', lineHeight: '1.45', color: '#334155' }}>
+            <p style={{ margin: '0 0 3px 0' }}>
+              • <strong>Ambiente Indoor & Iluminação:</strong> Cultivo fechado por biossegurança e controle fitossanitário, sob painéis LED Full Spectrum (vegetativo 18h/6h; floração estrita 12h/12h).
+            </p>
+            <p style={{ margin: '0 0 3px 0' }}>
+              • <strong>Climatização, Substrato & Isenção de Agrotóxicos:</strong> Exaustão mecânica com <strong>filtro de carvão ativado</strong> (retenção de odores/terpenos), 20°C–26°C, 45%–65% UR, substrato orgânico/inerte (pH 5.8–6.5) e <strong>vedação absoluta de pesticidas sintéticos</strong>.
+            </p>
+            <p style={{ margin: 0 }}>
+              • <strong>Pós-Colheita (Secagem & Cura):</strong> Secagem lenta ao abrigo de luz (18–20°C e 55% UR) por 10 a 14 dias e cura hermética (Boveda 62%) por no mínimo 30 dias para estabilização fitoquímica.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'sec-8',
+      render: () => (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              8. Conclusão Pericial Agronômica
+            </h2>
+          </div>
+          <div style={{ backgroundColor: '#F0FDF4', borderLeft: '3.5px solid #059669', borderRight: '1px solid #BBF7D0', borderTop: '1px solid #BBF7D0', borderBottom: '1px solid #BBF7D0', padding: '9px 12px', fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#064E3B' }}>
+            <p style={{ margin: 0 }}>
+              <strong>Conclusão Técnica:</strong> Com base nas prescrições médicas que amparam este parecer, nos cálculos dosimétricos de fitomassa e na biologia da espécie, conclui-se que o dimensionamento anual de <strong>{targetPlants} espécimes de <em>Cannabis sativa L.</em></strong> (em ciclos de aproximadamente <strong>{plantsPerCycle} plantas em floração por colheita</strong>), juntamente com a importação de <strong>{seedsNeeded} sementes feminizadas</strong>, é <strong>agronomicamente justificado, estritamente proporcional e indispensável</strong> para assegurar a autossuficiência e continuidade do tratamento médico do(a) paciente <strong>{sanitizedUserName}</strong> por 12 meses, sem excedentes para finalidade diversa.
+            </p>
+          </div>
+        </div>
+      )
+    }
+  ];
+
+  const renderAgroHeader = (isContinuation: boolean) => {
+    if (isContinuation) {
       return (
-        <div style={{ width: '794px', backgroundColor: '#FFFFFF', color: '#000000', padding: '40px', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif' }}>
-          <div dangerouslySetInnerHTML={{ __html: agronomicData.htmlContent }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #065F46', paddingBottom: '7px', marginBottom: '12px' }}>
+          <div>
+            <span style={{ fontSize: '13px', fontWeight: '900', color: '#065F46' }}>MECURA</span>
+            <span style={{ fontSize: '9.5px', color: '#64748B', marginLeft: '8px' }}>PARECER AGRONÔMICO PERICIAL — DIMENSIONAMENTO & MANEJO GACP</span>
+          </div>
+          <div style={{ fontSize: '9.5px', color: '#334155' }}>
+            Paciente: <strong>{sanitizedUserName}</strong> • CPF: <strong>{patientCpf}</strong>
+          </div>
         </div>
       );
     }
 
     return (
-      <div style={{ width: '794px', backgroundColor: '#FFFFFF', color: '#1E293B', fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontSize: '11px', lineHeight: '1.5' }}>
-        
-        {/* ========================================================================= */}
-        {/* PÁGINA 1: IDENTIFICAÇÃO, RESUMO REGULATÓRIO & JUSTIFICATIVA DO AUTOCULTIVO */}
-        {/* ========================================================================= */}
-        <div 
-          className="agronomic-pdf-page"
-          style={{ 
-            width: '794px', 
-            height: '1120px', 
-            maxHeight: '1120px', 
-            overflow: 'hidden', 
-            padding: '36px 44px', 
-            boxSizing: 'border-box', 
-            position: 'relative', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            justifyContent: 'space-between',
-            backgroundColor: '#FFFFFF'
-          }}
-        >
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2.5px solid #065F46', paddingBottom: '10px', marginBottom: '12px' }}>
           <div>
-            {/* Header Oficial Mecura */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2.5px solid #065F46', paddingBottom: '14px', marginBottom: '18px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '24px', fontWeight: '900', color: '#065F46', letterSpacing: '-0.5px' }}>MECURA</span>
-                  <span style={{ fontSize: '10px', fontWeight: '800', backgroundColor: '#ECFDF5', color: '#065F46', padding: '3px 8px', borderRadius: '4px', border: '1px solid #A7F3D0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    LAUDO TÉCNICO PERICIAL
-                  </span>
-                </div>
-                <p style={{ margin: '3px 0 0 0', fontSize: '10px', color: '#475569', fontWeight: '600' }}>
-                  Centro Integrado de Medicina Canabinoide & Assessoria Pericial em Fitotecnia
-                </p>
-                <p style={{ margin: '1px 0 0 0', fontSize: '9px', color: '#059669', fontWeight: '600' }}>
-                  Boas Práticas de Agricultura e Coleta (GACP / OMS) • Salvo-Conduto para Autocultivo
-                </p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ display: 'inline-block', fontSize: '9.5px', fontWeight: '800', color: '#065F46', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
-                  HABEAS CORPUS PREVENTIVO
-                </span>
-                <p style={{ margin: '3px 0 0 0', fontSize: '10px', fontWeight: '700', color: '#0F172A' }}>AUTOCULTIVO MEDICINAL</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '9.5px', color: '#64748B' }}>Data de Emissão: <strong>{emissionDate}</strong></p>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '22px', fontWeight: '900', color: '#065F46', letterSpacing: '-0.5px' }}>MECURA</span>
+              <span style={{ fontSize: '9.5px', fontWeight: '800', backgroundColor: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', border: '1px solid #A7F3D0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                LAUDO TÉCNICO PERICIAL
+              </span>
             </div>
-
-            {/* Título Principal */}
-            <div style={{ textAlign: 'center', marginBottom: '16px', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px 14px' }}>
-              <h1 style={{ margin: 0, fontSize: '14px', fontWeight: '900', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Auto cultivo para finalidade medicinal — Parecer Técnico
-              </h1>
-              <p style={{ margin: '3px 0 0 0', fontSize: '10.5px', fontWeight: '600', color: '#334155' }}>
-                Indicações técnicas para cultivo pessoal de <em>Cannabis sativa L.</em> com finalidade medicinal
-              </p>
-            </div>
-
-            {/* Box de Qualificação das Partes */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '12px', backgroundColor: '#FFFFFF', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
-              <div>
-                <p style={{ margin: 0, fontSize: '9px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Identificação do Paciente Requerente</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12.5px', fontWeight: '800', color: '#0F172A' }}>Paciente: {sanitizedUserName}</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#334155' }}>CPF PACIENTE: <strong>{patientCpf}</strong></p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '10px', color: '#475569' }}>
-                  Indicação Clínica: <strong>{diagnosis}</strong>
-                </p>
-              </div>
-              <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '12px' }}>
-                <p style={{ margin: 0, fontSize: '9px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Responsável Técnico Pericial</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12px', fontWeight: '800', color: '#0F172A' }}>Consultor e Eng. Agr: {agronomistName}</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#334155' }}>Registro Profissional: <strong>{agronomistCrea}</strong></p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '10px', color: '#059669', fontWeight: '600' }}>
-                  Perito em Fitotecnia & Fitoquímica Canabinoide
-                </p>
-              </div>
-            </div>
-
-            {/* 1. Resumo Regulatório */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  1. Resumo & Enquadramento Regulatório (ANVISA)
-                </h2>
-              </div>
-              <div style={{ fontSize: '10.5px', lineHeight: '1.55', textAlign: 'justify', color: '#334155' }}>
-                <p style={{ margin: '0 0 8px 0', textIndent: '18px' }}>
-                  A ANVISA definiu, por meio da <strong>Resolução da Diretoria Colegiada (RDC) nº 335/2020</strong>, alterada pela <strong>RDC nº 570/2021</strong>, os critérios e os procedimentos para a importação de Produto derivado de <em>Cannabis</em>, por pessoa física, para uso próprio, mediante prescrição de profissional legalmente habilitado, para tratamento de saúde. Dessa forma, ainda que o produto não tenha registro para comercialização no Brasil, a importação poderá ser autorizada se os critérios e procedimentos definidos na mencionada RDC forem cumpridos. E, dessa forma, a ANVISA publicou a <strong>Nota Técnica nº 37/2021/SEI/COCIC/GPCON/GGMON/DIRE5/ANVISA</strong> com a lista de produtos derivados de <em>Cannabis</em> de que trata o §3º do Art. 5º da referida norma sanitária.
-                </p>
-                <p style={{ margin: 0, textIndent: '18px' }}>
-                  A fim de proporcionar uma orientação adequada para um cultivo em pequena escala, conhecido comumente como <strong>"cultivo caseiro"</strong>, para paciente que necessita utilizar as moléculas produzidas pela espécie vegetal — nomeadamente o <strong>Δ9–Tetrahidrocanabinol (THC)</strong>, o <strong>Cannabidiol (CBD)</strong> e o <strong>Canabigerol (CBG)</strong>, reconhecidas por suas propriedades terapêuticas —, foi elaborado este parecer com indicações técnicas para o cultivo sob as boas práticas comercialmente conhecidas por <strong>GACP (Good Agriculture and Collection Practices)</strong>, aplicadas para garantir o sucesso em termos de produtividade, pureza biológica e sanidade adequada dos cultivos.
-                </p>
-              </div>
-            </div>
-
-            {/* 2. Dimensionamento do Cultivo e Custo Farmacêutico */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  2. Dimensionamento do Cultivo e Soberania Terapêutica
-                </h2>
-              </div>
-              <div style={{ fontSize: '10.5px', lineHeight: '1.55', textAlign: 'justify', color: '#334155' }}>
-                <p style={{ margin: '0 0 8px 0', textIndent: '18px' }}>
-                  O cultivo caseiro é a maneira indicada de garantir o acesso continuado aos medicamentos para pacientes que não têm condições de arcar com os elevados custos dos fármacos atualmente disponíveis no mercado, que normalmente <strong>ultrapassam a barreira dos R$ 2.000,00 a R$ 5.000,00 mensais</strong> para produtos comercializados nacionalmente, podendo atingir valores substancialmente mais elevados em casos de importação regular (em especial nos momentos de alta das moedas estrangeiras).
-                </p>
-                <p style={{ margin: 0, textIndent: '18px' }}>
-                  Porém, não somente pacientes que não detêm capacidade financeira de suportar tais valores buscam o cultivo: a segurança da autossuficiência na produção e na manipulação artesanal do próprio fitofármaco garante que o paciente não sofra com desabastecimentos, quebras de importação ou descontinuidade posológica do seu tratamento.
-                </p>
-              </div>
-            </div>
-
-            {/* 3. Prescrição Médica e Necessidade Posológica */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  3. Prescrição Médica e Demanda Terapêutica Individual
-                </h2>
-              </div>
-              <div style={{ fontSize: '10.5px', lineHeight: '1.55', textAlign: 'justify', color: '#334155' }}>
-                <p style={{ margin: 0, textIndent: '18px' }}>
-                  Estes medicamentos contêm, em média, entre 5-6g de CBD em sua composição por frasco de 30 ml (200 mg de CBD/ml), e teores modulados de THC e CBG. No caso do paciente {sanitizedUserName}, conforme recomendações médicas oficiais que balizam este parecer técnico, o quadro clínico de <strong>{diagnosis}</strong> visa ser tratado com o uso concomitante de extratos integrais (Full Spectrum) com predominância de CBD/THC, CBD, THC e CBG (frascos de 3.000mg/30ml), além de flores secas padronizadas para vaporização em momentos de crise álgica ou insônia aguda. No total, a necessidade médica anual do paciente totaliza o equivalente a <strong>48 frascos anuais dos produtos</strong>, instruindo a memória de cálculo de biomassa e plantas a seguir demonstrada.
-                </p>
-              </div>
-            </div>
+            <p style={{ margin: '2px 0 0 0', fontSize: '9.5px', color: '#475569', fontWeight: '600' }}>
+              Centro Integrado de Medicina Canabinoide & Assessoria Pericial em Fitotecnia
+            </p>
+            <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#059669', fontWeight: '600' }}>
+              Boas Práticas de Agricultura e Coleta (GACP / OMS) • Salvo-Conduto para Autocultivo
+            </p>
           </div>
-
-          {/* Footer Página 1 */}
-          <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: '#64748B' }}>
-            <span>Mecura • Assessoria Pericial em Fitotecnia & Autocultivo Medicinal</span>
-            <span style={{ fontWeight: '700', color: '#0F172A' }}>Parecer Técnico — Página 1 de 3</span>
-            <span>Documento para Instrução de Habeas Corpus Preventivo</span>
+          <div style={{ textAlign: 'right' }}>
+            <span style={{ display: 'inline-block', fontSize: '9px', fontWeight: '800', color: '#065F46', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+              HABEAS CORPUS PREVENTIVO
+            </span>
+            <p style={{ margin: '2px 0 0 0', fontSize: '9.5px', fontWeight: '700', color: '#0F172A' }}>AUTOCULTIVO MEDICINAL</p>
+            <p style={{ margin: '1px 0 0 0', fontSize: '9px', color: '#64748B' }}>Data de Emissão: <strong>{emissionDate}</strong></p>
           </div>
         </div>
 
-        {/* ========================================================================= */}
-        {/* PÁGINA 2: MEMÓRIA DE CÁLCULO FITOQUÍMICO, BIOMASSA & TABELA TÉCNICA       */}
-        {/* ========================================================================= */}
-        <div 
-          className="agronomic-pdf-page"
-          style={{ 
-            width: '794px', 
-            height: '1120px', 
-            maxHeight: '1120px', 
-            overflow: 'hidden', 
-            padding: '36px 44px', 
-            boxSizing: 'border-box', 
-            position: 'relative', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            justifyContent: 'space-between',
-            backgroundColor: '#FFFFFF'
-          }}
-        >
-          <div>
-            {/* Header Reduzido Página 2 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #065F46', paddingBottom: '8px', marginBottom: '16px' }}>
-              <div>
-                <span style={{ fontSize: '13px', fontWeight: '900', color: '#065F46' }}>MECURA</span>
-                <span style={{ fontSize: '9.5px', color: '#64748B', marginLeft: '8px' }}>PARECER AGRONÔMICO PERICIAL — MEMÓRIA DE CÁLCULO & BIOMASSA</span>
-              </div>
-              <div style={{ fontSize: '9.5px', color: '#334155' }}>
-                Paciente: <strong>{sanitizedUserName}</strong> • CPF: <strong>{patientCpf}</strong>
-              </div>
-            </div>
-
-            {/* 4. Extrapolação de Canabinoides e Consumo */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  4. Dosimetria Farmacológica e Consumo Anual Estimado
-                </h2>
-              </div>
-              <p style={{ margin: '0 0 6px 0', fontSize: '10.5px', color: '#334155', textAlign: 'justify', textIndent: '18px' }}>
-                Extrapolando o consumo dos extratos artesanais integrais prescritos para intervalos diários, mensais e anuais de uso terapêutico ininterrupto, temos a seguinte dosimetria de substância ativa (CBD/THC/CBG):
-              </p>
-              <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '10px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '10px', fontSize: '10.5px' }}>
-                <div>
-                  <span style={{ fontSize: '9px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>Consumo Diário:</span>
-                  <p style={{ margin: '2px 0 0 0', fontWeight: '800', color: '#065F46', fontSize: '12px' }}>{dailyMg} mg / dia</p>
-                  <span style={{ fontSize: '9px', color: '#64748B' }}>Óleo integral + extrato bruto</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '9px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>Consumo Mensal (31 dias):</span>
-                  <p style={{ margin: '2px 0 0 0', fontWeight: '800', color: '#0F172A', fontSize: '12px' }}>{monthlyGrams} g / mês</p>
-                  <span style={{ fontSize: '9px', color: '#64748B' }}>{monthlyMg.toLocaleString('pt-BR')} mg ativos</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '9px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' }}>Consumo Anual (365 dias):</span>
-                  <p style={{ margin: '2px 0 0 0', fontWeight: '800', color: '#0F172A', fontSize: '12px' }}>{annualGrams} g / ano</p>
-                  <span style={{ fontSize: '9px', color: '#64748B' }}>{annualMg.toLocaleString('pt-BR')} mg fitocanabinoides</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 5. Aritmética de Extração Caseira e Fator de Perda */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  5. Fitoquímica, Eficiência de Extração & Relação Flor Seca / Molhada
-                </h2>
-              </div>
-              <div style={{ fontSize: '10.5px', lineHeight: '1.55', textAlign: 'justify', color: '#334155' }}>
-                <p style={{ margin: '0 0 6px 0', textIndent: '18px' }}>
-                  Considerando que o conteúdo médio de canabinoides nas variedades terapêuticas de <em>Cannabis</em> existentes hoje é, em média, de <strong>10% em peso seco de flores</strong> (podendo variar conforme a genética escolhida de 1% até 30%), e que o teor final depende da condução agronômica e experiência do cultivador, é seguro e tecnicamente correto assumir a média colhida de 10%.
-                </p>
-                <p style={{ margin: '0 0 6px 0', textIndent: '18px' }}>
-                  O processo de extração da substância, realizado de maneira artesanal na residência do paciente, sem equipamentos industriais laboratoriais (como colunas de cromatografia ou CO2 supercrítico), atinge uma <strong>eficiência média de recuperação de 80%</strong> das moléculas presentes na biomassa vegetal. Temos, portanto, a seguinte aritmética fitoquímica: a cada 100g de flores secas com teor de 10% obtêm-se 10g de extrato bruto concentrado.
-                </p>
-                <p style={{ margin: '0 0 6px 0', textIndent: '18px' }}>
-                  Para obter os {annualGrams}g anuais prescritos, o cultivo exigiria, no mínimo, a produção de <strong>{dryFlowerKgStr} kg de flores secas anuais</strong>. Entretanto, é obrigatório sob o ponto de vista agronômico considerar perdas potenciais causadas por ataques de pragas, fungos, oscilações térmicas e erros na condução. Aplicando-se a <strong>taxa de segurança agronômica de 30% de perdas</strong>, o cultivo deve ser dimensionado para garantir a colheita de <strong>{dryFlowerMarginKgStr} kg de flores secas por ano</strong>.
-                </p>
-                <p style={{ margin: 0, textIndent: '18px' }}>
-                  Ademais, no cultivo indoor residencial por cultivador não comercial, estima-se um rendimento médio esperado entre <strong>100 a 150g de flores secas por planta</strong> ao final do ciclo de 120 dias. Cumpre ressaltar que as flores perdem entre <strong>70% a 80% do seu peso em umidade durante o processo de secagem</strong>; assim, para produzir 150g de flores secas curadas, cada espécime deve produzir entre 700g a 750g de flores molhadas (frescas). Logo, para atingir a meta anual de {dryFlowerMarginKgStr} kg secas, o paciente deverá colher <strong>{wetFlowerKgStr} kg de flores molhadas</strong>.
-                </p>
-              </div>
-            </div>
-
-            {/* Quadro Técnico 1 — Tabela de Dimensionamento */}
-            <div style={{ marginBottom: '14px' }}>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '10.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                Quadro 1 — Memória de Cálculo & Dimensionamento Agronômico Oficial
-              </h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', border: '1.5px solid #CBD5E1' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#F1F5F9', color: '#0F172A' }}>
-                    <th style={{ border: '1px solid #CBD5E1', padding: '6px 8px', textAlign: 'left', fontWeight: '800' }}>Parâmetro Agronômico / Terapêutico</th>
-                    <th style={{ border: '1px solid #CBD5E1', padding: '6px 8px', textAlign: 'center', fontWeight: '800' }}>Base de Cálculo e Referência Técnica</th>
-                    <th style={{ border: '1px solid #CBD5E1', padding: '6px 8px', textAlign: 'right', fontWeight: '800' }}>Quantitativo Técnico</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Demanda Diária de Princípio Ativo</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>Posologia Médica Prescrita</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', fontWeight: 'bold' }}>{dailyMg} mg / dia</td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#F8FAFC' }}>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Consumo Anual de Extrato / Ativos</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>365 dias de tratamento ininterrupto</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', fontWeight: 'bold' }}>{annualGrams} g / ano</td>
-                  </tr>
-                  <tr>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Teor Médio Fitoquímico das Inflorescências</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>Genética medicinal adaptada</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right' }}>10% peso seco</td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#F8FAFC' }}>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Eficiência Média da Extração Caseira</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>Extração artesanal em óleo vegetal</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right' }}>~80% de recuperação</td>
-                  </tr>
-                  <tr>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Biomassa Seca Requerida (com 30% de margem)</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>Segurança contra pragas, fungos e clima</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', fontWeight: 'bold', color: '#065F46' }}>{dryFlowerMarginKgStr} kg secas / ano</td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#F8FAFC' }}>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Biomassa Fresca (Flores Molhadas)</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>70% a 80% de perda hídrica na secagem</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', fontWeight: 'bold' }}>{wetFlowerKgStr} kg molhadas / ano</td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#ECFDF5', fontWeight: 'bold' }}>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '6px 8px', color: '#065F46' }}>Total de Plantas Recomendadas para Salvo-Conduto</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '6px 8px', textAlign: 'center', color: '#065F46' }}>120 dias/ciclo (100-150g secas/planta)</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '6px 8px', textAlign: 'right', color: '#065F46', fontSize: '11px' }}>{targetPlants} plantas anuais</td>
-                  </tr>
-                  <tr>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Plantas em Floração por Ciclo Rotativo</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>Divisão em 3 momentos de colheita/ano</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', fontWeight: 'bold' }}>{plantsPerCycle} plantas / ciclo</td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#F8FAFC' }}>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px' }}>Sementes / Propágulos Anuais Estimados</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'center' }}>Margem de segurança germinativa (30%)</td>
-                    <td style={{ border: '1px solid #CBD5E1', padding: '5px 8px', textAlign: 'right', fontWeight: 'bold', color: '#065F46' }}>{seedsNeeded} sementes feminizadas</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Destaque Visual dos 4 Números-Chave */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 10px' }}>
-              <div style={{ textAlign: 'center' }}>
-                <span style={{ fontSize: '8.5px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Flor Seca Anual</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12px', fontWeight: '900', color: '#065F46' }}>{dryFlowerMarginKgStr} kg</p>
-              </div>
-              <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: '8.5px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Flor Molhada Anual</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12px', fontWeight: '900', color: '#0F172A' }}>{wetFlowerKgStr} kg</p>
-              </div>
-              <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: '8.5px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Plantas Totais / Ano</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12px', fontWeight: '900', color: '#065F46' }}>{targetPlants} espécimes</p>
-              </div>
-              <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: '8.5px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Sementes Importadas</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12px', fontWeight: '900', color: '#0F172A' }}>{seedsNeeded} un.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer Página 2 */}
-          <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: '#64748B' }}>
-            <span>Mecura • Assessoria Pericial em Fitotecnia & Autocultivo Medicinal</span>
-            <span style={{ fontWeight: '700', color: '#0F172A' }}>Parecer Técnico — Página 2 de 3</span>
-            <span>Documento para Instrução de Habeas Corpus Preventivo</span>
-          </div>
+        <div style={{ textAlign: 'center', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 12px' }}>
+          <h1 style={{ margin: 0, fontSize: '13px', fontWeight: '900', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Auto cultivo para finalidade medicinal — Parecer Técnico Agronômico
+          </h1>
+          <p style={{ margin: '2px 0 0 0', fontSize: '10px', fontWeight: '600', color: '#334155' }}>
+            Indicações técnicas e dimensionamento pericial de <em>Cannabis sativa L.</em> com finalidade medicinal
+          </p>
         </div>
-
-        {/* ========================================================================= */}
-        {/* PÁGINA 3: DESIGNER DE CULTIVO, MANEJO GACP & CONCLUSÃO PERICIAL           */}
-        {/* ========================================================================= */}
-        <div 
-          className="agronomic-pdf-page"
-          style={{ 
-            width: '794px', 
-            height: '1120px', 
-            maxHeight: '1120px', 
-            overflow: 'hidden', 
-            padding: '36px 44px', 
-            boxSizing: 'border-box', 
-            position: 'relative', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            justifyContent: 'space-between',
-            backgroundColor: '#FFFFFF'
-          }}
-        >
-          <div>
-            {/* Header Reduzido Página 3 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #065F46', paddingBottom: '8px', marginBottom: '16px' }}>
-              <div>
-                <span style={{ fontSize: '13px', fontWeight: '900', color: '#065F46' }}>MECURA</span>
-                <span style={{ fontSize: '9.5px', color: '#64748B', marginLeft: '8px' }}>PARECER AGRONÔMICO PERICIAL — DESIGNER DE CULTIVO & CONCLUSÃO</span>
-              </div>
-              <div style={{ fontSize: '9.5px', color: '#334155' }}>
-                Paciente: <strong>{sanitizedUserName}</strong> • CPF: <strong>{patientCpf}</strong>
-              </div>
-            </div>
-
-            {/* 6. Designer de Cultivo */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  6. Designer de Cultivo e Planejamento Operacional
-                </h2>
-              </div>
-              <div style={{ fontSize: '10.5px', lineHeight: '1.55', textAlign: 'justify', color: '#334155' }}>
-                <p style={{ margin: '0 0 6px 0', textIndent: '18px' }}>
-                  A fim de garantir que essa quantidade de plantas atenda ao consumo anual do paciente de forma contínua e sem sobressaltos, estabelece-se um plano de cultivo dividido em <strong>3 momentos de colheita ao longo do ano</strong>, fato facilitado pelo ciclo médio da espécie ser de 120 dias (4 meses). Para tanto, o paciente deverá conduzir o cultivo de aproximadamente <strong>{plantsPerCycle} plantas durante cada ciclo rotativo</strong>.
-                </p>
-                <p style={{ margin: 0, textIndent: '18px' }}>
-                  Considerando que somente plantas em estágio de floração produzem as substâncias de interesse farmacológico, o paciente poderá optar por manter plantas-mãe em estado vegetativo contínuo (sob fotoperíodo superior a 18 horas diárias de luz) para retirada periódica de estacas (clones), ou realizar o cultivo por 3 ciclos independentes ao ano a partir de sementes feminizadas com taxa de segurança de 30% contra falhas germinativas ({seedsNeeded} sementes no total anual).
-                </p>
-              </div>
-            </div>
-
-            {/* 7. Boas Práticas GACP e Parâmetros de Manejo Indoor */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  7. Boas Práticas Agrícolas e de Coleta (GACP) & Parâmetros Indoor
-                </h2>
-              </div>
-              <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '10px 14px', fontSize: '10px', lineHeight: '1.5', color: '#334155' }}>
-                <p style={{ margin: '0 0 4px 0' }}>
-                  • <strong>Ambiente Fechado (Indoor / Estufa):</strong> Opção preferencial do paciente por motivos de biossegurança, discrição e controle fitossanitário absoluto contra insetos e esporos fúngicos externos.
-                </p>
-                <p style={{ margin: '0 0 4px 0' }}>
-                  • <strong>Iluminação & Fotoperíodo:</strong> Painéis LED Full Spectrum (Quantum Board com chips Samsung/Osram). Regime vegetativo de 18h luz / 6h escuro; regime de floração induzida estritamente mantido em 12h luz / 12h escuro contínuo.
-                </p>
-                <p style={{ margin: '0 0 4px 0' }}>
-                  • <strong>Controle de Odores & Climatização:</strong> Sistema contínuo de exaustão mecânica dotado de <strong>filtro de carvão ativado</strong> de alta eficiência (retenção total de terpenos voláteis e odores), temperatura ambiente mantida entre 20°C e 26°C e umidade relativa (UR) controlada entre 45% a 65%.
-                </p>
-                <p style={{ margin: '0 0 4px 0' }}>
-                  • <strong>Substrato & Nutrição:</strong> Meio de cultivo inerte (turfa/perlita/fibra de coco) ou solo orgânico vivo, com rigoroso controle de pH (5.8 a 6.5) e Eletrocondutividade (EC 1.2 a 2.0 mS/cm). <strong>Vedação absoluta de defensivos químicos ou pesticidas sintéticos</strong> nocivos à saúde humana.
-                </p>
-                <p style={{ margin: 0 }}>
-                  • <strong>Pós-Colheita (Secagem & Cura):</strong> Secagem das inflorescências em ambiente escuro, ventilado e desumidificado (18-20°C e 55% UR) por 10 a 14 dias, seguida de cura hermética em potes de vidro com reguladores bidirecionais de umidade (Boveda 62%) por período não inferior a 30 dias para estabilização de terpenos e canabinoides.
-                </p>
-              </div>
-            </div>
-
-            {/* 8. Conclusão Pericial Agronômica */}
-            <div style={{ marginBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ width: '3px', height: '14px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-                <h2 style={{ margin: 0, fontSize: '11.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  8. Conclusão Pericial Agronômica
-                </h2>
-              </div>
-              <div style={{ backgroundColor: '#F0FDF4', borderLeft: '3.5px solid #059669', borderRight: '1px solid #BBF7D0', borderTop: '1px solid #BBF7D0', borderBottom: '1px solid #BBF7D0', padding: '10px 14px', fontSize: '10.5px', lineHeight: '1.55', textAlign: 'justify', color: '#064E3B' }}>
-                <p style={{ margin: 0 }}>
-                  <strong>Conclusão Técnica:</strong> Com base na análise das prescrições médicas que amparam este parecer, nos cálculos dosimétricos de fitomassa e na biologia reprodutiva da espécie, conclui-se que o dimensionamento anual de <strong>{targetPlants} espécimes de <em>Cannabis sativa L.</em></strong> (conduzidas em 3 ciclos anuais de aproximadamente <strong>{plantsPerCycle} plantas em floração por colheita</strong>), juntamente com a importação de <strong>{seedsNeeded} sementes feminizadas</strong>, é <strong>agronomicamente justificado, estritamente proporcional e indispensável</strong> para assegurar a autossuficiência e a continuidade do tratamento médico do(a) paciente {sanitizedUserName} por 12 meses. O cultivo destina-se unicamente ao alívio e controle de sua patologia clínica, sem excedentes para qualquer finalidade diversa ou comercial.
-                </p>
-              </div>
-            </div>
-
-            {/* Assinaturas & Autenticação */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '20px', marginTop: '10px' }}>
-              <div style={{ textAlign: 'center', borderTop: '1.5px solid #94A3B8', paddingTop: '8px' }}>
-                <p style={{ margin: 0, fontSize: '11.5px', fontWeight: '900', color: '#0F172A' }}>{agronomistName}</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '10px', fontWeight: '700', color: '#065F46' }}>Engenheiro Agrônomo — {agronomistCrea}</p>
-                <p style={{ margin: '1px 0 0 0', fontSize: '9px', color: '#475569' }}>Perito em Fitotecnia, Fitoquímica Canabinoide & GACP</p>
-                <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#64748B' }}>ART de Perícia Agronômica vinculada ao CREA-PR</p>
-              </div>
-              <div style={{ textAlign: 'center', borderTop: '1.5px solid #94A3B8', paddingTop: '8px' }}>
-                <p style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#0F172A' }}>MECURA SAÚDE & BEM-ESTAR</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '9.5px', color: '#475569' }}>Núcleo de Apoio Jurídico & Pericial à Ação de Habeas Corpus</p>
-                <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#059669', fontWeight: '700' }}>Certificação Digital ICP-Brasil / Hash Autenticidade</p>
-                <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#94A3B8', fontFamily: 'monospace' }}>MEC-AGRO-HC-{new Date().getFullYear()}-{patientCpf.replace(/\D/g, '').slice(0, 6)}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer Página 3 */}
-          <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: '#64748B' }}>
-            <span>Mecura • Assessoria Pericial em Fitotecnia & Autocultivo Medicinal</span>
-            <span style={{ fontWeight: '700', color: '#0F172A' }}>Parecer Técnico — Página 3 de 3</span>
-            <span>Documento para Instrução de Habeas Corpus Preventivo</span>
-          </div>
-        </div>
-
       </div>
     );
   };
 
+  const renderAgroSignature = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '20px', marginTop: '14px', paddingTop: '8px' }}>
+      <div style={{ textAlign: 'center', borderTop: '1.5px solid #94A3B8', paddingTop: '7px' }}>
+        <p style={{ margin: 0, fontSize: '11px', fontWeight: '900', color: '#0F172A' }}>{agronomistName}</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '9.5px', fontWeight: '700', color: '#065F46' }}>Engenheiro Agrônomo — {agronomistCrea}</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#475569' }}>Perito em Fitotecnia, Fitoquímica Canabinoide & GACP</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>ART de Perícia Agronômica vinculada ao CREA-PR</p>
+      </div>
+      <div style={{ textAlign: 'center', borderTop: '1.5px solid #94A3B8', paddingTop: '7px' }}>
+        <p style={{ margin: 0, fontSize: '10.5px', fontWeight: '800', color: '#0F172A' }}>MECURA SAÚDE & BEM-ESTAR</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '9px', color: '#475569' }}>Núcleo de Apoio Jurídico & Pericial à Ação de Habeas Corpus</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#059669', fontWeight: '700' }}>Certificação Digital ICP-Brasil / Hash Autenticidade</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '7.5px', color: '#94A3B8', fontFamily: 'monospace' }}>MEC-AGRO-HC-{new Date().getFullYear()}-{patientCpf.replace(/\D/g, '').slice(0, 6)}</p>
+      </div>
+    </div>
+  );
+
   const root = createRoot(container);
-  root.render(<PdfComponent />);
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 800));
+    if (agronomicData?.htmlContent) {
+      root.render(
+        <div style={{ width: '794px', backgroundColor: '#FFFFFF', color: '#000000', padding: '40px', boxSizing: 'border-box', fontFamily: 'Arial, sans-serif' }}>
+          <div dangerouslySetInnerHTML={{ __html: agronomicData.htmlContent }} />
+        </div>
+      );
+      await new Promise(resolve => setTimeout(resolve, 600));
+    } else {
+      // Real DOM measurement pass so pages pack tightly without blank spaces
+      const MeasurePass = () => (
+        <div style={{ width: '794px', padding: '30px 40px', boxSizing: 'border-box', backgroundColor: '#FFFFFF', fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif' }}>
+          <div id="agro-measure-h-first">{renderAgroHeader(false)}</div>
+          <div id="agro-measure-h-cont">{renderAgroHeader(true)}</div>
+          <div id="agro-measure-sig">{renderAgroSignature()}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+            {agroBlocks.map((b, idx) => (
+              <div key={b.id} data-agro-idx={idx}>{b.render()}</div>
+            ))}
+          </div>
+        </div>
+      );
+
+      root.render(<MeasurePass />);
+      await new Promise(resolve => setTimeout(resolve, 250));
+
+      const hFirst = container.querySelector<HTMLElement>('#agro-measure-h-first')?.offsetHeight || 135;
+      const hCont = container.querySelector<HTMLElement>('#agro-measure-h-cont')?.offsetHeight || 42;
+      const sigH = container.querySelector<HTMLElement>('#agro-measure-sig')?.offsetHeight || 82;
+      const blockEls = Array.from(container.querySelectorAll<HTMLElement>('[data-agro-idx]'));
+      const blockHeights = blockEls.map(el => el.offsetHeight);
+
+      const USABLE_PAGE_H = 1120 - 60 - 26;
+      const GAP = 11;
+
+      const pages: AgroBlock[][] = [];
+      let cursor = 0;
+
+      while (cursor < agroBlocks.length) {
+        const isFirst = pages.length === 0;
+        const availH = USABLE_PAGE_H - (isFirst ? hFirst : hCont);
+        const pageBlocks: AgroBlock[] = [];
+        let usedH = 0;
+
+        while (cursor < agroBlocks.length) {
+          const h = blockHeights[cursor] || 70;
+          const g = pageBlocks.length > 0 ? GAP : 0;
+          const isLast = cursor === agroBlocks.length - 1;
+          const extraSig = isLast ? sigH + 14 : 0;
+
+          if (pageBlocks.length > 0 && usedH + g + h + extraSig > availH) {
+            break;
+          }
+          pageBlocks.push(agroBlocks[cursor]);
+          usedH += g + h;
+          cursor++;
+        }
+        pages.push(pageBlocks);
+      }
+
+      const PdfComponent = () => (
+        <div style={{ width: '794px', backgroundColor: '#FFFFFF', color: '#1E293B', fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontSize: '11px', lineHeight: '1.5' }}>
+          {pages.map((pageBlocks, pIdx) => {
+            const isLastPage = pIdx === pages.length - 1;
+            return (
+              <div
+                key={pIdx}
+                className="agronomic-pdf-page"
+                style={{
+                  width: '794px',
+                  height: '1120px',
+                  maxHeight: '1120px',
+                  overflow: 'hidden',
+                  padding: '30px 40px',
+                  boxSizing: 'border-box',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#FFFFFF'
+                }}
+              >
+                <div>
+                  {renderAgroHeader(pIdx > 0)}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
+                    {pageBlocks.map(b => (
+                      <div key={b.id}>{b.render()}</div>
+                    ))}
+                  </div>
+                  {isLastPage && renderAgroSignature()}
+                </div>
+
+                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B' }}>
+                  <span>Mecura • Assessoria Pericial em Fitotecnia & Autocultivo Medicinal</span>
+                  <span style={{ fontWeight: '700', color: '#0F172A' }}>Parecer Técnico — Página {pIdx + 1} de {pages.length}</span>
+                  <span>Documento para Instrução de Habeas Corpus Preventivo</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+
+      root.render(<PdfComponent />);
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
 
     const pdf = new jsPDF({
       unit: 'mm',
@@ -2036,7 +3001,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
         const canvas = await safeHtml2Canvas(pageEl);
-        const imgData = canvas.toDataURL('image/jpeg', 0.82);
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
         if (i > 0) {
           pdf.addPage('a4', 'portrait');
         }
@@ -2045,7 +3010,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
     } else {
       const contentEl = (container.firstElementChild || container) as HTMLElement;
       const canvas = await safeHtml2Canvas(contentEl);
-      const imgData = canvas.toDataURL('image/jpeg', 0.82);
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
@@ -2078,3 +3043,4 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
     }
   }
 };
+

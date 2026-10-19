@@ -322,8 +322,12 @@ export function PremiumCheckoutScreen() {
         patientName: patientName,
         email: auth.currentUser?.email || '',
         isPremium: true,
-        plan: 'premium'
-      });
+        plan: 'premium',
+        freshPayment: true,
+        pagamento_consulta: true,
+        hasPaid: true,
+        isPaid: true
+      } as any);
     } catch (queueErr) {
       console.error("Erro ao entrar na fila VIP:", queueErr);
     }
@@ -405,7 +409,7 @@ export function PremiumCheckoutScreen() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#0A0A0F] text-mecura-pearl relative font-sans">
+    <div className="flex flex-col h-full bg-[#000000] text-mecura-pearl relative font-sans">
       {/* Background Glow - Gold */}
       <div className="absolute top-0 left-0 right-0 h-96 bg-mecura-gold/10 blur-[120px] -z-10" />
       

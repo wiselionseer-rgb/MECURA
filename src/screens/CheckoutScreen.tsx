@@ -30,7 +30,8 @@ import {
   Gavel,
   FileCheck,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LegalInfoModal } from '../components/LegalInfoModal';
@@ -47,8 +48,13 @@ export function CheckoutScreen() {
   const navigate = useNavigate();
   const { userName, joinQueue, setPagamentoConsulta, setPagamentoPremium, selectedOffer, setSelectedOffer, incrementBonus } = useStore();
   const { coupons, useCoupon } = useAdminStore();
-  const [step, setStep] = useState<'discount' | 'evolution' | 'checkout'>('discount');
-  const [evolutionTab, setEvolutionTab] = useState<'vip' | 'basic'>('vip');
+  const [step, setStep] = useState<'discount' | 'evolution' | 'checkout'>('evolution');
+  const [evolutionTab, setEvolutionTab] = useState<'complete' | 'vip' | 'psychologist' | 'basic'>(() => {
+    if (selectedOffer === 'basic') return 'basic';
+    if (selectedOffer === 'premium') return 'vip';
+    if (selectedOffer === 'psychologist') return 'psychologist';
+    return 'complete';
+  });
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
   
@@ -81,7 +87,17 @@ export function CheckoutScreen() {
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  const basePrice = selectedOffer === 'basic' ? 49.90 : 249.90;
+  const getOfferBasePrice = (offer: 'basic' | 'premium' | 'psychologist' | 'complete' | null) => {
+    switch (offer) {
+      case 'basic': return 49.90;
+      case 'psychologist': return 150.00;
+      case 'premium': return 249.90;
+      case 'complete': return 387.00;
+      default: return 387.00;
+    }
+  };
+
+  const basePrice = getOfferBasePrice(selectedOffer);
   let finalPrice = basePrice;
   if (appliedCoupon) {
     if (appliedCoupon.discountType === 'fixed') {
@@ -154,18 +170,30 @@ export function CheckoutScreen() {
     
     const currentUserId = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
 
+    const offerTitles: Record<string, string> = {
+      complete: 'Plano Completo 360° (Médico + Psicólogo) - Mecura',
+      premium: 'Acompanhamento VIP + Laudo HC (Médico) - Mecura',
+      psychologist: 'Consulta + Laudo com Psicólogo Marco Antônio - Mecura',
+      basic: 'Consulta Essencial Mecura'
+    };
+
+    const title = offerTitles[selectedOffer || 'complete'] || 'Consulta Mecura';
+    const isPrem = selectedOffer === 'premium' || selectedOffer === 'complete';
+    const installments = selectedOffer === 'complete' ? 6 : (selectedOffer === 'premium' ? 5 : 3);
+
     if (paymentMethod === 'pix') {
       try {
         const response = await fetch('/api/create-pix-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: selectedOffer === 'basic' ? 'Consulta Essencial Mecura' : 'Acompanhamento VIP Mecura',
+            title,
             price: finalPrice,
             email: auth.currentUser?.email || 'paciente@mecura.com',
             firstName: userName || 'Paciente',
             patientId: currentUserId,
-            isPremium: selectedOffer === 'premium'
+            isPremium: isPrem,
+            plan: selectedOffer
           })
         });
         
@@ -201,13 +229,14 @@ export function CheckoutScreen() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: selectedOffer === 'basic' ? 'Consulta Essencial - Mecura' : 'Acesso VIP Premium - Mecura',
+            title,
             price: finalPrice,
-            installments: selectedOffer === 'basic' ? 3 : 5,
+            installments,
             payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
             patientId: currentUserId,
-            isPremium: selectedOffer === 'premium'
+            isPremium: isPrem,
+            plan: selectedOffer
           })
         });
 
@@ -217,11 +246,10 @@ export function CheckoutScreen() {
             setCardUrl(data.init_point);
             setIsLoading(false);
             
-            // Tenta abrir em nova aba de forma não intrusiva (sem quebrar se o navegador mobile bloquear o popup)
             try {
               window.open(data.init_point, '_blank');
             } catch (e) {
-              console.log("Popup automático contido pelo navegador, botão direto disponível.");
+              console.log("Popup contido pelo navegador, botão direto disponível.");
             }
             return;
           }
@@ -242,14 +270,18 @@ export function CheckoutScreen() {
   const handleSuccess = async (mpIdCustom?: string) => {
     setIsLoading(false);
     setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
-    const isPrem = selectedOffer === 'premium';
-    if (isPrem) {
-      setPagamentoPremium(true);
-      if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
-    }
+    const resolvedOffer = (selectedOffer || (typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null) || 'basic') as 'basic' | 'premium' | 'psychologist' | 'complete';
+    const isPrem = resolvedOffer === 'premium' || resolvedOffer === 'complete';
+    setPagamentoPremium(isPrem);
     setPagamentoConsulta(true);
     if (typeof window !== 'undefined') {
       localStorage.setItem('mecura_pagamento', 'true');
+      localStorage.setItem('last_offer', resolvedOffer);
+      if (isPrem) {
+        localStorage.setItem('mecura_premium', 'true');
+      } else {
+        localStorage.removeItem('mecura_premium');
+      }
       localStorage.removeItem('mecura_consultation_finished');
       localStorage.removeItem('mecura_consultation_active');
       localStorage.removeItem('mecura_queue_display_pos');
@@ -260,24 +292,46 @@ export function CheckoutScreen() {
       isConsultationFinished: false,
       consultationActive: false,
       inQueue: true,
-      pagamento_consulta: true
+      pagamento_consulta: true,
+      pagamento_premium: isPrem,
+      selectedOffer: resolvedOffer
     });
 
     const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
     const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
 
+    const planTypeNames: Record<string, string> = {
+      complete: 'Plano Completo VIP (Médico + Psicólogo)',
+      premium: 'Acompanhamento VIP (Médico)',
+      psychologist: 'Consulta com Psicólogo + Laudo',
+      basic: 'Consulta Essencial (Médico)'
+    };
+
+    const professionalNames: Record<string, string> = {
+      complete: 'Dr. Guilherme T. Dias (CRM 17259) & Marco Antônio Boastik (CRP 08/49215)',
+      premium: 'Dr. Guilherme T. Dias (CRM 17259)',
+      psychologist: 'Marco Antônio Boastik (CRP 08/49215)',
+      basic: 'Dr. Guilherme T. Dias (CRM 17259)'
+    };
+
     try {
       await addDoc(collection(db, 'payments'), {
-        mpId: mpIdCustom || pixData?.id || 'mp_' + (isPrem ? 'premium_' : 'basic_') + Date.now(),
-        type: isPrem ? 'Consulta Premium' : 'Consulta Básica',
-        value: finalPrice || (isPrem ? 249.90 : 49.90),
-        plan: isPrem ? 'premium' : 'basic',
+        mpId: mpIdCustom || pixData?.id || 'mp_' + resolvedOffer + '_' + Date.now(),
+        type: planTypeNames[resolvedOffer] || 'Consulta Médica',
+        value: finalPrice || basePrice,
+        plan: resolvedOffer,
+        selectedOffer: resolvedOffer,
         isPremium: isPrem,
         patientName: patientName,
         patientEmail: auth.currentUser?.email || undefined,
         patientId: patientUid,
+        professional: professionalNames[resolvedOffer],
         date: new Date().toISOString()
       });
+
+      const isPsicoOnly = resolvedOffer === 'psychologist' || finalPrice === 150;
+      const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
+      const finalPlan = isPsicoOnly ? 'psychologist' : resolvedOffer;
 
       if (patientUid) {
         await setDoc(doc(db, 'users', patientUid), {
@@ -285,7 +339,10 @@ export function CheckoutScreen() {
           pagamento_premium: isPrem,
           hasPaid: true,
           isPaid: true,
-          plan: isPrem ? 'premium' : 'basic',
+          plan: finalPlan,
+          selectedOffer: finalPlan,
+          tier: isPrem ? 'Premium' : 'basic',
+          queueType: targetQueueType,
           isPremium: isPrem,
           consultationStatus: 'waiting',
           inQueue: true,
@@ -306,8 +363,8 @@ export function CheckoutScreen() {
         const uid = auth.currentUser?.uid || localStorage.getItem('patient_id') || 'paciente_' + Date.now().toString(36);
         const uemail = auth.currentUser?.email || undefined;
         await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
-          planName: isPrem ? 'VIP Premium' : 'Essencial',
-          price: finalPrice || (isPrem ? 249.90 : 49.90),
+          planName: planTypeNames[resolvedOffer] || 'Consulta Mecura',
+          price: finalPrice || basePrice,
           isPremium: isPrem
         });
         localStorage.removeItem('mecura_applied_coupon');
@@ -317,13 +374,22 @@ export function CheckoutScreen() {
     }
 
     try {
+      const isPsicoOnly = resolvedOffer === 'psychologist' || finalPrice === 150;
+      const finalPlan = isPsicoOnly ? 'psychologist' : resolvedOffer;
       await joinQueue({
         id: patientUid,
         patientName: patientName,
         email: auth.currentUser?.email || '',
         isPremium: isPrem,
-        plan: isPrem ? 'premium' : 'basic'
-      });
+        plan: finalPlan,
+        queueType: isPsicoOnly ? 'psychologist' : 'doctor',
+        selectedOffer: finalPlan,
+        freshPayment: true,
+        pagamento_consulta: true,
+        pagamento_premium: isPrem,
+        hasPaid: true,
+        isPaid: true
+      } as any);
     } catch (err) {
       console.error("Erro ao ingressar na fila pós-pagamento:", err);
     }
@@ -408,13 +474,22 @@ export function CheckoutScreen() {
 
     if (!selectedOffer) {
       const savedOffer = localStorage.getItem('last_offer');
-      if (savedOffer === 'basic' || savedOffer === 'premium') {
-        setSelectedOffer(savedOffer as 'basic' | 'premium');
+      if (savedOffer === 'basic' || savedOffer === 'premium' || savedOffer === 'psychologist' || savedOffer === 'complete') {
+        setSelectedOffer(savedOffer as any);
+        if (savedOffer === 'basic') setEvolutionTab('basic');
+        else if (savedOffer === 'premium') setEvolutionTab('vip');
+        else if (savedOffer === 'psychologist') setEvolutionTab('psychologist');
+        else setEvolutionTab('complete');
       } else {
-        setSelectedOffer('basic');
+        setSelectedOffer('complete');
+        setEvolutionTab('complete');
       }
     } else {
       localStorage.setItem('last_offer', selectedOffer);
+      if (selectedOffer === 'basic') setEvolutionTab('basic');
+      else if (selectedOffer === 'premium') setEvolutionTab('vip');
+      else if (selectedOffer === 'psychologist') setEvolutionTab('psychologist');
+      else if (selectedOffer === 'complete') setEvolutionTab('complete');
     }
   }, [selectedOffer, navigate, setSelectedOffer, setPagamentoConsulta]);
 
@@ -423,12 +498,12 @@ export function CheckoutScreen() {
   }
 
   return (
-    <div className="flex flex-col min-h-full bg-[#050508] text-white overflow-hidden relative">
+    <div className="flex flex-col min-h-full bg-[#000000] text-white overflow-hidden relative">
       {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="absolute top-0 left-0 right-0 p-6 z-20 flex justify-between items-center bg-[#050508]/85 backdrop-blur-xl border-b border-white/5"
+        className="absolute top-0 left-0 right-0 p-6 z-20 flex justify-between items-center bg-[#000000]/85 backdrop-blur-xl border-b border-white/5"
       >
         <button 
           onClick={() => {
@@ -733,17 +808,20 @@ export function CheckoutScreen() {
                 </div>
               </motion.div>
 
-              {/* TABS SEGMENTADAS PERFEITAMENTE UNIFORMES E CENTRALIZADAS (GRID 50/50) */}
-              <div className="w-full grid grid-cols-2 gap-2 bg-[#0F0F17] p-1.5 rounded-2xl border border-white/10 mb-4">
-                {/* Tab 1: VIP 360° */}
+              {/* TABS SEGMENTADAS DOS 4 PLANOS (GRID RESPONSIVA 2x2 ou 4 colunas) */}
+              <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#0F0F17] p-1.5 rounded-2xl border border-white/10 mb-4">
+                {/* Tab 1: Completo 360° (Médico + Psicólogo) */}
                 <button
                   type="button"
-                  onClick={() => setEvolutionTab('vip')}
-                  className={`relative py-2.5 px-2 rounded-xl text-center flex flex-col items-center justify-center transition-all ${
-                    evolutionTab === 'vip' ? 'text-black' : 'text-[#8A8A9E] hover:text-white'
+                  onClick={() => {
+                    setEvolutionTab('complete');
+                    setSelectedOffer('complete');
+                  }}
+                  className={`relative py-2 px-1.5 rounded-xl text-center flex flex-col items-center justify-center transition-all ${
+                    evolutionTab === 'complete' ? 'text-black' : 'text-[#8A8A9E] hover:text-white'
                   }`}
                 >
-                  {evolutionTab === 'vip' && (
+                  {evolutionTab === 'complete' && (
                     <motion.div
                       layoutId="activeEvolutionPill"
                       className="absolute inset-0 bg-mecura-neon rounded-xl shadow-[0_0_20px_rgba(166,255,0,0.3)]"
@@ -751,26 +829,97 @@ export function CheckoutScreen() {
                     />
                   )}
                   <div className="relative z-10 flex flex-col items-center w-full">
-                    <span className={`text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full mb-1 ${
-                      evolutionTab === 'vip' ? 'bg-black/20 text-black' : 'bg-mecura-neon/15 text-mecura-neon'
+                    <span className={`text-[9px] uppercase tracking-wider font-black px-1.5 py-0.5 rounded-full mb-0.5 ${
+                      evolutionTab === 'complete' ? 'bg-black/20 text-black' : 'bg-mecura-neon/15 text-mecura-neon'
                     }`}>
-                      ⭐ Recomendado
+                      ⭐ Mais Completo
                     </span>
-                    <span className="text-xs sm:text-[13px] font-bold flex items-center gap-1">
-                      <Crown className="w-3 h-3 fill-current" />
-                      VIP + Laudos HC
+                    <span className="text-[11px] sm:text-xs font-bold flex items-center gap-1 truncate max-w-full">
+                      <Sparkles className="w-3 h-3 fill-current shrink-0" />
+                      Médico + Psico
                     </span>
-                    <span className="text-[11px] font-extrabold mt-0.5">
+                    <span className="text-[11px] font-black mt-0.5">
+                      R$ 387,00
+                    </span>
+                  </div>
+                </button>
+
+                {/* Tab 2: VIP Médico (R$ 249,90) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEvolutionTab('vip');
+                    setSelectedOffer('premium');
+                  }}
+                  className={`relative py-2 px-1.5 rounded-xl text-center flex flex-col items-center justify-center transition-all ${
+                    evolutionTab === 'vip' ? 'text-black' : 'text-[#8A8A9E] hover:text-white'
+                  }`}
+                >
+                  {evolutionTab === 'vip' && (
+                    <motion.div
+                      layoutId="activeEvolutionPill"
+                      className="absolute inset-0 bg-amber-400 rounded-xl shadow-[0_0_20px_rgba(251,191,36,0.3)]"
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <div className="relative z-10 flex flex-col items-center w-full">
+                    <span className={`text-[9px] uppercase tracking-wider font-black px-1.5 py-0.5 rounded-full mb-0.5 ${
+                      evolutionTab === 'vip' ? 'bg-black/20 text-black' : 'bg-amber-400/15 text-amber-300'
+                    }`}>
+                      ⚖️ Laudo HC
+                    </span>
+                    <span className="text-[11px] sm:text-xs font-bold flex items-center gap-1 truncate max-w-full">
+                      <Crown className="w-3 h-3 fill-current shrink-0" />
+                      VIP Médico
+                    </span>
+                    <span className="text-[11px] font-black mt-0.5">
                       R$ 249,90
                     </span>
                   </div>
                 </button>
 
-                {/* Tab 2: Consulta Essencial */}
+                {/* Tab 3: Psicólogo Avulso (R$ 150,00) */}
                 <button
                   type="button"
-                  onClick={() => setEvolutionTab('basic')}
-                  className={`relative py-2.5 px-2 rounded-xl text-center flex flex-col items-center justify-center transition-all ${
+                  onClick={() => {
+                    setEvolutionTab('psychologist');
+                    setSelectedOffer('psychologist');
+                  }}
+                  className={`relative py-2 px-1.5 rounded-xl text-center flex flex-col items-center justify-center transition-all ${
+                    evolutionTab === 'psychologist' ? 'text-black' : 'text-[#8A8A9E] hover:text-white'
+                  }`}
+                >
+                  {evolutionTab === 'psychologist' && (
+                    <motion.div
+                      layoutId="activeEvolutionPill"
+                      className="absolute inset-0 bg-purple-400 rounded-xl shadow-[0_0_20px_rgba(192,132,252,0.3)]"
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <div className="relative z-10 flex flex-col items-center w-full">
+                    <span className={`text-[9px] uppercase tracking-wider font-black px-1.5 py-0.5 rounded-full mb-0.5 ${
+                      evolutionTab === 'psychologist' ? 'bg-black/20 text-black' : 'bg-purple-500/15 text-purple-300'
+                    }`}>
+                      🧠 Saúde Mental
+                    </span>
+                    <span className="text-[11px] sm:text-xs font-bold flex items-center gap-1 truncate max-w-full">
+                      <Brain className="w-3 h-3 shrink-0" />
+                      Psicólogo + Laudo
+                    </span>
+                    <span className="text-[11px] font-black mt-0.5">
+                      R$ 150,00
+                    </span>
+                  </div>
+                </button>
+
+                {/* Tab 4: Consulta Essencial (R$ 49,90) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEvolutionTab('basic');
+                    setSelectedOffer('basic');
+                  }}
+                  className={`relative py-2 px-1.5 rounded-xl text-center flex flex-col items-center justify-center transition-all ${
                     evolutionTab === 'basic' ? 'text-white' : 'text-[#8A8A9E] hover:text-white'
                   }`}
                 >
@@ -782,11 +931,11 @@ export function CheckoutScreen() {
                     />
                   )}
                   <div className="relative z-10 flex flex-col items-center w-full">
-                    <span className="text-[9px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full mb-1 bg-white/5 text-[#8A8A9E]">
-                      Entrada
+                    <span className="text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-full mb-0.5 bg-white/5 text-[#8A8A9E]">
+                      🌱 Entrada
                     </span>
-                    <span className="text-xs sm:text-[13px] font-bold">
-                      Consulta Essencial
+                    <span className="text-[11px] sm:text-xs font-bold truncate max-w-full">
+                      Essencial Chat
                     </span>
                     <span className="text-[11px] font-semibold mt-0.5">
                       R$ 49,90
@@ -797,55 +946,76 @@ export function CheckoutScreen() {
 
               {/* CONTEÚDO DAS ABAS (COM ANIMAÇÃO SUAVE) */}
               <AnimatePresence mode="wait">
-                {evolutionTab === 'vip' ? (
-                  /* ABA 1: ACOMPANHAMENTO VIP COM LAUDOS DE HABEAS CORPUS */
+                {evolutionTab === 'complete' ? (
+                  /* ABA 1: COMPLETO 360° (MÉDICO + PSICÓLOGO) - R$ 387,00 */
                   <motion.div 
-                    key="tab-vip"
+                    key="tab-complete"
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.98 }}
                     transition={{ duration: 0.2 }}
-                    className="w-full bg-gradient-to-br from-[#14191C] via-[#0E1316] to-[#0A0D0F] rounded-[24px] p-4 sm:p-5 border-2 border-mecura-neon/50 relative overflow-hidden shadow-[0_0_25px_rgba(166,255,0,0.12)]"
+                    className="w-full bg-gradient-to-br from-[#161D1A] via-[#10151E] to-[#0A0D14] rounded-[24px] p-4 sm:p-5 border-2 border-mecura-neon/60 relative overflow-hidden shadow-[0_0_30px_rgba(166,255,0,0.18)]"
                   >
-                    <div className="absolute top-0 right-0 w-40 h-40 bg-mecura-neon/10 blur-[50px] rounded-full pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-44 h-44 bg-mecura-neon/15 blur-[55px] rounded-full pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-36 h-36 bg-purple-500/10 blur-[50px] rounded-full pointer-events-none" />
 
-                    {/* Header Centralizado do Card VIP */}
-                    <div className="text-center mb-3 relative z-10">
+                    {/* Header Centralizado */}
+                    <div className="text-center mb-3.5 relative z-10">
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-mecura-neon/15 border border-mecura-neon/30 text-mecura-neon text-[10px] font-black uppercase tracking-wider mb-2">
                         <Sparkles className="w-3 h-3 fill-mecura-neon" />
-                        Dossiê Pericial Completo • 80% do HC
+                        ⭐ O Mais Completo • Dossiê Blindado HC
                       </div>
                       <h3 className="text-lg sm:text-xl font-bold text-white flex items-center justify-center gap-2">
-                        Acompanhamento VIP 360°
-                        <Crown className="w-4 h-4 text-mecura-neon fill-mecura-neon" />
+                        Plano Completo 360°
+                        <Sparkles className="w-4 h-4 text-mecura-neon fill-mecura-neon" />
                       </h3>
                       <p className="text-[#9A9AB5] text-xs mt-0.5">
-                        Vídeo de 45 min • Retorno em 90d incluso • Suporte Pericial
+                        Médico (Vídeo 45 min) + Psicólogo Clínico + Dossiê Duplo HC
                       </p>
                     </div>
 
-                    {/* Box de Preço Perfeitamente Enquadrado (Sem truncamento) */}
-                    <div className="py-2.5 px-3.5 rounded-2xl bg-black/60 border border-mecura-neon/25 flex items-center justify-between mb-4 relative z-10">
+                    {/* Especialistas Inclusos no Completo */}
+                    <div className="grid grid-cols-2 gap-2 mb-3.5 relative z-10">
+                      <div className="bg-black/50 border border-mecura-neon/25 rounded-2xl p-2.5 flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden border border-mecura-neon/40 shrink-0 bg-[#0A0A0F]">
+                          <img src="/doctor-avatar.png" alt="Dr. Guilherme" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-white text-xs font-bold truncate">Dr. Guilherme</p>
+                          <span className="text-[9px] text-mecura-neon font-black block">CRM/MT 17259</span>
+                        </div>
+                      </div>
+                      <div className="bg-black/50 border border-purple-500/25 rounded-2xl p-2.5 flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-400/40 shrink-0 bg-[#0A0A0F]">
+                          <img src="/pscologo.jpeg" alt="Marco Antônio Boastik" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-white text-xs font-bold truncate">Marco Antônio</p>
+                          <span className="text-[9px] text-purple-300 font-black block">CRP 08/49215</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Box de Preço */}
+                    <div className="py-2.5 px-3.5 rounded-2xl bg-black/70 border border-mecura-neon/30 flex items-center justify-between mb-4 relative z-10">
                       <div className="text-left">
-                        <span className="text-[10px] text-[#8A8A9E] line-through block">De R$ 1.300,00</span>
+                        <span className="text-[10px] text-[#8A8A9E] line-through block">De R$ 1.650,00</span>
                         <span className="text-[11px] text-mecura-neon font-black uppercase tracking-wider">
-                          Economize R$ 1.050
+                          Economize R$ 1.263
                         </span>
                       </div>
                       <div className="text-right">
                         <div className="text-2xl sm:text-[26px] font-black text-white leading-none tracking-tight">
-                          R$ 249<span className="text-base text-mecura-neon">,90</span>
+                          R$ 387<span className="text-base text-mecura-neon">,00</span>
                         </div>
                         <span className="text-[10px] text-[#9A9AB5] block mt-0.5">
-                          ou 5x de R$ 49,98 no cartão / Pix
+                          ou 6x de R$ 64,50 no cartão / Pix
                         </span>
                       </div>
                     </div>
 
                     {/* Lista Uniforme e Alinhada de Benefícios */}
                     <div className="space-y-2.5 relative z-10 border-t border-white/10 pt-3">
-                      
-                      {/* Laudo Pericial p/ HC */}
                       <div className="flex items-start gap-3 bg-mecura-neon/5 p-3 rounded-2xl border border-mecura-neon/20">
                         <div className="w-8 h-8 rounded-xl bg-mecura-neon/20 flex items-center justify-center shrink-0 mt-0.5 border border-mecura-neon/40">
                           <Scale className="w-4 h-4 text-mecura-neon" />
@@ -853,34 +1023,37 @@ export function CheckoutScreen() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
                             <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
-                              Laudo Pericial p/ Habeas Corpus
+                              Laudo Pericial Médico p/ Habeas Corpus
                             </p>
                             <span className="text-[9px] bg-mecura-neon text-black font-black px-1.5 py-0.2 rounded uppercase shrink-0">
                               HC
                             </span>
                           </div>
                           <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
-                            Fundamentação técnica com CID, histórico de refratariedade aos remédios comuns e justificativa indispensável exigida pelos juízes.
+                            Fundamentação com CID, histórico de refratariedade e justificativa indispensável exigida pelos juízes.
                           </p>
                         </div>
                       </div>
 
-                      {/* Relatório Evolutivo */}
-                      <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
-                        <div className="w-8 h-8 rounded-xl bg-mecura-neon/15 flex items-center justify-center shrink-0 mt-0.5 border border-mecura-neon/30">
-                          <Clock className="w-4 h-4 text-mecura-neon" />
+                      <div className="flex items-start gap-3 bg-purple-500/10 p-3 rounded-2xl border border-purple-500/25">
+                        <div className="w-8 h-8 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0 mt-0.5 border border-purple-400/40">
+                          <Brain className="w-4 h-4 text-purple-300" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
-                            Consulta de Retorno + Relatório Evolutivo
-                          </p>
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                              Consulta e Laudo com Psicólogo Marco Antônio (CRP 08/49215)
+                            </p>
+                            <span className="text-[9px] bg-purple-500 text-white font-black px-1.5 py-0.2 rounded uppercase shrink-0">
+                              PSICO
+                            </span>
+                          </div>
                           <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
-                            A Justiça exige prova de acompanhamento contínuo em 90 dias. Seu relatório evolutivo sai 100% gratuito na consulta de retorno!
+                            Avaliação detalhada de saúde mental, anamnese e emissão de laudo psicológico clínico oficial pericial.
                           </p>
                         </div>
                       </div>
 
-                      {/* Vídeo Chamada */}
                       <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
                         <div className="w-8 h-8 rounded-xl bg-mecura-neon/15 flex items-center justify-center shrink-0 mt-0.5 border border-mecura-neon/30">
                           <Video className="w-4 h-4 text-mecura-neon" />
@@ -890,29 +1063,281 @@ export function CheckoutScreen() {
                             Consulta Exclusiva por Vídeo (45 min)
                           </p>
                           <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
-                            Atendimento aprofundado olho no olho com médico especialista em cannabis para avaliar seu histórico clínico com calma e empatia.
+                            Atendimento aprofundado com o Dr. Guilherme para avaliar com calma e empatia todo seu histórico clínico.
                           </p>
                         </div>
                       </div>
 
-                      {/* Laudo Psicomotor & Anvisa */}
+                      <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
+                        <div className="w-8 h-8 rounded-xl bg-mecura-neon/15 flex items-center justify-center shrink-0 mt-0.5 border border-mecura-neon/30">
+                          <Clock className="w-4 h-4 text-mecura-neon" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                            Consulta de Retorno + Relatório Evolutivo Duplo
+                          </p>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Acompanhamento médico e psicológico contínuo aos 90 dias com relatórios oficiais gratuitos inclusos.
+                          </p>
+                        </div>
+                      </div>
+
                       <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
                         <div className="w-8 h-8 rounded-xl bg-mecura-neon/15 flex items-center justify-center shrink-0 mt-0.5 border border-mecura-neon/30">
                           <ShieldCheck className="w-4 h-4 text-mecura-neon" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
-                            Laudo de Aptidão Psicomotora + Anvisa
+                            Receita Digital ICP-Brasil + Laudo Psicomotor
                           </p>
                           <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
-                            Resguardo técnico para direção veicular e trabalho, acompanhado de assessoria completa para importações oficiais.
+                            Prescrição válida em todo o Brasil e resguardo para direção veicular e trabalho, com assessoria Anvisa.
                           </p>
                         </div>
                       </div>
                     </div>
                   </motion.div>
+                ) : evolutionTab === 'vip' ? (
+                  /* ABA 2: ACOMPANHAMENTO VIP COM LAUDOS DE HABEAS CORPUS (R$ 249,90) */
+                  <motion.div 
+                    key="tab-vip"
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full bg-gradient-to-br from-[#14191C] via-[#0E1316] to-[#0A0D0F] rounded-[24px] p-4 sm:p-5 border-2 border-amber-400/50 relative overflow-hidden shadow-[0_0_25px_rgba(251,191,36,0.12)]"
+                  >
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-amber-400/10 blur-[50px] rounded-full pointer-events-none" />
+
+                    {/* Header Centralizado */}
+                    <div className="text-center mb-3 relative z-10">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-[10px] font-black uppercase tracking-wider mb-2">
+                        <Scale className="w-3 h-3 text-amber-400" />
+                        Laudo Médico HC • Vídeo 45 min
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-bold text-white flex items-center justify-center gap-2">
+                        Acompanhamento VIP (Médico)
+                        <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
+                      </h3>
+                      <p className="text-[#9A9AB5] text-xs mt-0.5">
+                        Vídeo de 45 min • Retorno em 90d incluso • Laudo Médico HC
+                      </p>
+                    </div>
+
+                    {/* Card do Especialista */}
+                    <div className="bg-black/50 border border-amber-400/30 rounded-2xl p-3 flex items-center gap-3 mb-4 relative z-10">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-amber-400/50 shrink-0 bg-[#0A0A0F]">
+                        <img src="/doctor-avatar.png" alt="Dr. Guilherme" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white text-sm font-bold truncate">Dr. Guilherme T. Dias</p>
+                          <span className="text-[9px] bg-amber-400/20 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded-full font-black uppercase">
+                            CRM/MT 17259
+                          </span>
+                        </div>
+                        <p className="text-amber-300 text-xs font-medium mt-0.5">Médico Regulador & Prescritor Canabinoide</p>
+                      </div>
+                    </div>
+
+                    {/* Box de Preço */}
+                    <div className="py-2.5 px-3.5 rounded-2xl bg-black/60 border border-amber-400/25 flex items-center justify-between mb-4 relative z-10">
+                      <div className="text-left">
+                        <span className="text-[10px] text-[#8A8A9E] line-through block">De R$ 1.300,00</span>
+                        <span className="text-[11px] text-amber-300 font-black uppercase tracking-wider">
+                          Economize R$ 1.050
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl sm:text-[26px] font-black text-white leading-none tracking-tight">
+                          R$ 249<span className="text-base text-amber-400">,90</span>
+                        </div>
+                        <span className="text-[10px] text-[#9A9AB5] block mt-0.5">
+                          ou 5x de R$ 49,98 no cartão / Pix
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Lista de Benefícios */}
+                    <div className="space-y-2.5 relative z-10 border-t border-white/10 pt-3">
+                      <div className="flex items-start gap-3 bg-amber-400/5 p-3 rounded-2xl border border-amber-400/20">
+                        <div className="w-8 h-8 rounded-xl bg-amber-400/20 flex items-center justify-center shrink-0 mt-0.5 border border-amber-400/40">
+                          <Scale className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                              Laudo Pericial Médico p/ Habeas Corpus
+                            </p>
+                            <span className="text-[9px] bg-amber-400 text-black font-black px-1.5 py-0.2 rounded uppercase shrink-0">
+                              HC
+                            </span>
+                          </div>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Fundamentação técnica com CID, histórico de refratariedade aos remédios comuns e justificativa indispensável.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
+                        <div className="w-8 h-8 rounded-xl bg-amber-400/15 flex items-center justify-center shrink-0 mt-0.5 border border-amber-400/30">
+                          <Video className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                            Consulta Exclusiva por Vídeo (45 min)
+                          </p>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Atendimento aprofundado olho no olho com Dr. Guilherme para avaliar seu histórico clínico com calma e empatia.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
+                        <div className="w-8 h-8 rounded-xl bg-amber-400/15 flex items-center justify-center shrink-0 mt-0.5 border border-amber-400/30">
+                          <Clock className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                            Consulta de Retorno + Relatório Evolutivo
+                          </p>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Acompanhamento em 90 dias com relatório evolutivo oficial 100% gratuito.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
+                        <div className="w-8 h-8 rounded-xl bg-amber-400/15 flex items-center justify-center shrink-0 mt-0.5 border border-amber-400/30">
+                          <ShieldCheck className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                            Receita ICP-Brasil + Laudo Psicomotor
+                          </p>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Resguardo técnico para direção veicular e trabalho, acompanhado de assessoria Anvisa.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Nota informativa sobre psicólogo */}
+                    <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-[#9A9AB5] space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-white">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Sem Psicólogo incluso</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Este plano mantém o atendimento com o médico sem o psicólogo. Se você busca o dossiê completo multidisciplinar com médico e psicólogo, escolha o <strong>Plano Completo por R$ 387,00</strong>.
+                      </p>
+                    </div>
+                  </motion.div>
+                ) : evolutionTab === 'psychologist' ? (
+                  /* ABA 3: CONSULTA COM PSICÓLOGO + LAUDO (R$ 150,00) */
+                  <motion.div 
+                    key="tab-psychologist"
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full bg-gradient-to-br from-[#161220] via-[#100D18] to-[#0A0810] rounded-[24px] p-4 sm:p-5 border-2 border-purple-500/50 relative overflow-hidden shadow-[0_0_25px_rgba(168,85,247,0.15)]"
+                  >
+                    <div className="absolute top-0 right-0 w-40 h-40 bg-purple-500/15 blur-[50px] rounded-full pointer-events-none" />
+
+                    {/* Header Centralizado */}
+                    <div className="text-center mb-3 relative z-10">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-black uppercase tracking-wider mb-2">
+                        <Brain className="w-3 h-3 text-purple-300" />
+                        Consulta Direta com Psicólogo • CRP 08/49215
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-bold text-white flex items-center justify-center gap-2">
+                        Consulta + Laudo com Psicólogo
+                        <Brain className="w-4 h-4 text-purple-400" />
+                      </h3>
+                      <p className="text-[#9A9AB5] text-xs mt-0.5">
+                        Atendimento com Marco Antônio Boastik • Avaliação de Saúde Mental
+                      </p>
+                    </div>
+
+                    {/* Card do Especialista */}
+                    <div className="bg-black/50 border border-purple-500/30 rounded-2xl p-3 flex items-center gap-3 mb-4 relative z-10">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-purple-400/50 shrink-0 bg-[#0A0A0F]">
+                        <img src="/pscologo.jpeg" alt="Marco Antônio Boastik" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white text-sm font-bold truncate">Marco Antônio Boastik</p>
+                          <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-black uppercase">
+                            CRP 08/49215
+                          </span>
+                        </div>
+                        <p className="text-purple-300 text-xs font-medium mt-0.5">Psicólogo Clínico & Avaliador Pericial</p>
+                      </div>
+                    </div>
+
+                    {/* Preço Psicólogo */}
+                    <div className="py-2.5 px-3.5 rounded-2xl bg-black/60 border border-purple-500/25 flex items-center justify-between mb-4 relative z-10">
+                      <div className="text-left">
+                        <span className="text-[10px] text-[#8A8A9E] line-through block">De R$ 450,00</span>
+                        <span className="text-[11px] text-purple-300 font-black uppercase tracking-wider">
+                          Economize R$ 300
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl sm:text-[26px] font-black text-purple-300 leading-none">
+                          R$ 150<span className="text-base text-purple-400">,00</span>
+                        </div>
+                        <span className="text-[10px] text-[#9A9AB5] block mt-0.5">
+                          ou 3x de R$ 50,00 no cartão / Pix
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Benefícios Inclusos */}
+                    <div className="space-y-2.5 relative z-10 border-t border-white/10 pt-3">
+                      <div className="flex items-start gap-3 bg-purple-500/10 p-3 rounded-2xl border border-purple-500/20">
+                        <div className="w-8 h-8 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0 mt-0.5 border border-purple-400/30">
+                          <Brain className="w-4 h-4 text-purple-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                            Consulta Individualizada com o Psicólogo
+                          </p>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Anamnese e escuta qualificada sobre ansiedade, estresse crônico, humor, trauma e rotina de vida.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-white/[0.03] p-3 rounded-2xl border border-white/5">
+                        <div className="w-8 h-8 rounded-xl bg-purple-500/15 flex items-center justify-center shrink-0 mt-0.5 border border-purple-400/30">
+                          <FileText className="w-4 h-4 text-purple-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-[13px] sm:text-[14px] font-bold leading-tight">
+                            Emissão de Laudo / Parecer Psicológico Oficial
+                          </p>
+                          <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
+                            Documento assinado com CRP 08/49215 atestando as condições emocionais, indispensável para instrução de Habeas Corpus e acompanhamento.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Alerta de Transparência */}
+                    <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-[#9A9AB5] space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-white">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Atenção: Consulta direta com Psicólogo</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Este plano cobre a consulta e emissão do laudo psicológico. Não inclui receita médica de remédios controlados (disponível no Plano Completo por R$ 387 ou Consulta Essencial por R$ 49,90).
+                      </p>
+                    </div>
+                  </motion.div>
                 ) : (
-                  /* ABA 2: CONSULTA ESSENCIAL (R$ 49,90) */
+                  /* ABA 4: CONSULTA ESSENCIAL (R$ 49,90) */
                   <motion.div 
                     key="tab-basic"
                     initial={{ opacity: 0, scale: 0.98 }}
@@ -921,10 +1346,26 @@ export function CheckoutScreen() {
                     transition={{ duration: 0.2 }}
                     className="w-full bg-[#0D0D14] rounded-[24px] p-4 sm:p-5 border border-white/10 relative overflow-hidden"
                   >
-                    {/* Header Centralizado do Card Essencial */}
+                    {/* Header Centralizado */}
                     <div className="text-center mb-3">
-                      <h3 className="text-lg sm:text-xl font-bold text-white">Consulta Essencial</h3>
-                      <p className="text-[#9A9AB5] text-xs mt-0.5">Atendimento Rápido Inicial via Chat</p>
+                      <h3 className="text-lg sm:text-xl font-bold text-white">Consulta Essencial (Médico)</h3>
+                      <p className="text-[#9A9AB5] text-xs mt-0.5">Atendimento Rápido Inicial via Chat Sem Agendamento</p>
+                    </div>
+
+                    {/* Card do Especialista */}
+                    <div className="bg-black/50 border border-white/10 rounded-2xl p-3 flex items-center gap-3 mb-4 relative z-10">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-[#0A0A0F]">
+                        <img src="/doctor-avatar.png" alt="Dr. Guilherme" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white text-sm font-bold truncate">Dr. Guilherme T. Dias</p>
+                          <span className="text-[9px] bg-white/10 text-white border border-white/10 px-2 py-0.5 rounded-full font-black uppercase">
+                            CRM/MT 17259
+                          </span>
+                        </div>
+                        <p className="text-[#8A8A9E] text-xs font-medium mt-0.5">Médico Regulador</p>
+                      </div>
                     </div>
 
                     {/* Preço Essencial */}
@@ -961,14 +1402,14 @@ export function CheckoutScreen() {
                       </div>
                     </div>
 
-                    {/* Alerta Importante sobre Laudo Pericial de HC */}
+                    {/* Alerta Importante */}
                     <div className="mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 space-y-1">
                       <div className="flex items-center gap-1.5 font-bold">
                         <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                        <span>Não inclui suporte a Habeas Corpus</span>
+                        <span>Não inclui suporte a Habeas Corpus nem Psicólogo</span>
                       </div>
                       <p className="text-[11px] text-amber-200/80 leading-relaxed">
-                        A Consulta Essencial não dá direito a Laudo Pericial para Salvo-Conduto / HC, não inclui chamada por vídeo e não inclui consulta de retorno gratuita.
+                        A Consulta Essencial não dá direito a Laudo Pericial de HC, chamada por vídeo, retorno gratuito ou atendimento com o psicólogo Marco Antônio.
                       </p>
                     </div>
                   </motion.div>
@@ -976,9 +1417,16 @@ export function CheckoutScreen() {
               </AnimatePresence>
 
               {/* Reassurance Footer Badge */}
-              <div className="flex items-center justify-center gap-2 text-[#8A8A9E] text-[11px] mt-4 mb-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-mecura-neon" />
-                <span>Garantia de Satisfação Médica Mecura • Dossiê Oficial ICP-Brasil</span>
+              <div className="flex items-center justify-center gap-3 text-[#8A8A9E] text-[11px] mt-4 mb-2 flex-wrap">
+                <div className="flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-mecura-neon" />
+                  <span>CFM & CFP Regulamentados</span>
+                </div>
+                <span>•</span>
+                <div className="flex items-center gap-1">
+                  <BadgeCheck className="w-3.5 h-3.5 text-mecura-neon" />
+                  <span>Dossiê Oficial ICP-Brasil</span>
+                </div>
               </div>
             </motion.div>
           ) : (
@@ -991,34 +1439,54 @@ export function CheckoutScreen() {
               className="flex flex-col pt-4"
             >
               {/* Product Selection Summary Badge */}
-              <div className={`w-full rounded-[24px] p-5 mb-6 border ${selectedOffer === 'premium' ? 'bg-gradient-to-r from-mecura-neon/15 via-[#12121A] to-[#0A0A0F] border-mecura-neon/40 shadow-[0_0_25px_rgba(166,255,0,0.15)]' : 'bg-[#12121A] border-white/10'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedOffer === 'premium' ? 'bg-mecura-neon/20 text-mecura-neon' : 'bg-white/10 text-white'}`}>
-                      {selectedOffer === 'premium' ? <Scale className="w-5 h-5 text-mecura-neon" /> : <ShieldCheck className="w-5 h-5 text-mecura-neon" />}
+              <div className={`w-full rounded-[24px] p-4 sm:p-5 mb-6 border ${
+                selectedOffer === 'complete' 
+                  ? 'bg-gradient-to-r from-mecura-neon/15 via-[#12121A] to-[#0A0A0F] border-mecura-neon/50 shadow-[0_0_25px_rgba(166,255,0,0.18)]' 
+                  : selectedOffer === 'premium'
+                  ? 'bg-gradient-to-r from-amber-400/15 via-[#12121A] to-[#0A0A0F] border-amber-400/40 shadow-[0_0_25px_rgba(251,191,36,0.15)]'
+                  : selectedOffer === 'psychologist'
+                  ? 'bg-gradient-to-r from-purple-500/15 via-[#12121A] to-[#0A0A0F] border-purple-500/40 shadow-[0_0_25px_rgba(168,85,247,0.15)]'
+                  : 'bg-[#12121A] border-white/10'
+              }`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                      selectedOffer === 'complete' ? 'bg-mecura-neon/20 text-mecura-neon' 
+                      : selectedOffer === 'premium' ? 'bg-amber-400/20 text-amber-300' 
+                      : selectedOffer === 'psychologist' ? 'bg-purple-500/20 text-purple-300' 
+                      : 'bg-white/10 text-white'
+                    }`}>
+                      {selectedOffer === 'complete' && <Sparkles className="w-5 h-5 text-mecura-neon" />}
+                      {selectedOffer === 'premium' && <Scale className="w-5 h-5 text-amber-400" />}
+                      {selectedOffer === 'psychologist' && <Brain className="w-5 h-5 text-purple-300" />}
+                      {selectedOffer === 'basic' && <ShieldCheck className="w-5 h-5 text-mecura-neon" />}
                     </div>
-                    <div>
-                      <p className="text-white font-bold text-[15px] sm:text-[16px] leading-tight">
-                        {selectedOffer === 'premium' ? 'Acompanhamento VIP + Laudo HC' : 'Consulta Essencial'}
+                    <div className="min-w-0">
+                      <p className="text-white font-bold text-[15px] sm:text-[16px] leading-tight truncate">
+                        {selectedOffer === 'complete' && 'Plano Completo 360° (Médico + Psico)'}
+                        {selectedOffer === 'premium' && 'Acompanhamento VIP (Médico HC)'}
+                        {selectedOffer === 'psychologist' && 'Consulta com Psicólogo + Laudo'}
+                        {selectedOffer === 'basic' && 'Consulta Essencial (Médico)'}
                       </p>
-                      <p className="text-[#8A8A9E] text-xs">
-                        {selectedOffer === 'premium' ? 'Dossiê p/ Salvo-Conduto + Vídeo 45min + Retorno' : 'Atendimento Imediato Sem Agendamento'}
+                      <p className="text-[#8A8A9E] text-xs truncate mt-0.5">
+                        {selectedOffer === 'complete' && 'Dr. Guilherme + Marco Antônio • Dossiê Duplo HC'}
+                        {selectedOffer === 'premium' && 'Vídeo 45min + Retorno 90d + Laudo HC'}
+                        {selectedOffer === 'psychologist' && 'Marco Antônio Boastik (CRP 08/49215) • Laudo Oficial'}
+                        {selectedOffer === 'basic' && 'Atendimento Imediato via Chat • Receita ICP-Brasil'}
                       </p>
                     </div>
                   </div>
 
                   <button
                     onClick={() => {
-                      if (selectedOffer === 'premium') {
-                        setSelectedOffer('basic');
-                      } else {
-                        setSelectedOffer('premium');
-                      }
+                      setStep('evolution');
+                      scrollToTop();
                     }}
-                    className="text-xs text-mecura-neon hover:underline font-semibold flex items-center gap-1 shrink-0 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10"
+                    className="text-xs text-mecura-neon hover:underline font-semibold flex items-center gap-1 shrink-0 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 cursor-pointer"
+                    title="Trocar de Plano"
                   >
                     <RefreshCw className="w-3 h-3" />
-                    <span>{selectedOffer === 'premium' ? 'Mudar p/ R$ 49,90' : 'Evoluir p/ VIP'}</span>
+                    <span>Trocar</span>
                   </button>
                 </div>
               </div>
@@ -1107,7 +1575,7 @@ export function CheckoutScreen() {
                         <div className="flex items-center gap-2">
                           <p className={`font-bold text-[16px] ${paymentMethod === 'card' ? 'text-white' : 'text-[#8A8A9E]'}`}>Cartão de Crédito</p>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-[#8A8A9E] border border-white/10">
-                            {selectedOffer === 'basic' ? 'Até 3x' : 'Até 5x'}
+                            {selectedOffer === 'complete' ? 'Até 6x' : (selectedOffer === 'premium' ? 'Até 5x' : 'Até 3x')}
                           </span>
                         </div>
                         <p className={`text-[13px] ${paymentMethod === 'card' ? 'text-mecura-neon' : 'text-[#8A8A9E]/60'}`}>Crédito ou Débito via Mercado Pago</p>
@@ -1249,10 +1717,69 @@ export function CheckoutScreen() {
         ) : step === 'evolution' ? (
           /* STEP 2 (Tela de Evolução): Ações Diretas com Enquadramento e Tipografia Uniformes */
           <div className="w-full flex flex-col items-center gap-2 max-w-md mx-auto">
-            {evolutionTab === 'vip' ? (
+            {evolutionTab === 'complete' ? (
               <>
                 <Button 
-                  className="w-full min-h-[56px] h-auto py-3 px-4 bg-mecura-neon text-black font-black text-[15px] sm:text-[16px] shadow-[0_0_35px_rgba(166,255,0,0.4)] hover:shadow-[0_0_45px_rgba(166,255,0,0.55)] active:scale-[0.99] transition-all flex flex-col items-center justify-center gap-0.5 rounded-2xl group"
+                  className="w-full min-h-[58px] h-auto py-3 px-4 bg-mecura-neon text-black font-black text-[15px] sm:text-[16px] shadow-[0_0_35px_rgba(166,255,0,0.45)] hover:shadow-[0_0_45px_rgba(166,255,0,0.6)] active:scale-[0.99] transition-all flex flex-col items-center justify-center gap-0.5 rounded-2xl group cursor-pointer"
+                  onClick={() => {
+                    setSelectedOffer('complete');
+                    setStep('checkout');
+                    scrollToTop();
+                  }}
+                >
+                  <div className="flex items-center justify-center gap-2 w-full">
+                    <Sparkles className="w-4 h-4 text-black shrink-0 fill-black" />
+                    <span className="truncate">Garantir Plano Completo (R$ 387,00)</span>
+                    <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                  <span className="text-[11px] font-bold text-black/85">
+                    Médico VIP + Psicólogo Marco Antônio • Dossiê Duplo HC
+                  </span>
+                </Button>
+
+                <div className="flex items-center gap-3 pt-1 text-xs">
+                  <button 
+                    onClick={() => {
+                      setEvolutionTab('vip');
+                      setSelectedOffer('premium');
+                    }}
+                    className="text-amber-300 font-semibold hover:underline"
+                  >
+                    VIP Médico (R$ 249,90)
+                  </button>
+                  <span className="text-white/20">•</span>
+                  <button 
+                    onClick={() => {
+                      setEvolutionTab('psychologist');
+                      setSelectedOffer('psychologist');
+                    }}
+                    className="text-purple-300 font-semibold hover:underline"
+                  >
+                    Psicólogo Avulso (R$ 150)
+                  </button>
+                  <span className="text-white/20">•</span>
+                  <button 
+                    onClick={() => {
+                      setEvolutionTab('basic');
+                      setSelectedOffer('basic');
+                    }}
+                    className="text-[#8A8A9E] font-semibold hover:text-white"
+                  >
+                    Essencial (R$ 49,90)
+                  </button>
+                </div>
+
+                <button 
+                  onClick={() => navigate('/dashboard')}
+                  className="text-[#8A8A9E] text-xs sm:text-[13px] font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-1"
+                >
+                  Pular por enquanto e ir para o painel
+                </button>
+              </>
+            ) : evolutionTab === 'vip' ? (
+              <>
+                <Button 
+                  className="w-full min-h-[58px] h-auto py-3 px-4 bg-amber-400 text-black font-black text-[15px] sm:text-[16px] shadow-[0_0_35px_rgba(251,191,36,0.4)] hover:shadow-[0_0_45px_rgba(251,191,36,0.55)] active:scale-[0.99] transition-all flex flex-col items-center justify-center gap-0.5 rounded-2xl group cursor-pointer"
                   onClick={() => {
                     setSelectedOffer('premium');
                     setStep('checkout');
@@ -1261,13 +1788,25 @@ export function CheckoutScreen() {
                 >
                   <div className="flex items-center justify-center gap-2 w-full">
                     <Scale className="w-4 h-4 text-black shrink-0" />
-                    <span className="truncate">Garantir VIP + Laudos HC (R$ 249,90)</span>
+                    <span className="truncate">Garantir VIP Médico (R$ 249,90)</span>
                     <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform" />
                   </div>
-                  <span className="text-[11px] font-bold text-black/80">
+                  <span className="text-[11px] font-bold text-black/85">
                     Dossiê Salvo-Conduto • Vídeo 45 min • Retorno 90d
                   </span>
                 </Button>
+
+                <button 
+                  onClick={() => {
+                    setEvolutionTab('complete');
+                    setSelectedOffer('complete');
+                    scrollToTop();
+                  }}
+                  className="text-mecura-neon text-xs sm:text-[13px] font-bold hover:underline py-1 flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 fill-current" />
+                  <span>Evoluir para Completo com Psicólogo (R$ 387,00)</span>
+                </button>
 
                 <button 
                   onClick={() => {
@@ -1287,10 +1826,60 @@ export function CheckoutScreen() {
                   Pular por enquanto e ir para o painel
                 </button>
               </>
+            ) : evolutionTab === 'psychologist' ? (
+              <>
+                <Button 
+                  className="w-full min-h-[58px] h-auto py-3 px-4 bg-purple-400 text-black font-black text-[15px] sm:text-[16px] shadow-[0_0_35px_rgba(192,132,252,0.4)] hover:shadow-[0_0_45px_rgba(192,132,252,0.55)] active:scale-[0.99] transition-all flex flex-col items-center justify-center gap-0.5 rounded-2xl group cursor-pointer"
+                  onClick={() => {
+                    setSelectedOffer('psychologist');
+                    setStep('checkout');
+                    scrollToTop();
+                  }}
+                >
+                  <div className="flex items-center justify-center gap-2 w-full">
+                    <Brain className="w-4 h-4 text-black shrink-0" />
+                    <span className="truncate">Agendar com Psicólogo (R$ 150,00)</span>
+                    <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                  <span className="text-[11px] font-bold text-black/85">
+                    Marco Antônio Boastik • Avaliação & Parecer Psicológico
+                  </span>
+                </Button>
+
+                <button 
+                  onClick={() => {
+                    setEvolutionTab('complete');
+                    setSelectedOffer('complete');
+                    scrollToTop();
+                  }}
+                  className="text-mecura-neon text-xs sm:text-[13px] font-bold hover:underline py-1 flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 fill-current" />
+                  <span>Quero o Completo com Médico e Psicólogo (R$ 387,00)</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setEvolutionTab('basic');
+                    setSelectedOffer('basic');
+                    scrollToTop();
+                  }}
+                  className="text-[#8A8A9E] text-xs sm:text-[13px] font-semibold hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-1"
+                >
+                  Ver Consulta Médica Essencial (R$ 49,90)
+                </button>
+
+                <button 
+                  onClick={() => navigate('/dashboard')}
+                  className="text-[#8A8A9E] text-xs sm:text-[13px] font-medium hover:text-white transition-colors underline decoration-white/20 underline-offset-4 py-1"
+                >
+                  Pular por enquanto e ir para o painel
+                </button>
+              </>
             ) : (
               <>
                 <Button 
-                  className="w-full min-h-[56px] h-auto py-3 px-4 bg-mecura-neon text-black font-black text-[15px] sm:text-[16px] shadow-[0_0_35px_rgba(166,255,0,0.4)] hover:shadow-[0_0_45px_rgba(166,255,0,0.55)] active:scale-[0.99] transition-all flex flex-col items-center justify-center gap-0.5 rounded-2xl group"
+                  className="w-full min-h-[58px] h-auto py-3 px-4 bg-mecura-neon text-black font-black text-[15px] sm:text-[16px] shadow-[0_0_35px_rgba(166,255,0,0.4)] hover:shadow-[0_0_45px_rgba(166,255,0,0.55)] active:scale-[0.99] transition-all flex flex-col items-center justify-center gap-0.5 rounded-2xl group cursor-pointer"
                   onClick={() => {
                     setSelectedOffer('basic');
                     setStep('checkout');
@@ -1309,13 +1898,26 @@ export function CheckoutScreen() {
 
                 <button 
                   onClick={() => {
-                    setEvolutionTab('vip');
+                    setEvolutionTab('complete');
+                    setSelectedOffer('complete');
                     scrollToTop();
                   }}
                   className="text-mecura-neon text-xs sm:text-[13px] font-bold hover:underline py-1 flex items-center gap-1.5"
                 >
+                  <Sparkles className="w-3.5 h-3.5 fill-current" />
+                  <span>Conhecer o Plano Completo com Psicólogo (R$ 387,00)</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setEvolutionTab('vip');
+                    setSelectedOffer('premium');
+                    scrollToTop();
+                  }}
+                  className="text-amber-300 text-xs sm:text-[13px] font-semibold hover:underline py-1 flex items-center gap-1.5"
+                >
                   <Crown className="w-3.5 h-3.5 fill-current" />
-                  <span>Ver Benefícios do Acompanhamento VIP (R$ 249,90)</span>
+                  <span>Ver VIP Médico + Laudos HC (R$ 249,90)</span>
                 </button>
 
                 <button 

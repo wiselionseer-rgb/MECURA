@@ -1,16 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { ChevronLeft, ShieldCheck, MessageSquare, FileText, Package, Activity, ChevronRight, Sparkles, User, Settings, Stethoscope, X } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, MessageSquare, FileText, Package, Activity, ChevronRight, Sparkles, User, Settings, Stethoscope, Brain, Sprout, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useAdminStore } from '../store/useAdminStore';
 import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
+import { StrategicToolsModal, StrategicToolType } from '../components/tools/StrategicToolsModal';
 
 export function WelcomeScreen() {
-  
-
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -18,9 +17,18 @@ export function WelcomeScreen() {
   const { doctors } = useAdminStore();
   
   const [showProfessionalModal, setShowProfessionalModal] = useState(false);
-  const [loginType, setLoginType] = useState<'admin' | 'doctor' | null>(null);
+  const [loginType, setLoginType] = useState<'admin' | 'doctor' | 'psychologist' | null>(null);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  // Strategic Tools Modal State (TDAH, Autismo, Calculadora HC)
+  const [strategicToolOpen, setStrategicToolOpen] = useState(false);
+  const [selectedTool, setSelectedTool] = useState<StrategicToolType>('tdah');
+
+  const handleOpenTool = (tool: StrategicToolType) => {
+    setSelectedTool(tool);
+    setStrategicToolOpen(true);
+  };
 
   useEffect(() => {
     // Auto redirect to dashboard only if user is logged in and did not explicitly log out
@@ -68,7 +76,21 @@ export function WelcomeScreen() {
       const doctor = doctors.find(d => d.password === cleanPwd || d.password?.toLowerCase() === cleanPwd.toLowerCase());
       if (doctor || cleanPwd === 'jesus102030@' || cleanPwd === 'Jesus102030@' || cleanPwd.toLowerCase() === 'jesus102030@') {
         setShowProfessionalModal(false);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mecura_role', 'doctor');
+        }
         navigate('/doctor');
+      } else {
+        setLoginError('Senha incorreta.');
+      }
+    } else if (loginType === 'psychologist') {
+      // Psychologist login for Marco Antônio Boastik CRP 08/49215
+      if (cleanPwd === 'jesus102030@' || cleanPwd === 'Jesus102030@' || cleanPwd.toLowerCase() === 'jesus102030@' || cleanPwd === 'psico102030@') {
+        setShowProfessionalModal(false);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mecura_role', 'psychologist');
+        }
+        navigate('/psychologist');
       } else {
         setLoginError('Senha incorreta.');
       }
@@ -76,28 +98,38 @@ export function WelcomeScreen() {
   };
 
   return (
-    <div className="flex flex-col min-h-full relative bg-[#0A0A0F] overflow-hidden">
+    <div className="flex flex-col min-h-full relative bg-[#060D08] overflow-hidden">
       {/* Header */}
       <motion.div 
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="absolute top-0 left-0 right-0 p-6 z-30 flex justify-between items-center"
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="absolute top-0 left-0 right-0 px-5 sm:px-6 py-5 z-30 flex justify-between items-center"
       >
-        <button 
-          onClick={handleBack}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${step === 2 ? 'bg-[#161622] border border-[#262636] text-white hover:bg-[#1A1A26] shadow-lg' : 'bg-black/20 backdrop-blur-md text-white hover:bg-black/40 border border-white/10 shadow-lg'}`}
-          style={{ opacity: step === 1 ? 0 : 1, pointerEvents: step === 1 ? 'none' : 'auto' }}
-        >
-          <ChevronLeft className="w-6 h-6 pr-0.5" />
-        </button>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5">
+          {step === 2 ? (
+            <button 
+              onClick={handleBack}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-black/50 backdrop-blur-md text-white hover:bg-black/80 border border-white/10 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="w-5 h-5 pr-0.5" />
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="text-xs font-semibold tracking-[0.2em] text-white/90 uppercase font-sans">MECURA</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <button 
             onClick={() => navigate('/legal')}
-            className="text-white/60 font-medium text-xs hover:text-mecura-neon transition-colors tracking-wide uppercase"
+            className="text-[11px] font-medium text-white/60 hover:text-white transition-colors uppercase tracking-wider cursor-pointer px-1.5 py-1"
           >
             Jurídico
           </button>
+          <span className="text-white/20 text-xs font-light">·</span>
           <button 
             onClick={() => {
               setShowProfessionalModal(true);
@@ -105,13 +137,13 @@ export function WelcomeScreen() {
               setPassword('');
               setLoginError('');
             }}
-            className="text-white/60 font-medium text-xs hover:text-white transition-colors tracking-wide uppercase"
+            className="text-[11px] font-medium text-white/60 hover:text-white transition-colors uppercase tracking-wider cursor-pointer px-1.5 py-1"
           >
             Acesso Restrito
           </button>
           <button 
             onClick={() => window.open(`https://wa.me/${INSTITUTIONAL_INFO.supportWhatsapp}`, '_blank')}
-            className="text-white/90 font-medium text-sm hover:text-mecura-neon transition-colors decoration-white/30 underline-offset-4"
+            className="px-3 py-1 text-[11px] font-bold text-[#0A0A0F] bg-[#A6FF00] hover:bg-[#CFFF5A] rounded-full cursor-pointer transition-all ml-1 shadow-[0_0_12px_rgba(166,255,0,0.35)]"
           >
             Suporte
           </button>
@@ -124,17 +156,21 @@ export function WelcomeScreen() {
             key="step1"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, filter: 'blur(10px)', scale: 0.95 }}
-            transition={{ duration: 0.5 }}
+            exit={{ opacity: 0, filter: 'blur(8px)', scale: 0.98 }}
+            transition={{ duration: 0.4 }}
             className="absolute inset-0 flex flex-col"
           >
-            {/* Full Screen Background Video */}
-            <div className="absolute inset-0 z-0 bg-black">
-              
-              {/* Video Background Fallback Logic */}
-              <img src="/welcome-bg-poster.jpg" className="absolute inset-0 w-full h-full object-cover z-0" alt="" />
+            {/* Full Screen Background Video & Animated Large Panning Image */}
+            <div className="absolute inset-0 z-0 bg-black overflow-hidden">
+              <motion.img 
+                src="/welcome-bg-poster.jpg" 
+                className="absolute inset-0 w-[145%] h-[115%] -left-[22%] -top-[7%] max-w-none object-cover z-0 opacity-90 scale-110" 
+                animate={{ x: ['0%', '-18%', '0%'] }}
+                transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
+                alt="" 
+              />
               {!videoFailed && (
-                <video
+                <motion.video
                   autoPlay
                   loop
                   muted
@@ -152,50 +188,123 @@ export function WelcomeScreen() {
                     }
                   }}
                   src="/0820-ezgif.com-video-compressor.mp4"
-                  className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none z-10"
+                  className="absolute inset-0 w-[145%] h-[115%] -left-[22%] -top-[7%] max-w-none object-cover opacity-90 pointer-events-none z-10 scale-110"
+                  animate={{ x: ['0%', '-18%', '0%'] }}
+                  transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
                 />
               )}
               
-              {/* Elegant Gradient for Readability - No Green/Neon tint */}
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0A0A0F]/60 to-[#0A0A0F] z-20 pointer-events-none" />
+              {/* Soft Gradient Overlay - clear center so video dropper bottle is fully visible */}
+              <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/10 to-[#000000]/95 z-20 pointer-events-none" />
             </div>
 
-            {/* Content */}
-            <div className={`relative z-10 flex-1 flex flex-col justify-end px-8 ${hasCompletedOnboarding ? 'pb-56' : 'pb-40'} overflow-y-auto pt-24`}>
+            {/* Content Container */}
+            <div className={`relative z-10 flex-1 flex flex-col px-5 sm:px-6 ${hasCompletedOnboarding ? 'pb-40' : 'pb-32'} overflow-y-auto overflow-x-hidden pt-20 justify-end`}>
               <motion.div
-                initial={{ opacity: 0, y: 30 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                className="max-w-xl mx-auto w-full backdrop-blur-[2px]"
               >
-                <div className="inline-flex items-center gap-2 bg-[#0A0A0F]/40 border border-white/10 px-4 py-2 rounded-full mb-8 backdrop-blur-md shadow-2xl">
-                  <Sparkles className="w-3.5 h-3.5 text-mecura-neon" />
-                  <span className="text-[10px] font-bold text-white/90 uppercase tracking-[0.25em]">Medicina do Futuro</span>
-                </div>
-                
-                <h1 className="text-[48px] font-serif font-bold text-white mb-6 leading-[1.05] tracking-tight">
-                  A pureza da <span className="text-mecura-neon italic font-light">natureza</span>,<br />
-                  guiada pela <span className="text-white">ciência.</span>
+                {/* Hero Title */}
+                <h1 className="text-[34px] sm:text-[40px] font-serif font-normal text-white mb-2 leading-[1.1] tracking-tight">
+                  A pureza da <span className="italic text-[#A6FF00] font-serif">natureza</span>,<br />
+                  guiada pela <span className="font-semibold text-white">ciência.</span>
                 </h1>
                 
-                <p className="text-[#A0A0B0] text-lg leading-relaxed mb-12 max-w-[95%] font-light">
-                  Reescreva sua relação com o bem-estar através de tratamentos personalizados com Cannabis Medicinal.
+                <p className="text-white/70 text-xs sm:text-sm leading-relaxed mb-6 font-normal max-w-md">
+                  Tratamentos personalizados com Cannabis Medicinal para saúde, foco e qualidade de vida.
                 </p>
 
-                {/* Trust Badges */}
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-[#161622]/80 backdrop-blur-md border border-white/5 flex items-center justify-center shadow-xl">
-                      <ShieldCheck className="w-6 h-6 text-mecura-neon" />
-                    </div>
-                    <span className="text-white text-sm font-bold tracking-wide">100%<br/><span className="text-[#8A8A9E] font-medium text-xs tracking-wider uppercase">Legalizado</span></span>
+                {/* 3 Strategic Interactive Buttons (Clean, Luxurious, Minimalist) */}
+                <div className="mb-5">
+                  <div className="flex items-center justify-between mb-2 px-0.5">
+                    <span className="text-[10px] font-bold text-[#A6FF00] uppercase tracking-[0.2em]">
+                      Testes & Ferramentas Interativas
+                    </span>
+                    <span className="text-[10px] text-white/40 font-mono">
+                      Resultados em 1 min
+                    </span>
                   </div>
-                  <div className="w-px h-10 bg-white/10" />
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-[#161622]/80 backdrop-blur-md border border-white/5 flex items-center justify-center shadow-xl">
-                      <Activity className="w-6 h-6 text-mecura-neon" />
-                    </div>
-                    <span className="text-white text-sm font-bold tracking-wide">Eficácia<br/><span className="text-[#8A8A9E] font-medium text-xs tracking-wider uppercase">Comprovada</span></span>
+
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {/* Tool 1: TDAH */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTool('tdah')}
+                      className="group rounded-2xl p-3 text-left bg-black/40 hover:bg-emerald-950/30 border border-white/10 hover:border-sky-400/40 backdrop-blur-md transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[96px]"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-300">
+                          <Brain className="w-3.5 h-3.5" />
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-white/30 group-hover:text-sky-300 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+
+                      <div className="mt-2">
+                        <span className="text-xs font-bold text-white block tracking-tight">
+                          Teste TDAH
+                        </span>
+                        <span className="text-[10px] text-white/50 block font-normal">
+                          Foco & Atenção
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Tool 2: Autismo (TEA) */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTool('autism')}
+                      className="group rounded-2xl p-3 text-left bg-black/40 hover:bg-emerald-950/30 border border-white/10 hover:border-purple-400/40 backdrop-blur-md transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[96px]"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-400/20 flex items-center justify-center text-purple-300">
+                          <Activity className="w-3.5 h-3.5" />
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-white/30 group-hover:text-purple-300 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+
+                      <div className="mt-2">
+                        <span className="text-xs font-bold text-white block tracking-tight">
+                          Teste Autismo
+                        </span>
+                        <span className="text-[10px] text-white/50 block font-normal">
+                          Espectro TEA
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Tool 3: Calculadora HC */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTool('hc')}
+                      className="group rounded-2xl p-3 text-left bg-black/40 hover:bg-emerald-950/30 border border-white/10 hover:border-emerald-400/40 backdrop-blur-md transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[96px]"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center text-emerald-300">
+                          <Sprout className="w-3.5 h-3.5" />
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-white/30 group-hover:text-emerald-300 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+
+                      <div className="mt-2">
+                        <span className="text-xs font-bold text-white block tracking-tight">
+                          Plantas p/ HC
+                        </span>
+                        <span className="text-[10px] text-white/50 block font-normal">
+                          Calculadora
+                        </span>
+                      </div>
+                    </button>
                   </div>
+                </div>
+
+                {/* Minimalist Trust Line */}
+                <div className="flex items-center justify-center gap-2 py-1 text-[11px] text-white/50 font-medium tracking-wide">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>100% Legalizado pela ANVISA</span>
+                  <span className="text-white/20">•</span>
+                  <span>Diretrizes LGPD & CFM</span>
                 </div>
               </motion.div>
             </div>
@@ -207,98 +316,287 @@ export function WelcomeScreen() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0 flex flex-col px-6 pt-16 pb-48 overflow-y-auto overflow-x-hidden bg-[#0A0A0F]"
+            className="absolute inset-0 flex flex-col px-5 sm:px-6 pt-20 pb-44 overflow-y-auto overflow-x-hidden bg-[#000000]"
           >
-            {/* Background Accent */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[600px] overflow-x-hidden h-[300px] bg-mecura-neon/10 blur-[80px] rounded-full pointer-events-none" />
+            {/* Background Radial Glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] h-[250px] bg-mecura-neon/10 blur-[90px] rounded-full pointer-events-none" />
 
-            {/* Doctor Card */}
+            {/* Large Prominent Clinical Team Card (Corpo Clínico Integrado) */}
             <motion.div 
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-[#161622]/90 backdrop-blur-md border border-white/10 rounded-[28px] p-4 sm:p-5 flex items-center gap-4 sm:gap-5 mb-8 shadow-2xl relative overflow-hidden shrink-0"
+              className="bg-gradient-to-br from-[#0D140E] via-[#080D0A] to-[#000000] border-2 border-mecura-neon/40 rounded-3xl p-4 sm:p-5 mb-6 shadow-[0_15px_45px_rgba(0,0,0,0.9),0_0_30px_rgba(166,255,0,0.15)] relative overflow-hidden shrink-0"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-mecura-neon/15 via-transparent to-transparent opacity-30" />
-              <div className="relative z-10 shrink-0">
-                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-[20px] overflow-hidden border-2 border-white/15 shadow-md bg-[#0F0F17] flex items-center justify-center">
-                  <img 
-                    src="/doctor-avatar.png" 
-                    alt="Médico Especialista" 
-                    className="w-full h-full object-cover object-center"
-                    loading="eager"
-                  />
+              {/* Header Title */}
+              <div className="flex items-center justify-between mb-3 relative z-10">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-mecura-neon animate-ping" />
+                  <h3 className="text-white font-extrabold text-base sm:text-lg tracking-tight">
+                    Corpo Clínico Integrado
+                  </h3>
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-mecura-neon rounded-full border-2 border-[#161622] shadow-[0_0_10px_rgba(166,255,0,0.6)] animate-pulse" />
+                <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/40 flex items-center gap-1.5 shadow-[0_0_12px_rgba(166,255,0,0.3)]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon" />
+                  Ativo Agora
+                </span>
               </div>
-              <div className="relative z-10">
-                <h3 className="text-white font-bold text-lg sm:text-xl tracking-tight">Corpo Clínico</h3>
-                <p className="text-mecura-neon text-xs sm:text-sm font-medium mt-0.5 tracking-wide flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon inline-block" />
-                  Especialistas de prontidão
-                </p>
+
+              <p className="text-xs text-white/70 mb-3.5 leading-relaxed font-normal relative z-10">
+                Especialistas em Medicina Canábica prontos para o seu atendimento:
+              </p>
+
+              {/* Infinite Continuous Horizontal Motion Marquee (Dr. Guilherme & Marco Antônio) */}
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/90 p-2.5">
+                <motion.div 
+                  className="flex gap-3 w-max"
+                  animate={{ x: ['0%', '-50%'] }}
+                  transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+                >
+                  {/* Item 1: Dr. Guilherme */}
+                  <div className="flex items-center gap-3 bg-gradient-to-r from-[#121E15] to-[#0A120C] border border-mecura-neon/50 rounded-2xl p-2.5 w-[230px] sm:w-[250px] shrink-0 shadow-lg relative overflow-hidden group">
+                    <div className="relative shrink-0">
+                      <div className="w-18 h-24 sm:w-20 sm:h-26 rounded-xl overflow-hidden border-2 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)] bg-[#050806]">
+                        <img 
+                          src="/doctor-avatar.png" 
+                          alt="Dr. Guilherme - Médico" 
+                          className="w-full h-full object-cover object-top scale-105 group-hover:scale-110 transition-transform duration-500"
+                        />
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-mecura-neon rounded-full border-2 border-black flex items-center justify-center shadow-[0_0_8px_rgba(166,255,0,0.8)]">
+                        <span className="w-1 h-1 rounded-full bg-black" />
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-mecura-neon block mb-0.5">
+                        Médico Prescritor
+                      </span>
+                      <h4 className="text-white font-bold text-sm leading-tight truncate">
+                        Dr. Guilherme
+                      </h4>
+                      <p className="text-[10px] text-white/60 font-medium mt-0.5">
+                        CRM Medicina
+                      </p>
+                      <p className="text-[9px] text-mecura-neon font-bold mt-1.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon inline-block animate-pulse" />
+                        Atendimento
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Item 2: Marco Antônio */}
+                  <div className="flex items-center gap-3 bg-gradient-to-r from-[#1B1428] to-[#0F0B18] border border-purple-400/50 rounded-2xl p-2.5 w-[230px] sm:w-[250px] shrink-0 shadow-lg relative overflow-hidden group">
+                    <div className="relative shrink-0">
+                      <div className="w-18 h-24 sm:w-20 sm:h-26 rounded-xl overflow-hidden border-2 border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.3)] bg-[#0A0812]">
+                        <img 
+                          src="/pscologo.jpeg" 
+                          alt="Marco Antônio - Psicólogo" 
+                          className="w-full h-full object-cover object-top scale-105 group-hover:scale-110 transition-transform duration-500"
+                        />
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-purple-400 rounded-full border-2 border-black flex items-center justify-center shadow-[0_0_8px_rgba(168,85,247,0.8)]">
+                        <span className="w-1 h-1 rounded-full bg-black" />
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-purple-300 block mb-0.5">
+                        Psicólogo Clínico
+                      </span>
+                      <h4 className="text-white font-bold text-sm leading-tight truncate">
+                        Marco Antônio
+                      </h4>
+                      <p className="text-[10px] text-white/60 font-medium mt-0.5">
+                        CRP Psicologia
+                      </p>
+                      <p className="text-[9px] text-purple-300 font-bold mt-1.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block animate-pulse" />
+                        Atendimento
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Item 3: Duplicate Dr. Guilherme (for seamless loop) */}
+                  <div className="flex items-center gap-3 bg-gradient-to-r from-[#121E15] to-[#0A120C] border border-mecura-neon/50 rounded-2xl p-2.5 w-[230px] sm:w-[250px] shrink-0 shadow-lg relative overflow-hidden group">
+                    <div className="relative shrink-0">
+                      <div className="w-18 h-24 sm:w-20 sm:h-26 rounded-xl overflow-hidden border-2 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)] bg-[#050806]">
+                        <img 
+                          src="/doctor-avatar.png" 
+                          alt="Dr. Guilherme - Médico" 
+                          className="w-full h-full object-cover object-top scale-105 group-hover:scale-110 transition-transform duration-500"
+                        />
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-mecura-neon rounded-full border-2 border-black flex items-center justify-center shadow-[0_0_8px_rgba(166,255,0,0.8)]">
+                        <span className="w-1 h-1 rounded-full bg-black" />
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-mecura-neon block mb-0.5">
+                        Médico Prescritor
+                      </span>
+                      <h4 className="text-white font-bold text-sm leading-tight truncate">
+                        Dr. Guilherme
+                      </h4>
+                      <p className="text-[10px] text-white/60 font-medium mt-0.5">
+                        CRM Medicina
+                      </p>
+                      <p className="text-[9px] text-mecura-neon font-bold mt-1.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon inline-block animate-pulse" />
+                        Atendimento
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Item 4: Duplicate Marco Antônio (for seamless loop) */}
+                  <div className="flex items-center gap-3 bg-gradient-to-r from-[#1B1428] to-[#0F0B18] border border-purple-400/50 rounded-2xl p-2.5 w-[230px] sm:w-[250px] shrink-0 shadow-lg relative overflow-hidden group">
+                    <div className="relative shrink-0">
+                      <div className="w-18 h-24 sm:w-20 sm:h-26 rounded-xl overflow-hidden border-2 border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.3)] bg-[#0A0812]">
+                        <img 
+                          src="/pscologo.jpeg" 
+                          alt="Marco Antônio - Psicólogo" 
+                          className="w-full h-full object-cover object-top scale-105 group-hover:scale-110 transition-transform duration-500"
+                        />
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-purple-400 rounded-full border-2 border-black flex items-center justify-center shadow-[0_0_8px_rgba(168,85,247,0.8)]">
+                        <span className="w-1 h-1 rounded-full bg-black" />
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-purple-300 block mb-0.5">
+                        Psicólogo Clínico
+                      </span>
+                      <h4 className="text-white font-bold text-sm leading-tight truncate">
+                        Marco Antônio
+                      </h4>
+                      <p className="text-[10px] text-white/60 font-medium mt-0.5">
+                        CRP Psicologia
+                      </p>
+                      <p className="text-[9px] text-purple-300 font-bold mt-1.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block animate-pulse" />
+                        Atendimento
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
               </div>
             </motion.div>
 
-            <motion.h2 
-              initial={{ opacity: 0, y: 20 }}
+            {/* Headline */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="text-4xl font-serif font-semibold text-white mb-8 leading-tight tracking-tight shrink-0"
+              transition={{ delay: 0.15 }}
+              className="mb-6 shrink-0"
             >
-              Sua jornada de<br/>saúde em <span className="text-mecura-neon italic font-light">4 passos</span>
-            </motion.h2>
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.25em] text-mecura-neon block mb-1">
+                Jornada Descomplicada
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-sans font-extrabold text-white leading-tight tracking-tight">
+                Seu atendimento em <span className="text-mecura-neon">4 passos simples</span>
+              </h2>
+            </motion.div>
 
-            {/* Timeline Carousel */}
-            <div className="flex gap-4 overflow-x-auto pb-12 pt-4 snap-x snap-mandatory hide-scrollbar -mx-6 px-6 shrink-0">
+            {/* Step Cards Horizontal Carousel */}
+            <div className="flex gap-3.5 overflow-x-auto pb-4 pt-1 snap-x snap-mandatory hide-scrollbar -mx-5 px-5 shrink-0">
               {[
-                { icon: Activity, title: 'Avaliação Inicial', desc: 'Definição do seu objetivo e dos seus sintomas de forma rápida e segura.', active: true, step: '01' },
-                { icon: MessageSquare, title: 'Consulta via Chat', desc: 'Fale com um médico especialista sem precisar agendar horário.', active: false, step: '02' },
-                { icon: FileText, title: 'Prescrição Médica', desc: 'Se indicado, receba a receita e orientações para solicitar os produtos.', active: false, step: '03' },
-                { icon: Package, title: 'Entrega em Casa', desc: 'Acompanhe a importação até que os produtos sejam entregues na sua porta.', active: false, step: '04' }
+                { icon: Activity, title: '01. Avaliação Inicial', desc: 'Definição do seu objetivo e dos seus sintomas de forma rápida, guiada e segura.', active: true, step: '01' },
+                { icon: MessageSquare, title: '02. Consulta via Chat', desc: 'Fale com o médico especialista sem precisar agendar horário e tire dúvidas.', active: false, step: '02' },
+                { icon: FileText, title: '03. Receita Médica', desc: 'Receba a prescrição médica digital para solicitar os produtos autorizados.', active: false, step: '03' },
+                { icon: Package, title: '04. Entrega em Casa', desc: 'Acompanhe o envio até que os produtos cheguem diretamente à sua porta.', active: false, step: '04' }
               ].map((item, idx) => (
                 <motion.div 
                   key={idx}
-                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  initial={{ opacity: 0, scale: 0.96, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{ delay: 0.3 + (idx * 0.1), duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                  className={`flex-shrink-0 min-h-[280px] min-w-[275px] max-w-[275px] backdrop-blur-xl border rounded-[28px] p-7 relative snap-center flex flex-col overflow-hidden ${
+                  transition={{ delay: 0.2 + (idx * 0.08), duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className={`flex-shrink-0 w-[260px] sm:w-[280px] backdrop-blur-xl border rounded-2xl p-5 relative snap-start flex flex-col justify-between overflow-hidden ${
                     item.active 
-                      ? 'bg-gradient-to-br from-white/[0.06] to-[#0A0A0F]/80 border-white/[0.15] shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]' 
-                      : 'bg-[#12121A]/80 border-white/[0.04] shadow-[0_8px_20px_rgba(0,0,0,0.1)]'
+                      ? 'bg-gradient-to-br from-[#1B1B2C] via-[#141422] to-[#0A0A10] border-mecura-neon/40 shadow-[0_12px_35px_rgba(0,0,0,0.5),0_0_20px_rgba(166,255,0,0.1)]' 
+                      : 'bg-gradient-to-br from-[#141420] to-[#0C0C14] border-white/10 shadow-lg'
                   }`}
                 >
-                  <div className="absolute inset-0 rounded-[28px] bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none" />
-                  
-                  {item.active && (
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-mecura-neon/15 blur-[40px] rounded-full pointer-events-none" />
-                  )}
+                  <div>
+                    <div className="flex items-center justify-between mb-5 relative z-10">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                        item.active 
+                          ? 'bg-mecura-neon/15 border border-mecura-neon/40 text-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.2)]' 
+                          : 'bg-white/5 border border-white/10 text-mecura-silver'
+                      }`}>
+                        <item.icon strokeWidth={2} className="w-5 h-5" />
+                      </div>
+                      
+                      {/* Zero-Pill Editorial Number */}
+                      <span className={`text-xl font-black font-mono tracking-tighter ${
+                        item.active ? 'text-mecura-neon' : 'text-white/30'
+                      }`}>
+                        {item.step}
+                      </span>
+                    </div>
 
-                  <div className="flex items-start justify-between mb-10 relative z-10">
-                    <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center transition-all duration-500 ${
-                      item.active 
-                        ? 'bg-mecura-neon/10 border border-mecura-neon/30 shadow-[0_0_20px_rgba(166,255,0,0.15)]' 
-                        : 'bg-white/[0.03] border border-white/[0.05]'
-                    }`}>
-                      <item.icon strokeWidth={1.5} className={`w-5 h-5 ${item.active ? 'text-mecura-neon' : 'text-[#8A8A9E]'}`} />
-                    </div>
-                    
-                    {/* The elegant step badge replacing the confusing italic text */}
-                    <div className={`px-3 py-1.5 rounded-full border ${
-                      item.active 
-                        ? 'bg-mecura-neon/10 border-mecura-neon/30 text-mecura-neon' 
-                        : 'bg-white/5 border-white/10 text-[#8A8A9E]'
-                    }`}>
-                      <span className="text-[10px] font-bold tracking-[0.2em] uppercase">Passo {item.step}</span>
-                    </div>
+                    <h4 className="font-bold text-lg text-white mb-2 tracking-tight leading-snug">
+                      {item.title}
+                    </h4>
+                    <p className="text-xs text-mecura-silver leading-relaxed font-normal">
+                      {item.desc}
+                    </p>
                   </div>
-                  
-                  <div className="relative z-10 mt-auto">
-                    <h4 className={`font-serif font-bold text-[22px] mb-3 tracking-tight leading-tight ${item.active ? 'text-white' : 'text-white/80'}`}>{item.title}</h4>
-                    <p className={`text-[14px] leading-relaxed font-light ${item.active ? 'text-[#B0B0C0]' : 'text-[#8A8A9E]'}`}>{item.desc}</p>
+
+                  <div className="pt-4 mt-4 border-t border-white/5 flex items-center justify-between text-[10px] text-mecura-silver">
+                    <span>Etapa {idx + 1} de 4</span>
+                    <span className={item.active ? 'text-mecura-neon font-bold' : 'text-white/40'}>
+                      {item.active ? 'Comece Agora →' : 'Próximo'}
+                    </span>
                   </div>
                 </motion.div>
               ))}
+            </div>
+
+            {/* Carousel Step Indicators */}
+            <div className="flex items-center justify-center gap-1.5 pt-2 pb-3 shrink-0">
+              {[0, 1, 2, 3].map((i) => (
+                <div 
+                  key={i} 
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    i === 0 ? 'w-6 bg-mecura-neon' : 'w-1.5 bg-white/20'
+                  }`} 
+                />
+              ))}
+            </div>
+
+            {/* Strategic Quick-Access Tools in Step 2 */}
+            <div className="mt-1 shrink-0">
+              <span className="text-[10px] font-bold text-mecura-silver uppercase tracking-widest block mb-2">
+                Testes Clínicos & Calculadora HC
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenTool('tdah')}
+                  className="p-2.5 rounded-xl bg-[#131B2E]/90 border border-sky-400/30 hover:border-sky-400 text-left transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Brain className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span className="text-[11px] font-bold text-white truncate">Teste TDAH</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenTool('autism')}
+                  className="p-2.5 rounded-xl bg-[#1F1430]/90 border border-purple-400/30 hover:border-purple-400 text-left transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Activity className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span className="text-[11px] font-bold text-white truncate">Teste Autismo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenTool('hc')}
+                  className="p-2.5 rounded-xl bg-[#13261A]/90 border border-mecura-neon/35 hover:border-mecura-neon text-left transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Sprout className="w-4 h-4 text-mecura-neon shrink-0" />
+                  <span className="text-[11px] font-bold text-white truncate">Plantas HC</span>
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -306,16 +604,16 @@ export function WelcomeScreen() {
 
       {/* Fixed Footer Button */}
       <motion.div 
-        initial={{ opacity: 0, y: 50 }}
+        initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="absolute bottom-0 left-0 right-0 p-6 z-40 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F]/95 to-transparent pt-24 pb-10 flex flex-col gap-4"
+        transition={{ delay: 0.3, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 z-40 bg-gradient-to-t from-black/95 via-black/60 to-transparent pt-6 pb-4 flex flex-col gap-2.5 backdrop-blur-[1px]"
       >
         <Button 
-          className="w-full h-[64px] text-lg font-bold shadow-[0_0_40px_rgba(166,255,0,0.15)] hover:shadow-[0_0_60px_rgba(166,255,0,0.3)] transition-all duration-500 rounded-full group relative overflow-hidden bg-mecura-neon text-black" 
+          className="w-full h-14 text-base sm:text-lg font-black shadow-[0_10px_35px_rgba(166,255,0,0.5)] hover:shadow-[0_15px_45px_rgba(166,255,0,0.7)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 rounded-2xl group relative overflow-hidden bg-gradient-to-r from-[#A6FF00] via-[#86FF00] to-[#A6FF00] text-[#0A0A0F] border border-[#CFFF5A] cursor-pointer" 
           onClick={handleNext}
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
           <span className="relative z-10 flex items-center justify-center gap-2">
             {step === 1 ? 'Iniciar Minha Jornada' : 'Começar Avaliação'}
             <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -325,16 +623,16 @@ export function WelcomeScreen() {
         {hasCompletedOnboarding && step === 1 && (
           <Button 
             variant="outline"
-            className="w-full h-[56px] text-[15px] font-bold border-white/10 text-white hover:bg-white/5 transition-all duration-300 rounded-full bg-[#161622]/50 backdrop-blur-md" 
+            className="w-full h-12 text-sm font-bold border-white/10 text-white hover:bg-white/5 transition-all duration-300 rounded-xl bg-[#161622]/60 backdrop-blur-md" 
             onClick={() => navigate('/dashboard')}
           >
-            <User className="w-5 h-5 mr-2 text-mecura-neon" />
+            <User className="w-4 h-4 mr-2 text-mecura-neon" />
             Acessar Área do Paciente
           </Button>
         )}
 
-        <p className="text-[10px] text-center text-[#8A8A9E]/70 pt-1 font-sans">
-          {INSTITUTIONAL_INFO.companyName} • CNPJ {INSTITUTIONAL_INFO.cnpj} •{' '}
+        <p className="text-[10px] text-center text-[#8A8A9E]/80 font-sans tracking-wide">
+          {INSTITUTIONAL_INFO.companyName} <span className="text-white/30">·</span> CNPJ {INSTITUTIONAL_INFO.cnpj} <span className="text-white/30">·</span>{' '}
           <button 
             type="button" 
             onClick={() => navigate('/legal')} 
@@ -344,6 +642,13 @@ export function WelcomeScreen() {
           </button>
         </p>
       </motion.div>
+
+      {/* Strategic Interactive Tools Modal (TDAH, Autismo, Calculadora HC) */}
+      <StrategicToolsModal
+        isOpen={strategicToolOpen}
+        initialTool={selectedTool}
+        onClose={() => setStrategicToolOpen(false)}
+      />
 
       {/* Professional Login Modal */}
       <AnimatePresence>
@@ -359,7 +664,7 @@ export function WelcomeScreen() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="bg-[#161622] border border-white/10 rounded-[32px] p-8 w-full max-w-md relative shadow-2xl"
+              className="bg-[#060D08] border border-white/10 rounded-[32px] p-8 w-full max-w-md relative shadow-2xl"
             >
               <button 
                 onClick={() => setShowProfessionalModal(false)}
@@ -373,25 +678,35 @@ export function WelcomeScreen() {
               </h2>
 
               {!loginType ? (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
                     onClick={() => setLoginType('admin')}
-                    className="flex flex-col items-center justify-center gap-4 bg-[#0A0A0F] border border-white/5 rounded-3xl p-6 hover:border-mecura-neon/30 hover:bg-mecura-neon/5 transition-all duration-300 group shadow-lg"
+                    className="flex flex-col items-center justify-center gap-3 bg-[#0A0A0F] border border-white/5 rounded-2xl p-4 sm:p-5 hover:border-mecura-neon/30 hover:bg-mecura-neon/5 transition-all duration-300 group shadow-lg cursor-pointer"
                   >
-                    <div className="w-14 h-14 rounded-full bg-[#161622] border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                      <Settings className="w-6 h-6 text-mecura-neon" />
+                    <div className="w-12 h-12 rounded-full bg-[#161622] border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <Settings className="w-5 h-5 text-mecura-neon" />
                     </div>
-                    <span className="text-white font-medium tracking-wide">Administração</span>
+                    <span className="text-white font-medium text-xs sm:text-sm tracking-wide text-center">Administração</span>
                   </button>
 
                   <button
                     onClick={() => setLoginType('doctor')}
-                    className="flex flex-col items-center justify-center gap-4 bg-[#0A0A0F] border border-white/5 rounded-3xl p-6 hover:border-mecura-neon/30 hover:bg-mecura-neon/5 transition-all duration-300 group shadow-lg"
+                    className="flex flex-col items-center justify-center gap-3 bg-[#0A0A0F] border border-white/5 rounded-2xl p-4 sm:p-5 hover:border-mecura-neon/30 hover:bg-mecura-neon/5 transition-all duration-300 group shadow-lg cursor-pointer"
                   >
-                    <div className="w-14 h-14 rounded-full bg-[#161622] border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                      <Stethoscope className="w-6 h-6 text-mecura-neon" />
+                    <div className="w-12 h-12 rounded-full bg-[#161622] border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <Stethoscope className="w-5 h-5 text-mecura-neon" />
                     </div>
-                    <span className="text-white font-medium tracking-wide">Área Médica</span>
+                    <span className="text-white font-medium text-xs sm:text-sm tracking-wide text-center">Área Médica</span>
+                  </button>
+
+                  <button
+                    onClick={() => setLoginType('psychologist')}
+                    className="flex flex-col items-center justify-center gap-3 bg-[#0A0A0F] border border-purple-500/20 rounded-2xl p-4 sm:p-5 hover:border-purple-400/40 hover:bg-purple-500/10 transition-all duration-300 group shadow-lg cursor-pointer"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-[#161622] border border-purple-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <Brain className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <span className="text-white font-medium text-xs sm:text-sm tracking-wide text-center">Área do Psicólogo</span>
                   </button>
                 </div>
               ) : (
@@ -412,7 +727,9 @@ export function WelcomeScreen() {
                       <ChevronLeft className="w-5 h-5 pr-0.5" />
                     </button>
                     <h3 className="text-xl font-medium text-white tracking-wide">
-                      {loginType === 'admin' ? 'Administrador' : 'Médico Especialista'}
+                      {loginType === 'admin' 
+                        ? 'Administrador' 
+                        : (loginType === 'psychologist' ? 'Psicólogo • Marco Antônio' : 'Médico • Dr. Guilherme')}
                     </h3>
                   </div>
 

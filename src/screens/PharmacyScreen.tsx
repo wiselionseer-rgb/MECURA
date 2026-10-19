@@ -881,9 +881,9 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
   );
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white">
+    <div className="min-h-screen bg-[#000000] text-white">
       {/* Top Header */}
-      <div className="sticky top-0 z-40 bg-[#0A0A0F]/80 backdrop-blur-xl border-b border-[#1A1A26]">
+      <div className="sticky top-0 z-40 bg-[#000000]/80 backdrop-blur-xl border-b border-[#1A1A26]">
         <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
           <button 
             onClick={() => {

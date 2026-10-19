@@ -13,11 +13,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const baseStyles = "relative inline-flex items-center justify-center rounded-full font-bold transition-all focus:outline-none disabled:opacity-50 disabled:pointer-events-none overflow-hidden tracking-wide";
     
     const variants = {
-      primary: "bg-mecura-neon text-[#0A0A0F] shadow-[0_0_15px_rgba(166,255,0,0.3)] hover:bg-mecura-neon-hover hover:shadow-[0_0_25px_rgba(166,255,0,0.5)]",
-      premium: "bg-gradient-to-r from-[#A6FF00] to-[#C9FF5C] text-[#0A0A0F] shadow-[0_0_20px_rgba(212,175,55,0.4)] hover:shadow-[0_0_30px_rgba(212,175,55,0.6)]",
-      secondary: "bg-mecura-surface-light text-mecura-pearl hover:bg-mecura-elevated",
-      outline: "border border-mecura-neon text-mecura-pearl hover:bg-mecura-neon/10",
-      ghost: "border border-mecura-silver text-mecura-pearl hover:bg-white/5",
+      primary: "bg-gradient-to-r from-[#A6FF00] via-[#86FF00] to-[#A6FF00] text-[#0A0A0F] font-black shadow-[0_8px_30px_rgba(166,255,0,0.45)] hover:shadow-[0_12px_40px_rgba(166,255,0,0.65)] hover:bg-[#CFFF5A] border border-[#CFFF5A]/50",
+      premium: "bg-gradient-to-r from-[#A6FF00] via-[#C9FF5C] to-[#00FF66] text-[#0A0A0F] font-black shadow-[0_10px_35px_rgba(166,255,0,0.5)] hover:shadow-[0_15px_45px_rgba(166,255,0,0.7)] border border-white/40",
+      secondary: "bg-[#142118] text-white hover:bg-[#1B2B20] border border-white/10",
+      outline: "border border-[#A6FF00] text-[#A6FF00] font-bold hover:bg-[#A6FF00]/10 hover:border-[#A6FF00]",
+      ghost: "border border-white/10 text-white/80 hover:text-white hover:bg-white/5",
     };
     
     const sizes = {

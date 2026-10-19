@@ -28,8 +28,12 @@ import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
+import { GREENBUDZ_PRODUCTS, GreenBudzProduct } from '../data/greenbudzCatalog';
 import { useAdminStore } from '../store/useAdminStore';
-import { getBestCategoryIdForProduct } from '../utils/productCatalog';
+import { getBestCategoryIdForProduct, getCustomBulaData, applyCustomBulaToProduct, getDeletedProductNames } from '../utils/productCatalog';
+import { ProductBulaModal } from './ProductBulaModal';
+import { ProgrammedPrescriptionsModal } from './ProgrammedPrescriptionsModal';
+import { ProgrammedPrescriptionProfile } from '../data/programmedPrescriptions';
 
 interface PrescriptionEditorModalProps {
   isOpen: boolean;
@@ -63,8 +67,28 @@ interface PrescriptionEditorModalProps {
     items: PrescriptionItemData[];
     notes: string;
   }) => void;
-  onDownloadPDF: () => void;
-  onSendToChat?: (includeProductCards?: boolean) => Promise<void>;
+  onDownloadPDF: (currentData?: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => void;
+  onSendToChat?: (includeProductCards?: boolean, currentData?: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => Promise<void>;
   onSendPreviewToChat?: () => Promise<void>;
 }
 
@@ -172,34 +196,111 @@ export function PrescriptionEditorModal({
   const [newProdActiveIngredients, setNewProdActiveIngredients] = useState('');
   const [saveToGlobalCatalog, setSaveToGlobalCatalog] = useState(false);
   const [feedbackBannerText, setFeedbackBannerText] = useState<string | null>(null);
+  const [showProgrammedModal, setShowProgrammedModal] = useState(false);
 
-  // All catalog products merged from ALL categories of cbdGuideData, useAdminStore, Flowermed, Flores/Extrações e Associações
+  const handleApplyProgrammedProfile = (profile: ProgrammedPrescriptionProfile, mode: 'replace' | 'append') => {
+    let nextItems: PrescriptionItemData[];
+    if (mode === 'replace') {
+      nextItems = [...profile.items];
+    } else {
+      nextItems = [...items, ...profile.items];
+    }
+
+    setItems(nextItems);
+    propSetItems(nextItems);
+
+    if (profile.defaultNotes) {
+      if (mode === 'replace' || !notes.trim()) {
+        setNotes(profile.defaultNotes);
+        propSetNotes(profile.defaultNotes);
+      } else {
+        const combinedNotes = notes + '\n\n' + profile.defaultNotes;
+        setNotes(combinedNotes);
+        propSetNotes(combinedNotes);
+      }
+    }
+
+    setFeedbackBannerText(`✓ Protocolo de "${profile.name}" carregado com sucesso (${nextItems.length} medicamentos)! O médico pode editar, adicionar ou remover.`);
+    setTimeout(() => setFeedbackBannerText(null), 5000);
+  };
+
+  // Synchronize when Bula is edited or saved anywhere in the system
+  const [bulaVersion, setBulaVersion] = useState(0);
+  useEffect(() => {
+    const handleBulaUpdate = (e?: any) => {
+      setBulaVersion(v => v + 1);
+      const detail = e?.detail;
+      if (detail?.updated) {
+        const updated = detail.updated;
+        const targetOld = (detail.oldName || '').trim().toLowerCase();
+        const targetNew = (updated.name || '').trim().toLowerCase();
+
+        setItems(prevItems => {
+          let hasChanges = false;
+          const next = prevItems.map(item => {
+            const itemClean = (item.name || '').trim().toLowerCase();
+            if (itemClean === targetOld || itemClean === targetNew) {
+              hasChanges = true;
+              const dosageArr = updated.posologyDetails 
+                ? updated.posologyDetails.split('\n').map((l: string) => l.trim()).filter(Boolean)
+                : item.dosage;
+              return {
+                ...item,
+                name: updated.name || item.name,
+                brand: updated.manufacturer || item.brand,
+                origin: updated.origin || item.origin,
+                type: updated.type || item.type,
+                concentration: updated.concentration || updated.activeIngredients || item.concentration,
+                activeIngredients: updated.activeIngredients || item.activeIngredients,
+                pharmaceuticalForm: updated.pharmaceuticalForm || item.pharmaceuticalForm,
+                quantity: updated.quantity || item.quantity,
+                administrationRoute: updated.administrationRoute || item.administrationRoute,
+                dosage: dosageArr && dosageArr.length > 0 ? dosageArr : item.dosage,
+                description: updated.description || item.description,
+                priceBRL: updated.priceBRL !== undefined ? Number(String(updated.priceBRL).replace(/[^0-9.]/g, '')) : item.priceBRL,
+                priceUSD: updated.priceUSD !== undefined ? Number(String(updated.priceUSD).replace(/[^0-9.]/g, '')) : item.priceUSD
+              };
+            }
+            return item;
+          });
+          if (hasChanges) {
+            propSetItems(next);
+          }
+          return next;
+        });
+      }
+    };
+    window.addEventListener('mecura_bula_updated', handleBulaUpdate);
+    window.addEventListener('storage', handleBulaUpdate);
+    return () => {
+      window.removeEventListener('mecura_bula_updated', handleBulaUpdate);
+      window.removeEventListener('storage', handleBulaUpdate);
+    };
+  }, [propSetItems]);
+
+  // Modal state to open Bula directly from Prescription Editor or Library
+  const [selectedBulaProduct, setSelectedBulaProduct] = useState<any | null>(null);
+  const [selectedBulaTargetItemIndex, setSelectedBulaTargetItemIndex] = useState<number | null>(null);
+
+  // All catalog products merged from ALL categories, with useAdminStore + custom Bula overrides taking precedence!
   const allLibraryProducts = useMemo(() => {
     const list: (CBDProduct & { categoryName?: string; sourceCatalog?: string })[] = [];
     const seenNames = new Set<string>();
+    const deletedSet = getDeletedProductNames();
 
-    const addProd = (prod: any, catName?: string, source?: string) => {
-      if (!prod || !prod.name) return;
-      const key = prod.name.toLowerCase().trim();
+    const addProd = (rawProd: any, catName?: string, source?: string) => {
+      if (!rawProd || !rawProd.name) return;
+      const prod = applyCustomBulaToProduct(rawProd);
+      const key = (prod.name || '').trim().toLowerCase();
+      if (!key || deletedSet.has(key)) return;
+
       if (!seenNames.has(key)) {
         seenNames.add(key);
         list.push({ ...prod, categoryName: catName || 'Outros', sourceCatalog: source || 'Geral' });
       }
     };
 
-    // 1. From all categories in cbdGuideData (all 15 categories)
-    if (cbdGuideData && Array.isArray(cbdGuideData)) {
-      for (const cat of cbdGuideData) {
-        const cTitle = cat.title || cat.description?.split('.')[0] || 'Geral';
-        if (cat.products && Array.isArray(cat.products)) {
-          for (const p of cat.products) {
-            addProd(p, cTitle, 'Biblioteca Mecura');
-          }
-        }
-      }
-    }
-
-    // 2. From useAdminStore productCategories (if customized or synced)
+    // 1. From useAdminStore productCategories FIRST (contains latest doctor edits & custom additions!)
     if (productCategories && Array.isArray(productCategories)) {
       for (const cat of productCategories) {
         const cTitle = (cat as any).title || (cat as any).name || 'Painel Clínico';
@@ -211,43 +312,60 @@ export function PrescriptionEditorModal({
       }
     }
 
-    // 3. From Flowermed Catalog (EUA)
-    for (const p of FLOWERMED_PRODUCTS) {
-      addProd(p, 'Linha Flowermed (EUA)', 'Flowermed');
+    // 2. From all categories in cbdGuideData (all base categories)
+    if (cbdGuideData && Array.isArray(cbdGuideData)) {
+      for (const cat of cbdGuideData) {
+        const cTitle = cat.title || cat.description?.split('.')[0] || 'Geral';
+        if (cat.products && Array.isArray(cat.products)) {
+          for (const p of cat.products) {
+            addProd(p, cTitle, 'Biblioteca Mecura');
+          }
+        }
+      }
     }
 
-    // 4. From Flower Extractions Catalog (14g)
-    for (const p of FLOWER_EXTRACTIONS_PRODUCTS) {
-      addProd(p, 'Flores & Extrações (14g)', 'Flores/Extrações');
-    }
-
-    // 5. From National Association Catalog (Brasil)
-    for (const p of NATIONAL_ASSOCIATION_PRODUCTS) {
-      addProd(p, 'Associações Nacionais (Brasil)', 'Associação');
-    }
-
-    // 6. From ABECMED Official National Catalog (Brasil)
-    for (const p of ABECMED_PRODUCTS) {
-      addProd(p, 'ABECMED (Associação Nacional)', 'ABECMED');
-    }
-
-    // 7. From ABRACE Official National Catalog (Brasil)
-    for (const p of ABRACE_PRODUCTS) {
-      addProd(p, 'ABRACE Esperança (Associação Nacional)', 'ABRACE');
-    }
-
-    // 8. From SouCannabis Official National Catalog (Brasil)
-    for (const p of SOUCANNABIS_PRODUCTS) {
-      addProd(p, 'SouCannabis (Associação Nacional)', 'SouCannabis');
-    }
-
-    // 9. From Pangaia Biopharmaceuticals Official Catalog (Importado — EUA / Anvisa RDC 660)
+    // 3. From Pangaia Biopharmaceuticals Official Catalog (Importado — EUA / Anvisa RDC 660)
     for (const p of PANGAIA_PRODUCTS) {
       addProd(p, 'Pangaia Biopharmaceuticals (Importado)', 'Pangaia');
     }
 
+    // 3b. From GreenBudzCBD Official Catalog (Importado — EUA / Anvisa RDC 660)
+    for (const p of GREENBUDZ_PRODUCTS) {
+      addProd(p, 'GreenBudzCBD (Importado)', 'GreenBudz');
+    }
+
+    // 4. From SouCannabis Official National Catalog (Brasil)
+    for (const p of SOUCANNABIS_PRODUCTS) {
+      addProd(p, 'SouCannabis (Associação Nacional)', 'SouCannabis');
+    }
+
+    // 5. From Flowermed Catalog (EUA)
+    for (const p of FLOWERMED_PRODUCTS) {
+      addProd(p, 'Linha Flowermed (EUA)', 'Flowermed');
+    }
+
+    // 6. From Flower Extractions Catalog (14g)
+    for (const p of FLOWER_EXTRACTIONS_PRODUCTS) {
+      addProd(p, 'Flores & Extrações (14g)', 'Flores/Extrações');
+    }
+
+    // 7. From National Association Catalog (Brasil)
+    for (const p of NATIONAL_ASSOCIATION_PRODUCTS) {
+      addProd(p, 'Associações Nacionais (Brasil)', 'Associação');
+    }
+
+    // 8. From ABECMED Official National Catalog (Brasil)
+    for (const p of ABECMED_PRODUCTS) {
+      addProd(p, 'ABECMED (Associação Nacional)', 'ABECMED');
+    }
+
+    // 9. From ABRACE Official National Catalog (Brasil)
+    for (const p of ABRACE_PRODUCTS) {
+      addProd(p, 'ABRACE Esperança (Associação Nacional)', 'ABRACE');
+    }
+
     return list;
-  }, [productCategories]);
+  }, [productCategories, bulaVersion]);
 
   // Dynamic filter for Library modal
   const filteredLibraryProducts = useMemo(() => {
@@ -261,6 +379,12 @@ export function PrescriptionEditorModal({
           (p.name || '').toLowerCase().includes('pangaia') ||
           (p.name || '').toLowerCase().includes('maná') ||
           (p.name || '').toLowerCase().includes('táio')
+        );
+      } else if (librarySelectedCategory === 'greenbudz') {
+        result = result.filter(p => 
+          (p.manufacturer || '').toLowerCase().includes('greenbudz') || 
+          (p.sourceCatalog || '').toLowerCase().includes('greenbudz') || 
+          /greenbudz|drops by greenbud|calm vibe|chill vibe/i.test(p.name || '')
         );
       } else if (librarySelectedCategory === 'soucannabis') {
         result = result.filter(p => 
@@ -307,16 +431,20 @@ export function PrescriptionEditorModal({
       if (libraryOriginFilter === 'Nacional') {
         result = result.filter(p => 
           p.origin === 'Nacional' || 
-          (p.manufacturer || '').toLowerCase().includes('associação') ||
-          (p.manufacturer || '').toLowerCase().includes('abec') ||
-          (p.manufacturer || '').toLowerCase().includes('abrace')
+          /associação|associacao|abec|abrace|soucannabis|nacional|abrascorp|apepi|cultive/i.test(
+            `${p.manufacturer || ''} ${p.name || ''} ${p.categoryName || ''} ${p.sourceCatalog || ''}`
+          )
         );
       } else {
         result = result.filter(p => 
-          p.origin !== 'Nacional' && 
-          !(p.manufacturer || '').toLowerCase().includes('associação') &&
-          !(p.manufacturer || '').toLowerCase().includes('abec') &&
-          !(p.manufacturer || '').toLowerCase().includes('abrace')
+          p.origin === 'Importado' || 
+          (p.origin !== 'Nacional' && 
+           !/associação|associacao|abec|abrace|soucannabis|nacional|abrascorp|apepi|cultive/i.test(
+             `${p.manufacturer || ''} ${p.name || ''} ${p.categoryName || ''} ${p.sourceCatalog || ''}`
+           )) ||
+          /pangaia|flowermed|flower|extraction|extração|greenbudz|folheto|14g|eua|importad/i.test(
+            `${p.manufacturer || ''} ${p.name || ''} ${p.categoryName || ''} ${p.sourceCatalog || ''}`
+          )
         );
       }
     }
@@ -419,7 +547,10 @@ export function PrescriptionEditorModal({
     });
   }, [isOpen, setItems]);
 
-  const handleSelectLibraryProduct = (product: any, replaceIndex?: number | null) => {
+  const handleSelectLibraryProduct = (rawProduct: any, replaceIndex?: number | null) => {
+    const product = applyCustomBulaToProduct(rawProduct);
+    const customBula = getCustomBulaData(product);
+
     const isGummy = /goma|gumm|comest[íi]vel/i.test(product.name || product.type || '');
     const isFlower = /flor|in natura/i.test(product.name || product.type || '');
     const isTopical = /pomada|t[óo]pico/i.test(product.name || product.type || '');
@@ -438,12 +569,19 @@ export function PrescriptionEditorModal({
       product
     );
 
-    let form = product.pharmaceuticalForm || enriched.pharmaceuticalForm;
-    let qty = product.quantity || product.volumeOrQuantity || enriched.quantity;
-    let route = product.administrationRoute || enriched.administrationRoute;
+    let form = customBula?.pharmaceuticalForm || product.pharmaceuticalForm || enriched.pharmaceuticalForm;
+    let qty = customBula?.quantity || product.quantity || (product as any).volumeOrQuantity || enriched.quantity;
+    let route = customBula?.administrationRoute || product.administrationRoute || enriched.administrationRoute;
     let dosageLines: string[] = [];
 
-    if (isGummy) {
+    const customPosology = (customBula?.posologyDetails || product.posologyDetails || product.usageInstructions || '').trim();
+
+    if (customPosology) {
+      dosageLines = customPosology
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter(Boolean);
+    } else if (isGummy) {
       form = form && !form.toLowerCase().includes('solução') ? form : 'Gomas Mastigáveis Veganas';
       qty = qty && !qty.toLowerCase().includes('frasco de 30') ? qty : (product.details?.find((d: string) => d.includes('gomas')) || '01 Pote com 20 a 30 gomas');
       route = 'Via Oral';
@@ -485,25 +623,28 @@ export function PrescriptionEditorModal({
           .filter(Boolean);
       } else {
         dosageLines = [
-          'Aproximadamente 25 gotas por mL.',
           'Tomar 03 a 05 gotas por via sublingual de 12/12 horas.',
           'Reter sob a língua por 60 segundos antes de engolir para rápida absorção.'
         ];
       }
     }
 
+    const conc = (customBula?.concentration || customBula?.activeIngredients || product.concentration || enriched.concentration || '').trim();
+    const active = (customBula?.activeIngredients || customBula?.concentration || product.activeIngredients || enriched.activeIngredients || conc).trim();
+    const desc = customBula?.description || product.description || enriched.description || '';
+
     const newItem: PrescriptionItemData = {
-      name: product.name,
-      brand: product.manufacturer || (isNat ? 'Associação Brasileira (Nacional)' : 'GreenBudzCBD'),
-      origin: isNat ? 'Nacional' : 'Importado',
-      type: product.type || enriched.type,
-      activeIngredients: product.activeIngredients || enriched.activeIngredients,
-      concentration: product.concentration || enriched.concentration,
+      name: customBula?.name || product.name,
+      brand: customBula?.manufacturer || product.manufacturer || (isNat ? 'Associação Brasileira (Nacional)' : 'GreenBudzCBD'),
+      origin: customBula?.origin || (isNat ? 'Nacional' : (product.origin || 'Importado')),
+      type: customBula?.type || product.type || enriched.type,
+      activeIngredients: active,
+      concentration: conc,
       pharmaceuticalForm: form,
       quantity: qty,
       administrationRoute: route,
       dosage: dosageLines,
-      description: product.description || enriched.description || '',
+      description: desc,
       priceUSD: product.priceUSD,
       priceBRL: product.priceBRL,
       image: product.image
@@ -673,46 +814,14 @@ export function PrescriptionEditorModal({
 
   const handleAddFlowermedItem = (productName: string) => {
     const prod = FLOWERMED_PRODUCTS.find(p => p.name === productName);
-    if (!prod) return;
-    const enriched = enrichMedicationDetails(prod.name, 'Flowermed', 'Importado (EUA)', prod.type, prod);
-    const newItem: PrescriptionItemData = {
-      name: prod.name,
-      brand: 'Flowermed (EUA)',
-      origin: 'Importado (EUA)',
-      activeIngredients: enriched.activeIngredients,
-      concentration: enriched.concentration,
-      pharmaceuticalForm: enriched.pharmaceuticalForm,
-      quantity: enriched.quantity,
-      administrationRoute: enriched.administrationRoute,
-      dosage: [
-        prod.usageInstructions || 'Tomar 03 gotas por via sublingual de 12/12 horas. Reter por 60s antes de engolir.',
-        'Aumentar 01 gota a cada 04 a 05 dias conforme resposta terapêutica individual.'
-      ],
-      description: prod.description || 'Medicamento fabricado sob normas FDA nos EUA, importação ANVISA RDC 660. COA lote a lote.'
-    };
-    setItems(prev => [...prev, newItem]);
+    const baseProd = prod || { name: productName, manufacturer: 'Linha Flowermed (EUA)', origin: 'Importado' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddFlowerExtItem = (productName: string) => {
     const prod = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name === productName);
-    if (!prod) return;
-    const enriched = enrichMedicationDetails(prod.name, 'Importado (Folheto Especial)', 'Importado', prod.type, prod);
-    const newItem: PrescriptionItemData = {
-      name: prod.name,
-      brand: 'Importado (Folheto Especial)',
-      origin: 'Importado',
-      activeIngredients: enriched.activeIngredients,
-      concentration: enriched.concentration,
-      pharmaceuticalForm: enriched.pharmaceuticalForm,
-      quantity: enriched.quantity,
-      administrationRoute: enriched.administrationRoute,
-      dosage: [
-        prod.usageInstructions || 'Utilizar vaporizador medicinal calibrado para controle térmico sem combustão.',
-        `Perfil: ${prod.strainProfile} • Momento: ${prod.usageMoment}. Microdosagem com avaliação de resposta a cada 15-30 minutos.`
-      ],
-      description: prod.description || 'Produto vegetal importado em embalagem selada de 14g ou extração concentrada com laudo sob demanda.'
-    };
-    setItems(prev => [...prev, newItem]);
+    const baseProd = prod || { name: productName, manufacturer: 'Importado (Folheto Especial)', origin: 'Importado' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddNationalItem = (productName: string) => {
@@ -721,189 +830,38 @@ export function PrescriptionEditorModal({
       const pNameLower = p.name.toLowerCase();
       return pNameLower === pTarget || pNameLower.includes(pTarget) || pTarget.includes(pNameLower);
     });
-    const enriched = enrichMedicationDetails(prod?.name || productName, 'Associação Nacional', 'Nacional', prod?.type, prod);
-    
-    let dosageLines: string[];
-    if (prod?.usageInstructions) {
-      dosageLines = prod.usageInstructions
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .filter(line => !/^Posologia \(Aproximadamente 25 gotas por mL\):?$/i.test(line) && !/^Aproximadamente 25 gotas por mL\.?$/i.test(line));
-      if (dosageLines.length === 0) {
-        dosageLines = [
-          'Tomar 03 a 05 gotas por via sublingual de 12 em 12 horas.',
-          'Reter sob a língua por 60 segundos antes de engolir para rápida absorção.'
-        ];
-      }
-    } else {
-      dosageLines = [
-        'Tomar 03 a 05 gotas por via sublingual de 12 em 12 horas.',
-        'Reter sob a língua por 60 segundos antes de engolir.',
-        'Aumentar 01 gota a cada 05 dias até atingir a dose terapêutica de controle.'
-      ];
-    }
-
-    const newItem: PrescriptionItemData = {
-      name: prod?.name || productName,
-      brand: 'Associação Nacional (Brasil)',
-      origin: 'Nacional',
-      activeIngredients: enriched.activeIngredients,
-      concentration: enriched.concentration,
-      pharmaceuticalForm: enriched.pharmaceuticalForm,
-      quantity: enriched.quantity,
-      administrationRoute: enriched.administrationRoute,
-      dosage: dosageLines,
-      description: prod?.description || enriched.description || 'Medicamento nacional autorizado de associação brasileira.',
-      priceBRL: prod?.priceBRL
-    };
-    setItems(prev => [...prev, newItem]);
+    const baseProd = prod || { name: productName, manufacturer: 'Associação Nacional (Brasil)', origin: 'Nacional' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddAbecmedItem = (productName: string) => {
     const prod = ABECMED_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    if (!prod) return;
-    const enriched = enrichMedicationDetails(prod.name, 'ABECMED', 'Nacional', prod.type, prod);
-
-    let dosageLines: string[];
-    if (prod.usageInstructions) {
-      dosageLines = prod.usageInstructions
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    } else {
-      dosageLines = [
-        'Conforme determinação individual do prescritor habilitado.',
-        'Administrar por via sublingual/oral conforme orientação médica.'
-      ];
-    }
-
-    const newItem: PrescriptionItemData = {
-      name: prod.name,
-      brand: 'ABECMED (Associação Nacional)',
-      origin: 'Nacional',
-      type: prod.type || enriched.type,
-      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
-      concentration: prod.concentration || enriched.concentration,
-      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
-      quantity: prod.quantity || enriched.quantity,
-      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
-      dosage: dosageLines,
-      description: prod.description || enriched.description || 'Produto oficial da Associação Brasileira de Cannabis Medicinal (ABECMED).',
-      priceBRL: prod.priceBRL
-    };
-    setItems(prev => [...prev, newItem]);
+    const baseProd = prod || { name: productName, manufacturer: 'ABECMED (Associação Nacional)', origin: 'Nacional' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddAbraceItem = (productName: string) => {
     const prod = ABRACE_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    if (!prod) return;
-    const enriched = enrichMedicationDetails(prod.name, 'ABRACE', 'Nacional', prod.type, prod);
-
-    let dosageLines: string[];
-    if (prod.usageInstructions) {
-      dosageLines = prod.usageInstructions
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    } else {
-      dosageLines = [
-        'Conforme determinação individual do prescritor habilitado.',
-        'Administrar conforme orientação médica.'
-      ];
-    }
-
-    const newItem: PrescriptionItemData = {
-      name: prod.name,
-      brand: 'ABRACE (Associação Nacional)',
-      origin: 'Nacional',
-      type: prod.type || enriched.type,
-      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
-      concentration: prod.concentration || enriched.concentration,
-      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
-      quantity: prod.quantity || enriched.quantity,
-      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
-      dosage: dosageLines,
-      description: prod.description || enriched.description || 'Produto oficial da ABRACE (Associação Brasileira de Apoio Cannabis Esperança).',
-      priceBRL: prod.priceBRL
-    };
-    setItems(prev => [...prev, newItem]);
+    const baseProd = prod || { name: productName, manufacturer: 'ABRACE (Associação Nacional)', origin: 'Nacional' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddSouCannabisItem = (productName: string) => {
     const prod = SOUCANNABIS_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    if (!prod) return;
-    const enriched = enrichMedicationDetails(prod.name, 'SouCannabis', 'Nacional', prod.type, prod);
-
-    let dosageLines: string[];
-    if (prod.usageInstructions) {
-      dosageLines = prod.usageInstructions
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    } else {
-      dosageLines = [
-        'Conforme determinação individual do prescritor habilitado.',
-        'Administrar conforme orientação médica.'
-      ];
-    }
-
-    const newItem: PrescriptionItemData = {
-      name: prod.name,
-      brand: 'SouCannabis (Associação Nacional)',
-      origin: 'Nacional',
-      type: prod.type || enriched.type,
-      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
-      concentration: prod.concentration || enriched.concentration,
-      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
-      quantity: prod.quantity || enriched.quantity,
-      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
-      dosage: dosageLines,
-      description: prod.description || enriched.description || 'Produto oficial da SouCannabis (Associação Brasileira de Cannabis Medicinal).',
-      priceBRL: prod.priceBRL
-    };
-    setItems(prev => [...prev, newItem]);
+    const baseProd = prod || { name: productName, manufacturer: 'SouCannabis (Associação Nacional)', origin: 'Nacional' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddPangaiaItem = (productName: string) => {
     const prod = PANGAIA_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    if (!prod) return;
-    const enriched = enrichMedicationDetails(prod.name, 'Pangaia', 'Importado', prod.type, prod);
+    const baseProd = prod || { name: productName, manufacturer: 'Pangaia Biopharmaceuticals (Importado)', origin: 'Importado' };
+    handleSelectLibraryProduct(baseProd);
+  };
 
-    let dosageLines: string[];
-    if (prod.posologyDetails) {
-      dosageLines = prod.posologyDetails
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    } else if (prod.usageInstructions) {
-      dosageLines = prod.usageInstructions
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    } else {
-      dosageLines = [
-        'Conforme determinação individual do prescritor habilitado.',
-        'Administrar sob orientação médica (RDC Anvisa nº 660/2022).'
-      ];
-    }
-
-    const newItem: PrescriptionItemData = {
-      name: prod.name,
-      brand: 'Pangaia Biopharmaceuticals (Importado)',
-      origin: 'Importado',
-      type: prod.type || enriched.type,
-      activeIngredients: prod.activeIngredients || enriched.activeIngredients,
-      concentration: prod.concentration || enriched.concentration,
-      pharmaceuticalForm: prod.pharmaceuticalForm || enriched.pharmaceuticalForm,
-      quantity: prod.quantity || enriched.quantity,
-      administrationRoute: prod.administrationRoute || enriched.administrationRoute,
-      dosage: dosageLines,
-      description: prod.description || enriched.description || 'Produto oficial da Pangaia Biopharmaceuticals (Importação Anvisa RDC 660/2022).',
-      priceBRL: prod.priceBRL,
-      priceUSD: prod.priceUSD
-    };
-    setItems(prev => [...prev, newItem]);
+  const handleAddGreenBudzItem = (productName: string) => {
+    const prod = GREENBUDZ_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
+    const baseProd = prod || { name: productName, manufacturer: 'GreenBudzCBD (Importado EUA)', origin: 'Importado' };
+    handleSelectLibraryProduct(baseProd);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -1109,11 +1067,27 @@ export function PrescriptionEditorModal({
     });
   };
 
+  const buildCurrentData = () => ({
+    patientName,
+    birthDate,
+    cpf,
+    emissionDate,
+    doctorName,
+    doctorCrm,
+    doctorSpecialty,
+    items,
+    notes
+  });
+
   const handleDownload = () => {
     syncToParent();
+    const currentData = buildCurrentData();
+    if (onSave) {
+      onSave(currentData);
+    }
     setIsGenerating(true);
     try {
-      onDownloadPDF();
+      onDownloadPDF(currentData);
     } finally {
       setTimeout(() => setIsGenerating(false), 800);
     }
@@ -1122,9 +1096,13 @@ export function PrescriptionEditorModal({
   const handleSendToChatClick = async () => {
     if (!onSendToChat) return;
     syncToParent();
+    const currentData = buildCurrentData();
+    if (onSave) {
+      onSave(currentData);
+    }
     setIsSendingToChat(true);
     try {
-      await onSendToChat(sendProductsToChat);
+      await onSendToChat(sendProductsToChat, currentData);
     } finally {
       setIsSendingToChat(false);
     }
@@ -1438,6 +1416,17 @@ export function PrescriptionEditorModal({
 
                     {/* Quick Add Buttons */}
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* Botão de Receitas Programadas (Ansiedade, Insônia, Depressão) */}
+                      <button
+                        type="button"
+                        onClick={() => setShowProgrammedModal(true)}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-black transition-all flex items-center gap-1.5 shadow-[0_0_20px_rgba(168,85,247,0.4)] ring-1 ring-purple-300/50 cursor-pointer active:scale-95"
+                        title="Receitas Programadas: Perfis prontos de Ansiedade, Insônia, Depressão e Dor"
+                      >
+                        <Sparkles className="w-4 h-4 text-purple-200" />
+                        <span>⚡ Receitas Programadas (Ansiedade / Depressão / Insônia)</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
@@ -1492,10 +1481,34 @@ export function PrescriptionEditorModal({
                       </button>
                       <button
                         type="button"
+                        onClick={() => handleAddPangaiaItem('Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)')}
+                        className="px-2.5 py-1.5 bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-500/30 transition-colors flex items-center gap-1 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
+                        title="Adicionar Óleo CBD Full Spectrum Pangaia 10% 3000 mg (Importado EUA • RDC 660)"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> 🌐 + Pangaia EUA (3000mg)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddFlowermedItem('Full Spectrum Hemp Oil 3.000 mg')}
+                        className="px-2.5 py-1.5 bg-sky-500/20 border border-sky-400/40 text-sky-200 rounded-lg text-xs font-bold hover:bg-sky-500/30 transition-colors flex items-center gap-1 shadow-[0_0_12px_rgba(56,189,248,0.2)]"
+                        title="Adicionar Flowermed Full Spectrum Hemp Oil 3.000 mg (Importado EUA)"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> 🇺🇸 + Flowermed EUA
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddFlowerExtItem('Flor In Natura Sour Lifter (CBD) 14g')}
+                        className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors flex items-center gap-1 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                        title="Adicionar Inflorescência Importada Sour Lifter 14g (RDC 660)"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> 🌿 + Flores 14g Importada
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleAddItem('custom')}
                         className="px-2.5 py-1.5 bg-purple-500/15 border border-purple-500/30 text-purple-300 rounded-lg text-xs font-semibold hover:bg-purple-500/25 transition-colors flex items-center gap-1"
                       >
-                        <Plus className="w-3.5 h-3.5" /> + Importado
+                        <Plus className="w-3.5 h-3.5" /> + Outro Importado
                       </button>
 
                       {/* Associação Nacional Quick Prescribe Dropdown */}
@@ -1864,6 +1877,42 @@ export function PrescriptionEditorModal({
                           <optgroup label="Linha Gummies (30 unidades)" className="bg-[#0A0A0F] text-white">
                             <option value="CBN Sleep Gummies 30 un">CBN Sleep Gummies (R$ 310)</option>
                             <option value="Gummies D9 10 mg 30 un">Gummies D9 10 mg (R$ 340)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* GreenBudz Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-greenbudz"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddGreenBudzItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
+                            🌿 + Prescrever Linha GreenBudz (EUA)...
+                          </option>
+                          <optgroup label="💧 Óleos Sublinguais de Alta Densidade" className="bg-[#0A0A0F] text-emerald-400 font-bold">
+                            <option value="GreenBudz Calm Vibe Oil 6000mg • 200 mg/ml (30 mL)">GreenBudz Calm Vibe 6000mg • 200 mg/mL (30 mL • R$ 890)</option>
+                            <option value="GreenBudz Full Balance Oil 3000mg • 100 mg/ml (30 mL)">GreenBudz Full Balance 3000mg • 100 mg/mL (30 mL • R$ 490)</option>
+                            <option value="GreenBudz Isolate CBD Hemp Formula 3000mg • 100 mg/ml (30 mL — 0% THC)">GreenBudz CBD Isolate 3000mg 0% THC (30 mL • R$ 520)</option>
+                          </optgroup>
+                          <optgroup label="🍬 Gomas Live Rosin (Drops By GreenBudz)" className="bg-[#0A0A0F] text-pink-400 font-bold">
+                            <option value="Drops By GreenBudz Goma Looking Glass CBD THC CBC CBG (30 gomas)">Drops Looking Glass CBD+THC+CBC+CBG (30 gomas • R$ 290)</option>
+                            <option value="Drops By GreenBudz Goma Beethoven THC (30 gomas • Sabor Laranja)">Drops Beethoven THC Laranja (30 gomas • R$ 280)</option>
+                            <option value="Drops By GreenBudz Goma Evergreen THC (30 gomas • Sabor Limão)">Drops Evergreen THC Limão (30 gomas • R$ 280)</option>
+                            <option value="Drops By GreenBudz Goma Nightshade (30 gomas • Indução ao Sono)">Drops Nightshade Sono Profundo (30 gomas • R$ 310)</option>
+                            <option value="GreenBudz Chill Vibe Gummies - THC 1:1 CBD (30 gomas)">Chill Vibe Gummies 1:1 THC:CBD (30 gomas • R$ 270)</option>
+                          </optgroup>
+                          <optgroup label="🌱 Flores Medicinais In Natura (THCa)" className="bg-[#0A0A0F] text-green-400 font-bold">
+                            <option value="GreenBudz Dried Hemp Formula rico em THCa (14g)">Dried Hemp Formula THCa (14g • R$ 750)</option>
+                            <option value="GreenBudz Stirred Hemp Formula rico em THCa (14g)">Stirred Hemp Formula THCa (14g • R$ 690)</option>
+                            <option value="GreenBudz Isolate THCa Hemp Formula (5g)">Isolate THCa Crystalline Pureza +99% (5g • R$ 450)</option>
                           </optgroup>
                         </select>
                       </div>
@@ -2312,6 +2361,33 @@ export function PrescriptionEditorModal({
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    const found = allLibraryProducts.find(p => (p.name || '').toLowerCase().trim() === (item.name || '').toLowerCase().trim());
+                                    setSelectedBulaProduct(found || {
+                                      name: item.name,
+                                      manufacturer: item.brand,
+                                      origin: item.origin,
+                                      type: item.type,
+                                      concentration: item.concentration,
+                                      activeIngredients: item.activeIngredients,
+                                      pharmaceuticalForm: item.pharmaceuticalForm,
+                                      quantity: item.quantity,
+                                      administrationRoute: item.administrationRoute,
+                                      posologyDetails: Array.isArray(item.dosage) ? item.dosage.join('\n') : '',
+                                      description: item.description,
+                                      priceBRL: item.priceBRL,
+                                      priceUSD: item.priceUSD
+                                    });
+                                    setSelectedBulaTargetItemIndex(itemIdx);
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title="Ver e ajustar a bula deste medicamento e sincronizar os campos"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-purple-400" />
+                                  <span>Ver / Ajustar Bula</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
                                     setReplaceTargetIndex(itemIdx);
                                     setIsLibraryModalOpen(true);
                                   }}
@@ -2337,16 +2413,47 @@ export function PrescriptionEditorModal({
                             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                               {/* Product Name */}
                               <div className="sm:col-span-6">
-                                <label className="text-[10px] text-mecura-silver uppercase font-bold block mb-1">
-                                  Nome Comercial / Formulação
-                                </label>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[10px] text-mecura-silver uppercase font-bold block">
+                                    Nome Comercial / Formulação
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReplaceTargetIndex(itemIdx);
+                                      setIsLibraryModalOpen(true);
+                                    }}
+                                    className="text-[10px] font-bold text-mecura-neon hover:underline flex items-center gap-1 cursor-pointer"
+                                    title="Abrir a biblioteca visual com todos os medicamentos nacionais e importados"
+                                  >
+                                    <BookOpen className="w-3 h-3" />
+                                    <span>Buscar na Biblioteca Completa</span>
+                                  </button>
+                                </div>
                                 <input
                                   type="text"
+                                  list="all-medications-autocomplete"
                                   value={item.name}
-                                  onChange={(e) => handleUpdateItem(itemIdx, 'name', e.target.value)}
-                                  placeholder="Nome do produto ou formulação"
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    handleUpdateItem(itemIdx, 'name', val);
+                                    const matched = allLibraryProducts.find(
+                                      p => (p.name || '').toLowerCase().trim() === val.toLowerCase().trim()
+                                    );
+                                    if (matched) {
+                                      handleSelectLibraryProduct(matched, itemIdx);
+                                    }
+                                  }}
+                                  placeholder="Digite ou selecione (ex: Óleo CBD, Pangaia, Flowermed, SouCannabis...)"
                                   className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-bold"
                                 />
+                                <datalist id="all-medications-autocomplete">
+                                  {allLibraryProducts.map((p, pIdx) => (
+                                    <option key={`dl-med-${p.name}-${pIdx}`} value={p.name}>
+                                      {p.origin === 'Importado' ? '🌐 [Importado EUA]' : '🇧🇷 [Nacional]'} - {p.manufacturer || (p as any).brand || ''} {p.concentration ? `(${p.concentration})` : ''}
+                                    </option>
+                                  ))}
+                                </datalist>
                               </div>
 
                               {/* Brand / Association - Circle from Image 2 */}
@@ -2363,26 +2470,27 @@ export function PrescriptionEditorModal({
                                   className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-semibold"
                                 />
                                 <datalist id={`brand-suggestions-${itemIdx}`}>
-                                  <option value="Associação Brasileira (Nacional)" />
-                                  <option value="Santa Cannabis" />
-                                  <option value="Abrace Esperança" />
-                                  <option value="Flor da Vida" />
-                                  <option value="Apepi" />
-                                  <option value="Cultive" />
-                                  <option value="Associação Nacional (Brasil)" />
+                                  <option value="Pangaia Biopharma (EUA)" />
                                   <option value="Flowermed (EUA)" />
+                                  <option value="Importado (Folheto Especial / RDC 660)" />
+                                  <option value="SouCannabis (Associação Nacional)" />
+                                  <option value="ABECMED (Associação Nacional)" />
+                                  <option value="Abrace Esperança" />
+                                  <option value="Santa Cannabis" />
+                                  <option value="Flor da Vida" />
+                                  <option value="Associação Brasileira (Nacional)" />
                                   <option value="GreenBudzCBD" />
-                                  <option value="Importado (Folheto Especial)" />
                                 </datalist>
                                 {/* Quick Brand Chips */}
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                  {['Associação Brasileira', 'Abrace', 'Santa Cannabis', 'Flor da Vida', 'Flowermed', 'GreenBudz'].map(b => (
+                                  {['Pangaia (EUA)', 'Flowermed', 'SouCannabis', 'Abrace', 'ABECMED', 'Assoc. Brasileira'].map(b => (
                                     <button
                                       key={b}
                                       type="button"
                                       onClick={() => {
-                                        handleUpdateItem(itemIdx, 'brand', b);
-                                        if (['Flowermed', 'GreenBudz'].includes(b)) {
+                                        const cleanBrand = b === 'Pangaia (EUA)' ? 'Pangaia Biopharma (EUA)' : b === 'Assoc. Brasileira' ? 'Associação Brasileira (Nacional)' : b;
+                                        handleUpdateItem(itemIdx, 'brand', cleanBrand);
+                                        if (b.includes('Pangaia') || b === 'Flowermed') {
                                           handleUpdateItem(itemIdx, 'origin', 'Importado');
                                         } else {
                                           handleUpdateItem(itemIdx, 'origin', 'Nacional');
@@ -3275,19 +3383,33 @@ export function PrescriptionEditorModal({
                           )}
                         </div>
 
-                        {/* Prescribe Action Button */}
-                        <button
-                          type="button"
-                          onClick={() => handleSelectLibraryProduct(prod, replaceTargetIndex)}
-                          className="w-full mt-2 py-2 px-3 bg-gradient-to-r from-mecura-neon to-[#c7ff42] hover:opacity-95 text-black font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>
-                            {typeof replaceTargetIndex === 'number' && replaceTargetIndex >= 0
-                              ? `Substituir Medicamento #${replaceTargetIndex + 1}`
-                              : 'Prescrever este Medicamento'}
-                          </span>
-                        </button>
+                        {/* Action Buttons: Ver / Ajustar Bula & Prescrever */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedBulaProduct(prod);
+                              setSelectedBulaTargetItemIndex(replaceTargetIndex);
+                            }}
+                            className="py-2 px-2.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-400 text-purple-200 hover:text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                            title="Ver e ajustar a bula oficial completa deste medicamento"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            <span>Ajustar Bula</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectLibraryProduct(prod, replaceTargetIndex)}
+                            className="py-2 px-2.5 bg-gradient-to-r from-mecura-neon to-[#c7ff42] hover:opacity-95 text-black font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                          >
+                            <Check className="w-3.5 h-3.5 shrink-0" />
+                            <span>
+                              {typeof replaceTargetIndex === 'number' && replaceTargetIndex >= 0
+                                ? `Substituir #${replaceTargetIndex + 1}`
+                                : 'Prescrever'}
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -3312,6 +3434,50 @@ export function PrescriptionEditorModal({
           </motion.div>
         </div>
       )}
+
+      {/* Product Detail & Full Clinical Bula Modal launched directly from Prescription Editor or Library */}
+      {selectedBulaProduct && (
+        <ProductBulaModal
+          product={selectedBulaProduct}
+          onClose={() => {
+            setSelectedBulaProduct(null);
+            setSelectedBulaTargetItemIndex(null);
+          }}
+          exchangeRate={5.75}
+          onSave={(savedData) => {
+            if (typeof selectedBulaTargetItemIndex === 'number' && selectedBulaTargetItemIndex >= 0) {
+              handleUpdateItem(selectedBulaTargetItemIndex, 'name', savedData.name || selectedBulaProduct.name);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'brand', savedData.manufacturer || selectedBulaProduct.manufacturer);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'origin', savedData.origin || selectedBulaProduct.origin);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'type', savedData.type || selectedBulaProduct.type);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'concentration', savedData.concentration || savedData.activeIngredients || selectedBulaProduct.concentration);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'activeIngredients', savedData.activeIngredients || selectedBulaProduct.activeIngredients);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'pharmaceuticalForm', savedData.pharmaceuticalForm || selectedBulaProduct.pharmaceuticalForm);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'quantity', savedData.quantity || selectedBulaProduct.quantity);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'administrationRoute', savedData.administrationRoute || selectedBulaProduct.administrationRoute);
+              handleUpdateItem(selectedBulaTargetItemIndex, 'description', savedData.description || selectedBulaProduct.description);
+              if (savedData.posologyDetails) {
+                handleUpdateItem(
+                  selectedBulaTargetItemIndex, 
+                  'dosage', 
+                  savedData.posologyDetails.split('\n').map((l: string) => l.trim()).filter(Boolean)
+                );
+              }
+            }
+            setBulaVersion(v => v + 1);
+            setFeedbackBannerText(`✓ Bula de "${savedData.name || selectedBulaProduct.name}" salva e sincronizada em todos os campos da receita!`);
+            setTimeout(() => setFeedbackBannerText(null), 4000);
+          }}
+        />
+      )}
+
+      {/* Programmed Prescriptions Profiles Modal (Ansiedade, Insônia, Depressão, etc.) */}
+      <ProgrammedPrescriptionsModal
+        isOpen={showProgrammedModal}
+        onClose={() => setShowProgrammedModal(false)}
+        patientInfo={{ name: patientName, cpf, birthDate }}
+        onApplyProfile={handleApplyProgrammedProfile}
+      />
     </AnimatePresence>
   );
 }

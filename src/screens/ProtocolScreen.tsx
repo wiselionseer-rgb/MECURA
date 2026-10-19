@@ -4,7 +4,7 @@ import {
   ChevronLeft, Droplets, Clock, AlertCircle, FileText, Download, 
   CheckCircle2, ShieldCheck, Calendar, User, Stethoscope, Sparkles, 
   ShoppingCart, MessageCircle, ExternalLink, QrCode, FileCheck, ArrowRight,
-  Sun, Moon, Sunset, Info, Lock, Sprout, Paperclip, Activity
+  Sun, Moon, Sunset, Info, Lock, Sprout, Paperclip, Activity, Brain
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
@@ -12,7 +12,8 @@ import {
   generatePrescriptionPDF, 
   generateMedicalReportPDF, 
   generatePsychomotorReportPDF, 
-  generateAgronomicReportPDF 
+  generateAgronomicReportPDF,
+  generatePsychologicalReportPDF
 } from '../utils/pdfGenerator';
 import { deliverPdfBlob, downloadOrGenerateAttachment } from '../utils/downloadHelper';
 import { enrichMedicationDetails } from '../data/cbdGuide';
@@ -32,7 +33,11 @@ export function ProtocolScreen() {
 
   const hasPaidConsultation = !!(
     pagamento_consulta || 
-    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+    isConsultationFinished ||
+    (typeof window !== 'undefined' && (
+      localStorage.getItem('mecura_pagamento') === 'true' ||
+      localStorage.getItem('mecura_consultation_finished') === 'true'
+    ))
   );
 
   // Verified if doctor actually conducted consultation and issued documents
@@ -174,7 +179,20 @@ export function ProtocolScreen() {
     );
   }, [messages]);
 
-  // Other custom attachments sent by doctor
+  const psychologicalReportMsg = useMemo(() => {
+    return messages.find(m => 
+      m.type === 'psychological_report' || 
+      m.docType === 'laudo_psicologico' || 
+      (m.attachment && (
+        m.attachment.docType === 'laudo_psicologico' || 
+        m.attachment.name?.toLowerCase().includes('psicolog') ||
+        m.attachment.title?.toLowerCase().includes('psicolog')
+      )) ||
+      (m.text && (m.text.toLowerCase().includes('laudo psicológico') || m.text.toLowerCase().includes('laudo psicologico')))
+    );
+  }, [messages]);
+
+  // Other custom attachments sent by doctor/psychologist
   const otherCustomDocs = useMemo(() => {
     return messages.filter(m => 
       m.attachment && 
@@ -183,18 +201,21 @@ export function ProtocolScreen() {
       m.attachment !== evolutiveMedicalReportMsg?.attachment &&
       m.attachment !== psychomotorReportMsg?.attachment &&
       m.attachment !== agronomicReportMsg?.attachment &&
+      m.attachment !== psychologicalReportMsg?.attachment &&
       m.type !== 'prescription' &&
       m.type !== 'medical_report' &&
       m.type !== 'psychomotor_report' &&
-      m.type !== 'agronomic_report'
+      m.type !== 'agronomic_report' &&
+      m.type !== 'psychological_report'
     );
-  }, [messages, prescriptionMsg, initialMedicalReportMsg, evolutiveMedicalReportMsg, psychomotorReportMsg, agronomicReportMsg]);
+  }, [messages, prescriptionMsg, initialMedicalReportMsg, evolutiveMedicalReportMsg, psychomotorReportMsg, agronomicReportMsg, psychologicalReportMsg]);
 
   const hasPrescriptionAttached = !!prescriptionMsg;
   const hasInitialReportAttached = !!initialMedicalReportMsg;
   const hasEvolutiveReportAttached = !!evolutiveMedicalReportMsg;
   const hasPsychomotorAttached = !!psychomotorReportMsg;
   const hasAgronomicAttached = !!agronomicReportMsg;
+  const hasPsychologicalAttached = !!psychologicalReportMsg || !!(answers?.laudoPsicologico || answers?.hasPsychologicalReport);
 
   const totalAvailableDocs = 
     (hasPrescriptionAttached ? 1 : 0) + 
@@ -202,6 +223,7 @@ export function ProtocolScreen() {
     (hasEvolutiveReportAttached ? 1 : 0) + 
     (hasPsychomotorAttached ? 1 : 0) + 
     (hasAgronomicAttached ? 1 : 0) + 
+    (hasPsychologicalAttached ? 1 : 0) + 
     otherCustomDocs.length;
 
   // Patient metadata
@@ -421,6 +443,46 @@ export function ProtocolScreen() {
     }
   };
 
+  // Handler for downloading Psychological Report
+  const handleDownloadPsychologicalReport = async () => {
+    if (!hasPsychologicalAttached) {
+      alert("O Laudo Psicológico não foi anexado pelo psicólogo nesta consulta.");
+      return;
+    }
+    setDownloadingDoc('psychological');
+    try {
+      if (psychologicalReportMsg?.attachment) {
+        await downloadOrGenerateAttachment(
+          psychologicalReportMsg.attachment,
+          async () => {
+            const blob = await generatePsychologicalReportPDF(displayName, {
+              customPatientName: displayName,
+              cpf: displayCpf,
+              birthDate: displayBirthDate,
+              returnBlob: true
+            } as any);
+            return blob as Blob;
+          },
+          `Laudo_Psicologico_${displayName.replace(/\s+/g, '_')}.pdf`
+        );
+      } else {
+        const blob = await generatePsychologicalReportPDF(displayName, {
+          customPatientName: displayName,
+          cpf: displayCpf,
+          birthDate: displayBirthDate,
+          returnBlob: true
+        } as any);
+        if (blob instanceof Blob) {
+          await deliverPdfBlob(blob, `Laudo_Psicologico_${displayName.replace(/\s+/g, '_')}.pdf`);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao baixar laudo psicológico:', err);
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
   // Handler for custom document download
   const handleDownloadCustomAttachment = async (attachment: any, idx: number) => {
     setDownloadingDoc(`custom-${idx}`);
@@ -440,7 +502,7 @@ export function ProtocolScreen() {
   // Download all official documents in batch
   const handleDownloadAll = async () => {
     if (totalAvailableDocs === 0) {
-      alert("Nenhum laudo ou documento oficial foi anexado pelo médico nesta consulta.");
+      alert("Nenhum laudo ou documento oficial foi anexado nesta consulta.");
       return;
     }
     setDownloadAllProgress(true);
@@ -463,6 +525,10 @@ export function ProtocolScreen() {
       }
       if (hasAgronomicAttached) {
         await handleDownloadAgronomicReport();
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (hasPsychologicalAttached) {
+        await handleDownloadPsychologicalReport();
         await new Promise(r => setTimeout(r, 600));
       }
       for (let i = 0; i < otherCustomDocs.length; i++) {
@@ -550,7 +616,7 @@ export function ProtocolScreen() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => {
-                      if (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) {
+                      if (!isConsultationFinished && (pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true'))) {
                         navigate('/queue');
                       } else {
                         navigate('/checkout');
@@ -871,6 +937,46 @@ export function ProtocolScreen() {
                 title={hasAgronomicAttached ? "Baixar Parecer Agronômico" : "Este documento não foi anexado pelo médico nesta consulta"}
               >
                 {hasAgronomicAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* 6. Psychological Report Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasPsychologicalAttached 
+                ? 'bg-[#12121A] border-purple-500/30 hover:border-purple-500 shadow-[0_4px_20px_rgba(168,85,247,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasPsychologicalAttached 
+                    ? 'bg-purple-500/15 border-purple-500/30 text-purple-400' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
+                  <Brain className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Laudo Psicológico
+                    {!hasPsychologicalAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasPsychologicalAttached 
+                      ? 'Avaliação de Saúde Mental' 
+                      : 'Não anexado pelo psicólogo'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleDownloadPsychologicalReport}
+                disabled={downloadingDoc === 'psychological' || !hasPsychologicalAttached}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasPsychologicalAttached 
+                    ? 'bg-[#1A1A28] hover:bg-purple-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
+                }`}
+                title={hasPsychologicalAttached ? "Baixar Laudo Psicológico" : "Este documento não foi anexado pelo psicólogo nesta consulta"}
+              >
+                {hasPsychologicalAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
               </button>
             </div>
 

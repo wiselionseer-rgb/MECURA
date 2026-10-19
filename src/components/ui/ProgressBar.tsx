@@ -17,7 +17,7 @@ export function ProgressBar({ progress, className, showLabel = false }: Progress
       )}
       <div className="h-1.5 w-full bg-mecura-surface-light rounded-full overflow-hidden border border-mecura-elevated">
         <div
-          className="h-full bg-gradient-to-r from-mecura-neon to-mecura-green rounded-full shadow-[0_0_10px_rgba(166,255,0,0.5)] transition-all duration-500 ease-out"
+          className="h-full bg-gradient-to-r from-[#A6FF00] via-[#CFFF5A] to-[#00FF66] rounded-full shadow-[0_0_12px_rgba(166,255,0,0.6)] transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         />
       </div>

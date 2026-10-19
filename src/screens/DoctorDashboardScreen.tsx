@@ -21,6 +21,7 @@ import {
   Sprout,
   CheckCheck,
   User,
+  Brain,
   BrainCircuit,
   X,
   Loader2,
@@ -59,7 +60,8 @@ import {
   PhoneCall,
   Pill,
   Plus,
-  Clock
+  Clock,
+  Lock
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -86,7 +88,7 @@ import {
 import { CBDGuideView } from '../components/CBDGuideView';
 import { DoctorAnalyticsDashboard } from '../components/DoctorAnalyticsDashboard';
 import { cbdGuideData, CBDProduct, enrichMedicationDetails, CBDCategory, ABECMED_PRODUCTS, ABECMED_COMPANY_INFO, ABECMED_AGENT_SYSTEM_PROMPT, ABRACE_PRODUCTS, ABRACE_COMPANY_INFO, ABRACE_AGENT_SYSTEM_PROMPT, SOUCANNABIS_PRODUCTS, SOUCANNABIS_COMPANY_INFO, SOUCANNABIS_AGENT_SYSTEM_PROMPT, PANGAIA_PRODUCTS, PANGAIA_COMPANY_INFO, PANGAIA_AGENT_SYSTEM_PROMPT } from '../data/cbdGuide';
-import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases, getBestCategoryIdForProduct } from '../utils/productCatalog';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, extractAllBrands, extractAllDiseases, getBestCategoryIdForProduct, getCustomBulaData, applyCustomBulaToProduct, getDeletedProductNames } from '../utils/productCatalog';
 import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
 import { NotificationToast } from '../components/NotificationToast';
@@ -96,6 +98,9 @@ import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal
 import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEditorModal';
 import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
 import { StandaloneDocumentModal, StandalonePatientData } from '../components/StandaloneDocumentModal';
+import { AreaPasswordModal } from '../components/AreaPasswordModal';
+import { ProgrammedPrescriptionsModal } from '../components/ProgrammedPrescriptionsModal';
+import { ProgrammedPrescriptionProfile, getProgrammedProfiles } from '../data/programmedPrescriptions';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { generatePersonalizedClinicalReport } from '../utils/clinicalReportGenerator';
@@ -265,8 +270,24 @@ export function DoctorDashboardScreen() {
     allAppointments, queue, leaveQueue, startConsultation, subscribeToQueue, 
     subscribeToMessages, subscribeToAppointments, activeConsultationId,
     consultationHistory, subscribeToAllConsultationHistory, fetchPatientMessages,
-    exchangeRate, patientId
+    exchangeRate, patientId, transferPatientQueue
   } = useStore();
+
+  // Filter patients that belong to the doctor queue (exclude psychologist queue)
+  const doctorQueue = useMemo(() => {
+    return (queue || []).filter(p => {
+      const qType = (p as any).queueType;
+      const plan = (p as any).plan;
+      const offer = (p as any).selectedOffer;
+
+      // Exclude if explicitly assigned or transferred to psychologist
+      if (qType === 'psychologist') return false;
+      if (qType !== 'doctor' && (plan === 'psychologist' || offer === 'psychologist')) return false;
+
+      return true;
+    });
+  }, [queue]);
+
   const [currentPatient, setCurrentPatient] = useState<any>(null);
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -346,11 +367,29 @@ export function DoctorDashboardScreen() {
   const availableBrands = useMemo(() => extractAllBrands(productCategories), [productCategories]);
   const availableDiseases = useMemo(() => extractAllDiseases(productCategories), [productCategories]);
 
+  const [bulaVersion, setBulaVersion] = useState(0);
+  useEffect(() => {
+    const handleBulaUpdate = () => {
+      setBulaVersion(v => v + 1);
+    };
+    window.addEventListener('mecura_bula_updated', handleBulaUpdate);
+    window.addEventListener('storage', handleBulaUpdate);
+    return () => {
+      window.removeEventListener('mecura_bula_updated', handleBulaUpdate);
+      window.removeEventListener('storage', handleBulaUpdate);
+    };
+  }, []);
+
   const allGuideProducts = useMemo(() => {
     const map = new Map<string, CBDProduct & { categoryTitle?: string; categoryIndications?: string[] }>();
+    const deletedSet = getDeletedProductNames();
+
     productCategories.forEach(cat => {
-      cat.products.forEach(p => {
+      cat.products.forEach(rawP => {
+        const p = applyCustomBulaToProduct(rawP);
         const key = (p.name || '').trim().toLowerCase();
+        if (!key || deletedSet.has(key)) return;
+
         if (!map.has(key)) {
           map.set(key, {
             ...p,
@@ -367,7 +406,7 @@ export function DoctorDashboardScreen() {
       });
     });
     return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
-  }, [productCategories]);
+  }, [productCategories, bulaVersion]);
 
   // High-precision accent-insensitive normalization
   const normalizeSearch = (str: string = '') => {
@@ -514,10 +553,12 @@ export function DoctorDashboardScreen() {
   const [selectedProduct, setSelectedProduct] = useState<CBDProduct | null>(null);
   const [dosageInput, setDosageInput] = useState('');
 
-  const selectAndConfigureProduct = (product: CBDProduct) => {
+  const selectAndConfigureProduct = (rawProduct: CBDProduct) => {
+    const product = applyCustomBulaToProduct(rawProduct);
     setSelectedProduct(product);
+    const customBula = getCustomBulaData(product);
     const enriched = enrichMedicationDetails(product.name, product.manufacturer, product.origin, product.type, product);
-    setDosageInput(product.usageInstructions || enriched.usageInstructions || 'Tomar 03 a 05 gotas sublingual de 12/12 horas');
+    setDosageInput(customBula?.posologyDetails || product.posologyDetails || product.usageInstructions || enriched.usageInstructions || 'Tomar 03 a 05 gotas sublingual de 12/12 horas');
   };
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento'>('receita');
   const [pendingAttachment, setPendingAttachment] = useState<{name: string, url: string, type: string, docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento', title?: string} | null>(null);
@@ -860,10 +901,221 @@ export function DoctorDashboardScreen() {
   const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
   const [prescItems, setPrescItems] = useState<PrescriptionItemData[]>([]);
   const [prescNotes, setPrescNotes] = useState('');
+  const [showProgrammedPrescriptionModal, setShowProgrammedPrescriptionModal] = useState(false);
+  const [programmedTargetPatient, setProgrammedTargetPatient] = useState<any>(null);
+
+  const handleOpenProgrammedForPatient = (patient: any) => {
+    setProgrammedTargetPatient(patient);
+    setShowProgrammedPrescriptionModal(true);
+  };
+
+  const handleQuickApplyCondition = (
+    conditionTag: 'ansiedade' | 'insonia' | 'depressao' | 'combinado' | 'dor',
+    targetPatientOverride?: any,
+    originPreference?: 'nacional' | 'importado'
+  ) => {
+    const targetPatient = targetPatientOverride || currentPatient;
+    const allProfiles = getProgrammedProfiles();
+    let matched: ProgrammedPrescriptionProfile | undefined;
+    if (originPreference === 'importado') {
+      matched = allProfiles.find(p => p.conditionTag === conditionTag && (p.category === 'importado' || /importad|pangaia|flowermed|eua/i.test(`${p.name} ${p.badge}`)));
+    } else if (originPreference === 'nacional') {
+      matched = allProfiles.find(p => p.conditionTag === conditionTag && (p.category === 'nacional' || /nacional|associação|abrace|abec/i.test(`${p.name} ${p.badge}`)));
+    }
+    if (!matched) {
+      matched = allProfiles.find(p => p.conditionTag === conditionTag) || allProfiles[0];
+    }
+    if (matched) {
+      handleApplyProgrammedFromDashboard(matched, 'replace', targetPatient);
+    }
+  };
+
+  const handleApplyProgrammedFromDashboard = (
+    profile: ProgrammedPrescriptionProfile, 
+    mode: 'replace' | 'append',
+    targetPatientOverride?: any
+  ) => {
+    const targetPatient = targetPatientOverride || programmedTargetPatient || currentPatient;
+    if (targetPatient?.id) {
+      setStandaloneTargetPatientId(targetPatient.id);
+    }
+    const patientAnswers = targetPatient?.answers || answers;
+    const pName = targetPatient?.patientName || targetPatient?.name || prescPatientName || userName || 'Paciente';
+    const pBirth = targetPatient?.birthDate || patientAnswers?.birthDate || prescBirthDate || 'Não informada';
+    const pCpf = targetPatient?.cpf || patientAnswers?.cpf || prescCpf || 'Não informado';
+
+    setPrescPatientName(pName);
+    setPrescBirthDate(pBirth);
+    setPrescCpf(pCpf);
+
+    let nextItems: PrescriptionItemData[];
+    if (mode === 'replace') {
+      nextItems = [...profile.items];
+    } else {
+      nextItems = [...prescItems, ...profile.items];
+    }
+    setPrescItems(nextItems);
+
+    let nextNotes = prescNotes;
+    if (profile.defaultNotes) {
+      if (mode === 'replace' || !prescNotes.trim()) {
+        nextNotes = profile.defaultNotes;
+      } else {
+        nextNotes = prescNotes + '\n\n' + profile.defaultNotes;
+      }
+    }
+    setPrescNotes(nextNotes);
+
+    setShowProgrammedPrescriptionModal(false);
+    showActionToast(`✓ Protocolo "${profile.name}" carregado para ${pName} (${nextItems.length} medicamentos)!`);
+    handleOpenPrescriptionEditor(targetPatient, nextItems, nextNotes);
+  };
+
+  const handleDirectEmitProgrammedPDF = async (
+    profile: ProgrammedPrescriptionProfile,
+    targetPatientOverride?: any
+  ) => {
+    try {
+      const targetPatient = targetPatientOverride || programmedTargetPatient || currentPatient;
+      const patientAnswers = targetPatient?.answers || answers;
+      const pName = targetPatient?.patientName || targetPatient?.name || prescPatientName || userName || 'Paciente';
+      const pBirth = targetPatient?.birthDate || patientAnswers?.birthDate || prescBirthDate || 'Não informada';
+      const pCpf = targetPatient?.cpf || patientAnswers?.cpf || prescCpf || 'Não informado';
+      const pId = targetPatient?.id || standaloneTargetPatientId || activeConsultationId;
+
+      showActionToast(`Gerando e emitindo receita de ${pName}...`);
+
+      const emissionDate = format(new Date(), 'dd/MM/yyyy');
+      const docData = {
+        patientName: pName,
+        birthDate: pBirth,
+        cpf: pCpf,
+        emissionDate,
+        doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
+        doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
+        doctorSpecialty: prescDoctorSpecialty || 'Especialista em Medicina Canabinoide',
+        items: profile.items,
+        notes: profile.defaultNotes || prescNotes || '- Uso contínuo sob orientação médica.'
+      };
+
+      const key = getPatientReportKey(pId, pName);
+      savePrescriptionToStorage(key, docData);
+
+      if (pId) {
+        await setDoc(doc(db, 'queue', pId), {
+          prescriptionData: docData,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+
+        await setDoc(doc(db, 'active_consultations', pId), {
+          prescriptionData: docData,
+          lastPrescriptionUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+      }
+
+      await generatePrescriptionPDF(pName, messages, {
+        customPatientName: pName,
+        birthDate: pBirth,
+        cpf: pCpf,
+        emissionDate,
+        customDoctorName: docData.doctorName,
+        customDoctorCrm: docData.doctorCrm,
+        customDoctorSpecialty: docData.doctorSpecialty,
+        customItems: docData.items,
+        customNotes: docData.notes
+      });
+
+      if (pId && (currentPatient?.id === pId || activeConsultationId === pId)) {
+        await addMessage({
+          text: `📋 Receita Médica Digital Oficial emitida para ${pName} (${profile.name}). O documento em PDF assinado com QR Code e certificação digital está pronto para download.`,
+          sender: 'doctor',
+          type: 'prescription',
+          attachment: {
+            title: `Receita Médica Digital - ${profile.name}`,
+            name: `Receita_Digital_${pName.replace(/\s+/g, '_')}.pdf`,
+            url: '#',
+            type: 'application/pdf',
+            docType: 'receita'
+          }
+        }, pId);
+      }
+
+      setShowProgrammedPrescriptionModal(false);
+      showActionToast(`✓ Receita de ${pName} para "${profile.name}" emitida com sucesso!`);
+    } catch (err: any) {
+      console.error("Erro ao emitir receita:", err);
+      showActionToast(`Erro ao emitir receita: ${err?.message || 'Tente novamente'}`);
+    }
+  };
+
+  // Sync active prescription items when any Bula is updated or customized anywhere
+  useEffect(() => {
+    const handleBulaUpdate = (e?: any) => {
+      const detail = e?.detail;
+      if (detail?.updated) {
+        const updated = detail.updated;
+        const targetOld = (detail.oldName || '').trim().toLowerCase();
+        const targetNew = (updated.name || '').trim().toLowerCase();
+
+        setPrescItems(prevItems => {
+          let hasChanges = false;
+          const next = prevItems.map(item => {
+            const itemClean = (item.name || '').trim().toLowerCase();
+            if (itemClean === targetOld || itemClean === targetNew) {
+              hasChanges = true;
+              const dosageArr = updated.posologyDetails 
+                ? updated.posologyDetails.split('\n').map((l: string) => l.trim()).filter(Boolean)
+                : item.dosage;
+              return {
+                ...item,
+                name: updated.name || item.name,
+                brand: updated.manufacturer || item.brand,
+                origin: updated.origin || item.origin,
+                type: updated.type || item.type,
+                concentration: updated.concentration || updated.activeIngredients || item.concentration,
+                activeIngredients: updated.activeIngredients || item.activeIngredients,
+                pharmaceuticalForm: updated.pharmaceuticalForm || item.pharmaceuticalForm,
+                quantity: updated.quantity || item.quantity,
+                administrationRoute: updated.administrationRoute || item.administrationRoute,
+                dosage: dosageArr && dosageArr.length > 0 ? dosageArr : item.dosage,
+                description: updated.description || item.description,
+                priceBRL: updated.priceBRL !== undefined ? Number(String(updated.priceBRL).replace(/[^0-9.]/g, '')) : item.priceBRL,
+                priceUSD: updated.priceUSD !== undefined ? Number(String(updated.priceUSD).replace(/[^0-9.]/g, '')) : item.priceUSD
+              };
+            }
+            return item;
+          });
+          if (hasChanges) {
+            handleSavePrescription({
+              patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+              birthDate: prescBirthDate,
+              cpf: prescCpf,
+              emissionDate: prescEmissionDate,
+              doctorName: prescDoctorName,
+              doctorCrm: prescDoctorCrm,
+              doctorSpecialty: prescDoctorSpecialty,
+              items: next,
+              notes: prescNotes
+            });
+          }
+          return next;
+        });
+      }
+    };
+    window.addEventListener('mecura_bula_updated', handleBulaUpdate);
+    window.addEventListener('storage', handleBulaUpdate);
+    return () => {
+      window.removeEventListener('mecura_bula_updated', handleBulaUpdate);
+      window.removeEventListener('storage', handleBulaUpdate);
+    };
+  }, [prescPatientName, currentPatient, userName, prescBirthDate, prescCpf, prescEmissionDate, prescDoctorName, prescDoctorCrm, prescDoctorSpecialty, prescNotes]);
 
   // Standalone Document Generation Modal State (Receitas e Laudos Avulsos)
   const [isStandaloneDocModalOpen, setIsStandaloneDocModalOpen] = useState(false);
   const [standaloneTargetPatientId, setStandaloneTargetPatientId] = useState<string | null>(null);
+
+  // Modal de Senha para Alternar para Área do Psicólogo
+  const [isPsychologistAuthModalOpen, setIsPsychologistAuthModalOpen] = useState(false);
 
   const handleLaunchStandalonePrescription = (patientData: StandalonePatientData, prefillItems?: PrescriptionItemData[]) => {
     setStandaloneTargetPatientId(patientData.id || null);
@@ -1002,18 +1254,20 @@ export function DoctorDashboardScreen() {
 
   const handleToggleProductInPrescription = (product: CBDProduct) => {
     const isNational = (product.origin || '').toLowerCase().includes('nacional') || (product.manufacturer || '').toLowerCase().includes('associação');
+    const customBula = getCustomBulaData(product);
     const enriched = enrichMedicationDetails(
-      product.name,
-      product.manufacturer,
-      isNational ? 'Nacional' : (product.origin || 'Importado'),
-      product.type,
+      customBula?.name || product.name,
+      customBula?.manufacturer || product.manufacturer,
+      customBula?.origin || (isNational ? 'Nacional' : (product.origin || 'Importado')),
+      customBula?.type || product.type,
       product
     );
 
-    const cleanName = product.name.toLowerCase().trim();
-    const exists = prescItems.some(p => p.name.toLowerCase().trim() === cleanName);
+    const targetName = (customBula?.name || product.name).trim();
+    const cleanName = targetName.toLowerCase();
+    const exists = prescItems.some(p => p.name.toLowerCase().trim() === cleanName || p.name.toLowerCase().trim() === product.name.toLowerCase().trim());
     if (exists) {
-      const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== cleanName);
+      const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== cleanName && p.name.toLowerCase().trim() !== product.name.toLowerCase().trim());
       setPrescItems(updated);
       handleSavePrescription({
         patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
@@ -1026,29 +1280,32 @@ export function DoctorDashboardScreen() {
         items: updated,
         notes: prescNotes
       });
-      showActionToast(`✓ "${product.name}" removido da receita e alteração salva.`);
+      showActionToast(`✓ "${targetName}" removido da receita e alteração salva.`);
     } else {
+      const customDosage = (customBula?.posologyDetails || product.usageInstructions || enriched.usageInstructions || '').trim();
+      const dosageLines = customDosage
+        ? customDosage.split('\n').map((s: string) => s.trim()).filter(Boolean)
+        : [
+            'Aproximadamente 25 gotas por mL.',
+            'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
+            'Aumentar 01 gota a cada 05 dias conforme resposta clínica.'
+          ];
+
       const newItem: PrescriptionItemData = {
-        name: product.name,
-        brand: product.manufacturer || enriched.brand,
-        origin: isNational ? 'Nacional' : (product.origin || 'Importado'),
-        type: product.type || enriched.type,
-        concentration: product.concentration || enriched.concentration || '',
-        activeIngredients: enriched.activeIngredients || product.concentration || '',
-        pharmaceuticalForm: enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
-        quantity: enriched.quantity || '01 Frasco de 30 mL',
-        administrationRoute: enriched.administrationRoute || 'Via Sublingual / Oral',
-        dosage: product.usageInstructions 
-          ? product.usageInstructions.split('\n').map(s => s.trim()).filter(Boolean)
-          : (enriched.usageInstructions ? [enriched.usageInstructions] : [
-              'Aproximadamente 25 gotas por mL.',
-              'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
-              'Aumentar 01 gota a cada 05 dias conforme resposta clínica.'
-            ]),
-        description: product.description || enriched.description || '',
+        name: targetName,
+        brand: customBula?.manufacturer || product.manufacturer || enriched.brand,
+        origin: customBula?.origin || (isNational ? 'Nacional' : (product.origin || 'Importado')),
+        type: customBula?.type || product.type || enriched.type,
+        concentration: customBula?.concentration || customBula?.activeIngredients || product.concentration || enriched.concentration || '',
+        activeIngredients: customBula?.activeIngredients || enriched.activeIngredients || product.concentration || '',
+        pharmaceuticalForm: customBula?.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+        quantity: customBula?.quantity || enriched.quantity || '01 Frasco de 30 mL',
+        administrationRoute: customBula?.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral',
+        dosage: dosageLines,
+        description: customBula?.description || product.description || enriched.description || '',
         details: product.details || [enriched.activeIngredients],
-        priceUSD: isNational ? undefined : product.priceUSD,
-        priceBRL: isNational ? undefined : product.priceBRL
+        priceUSD: customBula?.priceUSD !== undefined ? customBula.priceUSD : (isNational ? undefined : product.priceUSD),
+        priceBRL: customBula?.priceBRL !== undefined ? customBula.priceBRL : (isNational ? undefined : product.priceBRL)
       };
 
       const updated = [...prescItems, newItem];
@@ -1330,11 +1587,42 @@ export function DoctorDashboardScreen() {
     let enrichedPatient = { ...patient };
     // Fetch answers and real profile data from users collection
     try {
-      const userDoc = await getDoc(doc(db, 'users', patient.id));
-      if (userDoc.exists()) {
-         const userData = userDoc.data();
+      const [userDoc, qSnap, cSnap] = await Promise.all([
+        getDoc(doc(db, 'users', patient.id)).catch(() => null),
+        getDoc(doc(db, 'queue', patient.id)).catch(() => null),
+        getDoc(doc(db, 'active_consultations', patient.id)).catch(() => null)
+      ]);
+      const userData = userDoc && userDoc.exists() ? userDoc.data() : null;
+      const qd = qSnap && qSnap.exists() ? qSnap.data() : null;
+      const validPlans = ['basic', 'premium', 'complete', 'psychologist'];
+      const resolvedPlan = (
+        (qd?.plan && validPlans.includes(qd.plan) ? qd.plan : null) ||
+        (qd?.selectedOffer && validPlans.includes(qd.selectedOffer) ? qd.selectedOffer : null) ||
+        (userData?.plan && validPlans.includes(userData.plan) ? userData.plan : null) ||
+        (userData?.selectedOffer && validPlans.includes(userData.selectedOffer) ? userData.selectedOffer : null) ||
+        (patient.plan && validPlans.includes(patient.plan) ? patient.plan : null) ||
+        ((patient as any).selectedOffer && validPlans.includes((patient as any).selectedOffer) ? (patient as any).selectedOffer : null) ||
+        ((qd?.isPremium === true || qd?.pagamento_premium === true || userData?.pagamento_premium === true || userData?.isPremium === true) ? 'premium' : 'basic')
+      ) as 'basic' | 'premium' | 'complete' | 'psychologist';
+      const resolvedIsPremium = resolvedPlan === 'premium' || resolvedPlan === 'complete';
+      enrichedPatient.plan = resolvedPlan;
+      (enrichedPatient as any).selectedOffer = resolvedPlan;
+      (enrichedPatient as any).tier = resolvedPlan;
+      enrichedPatient.isPremium = resolvedIsPremium;
+      (enrichedPatient as any).pagamento_premium = resolvedIsPremium;
+
+      if (userData) {
          if (userData.answers && (!enrichedPatient.answers || Object.keys(enrichedPatient.answers).length === 0)) {
            enrichedPatient.answers = userData.answers;
+         }
+         if (enrichedPatient.answers) {
+           enrichedPatient.answers = {
+             ...enrichedPatient.answers,
+             plan: resolvedPlan,
+             selectedOffer: resolvedPlan,
+             isPremium: resolvedIsPremium,
+             pagamento_premium: resolvedIsPremium,
+           };
          }
          if (userData.name && typeof userData.name === 'string' && userData.name.trim().toLowerCase() !== 'paciente') {
            enrichedPatient.patientName = userData.name.trim();
@@ -1350,13 +1638,7 @@ export function DoctorDashboardScreen() {
          }
       }
 
-      // Also check queue and active_consultation documents for existing greeting flags
-      const [qSnap, cSnap] = await Promise.all([
-        getDoc(doc(db, 'queue', patient.id)).catch(() => null),
-        getDoc(doc(db, 'active_consultations', patient.id)).catch(() => null)
-      ]);
-      if (qSnap && qSnap.exists()) {
-        const qd = qSnap.data();
+      if (qd) {
         if (qd.greetingSent || qd.initialGreetingSent || qd.status === 'in-consultation' || qd.status === 'finished') {
           enrichedPatient.greetingSent = true;
           enrichedPatient.initialGreetingSent = true;
@@ -1540,18 +1822,25 @@ export function DoctorDashboardScreen() {
         setCurrentPatient(null);
       }
 
-      // 2. Mark as finished in Firestore
+      // 2. Mark as finished in Firestore and consume active consultation credit
       await updateDoc(doc(db, 'queue', patient.id), {
         status: 'finished',
-        hasUnread: false
+        hasUnread: false,
+        pagamento_consulta: false
       }).catch(async () => {
-        await setDoc(doc(db, 'queue', patient.id), { status: 'finished' }, { merge: true });
+        await setDoc(doc(db, 'queue', patient.id), { status: 'finished', pagamento_consulta: false }, { merge: true });
       });
 
       await setDoc(doc(db, 'users', patient.id), {
         inQueue: false,
         consultationStatus: 'finished',
+        isConsultationFinished: true,
         consultationActive: false,
+        pagamento_consulta: false,
+        hasPaid: false,
+        isPaid: false,
+        bypassedPayment: false,
+        hadPreviousConsultation: true,
         lastUpdated: new Date().toISOString()
       }, { merge: true }).catch(() => {});
 
@@ -1658,29 +1947,163 @@ export function DoctorDashboardScreen() {
     }
   };
 
+  const getPatientPlanType = (targetPatient: any): 'basic' | 'premium' | 'complete' | 'psychologist' => {
+    if (!targetPatient) return 'basic';
+    const validPlans = ['basic', 'premium', 'complete', 'psychologist'];
+    const explicitPlan =
+      (targetPatient.plan && validPlans.includes(targetPatient.plan) ? targetPatient.plan : null) ||
+      (targetPatient.selectedOffer && validPlans.includes(targetPatient.selectedOffer) ? targetPatient.selectedOffer : null) ||
+      (targetPatient.tier && validPlans.includes(targetPatient.tier) ? targetPatient.tier : null) ||
+      (targetPatient.answers?.plan && validPlans.includes(targetPatient.answers.plan) ? targetPatient.answers.plan : null) ||
+      (targetPatient.answers?.selectedOffer && validPlans.includes(targetPatient.answers.selectedOffer) ? targetPatient.answers.selectedOffer : null);
+    if (explicitPlan) {
+      return explicitPlan as 'basic' | 'premium' | 'complete' | 'psychologist';
+    }
+    if (targetPatient.isPremium === true || targetPatient.pagamento_premium === true || targetPatient.answers?.isPremium === true) {
+      return 'premium';
+    }
+    return 'basic';
+  };
+
+  const isPatientVip = (targetPatient: any): boolean => {
+    const planType = getPatientPlanType(targetPatient);
+    return planType === 'premium' || planType === 'complete';
+  };
+
   const handleTogglePatientPlan = async (patient: any) => {
     if (!patient || !patient.id) return;
-    const isPrem = !!(patient.isPremium || patient.plan === 'premium' || (patient as any).selectedOffer === 'premium' || patient.answers?.isPremium || (patient as any).pagamento_premium);
-    const newPrem = !isPrem;
-    const newPlan = newPrem ? 'premium' : 'basic';
+    const currentPlan = getPatientPlanType(patient);
+    const nextPlan: 'basic' | 'premium' | 'complete' =
+      currentPlan === 'basic'
+        ? 'premium'
+        : currentPlan === 'premium'
+        ? 'complete'
+        : 'basic';
+    const newPrem = nextPlan === 'premium' || nextPlan === 'complete';
+    const updatedAnswers = {
+      ...(patient.answers || {}),
+      isPremium: newPrem,
+      pagamento_premium: newPrem,
+      plan: nextPlan,
+      selectedOffer: nextPlan,
+      tier: nextPlan,
+    };
+
+    useStore.setState((state) => ({
+      queue: state.queue.map((p) =>
+        p.id === patient.id
+          ? { ...p, isPremium: newPrem, pagamento_premium: newPrem, plan: nextPlan, selectedOffer: nextPlan, tier: nextPlan, answers: updatedAnswers } as any
+          : p
+      )
+    }));
+
+    if (currentPatient && currentPatient.id === patient.id) {
+      setCurrentPatient({
+        ...currentPatient,
+        isPremium: newPrem,
+        pagamento_premium: newPrem,
+        plan: nextPlan,
+        selectedOffer: nextPlan,
+        tier: nextPlan,
+        answers: updatedAnswers
+      } as any);
+    }
+
+    const planLabel =
+      nextPlan === 'complete'
+        ? '👑 Plano Completo 360° (Médico + Psicólogo)'
+        : nextPlan === 'premium'
+        ? '👑 VIP Premium (R$ 249,90)'
+        : '🌱 Consulta Essencial (R$ 49,90)';
+    alert(`Plano alterado para ${planLabel}`);
 
     try {
-      await updateDoc(doc(db, 'queue', patient.id), {
+      await setDoc(doc(db, 'queue', patient.id), {
         isPremium: newPrem,
-        plan: newPlan,
-        selectedOffer: newPlan
-      });
-      if (currentPatient && currentPatient.id === patient.id) {
-        setCurrentPatient({
-          ...currentPatient,
+        pagamento_premium: newPrem,
+        plan: nextPlan,
+        selectedOffer: nextPlan,
+        tier: nextPlan,
+        answers: updatedAnswers
+      }, { merge: true });
+      await setDoc(doc(db, 'users', patient.id), {
+        isPremium: newPrem,
+        pagamento_premium: newPrem,
+        plan: nextPlan,
+        selectedOffer: nextPlan,
+        tier: nextPlan,
+        answers: updatedAnswers
+      }, { merge: true });
+      fetch('/api/queue/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: patient.id,
+          plan: nextPlan,
+          selectedOffer: nextPlan,
           isPremium: newPrem,
-          plan: newPlan,
-          selectedOffer: newPlan
-        });
-      }
+          pagamento_premium: newPrem,
+        }),
+      }).catch(() => {});
     } catch (err) {
       console.error("Error toggling patient plan:", err);
     }
+  };
+
+  const renderPatientPlanBadge = (targetPatient: any, stopPropagation = false) => {
+    const planType = getPatientPlanType(targetPatient);
+    const onClick = (e: any) => {
+      if (stopPropagation && e?.stopPropagation) e.stopPropagation();
+      handleTogglePatientPlan(targetPatient);
+    };
+    if (planType === 'complete') {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          title="Plano Completo 360° (Médico + Psicólogo - R$ 387,00) - Clique para alternar plano"
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/30 via-purple-500/25 to-amber-500/20 text-amber-200 border border-amber-400/70 shadow-[0_0_12px_rgba(245,158,11,0.35)] tracking-wider hover:scale-105 active:scale-95 transition-transform"
+        >
+          <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+          COMPLETO 360°
+        </button>
+      );
+    }
+    if (planType === 'premium') {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          title="Plano VIP Premium (R$ 249,90) - Clique para alternar plano"
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.35)] tracking-wider hover:scale-105 active:scale-95 transition-transform"
+        >
+          <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+          VIP PREMIUM
+        </button>
+      );
+    }
+    if (planType === 'psychologist') {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          title="Consulta Psicológica + Laudo (R$ 150,00) - Clique para alternar plano"
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-400/50 tracking-wider hover:scale-105 active:scale-95 transition-transform"
+        >
+          🧠 PSICÓLOGO
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Plano Essencial (R$ 49,90) - Clique para alternar plano"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
+      >
+        🌱 ESSENCIAL
+      </button>
+    );
   };
 
   const handleTriggerFileInput = (docType: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'documento') => {
@@ -2070,22 +2493,24 @@ export function DoctorDashboardScreen() {
 
     // Also add/update in prescItems and persist prescription so it's officially recorded
     const cleanSendName = selectedProduct.name.toLowerCase().trim();
-    const sendEnriched = enrichMedicationDetails(selectedProduct.name, selectedProduct.manufacturer, isNational ? 'Nacional' : (selectedProduct.origin || 'Importado'), selectedProduct.type, selectedProduct);
+    const resolvedProduct = applyCustomBulaToProduct(selectedProduct);
+    const customBula = getCustomBulaData(resolvedProduct);
+    const sendEnriched = enrichMedicationDetails(resolvedProduct.name, resolvedProduct.manufacturer, isNational ? 'Nacional' : (resolvedProduct.origin || 'Importado'), resolvedProduct.type, resolvedProduct);
     const sendItem: PrescriptionItemData = {
-      name: selectedProduct.name,
-      brand: selectedProduct.manufacturer || sendEnriched.brand,
-      origin: isNational ? 'Nacional' : (selectedProduct.origin || 'Importado'),
-      type: selectedProduct.type || sendEnriched.type,
-      concentration: selectedProduct.concentration || sendEnriched.concentration || '',
-      activeIngredients: sendEnriched.activeIngredients || selectedProduct.concentration || '',
-      pharmaceuticalForm: sendEnriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
-      quantity: sendEnriched.quantity || '01 Frasco de 30 mL',
-      administrationRoute: sendEnriched.administrationRoute || 'Via Sublingual / Oral',
-      dosage: fullDosage ? fullDosage.split('\n').map(s => s.trim()).filter(Boolean) : ['Tomar conforme orientação médica.'],
-      description: description || sendEnriched.description || '',
+      name: resolvedProduct.name,
+      brand: customBula?.manufacturer || resolvedProduct.manufacturer || sendEnriched.brand,
+      origin: customBula?.origin || (isNational ? 'Nacional' : (resolvedProduct.origin || 'Importado')),
+      type: customBula?.type || resolvedProduct.type || sendEnriched.type,
+      concentration: customBula?.concentration || customBula?.activeIngredients || resolvedProduct.concentration || sendEnriched.concentration || '',
+      activeIngredients: customBula?.activeIngredients || resolvedProduct.activeIngredients || sendEnriched.activeIngredients || resolvedProduct.concentration || '',
+      pharmaceuticalForm: customBula?.pharmaceuticalForm || resolvedProduct.pharmaceuticalForm || sendEnriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: customBula?.quantity || resolvedProduct.quantity || sendEnriched.quantity || '01 Frasco de 30 mL',
+      administrationRoute: customBula?.administrationRoute || resolvedProduct.administrationRoute || sendEnriched.administrationRoute || 'Via Sublingual / Oral',
+      dosage: fullDosage ? fullDosage.split('\n').map(s => s.trim()).filter(Boolean) : (customBula?.posologyDetails ? customBula.posologyDetails.split('\n').map((s: string) => s.trim()).filter(Boolean) : ['Tomar conforme orientação médica.']),
+      description: customBula?.description || description || sendEnriched.description || '',
       details: details || [sendEnriched.activeIngredients],
-      priceUSD: isNational ? undefined : selectedProduct.priceUSD,
-      priceBRL: isNational ? undefined : selectedProduct.priceBRL
+      priceUSD: isNational ? undefined : resolvedProduct.priceUSD,
+      priceBRL: isNational ? undefined : resolvedProduct.priceBRL
     };
 
     const updatedPresc = prescItems.some(p => p.name.toLowerCase().trim() === cleanSendName)
@@ -2137,9 +2562,10 @@ export function DoctorDashboardScreen() {
       try {
         await updateDoc(doc(db, 'queue', targetPatientId), {
           status: 'finished',
-          hasUnread: false
+          hasUnread: false,
+          pagamento_consulta: false
         }).catch(async () => {
-          await setDoc(doc(db, 'queue', targetPatientId), { status: 'finished', hasUnread: false }, { merge: true });
+          await setDoc(doc(db, 'queue', targetPatientId), { status: 'finished', hasUnread: false, pagamento_consulta: false }, { merge: true });
         });
 
         await setDoc(doc(db, 'users', targetPatientId), {
@@ -2147,6 +2573,11 @@ export function DoctorDashboardScreen() {
           consultationStatus: 'finished',
           isConsultationFinished: true,
           consultationActive: false,
+          pagamento_consulta: false,
+          hasPaid: false,
+          isPaid: false,
+          bypassedPayment: false,
+          hadPreviousConsultation: true,
           lastUpdated: new Date().toISOString()
         }, { merge: true }).catch(() => {});
 
@@ -2178,15 +2609,42 @@ export function DoctorDashboardScreen() {
     setCurrentPatient(null);
   };
 
-  const handleOpenPrescriptionEditor = () => {
-    setStandaloneTargetPatientId(null);
-    const patientAnswers = currentPatient?.answers || answers;
-    const pName = currentPatient?.patientName || userName || 'Paciente';
-    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+  const handleOpenPrescriptionEditor = (
+    targetPatientOverride?: any, 
+    prefillItems?: PrescriptionItemData[], 
+    prefillNotes?: string
+  ) => {
+    const targetPatient = targetPatientOverride || currentPatient;
+    if (targetPatient?.id) {
+      setStandaloneTargetPatientId(targetPatient.id);
+    } else {
+      setStandaloneTargetPatientId(null);
+    }
+    const patientAnswers = targetPatient?.answers || answers;
+    const pName = targetPatient?.patientName || targetPatient?.name || userName || 'Paciente';
+    const pBirthDate = targetPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
+    const pCpf = targetPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
 
-    const patientKey = getPatientReportKey(currentPatient?.id, pName);
-    const saved = loadSavedPrescription(patientKey) || currentPatient?.prescriptionData;
+    setPrescPatientName(pName);
+    setPrescBirthDate(pBirthDate);
+    setPrescCpf(pCpf);
+    setPrescEmissionDate(format(new Date(), 'dd/MM/yyyy'));
+    setPrescDoctorName('Dr. Guilherme Taveira Dias');
+    setPrescDoctorCrm('CRM/MT 17259');
+    setPrescDoctorSpecialty('Especialista em Medicina Canabinoide');
+
+    if (prefillItems && prefillItems.length > 0) {
+      setPrescItems(prefillItems);
+      if (prefillNotes !== undefined) {
+        setPrescNotes(prefillNotes);
+      }
+      setPrescriptionTab('edit');
+      setShowPrescriptionEditorModal(true);
+      return;
+    }
+
+    const patientKey = getPatientReportKey(targetPatient?.id, pName);
+    const saved = loadSavedPrescription(patientKey) || targetPatient?.prescriptionData;
 
     if (saved && saved.items && saved.items.length > 0) {
       setPrescPatientName(saved.patientName || pName);
@@ -2438,21 +2896,41 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleDownloadPrescriptionFromEditor = async () => {
+  const handleDownloadPrescriptionFromEditor = async (overrideData?: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => {
     // 1. Gerar o PDF com os dados editados para download local no computador do médico
     // IMPORTANTE: NÃO envia mensagens nem produtos para o chat ou histórico do paciente
     try {
+      const pName = overrideData?.patientName ?? prescPatientName;
+      const pBirth = overrideData?.birthDate ?? prescBirthDate;
+      const pCpf = overrideData?.cpf ?? prescCpf;
+      const pEmission = overrideData?.emissionDate ?? prescEmissionDate;
+      const dName = overrideData?.doctorName ?? prescDoctorName;
+      const dCrm = overrideData?.doctorCrm ?? prescDoctorCrm;
+      const dSpec = overrideData?.doctorSpecialty ?? prescDoctorSpecialty;
+      const pItems = overrideData?.items ?? prescItems;
+      const pNotes = overrideData?.notes ?? prescNotes;
+
       showActionToast("Gerando PDF da receita...");
-      await generatePrescriptionPDF(prescPatientName, messages, {
-        customPatientName: prescPatientName,
-        birthDate: prescBirthDate,
-        cpf: prescCpf,
-        emissionDate: prescEmissionDate,
-        customDoctorName: prescDoctorName,
-        customDoctorCrm: prescDoctorCrm,
-        customDoctorSpecialty: prescDoctorSpecialty,
-        customItems: prescItems,
-        customNotes: prescNotes
+      await generatePrescriptionPDF(pName, messages, {
+        customPatientName: pName,
+        birthDate: pBirth,
+        cpf: pCpf,
+        emissionDate: pEmission,
+        customDoctorName: dName,
+        customDoctorCrm: dCrm,
+        customDoctorSpecialty: dSpec,
+        customItems: pItems,
+        customNotes: pNotes
       });
       showActionToast("Receita em PDF baixada com sucesso!");
     } catch (err: any) {
@@ -2461,20 +2939,40 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleSendPrescriptionToChat = async (includeProductCards: boolean = false) => {
+  const handleSendPrescriptionToChat = async (includeProductCards: boolean = false, overrideData?: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => {
     const targetPatientId = currentPatient?.id || standaloneTargetPatientId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       alert("Nenhum paciente selecionado para envio da receita.");
       return;
     }
 
+    const activeItems = overrideData?.items ?? prescItems;
+    const activeNotes = overrideData?.notes ?? prescNotes;
+    const activePatientName = overrideData?.patientName ?? prescPatientName;
+    const activeBirthDate = overrideData?.birthDate ?? prescBirthDate;
+    const activeCpf = overrideData?.cpf ?? prescCpf;
+    const activeEmissionDate = overrideData?.emissionDate ?? prescEmissionDate;
+    const activeDoctorName = overrideData?.doctorName ?? prescDoctorName;
+    const activeDoctorCrm = overrideData?.doctorCrm ?? prescDoctorCrm;
+    const activeDoctorSpecialty = overrideData?.doctorSpecialty ?? prescDoctorSpecialty;
+
     try {
       setIsSendingAttachment(true);
 
       // 1. Atualizar o chat com os cards individuais de medicamentos SOMENTE se solicitado e se houver itens
-      if (includeProductCards && prescItems.length > 0) {
+      if (includeProductCards && activeItems.length > 0) {
         await clearPrescriptionMessages(targetPatientId);
-        for (const item of prescItems) {
+        for (const item of activeItems) {
           const isNational = isNationalProduct(item);
           
           let foundCatProd: any = null;
@@ -2532,27 +3030,27 @@ export function DoctorDashboardScreen() {
         }
       }
 
-      if (prescNotes && prescNotes.trim()) {
+      if (activeNotes && activeNotes.trim()) {
         await addMessage({
           sender: 'doctor',
           type: 'prescription_notes',
-          text: prescNotes
+          text: activeNotes
         }, targetPatientId);
       }
 
       // 2. Gerar o PDF oficial assinado como Blob
       let fileUrl = '';
       try {
-        const pdfBlob = await generatePrescriptionPDF(prescPatientName, messages, {
-          customPatientName: prescPatientName,
-          birthDate: prescBirthDate,
-          cpf: prescCpf,
-          emissionDate: prescEmissionDate,
-          customDoctorName: prescDoctorName,
-          customDoctorCrm: prescDoctorCrm,
-          customDoctorSpecialty: prescDoctorSpecialty,
-          customItems: prescItems,
-          customNotes: prescNotes,
+        const pdfBlob = await generatePrescriptionPDF(activePatientName, messages, {
+          customPatientName: activePatientName,
+          birthDate: activeBirthDate,
+          cpf: activeCpf,
+          emissionDate: activeEmissionDate,
+          customDoctorName: activeDoctorName,
+          customDoctorCrm: activeDoctorCrm,
+          customDoctorSpecialty: activeDoctorSpecialty,
+          customItems: activeItems,
+          customNotes: activeNotes,
           returnBlob: true
         }) as Blob;
 
@@ -2696,13 +3194,18 @@ export function DoctorDashboardScreen() {
     const items: PrescriptionItemData[] = [];
     const seenReportNames = new Set<string>();
 
-    // 1. First priority: items currently in prescription editor (prescItems)
-    prescItems.forEach(it => {
-      const clean = it.name.toLowerCase().trim();
-      if (!seenReportNames.has(clean)) {
-        seenReportNames.add(clean);
-        items.push(it);
-      }
+    // 0. Check saved prescription in localStorage first if prescItems wasn't populated yet
+    const prescKey = getPatientReportKey(currentPatient?.id, pName);
+    const savedPresc = loadSavedPrescription(prescKey);
+    const activePrescItems = prescItems.length > 0 ? prescItems : (savedPresc?.items && Array.isArray(savedPresc.items) ? savedPresc.items : []);
+    if (prescItems.length === 0 && activePrescItems.length > 0) {
+      setPrescItems(activePrescItems);
+    }
+
+    // 1. First priority: items currently in prescription editor (activePrescItems)
+    activePrescItems.forEach(it => {
+      items.push(it);
+      seenReportNames.add(it.name.toLowerCase().trim());
     });
 
     // 2. Second priority: items from prescription / receita_previa messages in current chat
@@ -2978,9 +3481,10 @@ export function DoctorDashboardScreen() {
       pathology: patientAnswers?.pathology
     }, 'evolutivo');
     
+    const hcCalc = patientAnswers?.hcPlantCalculator;
     setAgronomicDiagnosis(personalized.agronomic.diagnosis);
-    setAgronomicDailyDoseMg(personalized.agronomic.dailyDoseMg);
-    setAgronomicTargetPlants(personalized.agronomic.targetPlants);
+    setAgronomicDailyDoseMg(hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg);
+    setAgronomicTargetPlants(hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants);
     setAgronomicText(personalized.agronomic.text);
     setShowAgronomicReportEditorModal(true);
   };
@@ -3095,24 +3599,52 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleDownloadMedicalReportFromEditor = async () => {
+  const handleDownloadMedicalReportFromEditor = async (overrideData?: {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+  }) => {
     const patientAnswers = currentPatient?.answers || answers;
     const isEvolutivo = medicalReportType === 'evolutivo';
+    const pName = overrideData?.patientName || reportPatientName;
+    const patientKey = getPatientReportKey(currentPatient?.id, pName);
+    const saved = loadSavedReport(patientKey, medicalReportType);
+
+    const finalPatientName = overrideData?.patientName || saved?.patientName || reportPatientName;
+    const finalBirthDate = overrideData?.birthDate || saved?.birthDate || reportBirthDate;
+    const finalCpf = overrideData?.cpf || saved?.cpf || reportCpf;
+    const finalEmissionDate = overrideData?.emissionDate || saved?.emissionDate || reportEmissionDate;
+    const finalDoctorName = overrideData?.doctorName || saved?.doctorName || reportDoctorName;
+    const finalDoctorCrm = overrideData?.doctorCrm || saved?.doctorCrm || reportDoctorCrm;
+    const finalDoctorSpecialty = overrideData?.doctorSpecialty || saved?.doctorSpecialty || reportDoctorSpecialty;
+    const finalDiagnosis = overrideData?.diagnosis || saved?.diagnosis || reportDiagnosis;
+    const finalRationale = overrideData?.rationale || saved?.rationale || reportRationale;
+    const finalTreatmentPlan = overrideData?.treatmentPlan || saved?.treatmentPlan || reportTreatmentPlan;
+    const finalMonitoring = overrideData?.monitoring || saved?.monitoring || reportMonitoring;
+
     try {
       showActionToast(isEvolutivo ? "Gerando Laudo Evolutivo..." : "Gerando Laudo Inicial...");
-      await generateMedicalReportPDF(reportPatientName, messages, {
-        customPatientName: reportPatientName,
-        birthDate: reportBirthDate,
-        cpf: reportCpf,
-        emissionDate: reportEmissionDate,
+      await generateMedicalReportPDF(finalPatientName, messages, {
+        customPatientName: finalPatientName,
+        birthDate: finalBirthDate,
+        cpf: finalCpf,
+        emissionDate: finalEmissionDate,
         answers: patientAnswers,
-        customDoctorName: reportDoctorName,
-        customDoctorCrm: reportDoctorCrm,
-        customDoctorSpecialty: reportDoctorSpecialty,
-        customDiagnosis: reportDiagnosis,
-        customRationale: reportRationale,
-        customTreatmentPlan: reportTreatmentPlan,
-        customMonitoring: reportMonitoring,
+        customDoctorName: finalDoctorName,
+        customDoctorCrm: finalDoctorCrm,
+        customDoctorSpecialty: finalDoctorSpecialty,
+        customDiagnosis: finalDiagnosis,
+        customRationale: finalRationale,
+        customTreatmentPlan: finalTreatmentPlan,
+        customMonitoring: finalMonitoring,
         reportType: medicalReportType,
         docType: isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial',
         isEvolutivo
@@ -3124,7 +3656,19 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleSendMedicalReportToChat = async () => {
+  const handleSendMedicalReportToChat = async (overrideData?: {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+  }) => {
     const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Nenhum paciente selecionado para envio do laudo médico.");
@@ -3138,19 +3682,35 @@ export function DoctorDashboardScreen() {
       const isEvolutivo = medicalReportType === 'evolutivo';
       const docType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
 
-      const pdfBlob = await generateMedicalReportPDF(reportPatientName, messages, {
-        customPatientName: reportPatientName,
-        birthDate: reportBirthDate,
-        cpf: reportCpf,
-        emissionDate: reportEmissionDate,
+      const pName = overrideData?.patientName || reportPatientName;
+      const patientKey = getPatientReportKey(currentPatient?.id, pName);
+      const saved = loadSavedReport(patientKey, medicalReportType);
+
+      const finalPatientName = overrideData?.patientName || saved?.patientName || reportPatientName;
+      const finalBirthDate = overrideData?.birthDate || saved?.birthDate || reportBirthDate;
+      const finalCpf = overrideData?.cpf || saved?.cpf || reportCpf;
+      const finalEmissionDate = overrideData?.emissionDate || saved?.emissionDate || reportEmissionDate;
+      const finalDoctorName = overrideData?.doctorName || saved?.doctorName || reportDoctorName;
+      const finalDoctorCrm = overrideData?.doctorCrm || saved?.doctorCrm || reportDoctorCrm;
+      const finalDoctorSpecialty = overrideData?.doctorSpecialty || saved?.doctorSpecialty || reportDoctorSpecialty;
+      const finalDiagnosis = overrideData?.diagnosis || saved?.diagnosis || reportDiagnosis;
+      const finalRationale = overrideData?.rationale || saved?.rationale || reportRationale;
+      const finalTreatmentPlan = overrideData?.treatmentPlan || saved?.treatmentPlan || reportTreatmentPlan;
+      const finalMonitoring = overrideData?.monitoring || saved?.monitoring || reportMonitoring;
+
+      const pdfBlob = await generateMedicalReportPDF(finalPatientName, messages, {
+        customPatientName: finalPatientName,
+        birthDate: finalBirthDate,
+        cpf: finalCpf,
+        emissionDate: finalEmissionDate,
         answers: patientAnswers,
-        customDoctorName: reportDoctorName,
-        customDoctorCrm: reportDoctorCrm,
-        customDoctorSpecialty: reportDoctorSpecialty,
-        customDiagnosis: reportDiagnosis,
-        customRationale: reportRationale,
-        customTreatmentPlan: reportTreatmentPlan,
-        customMonitoring: reportMonitoring,
+        customDoctorName: finalDoctorName,
+        customDoctorCrm: finalDoctorCrm,
+        customDoctorSpecialty: finalDoctorSpecialty,
+        customDiagnosis: finalDiagnosis,
+        customRationale: finalRationale,
+        customTreatmentPlan: finalTreatmentPlan,
+        customMonitoring: finalMonitoring,
         reportType: medicalReportType,
         docType: docType,
         isEvolutivo,
@@ -3158,7 +3718,7 @@ export function DoctorDashboardScreen() {
       }) as Blob;
 
       let fileUrl = '';
-      const cleanPatientName = (reportPatientName || 'Paciente').replace(/\s+/g, '_');
+      const cleanPatientName = (finalPatientName || 'Paciente').replace(/\s+/g, '_');
       const fileName = `${isEvolutivo ? 'Laudo_Evolutivo' : 'Laudo_Inicial'}_${cleanPatientName}.pdf`;
 
       if (pdfBlob) {
@@ -3893,6 +4453,21 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
               <span>Receitas e Laudos Avulsos</span>
             </div>
           </button>
+          <button 
+            type="button"
+            onClick={() => setIsPsychologistAuthModalOpen(true)}
+            className="p-3 rounded-xl transition-all relative group text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-500/60 shadow-[0_0_15px_rgba(168,85,247,0.15)] active:scale-95 cursor-pointer"
+            title="Ir para Área do Psicólogo (Marco Antônio Boastik - CRP 08/49215)"
+          >
+            <BrainCircuit className="w-6 h-6 text-purple-400" />
+            {queue.filter(p => (p as any).queueType === 'psychologist' || (p as any).plan === 'psychologist' || (p as any).selectedOffer === 'psychologist').length > 0 && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-400 rounded-full animate-pulse" />
+            )}
+            <div className="absolute bottom-full mb-2 md:bottom-auto md:mb-0 md:left-full md:ml-4 px-2.5 py-1.5 bg-[#0D0D15] border border-purple-500/40 rounded-lg text-xs font-semibold text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 flex items-center gap-1.5">
+              <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
+              <span>Área do Psicólogo (Marco Antônio)</span>
+            </div>
+          </button>
         </nav>
 
         <div className="flex md:flex-col gap-2 md:gap-4 items-center">
@@ -3947,7 +4522,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-bold text-white tracking-tight">Fila de Atendimento</h2>
                     <span className="text-[11px] bg-mecura-neon/15 border border-mecura-neon/30 text-mecura-neon font-bold px-2 py-0.5 rounded-full">
-                      {queue.filter(p => p.status === 'waiting' && (p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true))).length} aguardando
+                      {queue.filter(p => p.status === 'waiting' && (p.id?.startsWith('sample_patient_') || (p as any).queueType === 'doctor' || (p as any).inQueue === true || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true))).length} aguardando
                     </span>
                   </div>
                   <button
@@ -4000,7 +4575,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   >
                     <span>Aguardando</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${queueFilter === 'waiting' ? 'bg-black/20 text-black font-bold' : 'bg-mecura-neon/20 text-mecura-neon font-bold'}`}>
-                      {queue.filter(p => p.status === 'waiting' && (p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true))).length}
+                      {doctorQueue.filter(p => p.status === 'waiting' && (p.id?.startsWith('sample_patient_') || (p as any).queueType === 'doctor' || (p as any).inQueue === true || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true))).length}
                     </span>
                   </button>
                   <button 
@@ -4009,7 +4584,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   >
                     <span>Em Atendimento</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${queueFilter === 'in-consultation' ? 'bg-black/20 text-black font-bold' : 'bg-blue-500/20 text-blue-400 font-bold'}`}>
-                      {queue.filter(p => p.status === 'in-consultation').length}
+                      {doctorQueue.filter(p => p.status === 'in-consultation').length}
                     </span>
                   </button>
                   <button 
@@ -4018,21 +4593,21 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   >
                     <span>Concluído</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-mecura-silver">
-                      {queue.filter(p => p.status === 'finished').length}
+                      {doctorQueue.filter(p => p.status === 'finished').length}
                     </span>
                   </button>
                   <button 
                     onClick={() => setQueueFilter('all')}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${queueFilter === 'all' ? 'bg-mecura-neon text-black font-bold' : 'bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-white'}`}
                   >
-                    Todos ({queue.length})
+                    Todos ({doctorQueue.length})
                   </button>
                 </div>
 
                 {/* Filtro Específico por Plano (VIP x Essencial) */}
                 {(() => {
-                  const vipCount = queue.filter(p => !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium)).length;
-                  const basicCount = queue.length - vipCount;
+                  const vipCount = doctorQueue.filter(p => !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium)).length;
+                  const basicCount = doctorQueue.length - vipCount;
 
                   return (
                     <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-mecura-elevated/40">
@@ -4041,7 +4616,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                         onClick={() => setQueuePlanFilter('all')}
                         className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all ${queuePlanFilter === 'all' ? 'bg-white/15 text-white border border-white/30' : 'text-mecura-silver hover:text-white'}`}
                       >
-                        Todos ({queue.length})
+                        Todos ({doctorQueue.length})
                       </button>
                       <button 
                         onClick={() => setQueuePlanFilter('premium')}
@@ -4062,22 +4637,22 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
               </div>
         
               <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0 custom-scrollbar">
-          {queue.filter(p => {
+          {doctorQueue.filter(p => {
             const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
             const pName = (p.patientName || (p as any).name || '').toLowerCase();
             const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
             const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
             const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
-            const isPaid = p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
+            const isPaid = p.id?.startsWith('sample_patient_') || (p as any).queueType === 'doctor' || (p as any).inQueue === true || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
             return matchesStatus && matchesSearch && matchesPlan && (p.status !== 'waiting' || isPaid);
           }).length > 0 ? (
-            [...queue].filter(p => {
+            [...doctorQueue].filter(p => {
               const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
               const pName = (p.patientName || (p as any).name || '').toLowerCase();
               const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
-              const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
+              const isPrem = isPatientVip(p);
               const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
-              const isPaid = p.id?.startsWith('sample_patient_') || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
+              const isPaid = p.id?.startsWith('sample_patient_') || (p as any).queueType === 'doctor' || (p as any).inQueue === true || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
               return matchesStatus && matchesSearch && matchesPlan && (p.status !== 'waiting' || isPaid);
             }).sort((a, b) => {
               // 1. Unread messages first
@@ -4092,8 +4667,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
 
               // 2.5 Priority for VIP / Premium patients in waiting queue
               if (a.status === 'waiting' && b.status === 'waiting') {
-                const isPremA = !!(a.isPremium || a.plan === 'premium' || (a as any).selectedOffer === 'premium' || a.answers?.isPremium || (a as any).pagamento_premium);
-                const isPremB = !!(b.isPremium || b.plan === 'premium' || (b as any).selectedOffer === 'premium' || b.answers?.isPremium || (b as any).pagamento_premium);
+                const isPremA = isPatientVip(a);
+                const isPremB = isPatientVip(b);
                 if (isPremA !== isPremB) {
                   return isPremA ? -1 : 1; // VIP comes first!
                 }
@@ -4113,7 +4688,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
               }
             }).map((patient, idx) => {
-              const isPremiumPatient = !!(patient.isPremium || patient.plan === 'premium' || (patient as any).selectedOffer === 'premium' || patient.answers?.isPremium || (patient as any).pagamento_premium);
+              const isPremiumPatient = isPatientVip(patient);
 
               return (
               <div 
@@ -4145,33 +4720,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                       return null;
                     })()}
 
-                    {/* Símbolo Paciente Premium vs Essencial (Clique para alternar) */}
-                    {isPremiumPatient ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTogglePatientPlan(patient);
-                        }}
-                        title="Plano VIP Premium (R$ 249,90) - Clique para alterar para Essencial"
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.35)] tracking-wider hover:scale-105 active:scale-95 transition-transform"
-                      >
-                        <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
-                        VIP PREMIUM
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTogglePatientPlan(patient);
-                        }}
-                        title="Plano Essencial (R$ 49,90) - Clique para alterar para VIP Premium"
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
-                      >
-                        🌱 ESSENCIAL
-                      </button>
-                    )}
+                    {/* Símbolo do Plano Pago pelo Paciente (Clique para alternar) */}
+                    {renderPatientPlanBadge(patient, true)}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {patient.lastMessageAt && (
@@ -4226,6 +4776,30 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                       title="Tirar paciente da fila de atendimento"
                     >
                       Tirar da fila
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const pId = patient.id;
+                        const pName = patient.patientName || (patient as any).name || 'Paciente';
+                        
+                        try {
+                          await transferPatientQueue(pId, 'psychologist');
+                          showActionToast(`✓ Paciente ${pName} enviado para a fila do Psicólogo!`);
+                          if (currentPatient && currentPatient.id === pId) {
+                            setCurrentPatient(null);
+                          }
+                        } catch (err) {
+                          console.error("Erro ao transferir para psicólogo:", err);
+                        }
+                      }}
+                      className="text-[10px] bg-purple-500/20 border border-purple-500/40 px-2.5 py-1.5 rounded-lg text-purple-200 hover:bg-purple-500/40 hover:text-white transition-all flex items-center gap-1 font-bold shadow-sm active:scale-95 cursor-pointer"
+                      title="Mandar paciente para a fila do Psicólogo"
+                    >
+                      <Brain className="w-3 h-3 text-purple-300" />
+                      <span>P/ Psicólogo</span>
                     </button>
                     {/* Botão do WhatsApp para chamar o paciente */}
                     <button 
@@ -4436,26 +5010,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-base md:text-lg font-bold text-white tracking-tight truncate max-w-[150px] md:max-w-xs">{currentPatient?.patientName || userName || 'Paciente Atual'}</h2>
-                    {(currentPatient?.isPremium || currentPatient?.plan === 'premium' || (currentPatient as any)?.selectedOffer === 'premium' || currentPatient?.answers?.isPremium || (currentPatient as any)?.pagamento_premium) ? (
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePatientPlan(currentPatient)}
-                        title="Plano VIP Premium (R$ 249,90) - Clique para alterar para Essencial"
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)] tracking-wider hover:scale-105 transition-transform"
-                      >
-                        <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
-                        VIP PREMIUM
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePatientPlan(currentPatient)}
-                        title="Plano Essencial (R$ 49,90) - Clique para alterar para VIP Premium"
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
-                      >
-                        🌱 ESSENCIAL
-                      </button>
-                    )}
+                    {renderPatientPlanBadge(currentPatient, false)}
                   </div>
                   <p className="text-[10px] md:text-xs text-mecura-silver font-medium flex items-center gap-1.5 mt-0.5">
                     <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-mecura-neon shadow-[0_0_8px_rgba(166,255,0,0.5)]" /> Online agora
@@ -4463,6 +5018,41 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 </div>
               </div>
               <div className="flex gap-2 overflow-x-auto md:overflow-visible md:flex-wrap pb-1 md:pb-0 items-center md:justify-end">
+                {/* Botão Mandar para Fila do Psicólogo */}
+                <button
+                  onClick={async () => {
+                    const targetPatient = currentPatient || queue.find(p => p.status === 'waiting');
+                    if (targetPatient) {
+                      const pName = targetPatient.patientName || (targetPatient as any).name || 'Paciente';
+                      await transferPatientQueue(targetPatient.id, 'psychologist');
+                      showActionToast(`✓ Paciente ${pName} encaminhado para a fila do Psicólogo!`);
+                      if (currentPatient?.id === targetPatient.id) {
+                        setCurrentPatient(null);
+                      }
+                    } else {
+                      showActionToast('Nenhum paciente selecionado ou aguardando.');
+                    }
+                  }}
+                  title="Mandar paciente para a fila do Psicólogo"
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-purple-600/20 hover:bg-purple-600/35 text-purple-200 border border-purple-500/40 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(168,85,247,0.2)] hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <Brain className="w-4 h-4 text-purple-300" />
+                  <span className="hidden md:inline">Mandar p/ Fila Psicólogo</span>
+                  <span className="md:hidden">P/ Psicólogo</span>
+                </button>
+
+                {/* Botão Ir para Área do Psicólogo (Marco Antônio) */}
+                <button
+                  type="button"
+                  onClick={() => setIsPsychologistAuthModalOpen(true)}
+                  title="Ir para Área do Psicólogo (Marco Antônio - CRP 08/49215) - Requer Senha"
+                  className="px-2.5 md:px-3.5 py-2 md:py-2.5 bg-purple-600/15 hover:bg-purple-600/30 text-purple-300 border border-purple-500/35 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 md:gap-2 whitespace-nowrap shadow-sm hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5 text-purple-300" />
+                  <span className="hidden lg:inline">Painel Psicólogo</span>
+                  <span className="lg:hidden">Psicólogo</span>
+                </button>
+
                 {/* Botão Chamar no WhatsApp */}
                 <button
                   onClick={() => {
@@ -4565,6 +5155,15 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   title="Prescrever Medicamentos (Editor Estruturado)"
                 >
                   <PlusCircle className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden md:inline">Prescrever</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => handleOpenProgrammedForPatient(currentPatient)}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-purple-600/25 via-indigo-600/25 to-purple-600/25 border border-purple-400/50 text-purple-200 hover:text-white hover:border-purple-300 hover:bg-purple-600/40 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1 md:gap-2 shadow-[0_0_15px_rgba(168,85,247,0.25)] whitespace-nowrap active:scale-95 cursor-pointer"
+                  title="Receitas Programadas: Perfis Rápidos de Ansiedade, Insônia, Depressão e Dor Crônica"
+                >
+                  <Sparkles className="w-3 h-3 md:w-4 md:h-4 text-purple-300" />
+                  <span className="hidden md:inline">Receitas Programadas</span><span className="md:hidden">Programadas</span>
                 </button>
                 <button 
                   type="button"
@@ -6100,7 +6699,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
             const pPhone = currentPatient?.phone || patientAnswers?.phone || userPhone;
             const pEmail = currentPatient?.email || (currentPatient?.answers?.email) || '';
             const pAge = calculateAge(pBirthDate);
-            const isVip = !!(currentPatient?.isPremium || currentPatient?.plan === 'premium' || currentPatient?.selectedOffer === 'premium' || patientAnswers?.isPremium || currentPatient?.pagamento_premium);
+            const currentPlanType = getPatientPlanType(currentPatient);
 
             return (
               <section>
@@ -6108,26 +6707,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] flex items-center gap-2">
                     <User className="w-4 h-4 text-mecura-neon" /> Dados Cadastrais
                   </h3>
-                  {isVip ? (
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePatientPlan(currentPatient)}
-                      title="Plano VIP Premium (R$ 249,90) - Clique para alterar para Essencial"
-                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-500/25 to-yellow-500/20 text-amber-300 border border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.25)] tracking-wider hover:scale-105 transition-transform"
-                    >
-                      <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
-                      PREMIUM VIP
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePatientPlan(currentPatient)}
-                      title="Plano Essencial (R$ 49,90) - Clique para alterar para VIP Premium"
-                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#142A1D] text-[#4ADE80] border border-[#22C55E]/40 tracking-wider hover:border-amber-400/60 hover:text-amber-300 transition-colors"
-                    >
-                      🌱 ESSENCIAL
-                    </button>
-                  )}
+                  {renderPatientPlanBadge(currentPatient, false)}
                 </div>
                 <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-4 space-y-3">
                   <div className="flex justify-between items-center border-b border-mecura-elevated/40 pb-2.5">
@@ -6138,9 +6718,17 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                       title="Clique para alternar o plano"
                       className="text-xs font-bold transition-all flex items-center gap-1.5 hover:scale-[1.02]"
                     >
-                      {isVip ? (
+                      {currentPlanType === 'complete' ? (
+                        <span className="text-amber-200 flex items-center gap-1 font-mono">
+                          <Crown className="w-3 h-3 text-amber-400 fill-amber-400" /> Completo 360° (Médico + Psico)
+                        </span>
+                      ) : currentPlanType === 'premium' ? (
                         <span className="text-amber-300 flex items-center gap-1 font-mono">
                           <Crown className="w-3 h-3 text-amber-400 fill-amber-400" /> VIP Premium (R$ 249,90)
+                        </span>
+                      ) : currentPlanType === 'psychologist' ? (
+                        <span className="text-purple-300 flex items-center gap-1 font-mono">
+                          🧠 Consulta Psicológica (R$ 150,00)
                         </span>
                       ) : (
                         <span className="text-[#4ADE80] flex items-center gap-1 font-mono">
@@ -6205,6 +6793,179 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
           })()}
 
           
+          {/* Seção Integrada: Prescrição e Receitas Programadas Direto na Ficha do Paciente */}
+          {(() => {
+            const pName = currentPatient?.patientName || userName || 'Paciente';
+            return (
+              <section>
+                <div className="bg-gradient-to-br from-purple-950/60 via-[#131124] to-indigo-950/60 border border-purple-500/40 rounded-2xl p-4 space-y-3.5 shadow-lg relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="flex items-center justify-between relative z-10">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300">
+                        <Sparkles className="w-4 h-4 text-purple-300" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Prescrever para o Paciente
+                        </h4>
+                        <span className="text-[11px] text-purple-200/90 font-medium">Vinculado a {pName}</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-300">
+                      Perfis Prontos
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-mecura-silver leading-snug relative z-10">
+                    Emita a receita médica digital oficial com perfis padronizados de canabinoides para a condição clínica deste paciente.
+                  </p>
+
+                  {/* Botões Principais: Receita Programada vs Editor Livre */}
+                  <div className="grid grid-cols-2 gap-2 relative z-10">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenProgrammedForPatient(currentPatient)}
+                      className="p-3 rounded-xl bg-gradient-to-r from-purple-600/35 to-indigo-600/35 hover:from-purple-600/50 hover:to-indigo-600/50 border border-purple-400/50 text-white text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 text-center shadow-sm cursor-pointer hover:scale-[1.02] active:scale-95"
+                    >
+                      <div className="flex items-center gap-1.5 text-purple-200 font-extrabold">
+                        <Sparkles className="w-4 h-4 text-purple-300" />
+                        <span>Receitas Programadas</span>
+                      </div>
+                      <span className="text-[9px] text-purple-200/70 font-normal">Perfis Ansiedade, Sono, etc.</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPrescriptionEditor(currentPatient)}
+                      className="p-3 rounded-xl bg-mecura-neon/15 hover:bg-mecura-neon hover:text-black border border-mecura-neon/40 text-mecura-neon text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 text-center shadow-sm cursor-pointer hover:scale-[1.02] active:scale-95"
+                    >
+                      <div className="flex items-center gap-1.5 font-extrabold">
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Editor Livre</span>
+                      </div>
+                      <span className="text-[9px] text-mecura-silver font-normal">Personalizar itens</span>
+                    </button>
+                  </div>
+
+                  {/* Atalhos Rápidos com 1 Clique: Nacionais vs Importados */}
+                  <div className="pt-2.5 border-t border-purple-500/20 relative z-10 space-y-2">
+                    {/* Linha Importada EUA */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-black text-sky-400 uppercase tracking-wider flex items-center gap-1">
+                          🌐 Protocolos Importados (EUA • RDC 660):
+                        </span>
+                        <span className="text-[9px] bg-sky-500/20 text-sky-300 px-1.5 py-0.2 rounded border border-sky-400/30 font-bold">
+                          Anvisa
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('ansiedade', currentPatient, 'importado')}
+                          className="p-1.5 rounded-lg bg-sky-950/40 hover:bg-sky-900/50 border border-sky-500/30 text-sky-200 text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer text-left"
+                          title="Carregar protocolo Pangaia Biopharma EUA de Ansiedade (10% CBD 3000mg + Gummies)"
+                        >
+                          <span className="text-xs">🌐</span>
+                          <span className="truncate">Pangaia Ansiedade</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('insonia', currentPatient, 'importado')}
+                          className="p-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-200 text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer text-left"
+                          title="Carregar protocolo Pangaia Biopharma EUA de Insônia (20% CBD 6000mg + Softgel)"
+                        >
+                          <span className="text-xs">🌙</span>
+                          <span className="truncate">Pangaia Sono 6000mg</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('ansiedade', currentPatient, 'importado')}
+                          className="p-1.5 rounded-lg bg-teal-950/40 hover:bg-teal-900/50 border border-teal-500/30 text-teal-200 text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer text-left"
+                          title="Carregar protocolo Flowermed EUA (Hemp Oil 3000mg + Sphera Broad 0% THC)"
+                        >
+                          <span className="text-xs">🇺🇸</span>
+                          <span className="truncate">Flowermed Broad</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('combinado', currentPatient, 'importado')}
+                          className="p-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/30 text-emerald-200 text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer text-left"
+                          title="Carregar protocolo de Flores In Natura Terapêuticas 14g (RDC 660)"
+                        >
+                          <span className="text-xs">🌿</span>
+                          <span className="truncate">Flores 14g (RDC 660)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Linha Nacional (Associações Brasileiras) */}
+                    <div>
+                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider block mb-1">
+                        🇧🇷 Protocolos Nacionais (Associações):
+                      </span>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('ansiedade', currentPatient, 'nacional')}
+                          className="p-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/30 border border-blue-400/30 text-blue-200 text-[10px] font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer text-center"
+                          title="Carregar protocolo nacional de Ansiedade e Pânico"
+                        >
+                          <span className="text-xs">🧠</span>
+                          <span className="truncate w-full">Ansiedade</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('insonia', currentPatient, 'nacional')}
+                          className="p-1.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 text-[10px] font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer text-center"
+                          title="Carregar protocolo nacional de Insônia e Sono"
+                        >
+                          <span className="text-xs">🌙</span>
+                          <span className="truncate w-full">Insônia</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('depressao', currentPatient, 'nacional')}
+                          className="p-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 border border-amber-400/30 text-amber-200 text-[10px] font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer text-center"
+                          title="Carregar protocolo nacional de Depressão e Humor"
+                        >
+                          <span className="text-xs">☀️</span>
+                          <span className="truncate w-full">Depressão</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 pt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('combinado', currentPatient, 'nacional')}
+                          className="py-1 px-2 rounded-lg bg-gradient-to-r from-blue-900/30 to-purple-900/30 hover:brightness-125 border border-purple-400/30 text-purple-200 text-[10px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                          title="Carregar protocolo nacional combinado de Ansiedade + Insônia"
+                        >
+                          <span>✨</span> Ansiedade + Sono
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickApplyCondition('dor', currentPatient, 'nacional')}
+                          className="py-1 px-2 rounded-lg bg-rose-900/25 hover:bg-rose-900/40 border border-rose-400/30 text-rose-200 text-[10px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                          title="Carregar protocolo nacional de Dor Crônica & Fibromialgia"
+                        >
+                          <span>🩸</span> Dor Crônica
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
+
           {/* Section: Anotações da Triagem (Laudo Evolutivo) */}
           <section>
             <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
@@ -6324,6 +7085,85 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 Gerar Laudo Agronômico
               </button>
             </div>
+
+            {/* Resultados dos Testes Interativos (TDAH, Autismo TEA, Calculadora HC) */}
+            {(() => {
+              const pAns = currentPatient?.answers || answers;
+              const adhdRes = pAns?.adhdTestResult;
+              const autismRes = pAns?.autismTestResult;
+              const hcRes = pAns?.hcPlantCalculator;
+              if (!adhdRes && !autismRes && !hcRes) return null;
+
+              return (
+                <div className="mt-4 space-y-2.5">
+                  <h4 className="text-xs font-bold text-mecura-neon uppercase tracking-wider">
+                    Testes Pré-Consulta & Dimensionamento HC Realizados pelo Paciente
+                  </h4>
+                  {adhdRes && (
+                    <div className="p-3.5 rounded-2xl bg-sky-500/10 border border-sky-400/30 flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[11px] font-bold text-sky-300 block">
+                          Teste de TDAH (ASRS-18)
+                        </span>
+                        <span className="text-xs text-white font-semibold">
+                          {adhdRes.classification} ({adhdRes.totalPoints}/{adhdRes.maxPoints} pts)
+                        </span>
+                      </div>
+                      <span className="text-lg font-black text-sky-300 font-mono">
+                        {adhdRes.scorePercent}%
+                      </span>
+                    </div>
+                  )}
+                  {autismRes && (
+                    <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-400/30 flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[11px] font-bold text-purple-300 block">
+                          Teste de Autismo — TEA ({autismRes.targetProfile || 'Adulto'})
+                        </span>
+                        <span className="text-xs text-white font-semibold">
+                          {autismRes.classification} ({autismRes.totalPoints}/{autismRes.maxPoints} pts)
+                        </span>
+                      </div>
+                      <span className="text-lg font-black text-purple-300 font-mono">
+                        {autismRes.scorePercent}%
+                      </span>
+                    </div>
+                  )}
+                  {hcRes && (
+                    <div className="p-3.5 rounded-2xl bg-mecura-neon/10 border border-mecura-neon/30 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[11px] font-bold text-mecura-neon block">
+                            Calculadora de Plantas para HC ({hcRes.cultivationType === 'outdoor' ? 'Outdoor' : 'Indoor'})
+                          </span>
+                          <span className="text-xs text-white font-semibold">
+                            {hcRes.annualPlants} plantas/ano ({hcRes.plantsPerCycle}/ciclo) · Dose Total: {hcRes.dailyDoseMg}mg/dia · {hcRes.dryFlowersGrams}g flores/ano
+                          </span>
+                        </div>
+                        <span className="text-sm font-black text-mecura-neon font-mono shrink-0">
+                          {hcRes.annualPlants} plantas
+                        </span>
+                      </div>
+                      {Array.isArray(hcRes.selectedMedications) && hcRes.selectedMedications.length > 0 && (
+                        <div className="pt-1.5 border-t border-white/10 space-y-1">
+                          <span className="text-[10px] text-[#A0A0B4] font-bold uppercase block">
+                            Medicamentos Cadastrados Escolhidos como Base pelo Paciente:
+                          </span>
+                          {hcRes.selectedMedications.map((m: any, i: number) => (
+                            <div key={i} className="text-[11px] text-white/90 flex items-center justify-between bg-black/30 px-2.5 py-1 rounded-lg">
+                              <span className="truncate pr-2 font-medium">{m.name}</span>
+                              <span className="text-mecura-neon font-mono shrink-0">
+                                {m.dailyUnits} {m.unitLabel} (~{m.dailyMg}mg/dia)
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </section>
 
           {/* Section: Health & Social */}
@@ -7848,6 +8688,28 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                       </button>
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenProgrammedForPatient(selectedHistoryItem);
+                          }}
+                          className="px-3.5 py-2 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-400/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                          title="Emitir Receita Programada diretamente para este paciente"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                          <span>Receita Programada</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenPrescriptionEditor(selectedHistoryItem);
+                          }}
+                          className="px-3.5 py-2 bg-mecura-neon/15 hover:bg-mecura-neon hover:text-black text-mecura-neon border border-mecura-neon/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Abrir Editor de Receita Digital para este paciente"
+                        >
+                          <PlusCircle className="w-3.5 h-3.5" />
+                          <span>Emitir Receita</span>
+                        </button>
+                        <button
                           onClick={() => {
                             handleWhatsAppCall(selectedHistoryItem);
                           }}
@@ -7949,9 +8811,31 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
 
                     {/* Prescriptions, Reports & Attachments */}
                     <div className="space-y-4">
-                      <h4 className="text-white font-bold flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-mecura-neon" /> Documentos e Prescrições Registradas
-                      </h4>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <h4 className="text-white font-bold flex items-center gap-2">
+                          <FileText className="w-5 h-5 text-mecura-neon" /> Documentos e Prescrições Registradas
+                        </h4>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProgrammedForPatient(selectedHistoryItem)}
+                            className="px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-400/40 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                            title="Emitir receita rápida padronizada para este paciente"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                            <span>+ Receita Programada</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrescriptionEditor(selectedHistoryItem)}
+                            className="px-3 py-1.5 rounded-xl bg-mecura-neon/15 hover:bg-mecura-neon hover:text-black text-mecura-neon border border-mecura-neon/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                            title="Emitir nova receita médica livre para este paciente"
+                          >
+                            <PlusCircle className="w-3.5 h-3.5" />
+                            <span>+ Nova Receita</span>
+                          </button>
+                        </div>
+                      </div>
                       
                       {selectedHistoryItem.messages && selectedHistoryItem.messages
                         .filter((m: any) => m.type === 'prescription' || m.type === 'medical_report' || m.type === 'psychomotor_report' || m.type === 'agronomic_report' || m.type === 'document' || m.attachment || m.type === 'product' || m.type === 'prescription_notes')
@@ -8729,6 +9613,48 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         }}
         onOpenAgronomicReportEditor={(patientData) => {
           handleLaunchStandaloneAgronomicReport(patientData);
+        }}
+      />
+
+      {/* Modal de Senha para Área do Psicólogo */}
+      <AreaPasswordModal
+        isOpen={isPsychologistAuthModalOpen}
+        onClose={() => setIsPsychologistAuthModalOpen(false)}
+        targetArea="psychologist"
+        onSuccess={() => {
+          setIsPsychologistAuthModalOpen(false);
+          navigate('/psychologist');
+        }}
+      />
+
+      {/* Modal de Receitas Programadas (Perfis Rápidos) */}
+      <ProgrammedPrescriptionsModal
+        isOpen={showProgrammedPrescriptionModal}
+        onClose={() => {
+          setShowProgrammedPrescriptionModal(false);
+          setProgrammedTargetPatient(null);
+        }}
+        patientInfo={(() => {
+          const target = programmedTargetPatient || currentPatient;
+          if (!target) return null;
+          const targetAnswers = target.answers || answers;
+          return {
+            id: target.id,
+            name: target.patientName || target.name || userName || 'Paciente',
+            cpf: target.cpf || targetAnswers?.cpf || userCpf,
+            birthDate: target.birthDate || targetAnswers?.birthDate || userBirthDate,
+            phone: target.phone || targetAnswers?.phone || userPhone
+          };
+        })()}
+        allPatients={[
+          ...queue,
+          ...consultationHistory
+        ]}
+        onApplyProfile={(profile, mode, targetPatient) => {
+          handleApplyProgrammedFromDashboard(profile, mode, targetPatient || programmedTargetPatient || currentPatient);
+        }}
+        onDirectEmitPDF={(profile, targetPatient) => {
+          return handleDirectEmitProgrammedPDF(profile, targetPatient || programmedTargetPatient || currentPatient);
         }}
       />
 

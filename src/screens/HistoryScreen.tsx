@@ -44,9 +44,9 @@ export function HistoryScreen() {
   ];
 
   return (
-    <div className="flex flex-col min-h-full bg-[#0A0A0F] text-mecura-pearl relative overflow-y-auto pb-12 font-sans">
+    <div className="flex flex-col min-h-full bg-[#000000] text-mecura-pearl relative overflow-y-auto pb-12 font-sans">
       {/* Header */}
-      <header className="flex items-center justify-between p-5 pt-7 border-b border-[#1A1A26] bg-[#0A0A0F]/80 backdrop-blur-md sticky top-0 z-20">
+      <header className="flex items-center justify-between p-5 pt-7 border-b border-[#1A1A26] bg-[#000000]/80 backdrop-blur-md sticky top-0 z-20">
         <button 
           onClick={() => navigate(-1)}
           className="w-10 h-10 rounded-full bg-[#161622] border border-[#262636] flex items-center justify-center text-white hover:bg-[#1A1A26] transition-colors"

@@ -5,18 +5,18 @@
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Cormorant Garamond", ui-serif, Georgia, serif;
   
-  --color-mecura-bg: #050508;
-  --color-mecura-surface: #12121A;
-  --color-mecura-surface-light: #1A1A24;
-  --color-mecura-elevated: #242433;
+  --color-mecura-bg: #000000;
+  --color-mecura-surface: #0A0A0A;
+  --color-mecura-surface-light: #121212;
+  --color-mecura-elevated: #1A1A1A;
   --color-mecura-neon: #A6FF00;
-  --color-mecura-neon-hover: #CFFF5A;
+  --color-mecura-neon-hover: #C2FF33;
   --color-mecura-gold: #D4AF37;
   --color-mecura-gold-light: #F3E5AB;
-  --color-mecura-green: #3D7A55;
-  --color-mecura-green-dark: #2C5A3E;
+  --color-mecura-green: #A6FF00;
+  --color-mecura-green-dark: #86D900;
   --color-mecura-pearl: #FAFAFA;
-  --color-mecura-silver: #8A8A9E;
+  --color-mecura-silver: #9CA3AF;
 
   --animate-shimmer: shimmer 1.5s infinite;
   @keyframes shimmer {

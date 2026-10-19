@@ -75,7 +75,7 @@ export const LegalInfoModal: React.FC<LegalInfoModalProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
         transition={{ type: "spring", stiffness: 350, damping: 26 }}
-        className="relative bg-[#12121A] border border-white/10 rounded-[28px] max-w-[560px] w-full shadow-[0_0_60px_rgba(0,0,0,0.9)] z-10 overflow-hidden flex flex-col max-h-[88vh] my-auto"
+        className="relative bg-[#060D08] border border-white/10 rounded-[28px] max-w-[560px] w-full shadow-[0_0_60px_rgba(0,0,0,0.9)] z-10 overflow-hidden flex flex-col max-h-[88vh] my-auto"
       >
         {/* Glow ambient */}
         <div className="absolute top-0 right-0 w-44 h-44 bg-mecura-neon/10 blur-[50px] rounded-full pointer-events-none" />
@@ -112,7 +112,7 @@ export const LegalInfoModal: React.FC<LegalInfoModalProps> = ({
           </div>
 
           {/* Quick Copy CNPJ Banner */}
-          <div className="bg-[#181824] rounded-xl px-3 py-2 border border-white/5 flex items-center justify-between text-xs mb-3">
+          <div className="bg-[#0E1711] rounded-xl px-3 py-2 border border-white/10 flex items-center justify-between text-xs mb-3">
             <div className="flex items-center gap-2 text-[#8A8A9E]">
               <Building2 className="w-3.5 h-3.5 text-mecura-neon" />
               <span>CNPJ: <strong className="text-white font-mono">{INSTITUTIONAL_INFO.cnpj}</strong></span>
@@ -136,7 +136,7 @@ export const LegalInfoModal: React.FC<LegalInfoModalProps> = ({
           </div>
 
           {/* Tab Navigation */}
-          <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#161622] rounded-xl border border-white/5 text-[11px] font-semibold">
+          <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#0A120C] rounded-xl border border-white/10 text-[11px] font-semibold">
             <button
               onClick={() => setActiveTab('parecer')}
               className={`py-2 px-1 rounded-lg text-center transition-all cursor-pointer truncate ${

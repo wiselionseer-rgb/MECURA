@@ -61,9 +61,11 @@ export function QueueScreen() {
   const isVip = !!(
     pagamento_premium || 
     selectedOffer === 'premium' || 
+    selectedOffer === 'complete' ||
     myQueueEntry?.isPremium || 
     myQueueEntry?.plan === 'premium' || 
-    (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium'))
+    myQueueEntry?.plan === 'complete' ||
+    (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium' || localStorage.getItem('last_offer') === 'complete'))
   );
 
   // Dynamic realistic queue position initialization
@@ -196,16 +198,23 @@ export function QueueScreen() {
     return () => unsubscribe();
   }, [subscribeToQueue]);
 
-  // Payment guard: Unpaid users cannot wait in queue and must be redirected to checkout
+  // Payment guard: Unpaid users or already-finished consultations cannot wait in queue without a new payment
   useEffect(() => {
+    if (isConsultationFinished || myQueueEntry?.status === 'finished') {
+      if (!pagamento_consulta) {
+        navigate('/checkout');
+      } else {
+        navigate('/dashboard');
+      }
+      return;
+    }
+
     const hasLocalPayment = typeof window !== 'undefined' && (
-      localStorage.getItem('mecura_pagamento') === 'true' ||
-      localStorage.getItem('mecura_premium') === 'true'
+      localStorage.getItem('mecura_pagamento') === 'true'
     );
+    const isEntryActiveOrWaiting = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
     const hasQueuePayment = !!(
-      myQueueEntry?.pagamento_consulta || 
-      myQueueEntry?.status === 'waiting' || 
-      myQueueEntry?.status === 'in-consultation'
+      isEntryActiveOrWaiting && (myQueueEntry as any)?.pagamento_consulta !== false
     );
 
     if (!pagamento_consulta) {
@@ -219,7 +228,7 @@ export function QueueScreen() {
         navigate('/checkout');
       }
     }
-  }, [pagamento_consulta, myQueueEntry?.status, myQueueEntry?.pagamento_consulta, navigate]);
+  }, [pagamento_consulta, isConsultationFinished, myQueueEntry?.status, (myQueueEntry as any)?.pagamento_consulta, navigate]);
 
   // Direct listener to the user's specific queue & user document for instant real-time response
   useEffect(() => {
@@ -253,15 +262,27 @@ export function QueueScreen() {
     const unsubUserDoc = onSnapshot(doc(db, 'users', currentUserId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        const hasValidPayment = !!(
+        const isAwaitingPayment = data.consultationStatus === 'awaiting_payment' || data.consultationStatus === 'not_started';
+        const isFinished = !isAwaitingPayment && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
+        const hasValidPayment = !isAwaitingPayment && !isFinished && !!(
           data.pagamento_consulta === true || 
           data.hasPaid === true || 
           data.isPaid === true || 
           data.bypassedPayment === true
         );
 
+        if (isFinished) {
+          useStore.setState({ inQueue: false, isConsultationFinished: true, pagamento_consulta: false });
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('mecura_pagamento');
+            localStorage.setItem('mecura_consultation_finished', 'true');
+          }
+          navigate('/dashboard');
+          return;
+        }
+
         if (!hasValidPayment) {
-          console.warn('[QUEUE] Paciente sem pagamento confirmado. Redirecionando para checkout...');
+          console.warn('[QUEUE] Paciente sem pagamento confirmado para nova consulta. Redirecionando para checkout...');
           useStore.getState().setPagamentoConsulta(false);
           useStore.setState({ inQueue: false });
           if (typeof window !== 'undefined') {
@@ -288,8 +309,8 @@ export function QueueScreen() {
   useEffect(() => {
     if (!pagamento_consulta) return;
 
-    // Do NOT re-join if consultation is active
-    if (consultationActive) return;
+    // Do NOT re-join if consultation is active or already finished
+    if (consultationActive || isConsultationFinished || myQueueEntry?.status === 'finished') return;
 
     const isCurrentlyWaitingOrActive = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
     
@@ -310,11 +331,15 @@ export function QueueScreen() {
             ? userName
             : undefined;
 
-      const isPrem = !!(
-        pagamento_premium || 
-        selectedOffer === 'premium' || 
-        (typeof window !== 'undefined' && (localStorage.getItem('mecura_premium') === 'true' || localStorage.getItem('last_offer') === 'premium'))
-      );
+      const resolvedOffer = (
+        myQueueEntry?.plan ||
+        (myQueueEntry as any)?.selectedOffer ||
+        selectedOffer ||
+        (typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null) ||
+        (pagamento_premium ? 'premium' : 'basic')
+      ) as 'basic' | 'premium' | 'complete' | 'psychologist';
+      const isPrem = resolvedOffer === 'premium' || resolvedOffer === 'complete';
+      const isPsico = resolvedOffer === 'psychologist';
 
       joinQueue({
         id: pUid,
@@ -322,10 +347,12 @@ export function QueueScreen() {
         email: auth.currentUser?.email || '',
         phone: userPhone || '',
         isPremium: isPrem,
-        plan: isPrem ? 'premium' : 'basic'
+        plan: resolvedOffer,
+        selectedOffer: resolvedOffer,
+        queueType: isPsico ? 'psychologist' : 'doctor'
       });
     }
-  }, [myQueueEntry?.status, consultationActive, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
+  }, [myQueueEntry?.status, myQueueEntry?.plan, consultationActive, isConsultationFinished, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
 
   useEffect(() => {
     // If patient has paid, ensure stale finished flags are removed
@@ -527,35 +554,46 @@ export function QueueScreen() {
           </div>
         ) : (
           <>
-        {/* Banner de Chamada do Médico */}
-        {(myQueueEntry?.status === 'in-consultation' || (myQueueEntry?.isAlerted && myQueueEntry?.status !== 'waiting')) && (
-          <div className="w-full mb-6 p-4 rounded-2xl bg-gradient-to-r from-mecura-neon/20 via-emerald-500/20 to-mecura-neon/10 border-2 border-mecura-neon animate-pulse flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_0_35px_rgba(166,255,0,0.35)]">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-mecura-neon text-black flex items-center justify-center font-bold text-2xl shrink-0 shadow-[0_0_15px_rgba(166,255,0,0.5)]">
-                🩺
+        {/* Banner de Chamada do Profissional (Médico ou Psicólogo) */}
+        {(() => {
+          const isPsicoQueue = myQueueEntry?.queueType === 'psychologist' || myQueueEntry?.plan === 'psychologist' || selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist');
+          const isCalling = myQueueEntry?.status === 'in-consultation' || (myQueueEntry?.isAlerted && myQueueEntry?.status !== 'waiting');
+
+          if (!isCalling) return null;
+
+          return (
+            <div className={`w-full mb-6 p-4 rounded-2xl bg-gradient-to-r ${isPsicoQueue ? 'from-purple-900/30 via-indigo-900/20 to-purple-950/20 border-purple-500 shadow-[0_0_35px_rgba(168,85,247,0.35)]' : 'from-mecura-neon/20 via-emerald-500/20 to-mecura-neon/10 border-mecura-neon shadow-[0_0_35px_rgba(166,255,0,0.35)]'} border-2 animate-pulse flex flex-col sm:flex-row items-center justify-between gap-4`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-2xl shrink-0 shadow-lg ${isPsicoQueue ? 'bg-purple-600 text-white shadow-purple-600/50' : 'bg-mecura-neon text-black shadow-[0_0_15px_rgba(166,255,0,0.5)]'}`}>
+                  {isPsicoQueue ? '🧠' : '🩺'}
+                </div>
+                <div className="text-left">
+                  <h4 className="text-white font-extrabold text-base leading-snug">
+                    {isPsicoQueue ? 'O Psicólogo Marco Antônio está te chamando!' : 'O Dr. Guilherme está te chamando!'}
+                  </h4>
+                  <p className="text-xs text-mecura-silver">
+                    {isPsicoQueue ? 'Sua sessão e avaliação psicológica no chat já foram liberadas.' : 'Sua consulta no chat já foi liberada e está ativa.'}
+                  </p>
+                </div>
               </div>
-              <div className="text-left">
-                <h4 className="text-white font-extrabold text-base leading-snug">O Dr. Guilherme está te chamando!</h4>
-                <p className="text-xs text-mecura-silver">Sua consulta no chat já foi liberada e está ativa.</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  useStore.setState({
+                    consultationActive: true,
+                    inQueue: false,
+                    activeConsultationId: myQueueEntry?.id || currentUserId,
+                    pagamento_consulta: true
+                  });
+                  navigate('/chat');
+                }}
+                className={`w-full sm:w-auto px-6 py-3 font-extrabold text-sm rounded-xl transition-all hover:scale-105 active:scale-95 shrink-0 cursor-pointer ${isPsicoQueue ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]' : 'bg-mecura-neon text-black hover:bg-[#b5ff33] shadow-[0_0_20px_rgba(166,255,0,0.4)]'}`}
+              >
+                Entrar na Consulta →
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                useStore.setState({
-                  consultationActive: true,
-                  inQueue: false,
-                  activeConsultationId: myQueueEntry?.id || currentUserId,
-                  pagamento_consulta: true
-                });
-                navigate('/chat');
-              }}
-              className="w-full sm:w-auto px-6 py-3 bg-mecura-neon text-black font-extrabold text-sm rounded-xl hover:bg-[#b5ff33] transition-all shadow-[0_0_20px_rgba(166,255,0,0.4)] hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
-            >
-              Entrar na Consulta →
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Header & Live Queue Timer */}
         <div className="text-center mt-2 mb-4 w-full">
@@ -573,16 +611,23 @@ export function QueueScreen() {
             </div>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white mb-1.5">
-            Fila de Atendimento
-          </h1>
-          <p className="text-mecura-silver text-xs sm:text-sm max-w-sm mx-auto">
-            {isExceeded 
-              ? 'Fique tranquilo! O médico entrará em contato pelo seu WhatsApp quando for sua vez.' 
-              : displayPosition === 1 
-                ? 'Prepare-se! O Dr. Guilherme está finalizando o atendimento anterior para iniciar a sua consulta.'
-                : 'Aguarde um momento, o médico já vai te chamar na sala de consulta.'}
-          </p>
+          {(() => {
+            const isPsicoQueue = myQueueEntry?.queueType === 'psychologist' || myQueueEntry?.plan === 'psychologist' || selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist');
+            return (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white mb-1.5">
+                  {isPsicoQueue ? 'Fila do Psicólogo' : 'Fila de Atendimento'}
+                </h1>
+                <p className="text-mecura-silver text-xs sm:text-sm max-w-sm mx-auto">
+                  {isExceeded 
+                    ? (isPsicoQueue ? 'Fique tranquilo! O psicólogo entrará em contato pelo seu WhatsApp quando for sua vez.' : 'Fique tranquilo! O médico entrará em contato pelo seu WhatsApp quando for sua vez.') 
+                    : displayPosition === 1 
+                      ? (isPsicoQueue ? 'Prepare-se! O Psicólogo Marco Antônio está finalizando o atendimento anterior.' : 'Prepare-se! O Dr. Guilherme está finalizando o atendimento anterior para iniciar a sua consulta.')
+                      : (isPsicoQueue ? 'Aguarde um momento, o psicólogo Marco Antônio já vai te chamar no chat.' : 'Aguarde um momento, o médico já vai te chamar na sala de consulta.')}
+                </p>
+              </>
+            );
+          })()}
 
           {/* 10-Minute Progress Bar Indicator */}
           <div className="mt-3.5 bg-black/40 border border-mecura-elevated rounded-xl p-2.5 max-w-sm mx-auto">

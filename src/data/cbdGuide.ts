@@ -32,6 +32,12 @@ import {
   formatPangaiaStandardOutput,
   PangaiaProduct
 } from './pangaiaCatalog';
+import {
+  GREENBUDZ_PRODUCTS,
+  GREENBUDZ_COMPANY_INFO,
+  formatGreenBudzStandardOutput,
+  GreenBudzProduct
+} from './greenbudzCatalog';
 
 export { 
   FLOWERMED_PRODUCTS, 
@@ -57,9 +63,12 @@ export {
   PANGAIA_PRODUCTS,
   PANGAIA_COMPANY_INFO,
   PANGAIA_AGENT_SYSTEM_PROMPT,
-  formatPangaiaStandardOutput
+  formatPangaiaStandardOutput,
+  GREENBUDZ_PRODUCTS,
+  GREENBUDZ_COMPANY_INFO,
+  formatGreenBudzStandardOutput
 };
-export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct, AbraceProduct, SouCannabisProduct, PangaiaProduct };
+export type { FlowermedProduct, FlowerExtractionProduct, AbecmedProduct, AbraceProduct, SouCannabisProduct, PangaiaProduct, GreenBudzProduct };
 
 export interface CBDProduct {
   name: string;
@@ -753,6 +762,22 @@ export const cbdGuideData: CBDCategory[] = [
     ],
     dosageGuidance: "Prescrição individualizada. Óleos sublinguais com retenção de 60s sob a língua. Titulação 'start low, go slow' a cada 4-5 dias.",
     products: FLOWERMED_PRODUCTS
+  },
+  {
+    id: "greenbudz_oficial",
+    title: "GREENBUDZ — PREMIUM HEMP & EXTRACTS (EUA • ANVISA RDC 660)",
+    description: "Catálogo Oficial GreenBudzCBD (EUA • Anvisa RDC 660/2022). Laboratório de biotecnologia focado em óleos de alta densidade (Calm Vibe 6000mg e Full Balance 3000mg), gomas veganas Live Rosin sem solventes (Linha Drops By GreenBudz: Looking Glass, Beethoven, Evergreen e Nightshade), Flores Medicinais In Natura em THCa (14g) e Concentrados Cristalinos.",
+    indicationsList: [
+      "Dores Crônicas Severas & Neuropatias (Calm Vibe Oil 6000mg)",
+      "Ansiedade Generalizada & Estresse Crônico (Full Balance Oil 3000mg)",
+      "Atletas & Profissionais sob Testes Toxicológicos (Isolate CBD 3000mg 0% THC)",
+      "Relaxamento Somático & Conforto Físico (Drops By GreenBudz Goma Beethoven)",
+      "Energia, Foco & Disposição Diurna (Drops By GreenBudz Goma Evergreen)",
+      "Indução & Proteção do Sono Profundo (Drops By GreenBudz Goma Nightshade)",
+      "Resgate Imediato de Crises Álgicas & Enxaqueca (Dried Hemp Formula 14g em THCa)"
+    ],
+    dosageGuidance: "Prescrição individualizada via RDC 660/2022 da Anvisa. Óleos sublinguais administrados com retenção de 60s sob a língua. Gomas de pectina vegana por via oral mastigável. Flores medicinais em THCa exclusivas para vaporizadores medicinais homologados.",
+    products: GREENBUDZ_PRODUCTS
   },
   {
     id: "flores_extracoes",
@@ -2040,6 +2065,42 @@ function _enrichMedicationDetails(
     };
   }
 
+  // Check if product is from GreenBudzCBD official catalog (Importado — EUA / Anvisa RDC 660)
+  const greenbudzMatch = GREENBUDZ_PRODUCTS.find(p => {
+    const pLower = p.name.toLowerCase().trim();
+    if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
+    if (nameLower.includes('greenbudz') || nameLower.includes('drops by')) {
+      if (nameLower.includes('calm vibe') && p.name.includes('Calm Vibe')) return true;
+      if (nameLower.includes('full balance') && p.name.includes('Full Balance')) return true;
+      if (nameLower.includes('isolate cbd') && p.name.includes('Isolate CBD')) return true;
+      if (nameLower.includes('looking glass') && p.name.includes('Looking Glass')) return true;
+      if (nameLower.includes('beethoven') && p.name.includes('Beethoven')) return true;
+      if (nameLower.includes('evergreen') && p.name.includes('Evergreen')) return true;
+      if (nameLower.includes('nightshade') && p.name.includes('Nightshade')) return true;
+      if (nameLower.includes('chill vibe') && p.name.includes('Chill Vibe')) return true;
+      if (nameLower.includes('dried hemp') && p.name.includes('Dried Hemp')) return true;
+      if (nameLower.includes('stirred hemp') && p.name.includes('Stirred Hemp')) return true;
+      if (nameLower.includes('isolate thca') && p.name.includes('Isolate THCa')) return true;
+    }
+    return false;
+  });
+
+  if (greenbudzMatch) {
+    return {
+      name: greenbudzMatch.name,
+      activeIngredients: greenbudzMatch.activeIngredients || 'Fitocanabinoides padronizados GreenBudzCBD cGMP (EUA)',
+      concentration: greenbudzMatch.concentration || 'Concentração padronizada farmacêutica',
+      pharmaceuticalForm: greenbudzMatch.pharmaceuticalForm || 'Forma farmacêutica padronizada',
+      quantity: greenbudzMatch.quantity || '01 Frasco / Unidade',
+      administrationRoute: greenbudzMatch.administrationRoute || 'Via Sublingual / Oral',
+      brand: 'GreenBudzCBD',
+      origin: 'Importado',
+      type: greenbudzMatch.type || 'Medicamento Canabinoide Importado (Anvisa RDC 660)',
+      description: greenbudzMatch.description || 'Produto oficial da GreenBudzCBD (Importação Anvisa RDC 660/2022).',
+      usageInstructions: greenbudzMatch.usageInstructions || '• Administrar conforme posologia estabelecida pelo médico assistente sob RDC 660/2022.'
+    };
+  }
+
   // Check if product is from National Association catalog or full cbdGuideData
   let guideMatch = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
     const pLower = p.name.toLowerCase();
@@ -2518,15 +2579,43 @@ export function enrichMedicationDetails(
   if (typeof window !== 'undefined' && productName) {
     try {
       const cleanKey = `mecura_bula_custom_${productName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-      const savedRaw = localStorage.getItem(cleanKey);
+      let savedRaw = localStorage.getItem(cleanKey);
+      
+      if (!savedRaw && (product as any)?.id) {
+        const idKey = `mecura_bula_custom_${String((product as any).id).toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        savedRaw = localStorage.getItem(idKey);
+      }
+
+      if (!savedRaw) {
+        const targetClean = productName.trim().toLowerCase();
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('mecura_bula_custom_')) {
+            try {
+              const item = JSON.parse(localStorage.getItem(k) || '{}');
+              const itemName = (item.name || '').trim().toLowerCase();
+              if (itemName === targetClean || itemName.includes(targetClean) || targetClean.includes(itemName)) {
+                savedRaw = localStorage.getItem(k);
+                break;
+              }
+            } catch {}
+          }
+        }
+      }
+
       if (savedRaw) {
         const saved = JSON.parse(savedRaw);
-        if (saved.posologyDetails) result.usageInstructions = saved.posologyDetails;
+        if (saved.manufacturer) result.brand = saved.manufacturer;
+        if (saved.origin) result.origin = saved.origin;
+        if (saved.type) result.type = saved.type;
+        if (saved.posologyDetails || saved.usageInstructions) result.usageInstructions = saved.posologyDetails || saved.usageInstructions;
         if (saved.activeIngredients) result.activeIngredients = saved.activeIngredients;
-        if (saved.concentration) result.concentration = saved.concentration;
+        if (saved.concentration || saved.activeIngredients) result.concentration = saved.concentration || saved.activeIngredients;
         if (saved.pharmaceuticalForm) result.pharmaceuticalForm = saved.pharmaceuticalForm;
         if (saved.quantity) result.quantity = saved.quantity;
         if (saved.administrationRoute) result.administrationRoute = saved.administrationRoute;
+        if (saved.description) result.description = saved.description;
+        if (saved.carrierVehicle) (result as any).carrierVehicle = saved.carrierVehicle;
       }
     } catch {
       // ignore

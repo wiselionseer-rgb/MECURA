@@ -96,7 +96,47 @@ export async function deliverPdfBlob(blob: Blob, fileName: string): Promise<bool
 }
 
 /**
+ * Checks whether the doctor has saved updated content in localStorage for this report or prescription.
+ * When true, dynamic generation should take precedence over a stale pre-edit attachment URL.
+ */
+function hasSavedDoctorEdits(
+  attachment: { name?: string; url?: string; type?: string; docType?: string; title?: string } | undefined,
+  fileName: string
+): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const docType = (attachment?.docType || '').toLowerCase();
+    const lowerName = (attachment?.name || fileName || '').toLowerCase();
+    const isLaudo = docType.includes('laudo') || lowerName.includes('laudo_inicial') || lowerName.includes('laudo_evolutivo') || lowerName.includes('laudo_medico');
+    const isReceita = docType.includes('receita') || lowerName.includes('receita_');
+
+    if (isLaudo) {
+      const raw = localStorage.getItem('mecura_saved_reports_v2');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+          return true;
+        }
+      }
+    }
+    if (isReceita) {
+      const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+          return true;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+/**
  * Universal PDF attachment downloader:
+ * - If the doctor has saved updated edits for a report/prescription in localStorage, generates fresh PDF via fallbackGenerator first
  * - Handles base64 data URLs by converting to binary Blob and checking PDF integrity
  * - Handles server URLs (/api/files/...) by fetching as binary Blob and checking PDF integrity
  * - Detects corrupted, empty, or HTML 404 responses and falls back to dynamic client-side generation
@@ -109,8 +149,20 @@ export async function downloadOrGenerateAttachment(
   const fileName = attachment?.name || defaultFileName;
   let pdfBlob: Blob | null = null;
 
+  // Case 0: If doctor saved updated report/prescription in localStorage, generate fresh PDF first so edits are never stale
+  if (fallbackGenerator && hasSavedDoctorEdits(attachment, fileName)) {
+    try {
+      const generated = await fallbackGenerator();
+      if (generated instanceof Blob && (await isPdfBlob(generated))) {
+        pdfBlob = generated;
+      }
+    } catch (genErr) {
+      console.warn("[downloadOrGenerateAttachment] Erro ao gerar versão atualizada, usando anexo:", genErr);
+    }
+  }
+
   // Case 1: Attachment contains a valid Base64 data URL
-  if (attachment?.url && attachment.url.startsWith('data:')) {
+  if (!pdfBlob && attachment?.url && attachment.url.startsWith('data:')) {
     try {
       const candidate = base64ToPdfBlob(attachment.url, attachment.type || 'application/pdf');
       if (await isPdfBlob(candidate)) {

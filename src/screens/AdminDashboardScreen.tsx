@@ -48,7 +48,9 @@ export const AdminDashboardScreen = () => {
 
   const [sendingQueueIds, setSendingQueueIds] = useState<Record<string, boolean>>({});
 
-  const forceSendToQueue = async (patient: any) => {
+  const [sendToQueueModalPatient, setSendToQueueModalPatient] = useState<any | null>(null);
+
+  const forceSendToQueue = async (patient: any, targetQueueType: 'doctor' | 'psychologist' | 'complete' = 'doctor') => {
     const pId = patient.id || patient.uid || patient.userId || patient.patientId;
     if (!pId) {
       setSupportToastMessage('ID do paciente não encontrado');
@@ -59,6 +61,14 @@ export const AdminDashboardScreen = () => {
 
     const isPrem = !!(patient.isPremium || patient.tier === 'Premium' || patient.plan === 'premium' || patient.answers?.isPremium || patient.pagamento_premium);
     const pName = (patient.name || patient.patientName || 'Paciente').trim();
+
+    const planName = targetQueueType === 'psychologist' 
+      ? 'psychologist' 
+      : (targetQueueType === 'complete' ? 'complete' : (isPrem ? 'premium' : 'basic'));
+
+    const queueLabel = targetQueueType === 'psychologist'
+      ? 'Fila do Psicólogo'
+      : (targetQueueType === 'complete' ? 'Ambas as Filas (Médico + Psicólogo)' : 'Fila do Médico');
 
     const queuePayload = {
       id: pId,
@@ -71,12 +81,13 @@ export const AdminDashboardScreen = () => {
       birthDate: patient.birthDate || patient.answers?.birthDate || '',
       tier: isPrem ? 'Premium' : (patient.tier || 'basic'),
       isPremium: isPrem,
-      plan: isPrem ? 'premium' : 'basic',
+      plan: planName,
+      queueType: targetQueueType,
       status: 'waiting',
       joinedAt: new Date().toISOString(),
       hasUnread: true,
       lastMessageAt: new Date().toISOString(),
-      lastMessageText: 'Paciente adicionado à fila pelo Administrador',
+      lastMessageText: `Paciente adicionado à ${queueLabel} pelo Administrador`,
       answers: patient.answers || {},
       pagamento_consulta: true,
       pagamento_premium: isPrem
@@ -94,9 +105,12 @@ export const AdminDashboardScreen = () => {
     }
     useStore.setState({ queue: updatedQueue });
 
-    setSupportToastMessage(`${pName} enviado para a fila do médico com sucesso!`);
+    setSupportToastMessage(`✓ ${pName} enviado para a ${queueLabel} com sucesso!`);
     setShowSupportToast(true);
-    setTimeout(() => setShowSupportToast(false), 3000);
+    setTimeout(() => {
+      setShowSupportToast(false);
+      setSendingQueueIds(prev => ({ ...prev, [pId]: false }));
+    }, 3000);
 
     // 2. Safe non-blocking background persistence
     try {
@@ -109,6 +123,8 @@ export const AdminDashboardScreen = () => {
       Promise.race([
         setDoc(doc(db, 'users', pId), {
           inQueue: true,
+          queueType: targetQueueType,
+          plan: planName,
           consultationStatus: 'waiting',
           pagamento_consulta: true,
           lastUpdated: new Date().toISOString()
@@ -129,10 +145,10 @@ export const AdminDashboardScreen = () => {
         body: JSON.stringify(queuePayload)
       }).catch(srvErr => console.warn('[SERVER QUEUE SYNC] Erro ao sincronizar com servidor:', srvErr));
 
-      // Disparar notificação para o painel do médico
+      // Disparar notificação para o painel do profissional
       triggerAdminBackgroundPush(
-        isPrem ? '👑 Novo Paciente VIP na Fila' : '🔔 Novo Paciente na Fila',
-        `${pName} foi enviado para a fila pelo Administrador.`,
+        isPrem ? `👑 Novo Paciente VIP na ${queueLabel}` : `🔔 Novo Paciente na ${queueLabel}`,
+        `${pName} foi enviado para a ${queueLabel} pelo Administrador.`,
         '/doctor'
       );
     } finally {
@@ -1503,18 +1519,32 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                     {/* Ações */}
                     <div className="flex flex-col gap-1.5 items-end">
                        <div className="flex items-center gap-1">
-                         {(() => {
+                          {(() => {
                             const isSending = !!sendingQueueIds[p.id];
+                            const qType = qItem?.queueType || p.queueType || (p.plan === 'psychologist' ? 'psychologist' : (p.plan === 'complete' ? 'complete' : 'doctor'));
 
                             if (qItem?.status === 'waiting') {
                               return (
                                 <Button 
                                   variant="outline" 
-                                  className="text-[10px] h-7 px-2 bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25 flex items-center justify-center gap-1 font-bold cursor-pointer" 
-                                  onClick={() => forceSendToQueue(p)} 
-                                  title="Paciente já está na Fila do Médico (clique para reordenar/atualizar)"
+                                  className={`text-[10px] h-7 px-2 border flex items-center justify-center gap-1 font-bold cursor-pointer transition-all ${
+                                    qType === 'psychologist'
+                                      ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 hover:bg-purple-500/25'
+                                      : (qType === 'complete' 
+                                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                                          : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25')
+                                  }`} 
+                                  onClick={() => setSendToQueueModalPatient(p)} 
+                                  title="Paciente na fila. Clique para alterar/mudar de fila"
                                 >
-                                  {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" /> : <><Check className="w-3 h-3 text-emerald-400" /> Na Fila</>}
+                                  {isSending ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Check className="w-3 h-3" />
+                                      <span>{qType === 'psychologist' ? 'Fila Psico' : (qType === 'complete' ? 'Fila Ambas' : 'Fila Médico')}</span>
+                                    </>
+                                  )}
                                 </Button>
                               );
                             }
@@ -1524,8 +1554,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                                 <Button 
                                   variant="outline" 
                                   className="text-[10px] h-7 px-2 bg-blue-500/15 border border-blue-500/40 text-blue-400 hover:bg-blue-500/25 flex items-center justify-center gap-1 font-bold cursor-pointer" 
-                                  onClick={() => forceSendToQueue(p)} 
-                                  title="Paciente em atendimento com o médico"
+                                  onClick={() => setSendToQueueModalPatient(p)} 
+                                  title="Paciente em atendimento. Clique para redirecionar de fila"
                                 >
                                   {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-blue-400" /> : 'Em Atend.'}
                                 </Button>
@@ -1536,8 +1566,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                               <Button 
                                 variant="outline" 
                                 className="text-[10px] h-7 px-2 bg-[#161622] hover:bg-mecura-neon/20 hover:text-mecura-neon border border-white/10 hover:border-mecura-neon/40 flex items-center justify-center gap-1 font-semibold text-white transition-all cursor-pointer shadow-sm" 
-                                onClick={() => forceSendToQueue(p)} 
-                                title="Enviar ou mover paciente diretamente para a Fila do Médico"
+                                onClick={() => setSendToQueueModalPatient(p)} 
+                                title="Enviar paciente para Fila do Médico, Psicólogo ou Ambas"
                               >
                                 {isSending ? <RefreshCw className="w-3 h-3 animate-spin text-mecura-neon" /> : '➕ Enviar p/ Fila'}
                               </Button>
@@ -2592,7 +2622,132 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       )}
 
       {/* Basic Modals */}
-      
+
+      {/* Modal Escolha de Fila (Médico, Psicólogo ou Ambas) */}
+      {sendToQueueModalPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#12121A] border border-white/10 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Encaminhar para Fila</h3>
+                  <p className="text-xs text-mecura-silver">
+                    Paciente: <span className="font-semibold text-white">{sendToQueueModalPatient.name || sendToQueueModalPatient.patientName || 'Paciente'}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSendToQueueModalPatient(null)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-mecura-silver leading-relaxed">
+              Selecione para qual profissional ou especialidade deseja direcionar o atendimento deste paciente:
+            </p>
+
+            <div className="space-y-2.5">
+              {/* Opção 1: Fila do Médico */}
+              <button
+                type="button"
+                onClick={() => {
+                  forceSendToQueue(sendToQueueModalPatient, 'doctor');
+                  setSendToQueueModalPatient(null);
+                }}
+                className="w-full p-4 rounded-2xl bg-[#161622] hover:bg-mecura-neon/10 border border-white/10 hover:border-mecura-neon/50 text-left transition-all group flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon font-bold text-lg group-hover:scale-105 transition-transform">
+                    🩺
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-white group-hover:text-mecura-neon transition-colors">
+                      Fila do Médico
+                    </h4>
+                    <p className="text-[11px] text-mecura-silver">
+                      Dr. Guilherme Taveira Dias (CRM 17259)
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-mecura-neon/20 text-mecura-neon border border-mecura-neon/30">
+                  Enviar →
+                </span>
+              </button>
+
+              {/* Opção 2: Fila do Psicólogo */}
+              <button
+                type="button"
+                onClick={() => {
+                  forceSendToQueue(sendToQueueModalPatient, 'psychologist');
+                  setSendToQueueModalPatient(null);
+                }}
+                className="w-full p-4 rounded-2xl bg-[#161622] hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/50 text-left transition-all group flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-bold text-lg group-hover:scale-105 transition-transform">
+                    🧠
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-white group-hover:text-purple-300 transition-colors">
+                      Fila do Psicólogo
+                    </h4>
+                    <p className="text-[11px] text-mecura-silver">
+                      Marco Antônio Boastik (CRP 08/49215)
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  Enviar →
+                </span>
+              </button>
+
+              {/* Opção 3: Ambas as Filas (Completo) */}
+              <button
+                type="button"
+                onClick={() => {
+                  forceSendToQueue(sendToQueueModalPatient, 'complete');
+                  setSendToQueueModalPatient(null);
+                }}
+                className="w-full p-4 rounded-2xl bg-[#161622] hover:bg-amber-500/10 border border-white/10 hover:border-amber-500/50 text-left transition-all group flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300 font-bold text-lg group-hover:scale-105 transition-transform">
+                    ⭐
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-white group-hover:text-amber-300 transition-colors">
+                      Ambas as Filas (Médico + Psicólogo)
+                    </h4>
+                    <p className="text-[11px] text-mecura-silver">
+                      Plano Completo 360° com ambos os especialistas
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Enviar →
+                </span>
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSendToQueueModalPatient(null)}
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-mecura-silver text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deletePatientConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
           <div className="bg-[#161622] border border-red-500/30 rounded-3xl p-6 w-full max-w-md text-center">

@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight, Sparkles, Clock } from 'lucide-react';
+import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight, Sparkles, Clock, Brain } from 'lucide-react';
 import { format } from 'date-fns';
-import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, generatePsychologicalReportPDF } from '../utils/pdfGenerator';
 import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
@@ -60,7 +60,7 @@ export function ChatScreen() {
   const { 
     userName, userCpf, userBirthDate, answers, endConsultation, 
     messages, addMessage, setMessages, consultationActive, resetConsultation, 
-    setSelectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
+    setSelectedOffer, selectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
     patientId, isConsultationFinished, pagamento_consulta, queue, inQueue,
     userPhone, userEmail, confirmReceitaPrevia
   } = useStore();
@@ -201,6 +201,7 @@ export function ChatScreen() {
         msg.type === 'medical_report' ? `Laudo_Medico_${cleanName}.pdf` :
         msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' ? `Laudo_Psicomotor_${cleanName}.pdf` :
         msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' ? `Parecer_Agronomico_${cleanName}.pdf` :
+        msg.type === 'psychological_report' || msg.docType === 'laudo_psicologico' ? `Laudo_Psicologico_${cleanName}.pdf` :
         msg.attachment?.name || 'Documento.pdf';
 
       const fallbackGen = async (): Promise<Blob | null> => {
@@ -208,6 +209,7 @@ export function ChatScreen() {
         const isMed = msg.type === 'medical_report' || msg.docType === 'laudo_inicial' || msg.docType === 'laudo_evolutivo' || msg.attachment?.docType === 'laudo_inicial' || msg.attachment?.docType === 'laudo_evolutivo' || msg.attachment?.name?.toLowerCase().includes('laudo_');
         const isPsico = msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' || msg.attachment?.docType === 'laudo_psicomotor' || msg.attachment?.name?.toLowerCase().includes('psicomotor');
         const isAgro = msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' || msg.attachment?.docType === 'laudo_agronomico' || msg.attachment?.name?.toLowerCase().includes('agronomico');
+        const isPsychology = msg.type === 'psychological_report' || msg.docType === 'laudo_psicologico' || msg.attachment?.docType === 'laudo_psicologico' || msg.attachment?.name?.toLowerCase().includes('psicolog');
 
         if (isPresc) {
           const b = await generatePrescriptionPDF(userName, messages, {
@@ -245,6 +247,15 @@ export function ChatScreen() {
         if (isAgro) {
           const b = await generateAgronomicReportPDF(userName, {
             customPatientName: userName,
+            cpf: userCpf || (answers && answers.cpf),
+            returnBlob: true
+          });
+          return b instanceof Blob ? b : null;
+        }
+        if (isPsychology) {
+          const b = await generatePsychologicalReportPDF(userName, {
+            customPatientName: userName,
+            birthDate: userBirthDate || (answers && answers.birthDate),
             cpf: userCpf || (answers && answers.cpf),
             returnBlob: true
           });
@@ -512,24 +523,37 @@ export function ChatScreen() {
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />
         </button>
-        <div className="relative">
-          <div className="w-12 h-12 rounded-full bg-mecura-surface-light overflow-hidden border-2 border-mecura-elevated">
-            <img src="/doctor-avatar.png" alt="Dr. Guilherme" className="w-full h-full object-cover" />
-          </div>
-          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-mecura-neon rounded-full border-2 border-mecura-surface" />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-white font-bold text-lg leading-tight">Dr. Guilherme Taveira Dias</h2>
-          <p className="text-xs text-mecura-silver">CRM: 12345/SP</p>
-        </div>
+        {(() => {
+          const isPsicoChat = selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist');
+          return (
+            <>
+              <div className="relative">
+                <div className={`w-12 h-12 rounded-full overflow-hidden border-2 ${isPsicoChat ? 'border-purple-400' : 'border-mecura-elevated'}`}>
+                  <img src={isPsicoChat ? "/pscologo.jpeg" : "/doctor-avatar.png"} alt={isPsicoChat ? "Marco Antônio Boastik" : "Dr. Guilherme"} className="w-full h-full object-cover" />
+                </div>
+                <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-mecura-surface ${isPsicoChat ? 'bg-purple-400' : 'bg-mecura-neon'}`} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-white font-bold text-lg leading-tight">
+                  {isPsicoChat ? 'Marco Antônio Boastik' : 'Dr. Guilherme Taveira Dias'}
+                </h2>
+                <p className="text-xs text-mecura-silver">
+                  {isPsicoChat ? 'CRP: 08/49215 • Psicólogo' : 'CRM: 12345/SP'}
+                </p>
+              </div>
+            </>
+          );
+        })()}
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => navigate('/protocol')}
-            className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors border border-mecura-neon/20"
-            title="Ver Protocolo & Receituário"
-          >
-            <Droplets className="w-5 h-5" />
-          </button>
+          {! (selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist')) && (
+            <button 
+              onClick={() => navigate('/protocol')}
+              className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors border border-mecura-neon/20"
+              title="Ver Protocolo & Receituário"
+            >
+              <Droplets className="w-5 h-5" />
+            </button>
+          )}
           <button 
             onClick={handleFinish}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-mecura-surface-light hover:bg-mecura-surface border border-mecura-elevated text-xs font-bold text-mecura-silver hover:text-white transition-all shadow-sm cursor-pointer"
@@ -1081,6 +1105,44 @@ export function ChatScreen() {
                     ) : (
                       <span className="flex items-center gap-2">
                         <Download className="w-4 h-4 mr-2" /> Baixar Parecer Agronômico PDF
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : (msg.type === 'psychological_report' || msg.docType === 'laudo_psicologico') ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#1F122E] to-[#0A0A0F] border border-purple-500/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-14 h-14 bg-purple-500/15 border border-purple-500/30 text-purple-400 rounded-2xl flex items-center justify-center">
+                      <Brain className="w-7 h-7" />
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-purple-400 uppercase tracking-widest font-mono">Saúde Mental</span>
+                      <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
+                        <CheckCheck className="w-3 h-3 text-purple-400" /> Parecer Oficial
+                      </p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-bold text-2xl mb-1">Laudo Psicológico</h3>
+                  <p className="text-purple-300 text-xs mb-6">
+                    {msg.attachment?.name || 'Avaliação clínica para fins de tratamento e salvaguarda terapêutica.'}
+                  </p>
+                  
+                  <Button 
+                    onClick={() => handleDownloadAttachment(msg)}
+                    disabled={downloadingMsgId === msg.id}
+                    className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(168,85,247,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center transition-all active:scale-[0.98]"
+                  >
+                    {downloadingMsgId === msg.id ? (
+                      <span className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Abrindo Laudo...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Download className="w-4 h-4 mr-2" /> Baixar Laudo Psicológico PDF
                       </span>
                     )}
                   </Button>

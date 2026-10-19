@@ -90,11 +90,11 @@ export function DashboardScreen() {
     (inQueue && !consultationActive && myQueueEntry?.status !== 'finished')
   );
 
-  const isFinishedConsultation = hasPaidConsultation && !isDoctorCalling && !isWaitingInQueue && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
+  const isFinishedConsultation = !isDoctorCalling && !isWaitingInQueue && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (consultationStatus as string) !== 'awaiting_payment' && (
     myQueueEntry?.status === 'finished' ||
+    isConsultationFinished ||
+    (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') ||
     (!myQueueEntry && !inQueue && (
-      isConsultationFinished || 
-      (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true') ||
       messages.some(m => m.sender === 'doctor' && (
         m.text?.toLowerCase().includes('consulta finalizada') || 
         m.text?.toLowerCase().includes('atendimento finalizado') ||
@@ -103,9 +103,11 @@ export function DashboardScreen() {
     ))
   );
 
+  const canEnterWaitingQueue = hasPaidConsultation && !isFinishedConsultation && myQueueEntry?.status !== 'finished' && !isConsultationFinished;
+
   // Handle entering queue directly
   const handleEnterQueue = async () => {
-    if (!hasPaidConsultation) {
+    if (!canEnterWaitingQueue) {
       setSelectedOffer('basic');
       navigate('/checkout');
       return;
@@ -121,13 +123,17 @@ export function DashboardScreen() {
           ? userName
           : undefined;
 
-    const isPrem = !!(pagamento_premium || (typeof window !== 'undefined' && localStorage.getItem('mecura_premium') === 'true'));
+    const resolvedPlan = (selectedOffer || (typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null) || (pagamento_premium ? 'premium' : 'basic')) as 'basic' | 'premium' | 'psychologist' | 'complete';
+    const isPrem = resolvedPlan === 'premium' || resolvedPlan === 'complete';
     
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_consultation_finished');
       localStorage.removeItem('mecura_consultation_active');
     }
     useStore.setState({ isConsultationFinished: false, consultationActive: false, inQueue: true });
+
+    const isPsicoOnly = resolvedPlan === 'psychologist';
+    const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
 
     await joinQueue({
       id: currentUid,
@@ -137,7 +143,9 @@ export function DashboardScreen() {
       cpf: userCpf || '',
       birthDate: userBirthDate || '',
       isPremium: isPrem,
-      plan: isPrem ? 'premium' : 'basic'
+      plan: resolvedPlan,
+      queueType: targetQueueType,
+      selectedOffer: resolvedPlan
     });
     
     navigate('/queue');
@@ -163,7 +171,7 @@ export function DashboardScreen() {
   }, [isWaitingInQueue, myQueueEntry?.status, isConsultationFinished]);
 
   // Patient has actual prescription ONLY when consultation is finished and not actively waiting or in consultation
-  const hasActualPrescription = hasPaidConsultation && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
+  const hasActualPrescription = (hasPaidConsultation || isFinishedConsultation) && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
     isFinishedConsultation ||
     (myQueueEntry?.status === 'finished' && messages.some(m => 
       m.type === 'prescription' || 
@@ -191,7 +199,15 @@ export function DashboardScreen() {
           if (u.cpf) useStore.getState().setUserCpf(u.cpf);
           if (u.birthDate) useStore.getState().setUserBirthDate(u.birthDate);
 
-          if (u.pagamento_consulta === true || u.hasPaid === true || u.isPaid === true) {
+          const isAwaitingNewPayment = u.consultationStatus === 'awaiting_payment' || u.consultationStatus === 'not_started';
+          const isFinishedInDoc = !isAwaitingNewPayment && (u.consultationStatus === 'finished' || u.isConsultationFinished === true);
+
+          if (isFinishedInDoc) {
+            useStore.setState({ isConsultationFinished: true, inQueue: false, consultationActive: false });
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_consultation_finished', 'true');
+          }
+
+          if (!isAwaitingNewPayment && !isFinishedInDoc && (u.pagamento_consulta === true || u.hasPaid === true || u.isPaid === true)) {
             setPagamentoConsulta(true);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
           } else {
@@ -201,12 +217,19 @@ export function DashboardScreen() {
               localStorage.removeItem('mecura_consultation_active');
             }
           }
-          if (u.pagamento_premium === true || u.isPremium === true || u.plan === 'premium') {
+          if (!isAwaitingNewPayment && (u.pagamento_premium === true || u.isPremium === true || u.plan === 'premium' || u.plan === 'complete')) {
             setPagamentoPremium(true);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
           } else {
             setPagamentoPremium(false);
             if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
+          }
+          if (!isAwaitingNewPayment && (u.plan || u.selectedOffer)) {
+            const activePlan = u.plan || u.selectedOffer;
+            if (activePlan === 'basic' || activePlan === 'premium' || activePlan === 'complete' || activePlan === 'psychologist') {
+              setSelectedOffer(activePlan);
+              if (typeof window !== 'undefined') localStorage.setItem('last_offer', activePlan);
+            }
           }
         }
       }).catch(e => console.warn('Could not check user doc in dashboard:', e));
@@ -228,11 +251,10 @@ export function DashboardScreen() {
     }
     
     if (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved' || (paymentId && (status === 'approved' || collectionStatus === 'approved'))) {
-      const isPremium = localStorage.getItem('last_offer') === 'premium' || 
-        localStorage.getItem('mecura_premium') === 'true' || 
-        selectedOffer === 'premium' || 
-        pagamento_premium;
-      const isBasic = !isPremium;
+      const savedOffer = (localStorage.getItem('last_offer') || selectedOffer || 'basic') as 'basic' | 'premium' | 'psychologist' | 'complete';
+      const isPremium = savedOffer === 'premium' || savedOffer === 'complete';
+      const planPrice = savedOffer === 'complete' ? 387.00 : (savedOffer === 'premium' ? 249.90 : (savedOffer === 'psychologist' ? 150.00 : 49.90));
+      const planTitle = savedOffer === 'complete' ? 'Plano Completo 360° (Médico + Psicólogo)' : (savedOffer === 'premium' ? 'Consulta Premium VIP' : (savedOffer === 'psychologist' ? 'Consulta com Psicólogo + Laudo' : 'Consulta Básica'));
       
       const processSuccess = async () => {
         if (paymentId) {
@@ -250,83 +272,62 @@ export function DashboardScreen() {
         const patientUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
         const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
 
-        if (isBasic) {
-          setPagamentoConsulta(true);
-          if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
-          await joinQueue({
-            id: patientUid,
-            patientName: patientName,
-            email: auth.currentUser?.email || '',
-            isPremium: false,
-            plan: 'basic'
-          });
-          try {
-            await addDoc(collection(db, 'payments'), {
-              mpId: paymentId || 'mp_basic_' + Date.now(),
-              type: 'Consulta Básica',
-              value: 49.90,
-              plan: 'basic',
-              isPremium: false,
-              patientName: patientName,
-              patientId: patientUid,
-              date: new Date().toISOString()
-            });
-            if (patientUid) {
-              await setDoc(doc(db, 'users', patientUid), {
-                pagamento_consulta: true,
-                hasPaid: true,
-                isPaid: true,
-                plan: 'basic',
-                isPremium: false,
-                consultationStatus: 'waiting',
-                inQueue: true,
-                lastPaymentDate: new Date().toISOString()
-              }, { merge: true });
-            }
-          } catch (e) {
-            console.error("Erro ao registrar pagamento em payments:", e);
-          }
-        } else {
-          setPagamentoPremium(true);
-          setPagamentoConsulta(true);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('mecura_pagamento', 'true');
+        setPagamentoConsulta(true);
+        setPagamentoPremium(isPremium);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mecura_pagamento', 'true');
+          if (isPremium) {
             localStorage.setItem('mecura_premium', 'true');
+          } else {
+            localStorage.removeItem('mecura_premium');
           }
-          await joinQueue({
-            id: patientUid,
+        }
+
+        const isPsicoOnly = savedOffer === 'psychologist';
+        const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
+
+        await joinQueue({
+          id: patientUid,
+          patientName: patientName,
+          email: auth.currentUser?.email || '',
+          isPremium,
+          plan: savedOffer,
+          queueType: targetQueueType,
+          selectedOffer: savedOffer,
+          freshPayment: true,
+          pagamento_consulta: true,
+          hasPaid: true,
+          isPaid: true
+        } as any);
+
+        try {
+          await addDoc(collection(db, 'payments'), {
+            mpId: paymentId || `mp_${savedOffer}_` + Date.now(),
+            type: planTitle,
+            value: planPrice,
+            plan: savedOffer,
+            queueType: targetQueueType,
+            isPremium,
             patientName: patientName,
-            email: auth.currentUser?.email || '',
-            isPremium: true,
-            plan: 'premium'
+            patientId: patientUid,
+            date: new Date().toISOString()
           });
-          try {
-            await addDoc(collection(db, 'payments'), {
-              mpId: paymentId || 'mp_premium_' + Date.now(),
-              type: 'Consulta Premium',
-              value: 249.90,
-              plan: 'premium',
-              isPremium: true,
-              patientName: patientName,
-              patientId: patientUid,
-              date: new Date().toISOString()
-            });
-            if (patientUid) {
-              await setDoc(doc(db, 'users', patientUid), {
-                pagamento_consulta: true,
-                pagamento_premium: true,
-                hasPaid: true,
-                isPaid: true,
-                plan: 'premium',
-                isPremium: true,
-                consultationStatus: 'waiting',
-                inQueue: true,
-                lastPaymentDate: new Date().toISOString()
-              }, { merge: true });
-            }
-          } catch (e) {
-            console.error("Erro ao registrar pagamento premium em payments:", e);
+          if (patientUid) {
+            await setDoc(doc(db, 'users', patientUid), {
+              pagamento_consulta: true,
+              pagamento_premium: isPremium,
+              hasPaid: true,
+              isPaid: true,
+              plan: savedOffer,
+              queueType: targetQueueType,
+              isPremium,
+              consultationStatus: 'waiting',
+              inQueue: true,
+              lastPaymentDate: new Date().toISOString()
+            }, { merge: true });
           }
+        } catch (e) {
+          console.error("Erro ao registrar pagamento em payments:", e);
         }
 
         // Consume saved coupon if used
@@ -425,9 +426,9 @@ export function DashboardScreen() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0A0A0F] text-mecura-pearl relative pb-20 font-sans overflow-y-auto overflow-x-hidden">
+    <div className="flex flex-col h-full bg-[#000000] text-mecura-pearl relative pb-20 font-sans overflow-y-auto overflow-x-hidden">
       {/* Header */}
-      <header className="flex justify-between items-center px-6 pt-10 pb-6 z-30 sticky top-0 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/5">
+      <header className="flex justify-between items-center px-6 pt-10 pb-6 z-30 sticky top-0 bg-[#000000]/95 backdrop-blur-md border-b border-white/5">
         <div className="flex items-center gap-3">
           <motion.button 
             whileHover={{ scale: 1.05 }}
@@ -621,7 +622,7 @@ export function DashboardScreen() {
                 </button>
               </div>
             </motion.div>
-          ) : hasPaidConsultation ? (
+          ) : canEnterWaitingQueue ? (
             <motion.div 
               variants={itemVariants}
               whileHover={{ scale: 1.01 }}
@@ -769,7 +770,7 @@ export function DashboardScreen() {
             {/* Protocol */}
             <button 
               onClick={() => {
-                if (!hasPaidConsultation) {
+                if (!hasPaidConsultation && !hasActualPrescription) {
                   setSelectedOffer('basic');
                   navigate('/checkout');
                   return;
@@ -1427,7 +1428,7 @@ export function DashboardScreen() {
               {/* Item 6: Receituário & Protocolo */}
               <div 
                 onClick={() => {
-                  if (!hasPaidConsultation) {
+                  if (!hasPaidConsultation && !hasActualPrescription) {
                     setSelectedOffer('basic');
                     navigate('/checkout');
                     return;

@@ -182,15 +182,21 @@ const STEPS = [
                 if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
               }
 
-              // Restore payment state only if user has genuinely paid
-              if (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true) {
+              // Restore payment state only if user has an active, unfinished paid consultation
+              const isAwaitingOrFinished = (
+                data.consultationStatus === 'awaiting_payment' ||
+                data.consultationStatus === 'not_started' ||
+                data.consultationStatus === 'finished' ||
+                data.isConsultationFinished === true
+              );
+              if (!isAwaitingOrFinished && (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true)) {
                 setPagamentoConsulta(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
               } else {
                 setPagamentoConsulta(false);
                 if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
               }
-              if (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium') {
+              if (!isAwaitingOrFinished && (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium' || data.plan === 'complete')) {
                 setPagamentoPremium(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
               } else {
@@ -273,17 +279,29 @@ const STEPS = [
               }
               useStore.setState({ patientId: resolvedUid });
 
-              // Restore payment state
-              if (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true) {
+              // Restore payment state only if consultation is active/waiting (not finished or awaiting new payment)
+              const isAwaitingOrFinished = (
+                data.consultationStatus === 'awaiting_payment' ||
+                data.consultationStatus === 'not_started' ||
+                data.consultationStatus === 'finished' ||
+                data.isConsultationFinished === true
+              );
+              if (!isAwaitingOrFinished && (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true)) {
                 setPagamentoConsulta(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+              } else {
+                setPagamentoConsulta(false);
+                if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
               }
-              if (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium') {
+              if (!isAwaitingOrFinished && (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium' || data.plan === 'complete')) {
                 setPagamentoPremium(true);
                 if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
+              } else {
+                setPagamentoPremium(false);
+                if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
               }
               
-              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid) {
+              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid || data.isConsultationFinished || data.consultationStatus === 'finished') {
                 setHasCompletedOnboarding(true);
                 setShowExistingAccountPrompt(true);
                 setIsLoading(false);
@@ -353,18 +371,54 @@ const STEPS = [
         setOnboardingStep(currentStep + 1);
       } else {
         setIsLoading(true);
+        // Completing a triage (for both new and returning patients) requires a new consultation payment
+        setPagamentoConsulta(false);
+        setPagamentoPremium(false);
+        useStore.setState({
+          pagamento_consulta: false,
+          pagamento_premium: false,
+          inQueue: false,
+          consultationActive: false,
+          isConsultationFinished: false,
+          consultationStatus: 'pending'
+        });
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('mecura_pagamento');
+          localStorage.removeItem('mecura_premium');
+          localStorage.removeItem('mecura_consultation_active');
+          localStorage.removeItem('mecura_consultation_finished');
+          localStorage.removeItem('mecura_queue_display_pos');
+          localStorage.removeItem('mecura_queue_entered_at');
+          localStorage.removeItem('mecura_queue_notified_10m');
+        }
+
         try {
           const targetUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
           if (targetUid) {
+            const nowIso = new Date().toISOString();
             const updatePayload: Record<string, any> = {
               hasCompletedOnboarding: true,
+              pagamento_consulta: false,
+              pagamento_premium: false,
+              isPremium: false,
+              plan: 'basic',
+              selectedOffer: 'basic',
+              tier: 'basic',
+              hasPaid: false,
+              isPaid: false,
+              bypassedPayment: false,
+              inQueue: false,
+              consultationActive: false,
+              isConsultationFinished: false,
+              consultationStatus: 'awaiting_payment',
+              lastTriageAt: nowIso,
               answers: {
                 ...answers,
                 birthDate: userBirthDate,
                 cpf: userCpf,
                 phone: userPhone
               },
-              lastUpdated: new Date().toISOString()
+              lastUpdated: nowIso
             };
 
             if (userName && userName.trim() && userName.trim().toLowerCase() !== 'paciente') {
@@ -824,6 +878,7 @@ const STEPS = [
                 <Button 
                   className="w-full shadow-lg shadow-mecura-neon/20 font-bold"
                   onClick={() => {
+                    useStore.getState().clearTriage();
                     setShowExistingAccountPrompt(false);
                     setCurrentStep(1);
                     setOnboardingStep(1);
