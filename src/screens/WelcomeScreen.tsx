@@ -8,6 +8,7 @@ import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 import { StrategicToolsModal, StrategicToolType } from '../components/tools/StrategicToolsModal';
+import { InteractiveRemotionToolButtons } from '../components/tools/InteractiveRemotionToolButtons';
 
 export function WelcomeScreen() {
   const navigate = useNavigate();
@@ -116,7 +117,7 @@ export function WelcomeScreen() {
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
+              <div className="w-2 h-2 rounded-full bg-[#A6FF00] shadow-[0_0_6px_#A6FF00]" />
               <span className="text-xs font-semibold tracking-[0.2em] text-white/90 uppercase font-sans">MECURA</span>
             </div>
           )}
@@ -195,113 +196,50 @@ export function WelcomeScreen() {
               )}
               
               {/* Soft Gradient Overlay - clear center so video dropper bottle is fully visible */}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/10 to-[#000000]/95 z-20 pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/15 to-black/75 z-20 pointer-events-none" />
             </div>
 
-            {/* Content Container */}
-            <div className={`relative z-10 flex-1 flex flex-col px-5 sm:px-6 ${hasCompletedOnboarding ? 'pb-40' : 'pb-32'} overflow-y-auto overflow-x-hidden pt-20 justify-end`}>
+            {/* Content Container - Elevated typography & open center to showcase video bottle */}
+            <div className={`relative z-10 flex-1 flex flex-col px-5 sm:px-6 ${hasCompletedOnboarding ? 'pb-40 sm:pb-44' : 'pb-32 sm:pb-36'} overflow-y-auto overflow-x-hidden pt-16 sm:pt-20 justify-between`}>
+              {/* Top Hero Section: Elevated Title & Copy */}
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: -15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-                className="max-w-xl mx-auto w-full backdrop-blur-[2px]"
+                transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="max-w-xl mx-auto w-full pt-1 sm:pt-2"
               >
+                {/* Harmonized Tagline */}
+                <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/12 mb-3 text-[11px] text-white/80 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#A6FF00] animate-pulse shadow-[0_0_8px_#A6FF00]" />
+                  <span>Medicina Canabinoide Integrativa</span>
+                </div>
+
                 {/* Hero Title */}
-                <h1 className="text-[34px] sm:text-[40px] font-serif font-normal text-white mb-2 leading-[1.1] tracking-tight">
+                <h1 className="text-[32px] sm:text-[38px] md:text-[42px] font-serif font-normal text-white mb-2 leading-[1.12] tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.85)]">
                   A pureza da <span className="italic text-[#A6FF00] font-serif">natureza</span>,<br />
                   guiada pela <span className="font-semibold text-white">ciência.</span>
                 </h1>
                 
-                <p className="text-white/70 text-xs sm:text-sm leading-relaxed mb-6 font-normal max-w-md">
+                <p className="text-white/85 text-xs sm:text-sm leading-relaxed font-normal max-w-md drop-shadow-[0_1px_8px_rgba(0,0,0,0.85)]">
                   Tratamentos personalizados com Cannabis Medicinal para saúde, foco e qualidade de vida.
                 </p>
+              </motion.div>
 
-                {/* 3 Strategic Interactive Buttons (Clean, Luxurious, Minimalist) */}
-                <div className="mb-5">
-                  <div className="flex items-center justify-between mb-2 px-0.5">
-                    <span className="text-[10px] font-bold text-[#A6FF00] uppercase tracking-[0.2em]">
-                      Testes & Ferramentas Interativas
-                    </span>
-                    <span className="text-[10px] text-white/40 font-mono">
-                      Resultados em 1 min
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2.5">
-                    {/* Tool 1: TDAH */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenTool('tdah')}
-                      className="group rounded-2xl p-3 text-left bg-black/40 hover:bg-emerald-950/30 border border-white/10 hover:border-sky-400/40 backdrop-blur-md transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[96px]"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-300">
-                          <Brain className="w-3.5 h-3.5" />
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-white/30 group-hover:text-sky-300 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-
-                      <div className="mt-2">
-                        <span className="text-xs font-bold text-white block tracking-tight">
-                          Teste TDAH
-                        </span>
-                        <span className="text-[10px] text-white/50 block font-normal">
-                          Foco & Atenção
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Tool 2: Autismo (TEA) */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenTool('autism')}
-                      className="group rounded-2xl p-3 text-left bg-black/40 hover:bg-emerald-950/30 border border-white/10 hover:border-purple-400/40 backdrop-blur-md transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[96px]"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-400/20 flex items-center justify-center text-purple-300">
-                          <Activity className="w-3.5 h-3.5" />
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-white/30 group-hover:text-purple-300 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-
-                      <div className="mt-2">
-                        <span className="text-xs font-bold text-white block tracking-tight">
-                          Teste Autismo
-                        </span>
-                        <span className="text-[10px] text-white/50 block font-normal">
-                          Espectro TEA
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Tool 3: Calculadora HC */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenTool('hc')}
-                      className="group rounded-2xl p-3 text-left bg-black/40 hover:bg-emerald-950/30 border border-white/10 hover:border-emerald-400/40 backdrop-blur-md transition-all duration-300 cursor-pointer flex flex-col justify-between min-h-[96px]"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center text-emerald-300">
-                          <Sprout className="w-3.5 h-3.5" />
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-white/30 group-hover:text-emerald-300 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-
-                      <div className="mt-2">
-                        <span className="text-xs font-bold text-white block tracking-tight">
-                          Plantas p/ HC
-                        </span>
-                        <span className="text-[10px] text-white/50 block font-normal">
-                          Calculadora
-                        </span>
-                      </div>
-                    </button>
-                  </div>
+              {/* Bottom Section: Translucent Tool Cards & Trust Line */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="max-w-xl mx-auto w-full mt-auto pt-4 sm:pt-6"
+              >
+                {/* 3 Strategic Interactive Buttons (Motion & Remotion Animated Micro-Player) */}
+                <div className="mb-3.5">
+                  <InteractiveRemotionToolButtons onOpenTool={handleOpenTool} />
                 </div>
 
                 {/* Minimalist Trust Line */}
-                <div className="flex items-center justify-center gap-2 py-1 text-[11px] text-white/50 font-medium tracking-wide">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <div className="flex items-center justify-center gap-2 py-1 text-[11px] text-white/60 font-medium tracking-wide drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#A6FF00] shrink-0" />
                   <span>100% Legalizado pela ANVISA</span>
                   <span className="text-white/20">•</span>
                   <span>Diretrizes LGPD & CFM</span>
@@ -572,30 +510,36 @@ export function WelcomeScreen() {
                 Testes Clínicos & Calculadora HC
               </span>
               <div className="grid grid-cols-3 gap-2">
-                <button
+                <motion.button
                   type="button"
+                  whileHover={{ scale: 1.04, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => handleOpenTool('tdah')}
-                  className="p-2.5 rounded-xl bg-[#131B2E]/90 border border-sky-400/30 hover:border-sky-400 text-left transition-all flex items-center gap-2 cursor-pointer"
+                  className="p-2.5 rounded-xl bg-[#131B2E]/90 border border-sky-400/30 hover:border-sky-400 text-left transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(56,189,248,0.25)]"
                 >
                   <Brain className="w-4 h-4 text-sky-400 shrink-0" />
                   <span className="text-[11px] font-bold text-white truncate">Teste TDAH</span>
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   type="button"
+                  whileHover={{ scale: 1.04, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => handleOpenTool('autism')}
-                  className="p-2.5 rounded-xl bg-[#1F1430]/90 border border-purple-400/30 hover:border-purple-400 text-left transition-all flex items-center gap-2 cursor-pointer"
+                  className="p-2.5 rounded-xl bg-[#1F1430]/90 border border-purple-400/30 hover:border-purple-400 text-left transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(192,132,252,0.25)]"
                 >
                   <Activity className="w-4 h-4 text-purple-400 shrink-0" />
                   <span className="text-[11px] font-bold text-white truncate">Teste Autismo</span>
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   type="button"
+                  whileHover={{ scale: 1.04, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => handleOpenTool('hc')}
-                  className="p-2.5 rounded-xl bg-[#13261A]/90 border border-mecura-neon/35 hover:border-mecura-neon text-left transition-all flex items-center gap-2 cursor-pointer"
+                  className="p-2.5 rounded-xl bg-[#13261A]/90 border border-mecura-neon/35 hover:border-mecura-neon text-left transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(166,255,0,0.25)]"
                 >
                   <Sprout className="w-4 h-4 text-mecura-neon shrink-0" />
                   <span className="text-[11px] font-bold text-white truncate">Plantas HC</span>
-                </button>
+                </motion.button>
               </div>
             </div>
           </motion.div>
@@ -607,7 +551,7 @@ export function WelcomeScreen() {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 z-40 bg-gradient-to-t from-black/95 via-black/60 to-transparent pt-6 pb-4 flex flex-col gap-2.5 backdrop-blur-[1px]"
+        className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 z-40 bg-gradient-to-t from-black/90 via-black/45 to-transparent pt-4 pb-3 sm:pb-5 flex flex-col gap-2 backdrop-blur-[0.5px]"
       >
         <Button 
           className="w-full h-14 text-base sm:text-lg font-black shadow-[0_10px_35px_rgba(166,255,0,0.5)] hover:shadow-[0_15px_45px_rgba(166,255,0,0.7)] hover:scale-[1.01] active:scale-[0.99] transition-all duration-300 rounded-2xl group relative overflow-hidden bg-gradient-to-r from-[#A6FF00] via-[#86FF00] to-[#A6FF00] text-[#0A0A0F] border border-[#CFFF5A] cursor-pointer" 
