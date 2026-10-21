@@ -139,7 +139,7 @@ export function PsychologicalReportEditorModal({
     showToast("🤖 IA analisando queixas clínicas e gerando parecer psicológico...");
 
     try {
-      const prompt = `Você é o psicólogo pericial Marco Antônio Boastik (CRP 08/49215).
+      const prompt = `Você é o psicólogo clínico Marco Antônio Boastik (CRP 08/49215).
 Com base nas queixas do paciente (${patientName}, CPF: ${cpf}, respostas da triagem: ${JSON.stringify(patientAnswers || {})}), elabore o conteúdo técnico de um Laudo Psicológico em conformidade com a Resolução CFP nº 06/2019.
 Responda em formato JSON estruturado com os seguintes campos:
 {
@@ -182,7 +182,7 @@ Responda em formato JSON estruturado com os seguintes campos:
         const isInsomnia = ans.objective?.toLowerCase().includes('sono') || ans.symptoms?.toLowerCase().includes('sono') || ans.symptoms?.toLowerCase().includes('insônia');
         const isPain = ans.objective?.toLowerCase().includes('dor') || ans.symptoms?.toLowerCase().includes('dor');
 
-        setPurpose("Avaliação Psicológica Clínica e Pericial para Fins de Tratamento em Saúde Mental, Documentação e Acompanhamento Psicoterápico.");
+        setPurpose("Avaliação Psicológica Clínica para Fins de Tratamento em Saúde Mental, Documentação e Acompanhamento Psicoterápico.");
         setDemandDescription(
           `O(A) paciente ${patientName || 'Paciente'} buscou acolhimento psicológico relatando quadro crônico de sobrecarga psíquica e sofrimento emocional, com queixas centrais de ${isAnxiety ? 'angústia persistente, hipervigilância, inquietação e oscilações do humor' : 'estresse e exaustão emocional'}${isInsomnia ? ', associados a distúrbios graves do sono com dificuldade de relaxamento psicofísico' : ''}${isPain ? ' e repercussões psicológicas do convívio com dor crônica intratável' : ''}. Refere prejuízos substanciais em suas relações interpessoais, rendimento profissional e qualidade global de vida.`
         );

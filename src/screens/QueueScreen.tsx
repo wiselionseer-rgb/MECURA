@@ -274,7 +274,10 @@ export function QueueScreen() {
           data.pagamento_consulta === true || 
           data.hasPaid === true || 
           data.isPaid === true || 
-          data.bypassedPayment === true
+          data.bypassedPayment === true ||
+          data.inQueue === true ||
+          data.consultationStatus === 'waiting' ||
+          data.consultationStatus === 'in-consultation'
         ));
 
         if (isFinished) {

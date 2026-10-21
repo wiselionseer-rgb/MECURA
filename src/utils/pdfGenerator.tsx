@@ -1782,7 +1782,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
 
   const defaultParagraphs = [
-    `Declaro, para os devidos fins de direito, salvaguarda clínica e comprovação perante autoridades de trânsito, medicina do trabalho e órgãos públicos, que o(a) paciente <strong>${sanitizedUserName}</strong>, inscrito(a) no CPF sob o nº <strong>${cpfText}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.`,
+    `Declaro, para os devidos fins de direito, salvaguarda clínica e comprovação perante autoridades de trânsito e órgãos públicos, que o(a) paciente <strong>${sanitizedUserName}</strong>, inscrito(a) no CPF sob o nº <strong>${cpfText}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.`,
     `O(a) paciente faz uso estritamente terapêutico e controlado de produtos à base de <em>Cannabis</em> medicinal, mediante prescrição médica individualizada, com titulação posológica gradual e monitoramento clínico contínuo de resposta terapêutica e segurança neurocognitiva.`,
     `Atesto, com base em anamnese dirigida, exame clínico neurológico e aplicação de testes clínicos de rastreio da função psicomotora e cognitiva realizados nas consultas de acompanhamento, que o uso regular das medicações prescritas, nas doses e horários estabelecidos, <strong>NÃO PRODUZ</strong> alteração da capacidade psicomotora, sedação residual diurna, prejuízo cognitivo, lentificação de reflexos ou comprometimento do estado de vigília e atenção sustentada.`,
     `O protocolo terapêutico instituído <strong>não interfere</strong> na aptidão física e mental do(a) paciente para conduzir veículos automotores em vias públicas, operar máquinas ou equipamentos de precisão, bem como exercer atividades laborais de alta exigência cognitiva, não configurando sob nenhuma hipótese a alteração da capacidade psicomotora prevista no <strong>Art. 165 e Art. 277 do Código de Trânsito Brasileiro (Lei nº 9.503/1997)</strong> e na <strong>Resolução CONTRAN nº 432/2013</strong>.`,
@@ -1824,8 +1824,8 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
                   <span style={{ fontWeight: 700 }}>{sanitizedUserName}</span>
                 </p>
                 <p style={{ margin: 0 }}>
-                  <span style={{ fontWeight: 800, color: '#1E1B4B' }}>FINALIDADE PERICIAL: </span>
-                  <span>Atestado de Aptidão Psicomotora, Cognitiva e Laboral (CTB / Medicina do Trabalho)</span>
+                  <span style={{ fontWeight: 800, color: '#1E1B4B' }}>FINALIDADE: </span>
+                  <span>Atestado de Aptidão Psicomotora e Cognitiva (CTB)</span>
                 </p>
               </div>
               <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '12px' }}>
@@ -1935,7 +1935,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h2 className="text-2xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none">MECURA</h2>
             <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#ECFDF5', color: '#059669', padding: '2px 7px', borderRadius: '4px', border: '1px solid #A7F3D0', textTransform: 'uppercase' }}>
-              PERÍCIA MÉDICA & APTIDÃO
+              AVALIAÇÃO MÉDICA & APTIDÃO
             </span>
           </div>
           <p className="text-[9.5px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none mt-1">
@@ -1955,7 +1955,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
             LAUDO MÉDICO DE APTIDÃO PSICOMOTORA E COGNITIVA
           </h1>
           <p className="text-[9.5px] font-bold uppercase tracking-wider text-[#059669] m-0">
-            AVALIAÇÃO CLÍNICA — LEI DO DROGÔMETRO (ART. 165 CTB) & MEDICINA OCUPACIONAL
+            AVALIAÇÃO CLÍNICA — LEI DO DROGÔMETRO (ART. 165 CTB)
           </p>
         </div>
       )}
@@ -2151,7 +2151,8 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
   const psicoName = reportData?.psychologistName || "Marco Antônio Boastik";
   const psicoCrp = reportData?.psychologistCrp || "CRP 08/49215";
 
-  const purposeText = sanitize(reportData?.purpose || "Avaliação Psicológica Clínica e Pericial para Fins de Tratamento Multidisciplinar, Acompanhamento Emocional e Salvaguarda Terapêutica");
+  const rawPurpose = reportData?.purpose || "Avaliação Psicológica Clínica para Fins de Tratamento Multidisciplinar, Acompanhamento Emocional e Salvaguarda Terapêutica";
+  const purposeText = sanitize(rawPurpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
   const demandText = sanitize(reportData?.demandDescription || "Paciente comparece para avaliação psicológica especializada, relatando quadro clínico marcado por sintomas persistentes de ansiedade, sobrecarga emocional, tensão psicofísica crônica e episódios de insônia fragmentada com prejuízo na qualidade de vida, regulação emocional e desempenho laboral.");
   const procText = sanitize(reportData?.technicalProcedures || "Realizada entrevista psicológica clínica semiestruturada, anamnese direcionada, exame pormenorizado das funções psíquicas superiores e rastreio psicométrico de sintomas ansiosos, depressivos e qualidade do sono conforme as diretrizes técnico-científicas da Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.");
   const analysisText = sanitize(reportData?.clinicalAnalysis || "Ao exame psíquico, o(a) paciente apresenta-se lúcido(a) e orientado(a) autopsiquicamente e alopsiquicamente, com discurso coerente, curso de pensamento preservado e atitude colaborativa. Observa-se afeto congruente com humor predominantemente ansioso e hiper-reativo ao estresse, queixas cognitivas secundárias à fadiga mental e hipervigilância noturna. Não há evidência de desagregação do pensamento, alterações sensoperceptivas, delírios ou alucinações. Constata-se sofrimento psicológico clinicamente significativo com impacto direto na arquitetura do sono e homeostase emocional.");
@@ -2168,7 +2169,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
 
   const allBlocks: PsychBlock[] = [
     { id: 'patient-card', kind: 'patient-card' },
-    { id: 'sec-1', kind: 'section', title: '1. IDENTIFICAÇÃO DO SOLICITANTE E FINALIDADE PERICIAL', content: purposeText },
+    { id: 'sec-1', kind: 'section', title: '1. IDENTIFICAÇÃO DO SOLICITANTE E FINALIDADE CLÍNICA', content: purposeText },
     { id: 'sec-2', kind: 'section', title: '2. DESCRIÇÃO DA DEMANDA E HISTÓRICO CLÍNICO-PSICOLÓGICO', content: demandText },
     { id: 'sec-3', kind: 'section', title: '3. PROCEDIMENTOS E INSTRUMENTOS TÉCNICO-CIENTÍFICOS (RES. CFP Nº 06/2019)', content: procText },
     { id: 'sec-4', kind: 'section', title: '4. ANÁLISE PSICOLÓGICA E EXAME DO ESTADO MENTAL', content: analysisText },
@@ -2285,7 +2286,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
         </div>
         <div className="text-right">
           <h3 className="text-xs font-bold m-0" style={{ color: '#3B0764', lineHeight: '1.25' }}>{psicoName}</h3>
-          <p className="text-[10px] font-semibold m-0" style={{ color: '#6B21A8', marginTop: '1px', lineHeight: '1.2' }}>Psicólogo Clínico & Pericial</p>
+          <p className="text-[10px] font-semibold m-0" style={{ color: '#6B21A8', marginTop: '1px', lineHeight: '1.2' }}>Psicólogo Clínico</p>
           <p className="text-[10px] font-bold m-0" style={{ color: '#64748B', marginTop: '1px', lineHeight: '1.2' }}>{psicoCrp}</p>
         </div>
       </div>
@@ -2293,7 +2294,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
       {!isContinuation && (
         <div className="text-center mb-1">
           <h1 className="text-base font-black tracking-widest uppercase mb-0.5 m-0" style={{ color: '#3B0764' }}>
-            LAUDO PSICOLÓGICO CLÍNICO E PERICIAL
+            LAUDO PSICOLÓGICO CLÍNICO
           </h1>
           <p className="text-[9px] font-bold uppercase tracking-wider m-0" style={{ color: '#6B21A8' }}>
             ELABORADO EM CONFORMIDADE COM A RESOLUÇÃO CFP Nº 06/2019
@@ -2308,14 +2309,14 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
       <div className="flex items-end justify-between">
         <div className="text-[9px] space-y-0.5" style={{ color: '#64748B', lineHeight: '1.4' }}>
           <p className="m-0 font-bold" style={{ color: '#3B0764' }}>Mecura Saúde Mental • Atendimento Psicológico Especializado</p>
-          <p className="m-0">Documento técnico com validade clínica e pericial conforme Código de Ética Profissional do Psicólogo.</p>
+          <p className="m-0">Documento técnico com validade clínica conforme Código de Ética Profissional do Psicólogo.</p>
           <p className="m-0">Data de Emissão: <strong>{emissionDateStr}</strong> • Registro Profissional: <strong>{psicoCrp}</strong></p>
         </div>
 
         <div className="text-center flex flex-col items-center" style={{ minWidth: '220px' }}>
           <div style={{ width: '190px', borderBottom: '1.5px solid #3B0764', marginBottom: '5px', height: '12px' }} />
           <p className="text-xs font-bold m-0 leading-tight" style={{ color: '#3B0764' }}>{psicoName}</p>
-          <p className="text-[9.5px] font-semibold m-0 leading-tight" style={{ color: '#6B21A8' }}>Psicólogo Clínico & Pericial</p>
+          <p className="text-[9.5px] font-semibold m-0 leading-tight" style={{ color: '#6B21A8' }}>Psicólogo Clínico</p>
           <p className="text-[9.5px] font-mono m-0 leading-tight" style={{ color: '#4B5563' }}>{psicoCrp}</p>
         </div>
       </div>
@@ -2419,7 +2420,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
               </div>
 
               <div style={{ borderTop: '1px solid #E9D5FF', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#6B7280' }}>
-                <span>Mecura Saúde Mental • Departamento de Psicologia Clínica & Pericial</span>
+                <span>Mecura Saúde Mental • Departamento de Psicologia Clínica</span>
                 <span style={{ fontWeight: 700, color: '#3B0764' }}>Página {pIdx + 1} de {pages.length}</span>
                 <span>Resolução CFP nº 06/2019 • Documento Sigiloso</span>
               </div>

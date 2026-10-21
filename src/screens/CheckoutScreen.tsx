@@ -1059,7 +1059,7 @@ export function CheckoutScreen() {
                             </span>
                           </div>
                           <p className="text-[#9A9AB5] text-[11px] sm:text-[12px] leading-relaxed mt-1">
-                            Avaliação detalhada de saúde mental, anamnese e emissão de laudo psicológico clínico oficial pericial.
+                            Avaliação detalhada de saúde mental, anamnese e emissão de laudo psicológico clínico oficial.
                           </p>
                         </div>
                       </div>
@@ -1282,7 +1282,7 @@ export function CheckoutScreen() {
                             CRP 08/49215
                           </span>
                         </div>
-                        <p className="text-purple-300 text-xs font-medium mt-0.5">Psicólogo Clínico & Avaliador Pericial</p>
+                        <p className="text-purple-300 text-xs font-medium mt-0.5">Psicólogo Clínico</p>
                       </div>
                     </div>
 

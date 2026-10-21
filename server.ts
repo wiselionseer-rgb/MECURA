@@ -471,7 +471,11 @@ async function startServer() {
         // Live Firestore status and fields strictly override server cache
         fsQueue.forEach(item => {
           const prev = map.get(item.id) || {};
-          map.set(item.id, { ...prev, ...item });
+          map.set(item.id, {
+            ...prev,
+            ...item,
+            answers: { ...(prev.answers || {}), ...(item.answers || {}) },
+          });
         });
         const merged = Array.from(map.values());
         return res.json({ success: true, queue: merged });
@@ -639,7 +643,7 @@ async function startServer() {
   // ROTA: Atualizar status do paciente na fila
   app.post("/api/queue/update-status", async (req, res) => {
     try {
-      const { patientId, status, hasUnread, queueType, plan, selectedOffer, isPremium, pagamento_premium, tier } = req.body;
+      const { patientId, status, hasUnread, queueType, plan, selectedOffer, isPremium, pagamento_premium, tier, answers } = req.body;
       if (!patientId) return res.status(400).json({ error: "Missing patientId" });
 
       const currentQueue = loadServerQueue();
@@ -653,6 +657,12 @@ async function startServer() {
         if (isPremium !== undefined) currentQueue[idx].isPremium = isPremium;
         if (pagamento_premium !== undefined) currentQueue[idx].pagamento_premium = pagamento_premium;
         if (tier) currentQueue[idx].tier = tier;
+        if (answers && typeof answers === 'object') {
+          currentQueue[idx].answers = {
+            ...(currentQueue[idx].answers || {}),
+            ...answers,
+          };
+        }
         saveServerQueue(currentQueue);
       }
 
@@ -668,6 +678,7 @@ async function startServer() {
       if (isPremium !== undefined) updateData.isPremium = isPremium;
       if (pagamento_premium !== undefined) updateData.pagamento_premium = pagamento_premium;
       if (tier) updateData.tier = tier;
+      if (answers && typeof answers === 'object') updateData.answers = answers;
 
       Promise.race([
         setDoc(doc(db, "queue", patientId), updateData, { merge: true }),
@@ -676,11 +687,16 @@ async function startServer() {
 
       // Keep users document updated so patient dashboard and queue screen update immediately
       const userUpdateData: any = {
-        inQueue: status === 'waiting',
-        consultationStatus: status,
-        consultationActive: status === 'in-consultation',
         lastUpdated: new Date().toISOString()
       };
+      if (status) {
+        userUpdateData.inQueue = status === 'waiting';
+        userUpdateData.consultationStatus = status;
+        userUpdateData.consultationActive = status === 'in-consultation';
+      }
+      if (answers && typeof answers === 'object') {
+        userUpdateData.answers = answers;
+      }
       if (status === 'finished') {
         userUpdateData.isConsultationFinished = true;
         userUpdateData.pagamento_consulta = false;

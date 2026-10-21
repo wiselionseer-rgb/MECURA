@@ -3,21 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore, Message } from '../store/useStore';
 import { Button } from '../components/ui/Button';
-import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight, Sparkles, Clock, Brain } from 'lucide-react';
+import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ChevronRight, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight, Sparkles, Clock, Brain, ClipboardList, RotateCcw, X, Stethoscope } from 'lucide-react';
+import { ADHD_QUESTIONS, AUTISM_QUESTIONS, FREQUENCY_OPTIONS } from '../components/tools/NeurodivergentTestsCard';
 import { format } from 'date-fns';
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, generatePsychologicalReportPDF } from '../utils/pdfGenerator';
 import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
-import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 const PatientChatInputBar = ({
   onSend,
-  disabled
+  disabled,
+  placeholder,
+  isPsico
 }: {
   onSend: (text: string) => void;
   disabled?: boolean;
+  placeholder?: string;
+  isPsico?: boolean;
 }) => {
   const [text, setText] = useState('');
 
@@ -40,14 +45,22 @@ const PatientChatInputBar = ({
           }
         }}
         disabled={disabled}
-        placeholder={disabled ? "Enviando anexo..." : "Escreva sua mensagem..."}
-        className="flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border border-mecura-elevated focus:border-mecura-neon/50 transition-colors"
+        placeholder={disabled ? "Enviando anexo..." : (placeholder || "Escreva sua mensagem...")}
+        className={`flex-1 h-14 bg-mecura-surface rounded-full px-6 text-sm text-white focus:outline-none border transition-colors ${
+          isPsico
+            ? 'border-purple-500/30 focus:border-purple-400'
+            : 'border-mecura-elevated focus:border-mecura-neon/50'
+        }`}
       />
       <button 
         type="button"
         onClick={submit}
         disabled={!text.trim() || disabled}
-        className="w-14 h-14 rounded-full bg-mecura-neon text-mecura-bg flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shadow-[0_0_15px_rgba(166,255,0,0.2)] shrink-0 cursor-pointer"
+        className={`w-14 h-14 rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-mecura-surface disabled:text-mecura-silver transition-all shrink-0 cursor-pointer ${
+          isPsico
+            ? 'bg-purple-500 hover:bg-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]'
+            : 'bg-mecura-neon text-mecura-bg shadow-[0_0_15px_rgba(166,255,0,0.2)]'
+        }`}
       >
         <Send className="w-5 h-5 ml-1" />
       </button>
@@ -61,7 +74,7 @@ export function ChatScreen() {
     userName, userCpf, userBirthDate, answers, endConsultation, 
     messages, addMessage, setMessages, consultationActive, resetConsultation, 
     setSelectedOffer, selectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
-    patientId, isConsultationFinished, pagamento_consulta, queue, inQueue,
+    subscribeToQueue, patientId, isConsultationFinished, pagamento_consulta, queue, inQueue,
     userPhone, userEmail, confirmReceitaPrevia
   } = useStore();
   const [inputText, setInputText] = useState('');
@@ -84,6 +97,12 @@ export function ChatScreen() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Keep queue subscription active inside ChatScreen so queue transfers are reflected in real time
+  useEffect(() => {
+    const unsubQueue = subscribeToQueue();
+    return () => unsubQueue();
+  }, [subscribeToQueue]);
 
   // CRITICAL PRIVACY & SECURITY FIX:
   // The consultation ID for a patient in /chat MUST strictly be the patient's own ID.
@@ -126,6 +145,106 @@ export function ChatScreen() {
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
 
+  // Track active professional tab in patient chat ('doctor' | 'psychologist')
+  const [activeProfessional, setActiveProfessional] = useState<'doctor' | 'psychologist'>(() => {
+    if (
+      myQueueEntry?.queueType === 'psychologist' ||
+      selectedOffer === 'psychologist' ||
+      (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist')
+    ) {
+      return 'psychologist';
+    }
+    return 'doctor';
+  });
+
+  const prevQueueTypeRef = useRef<string | undefined>(myQueueEntry?.queueType);
+  const lastHandledTransferMsgIdRef = useRef<string | null>(null);
+  const lastHandledRoleMsgIdRef = useRef<string | null>(null);
+
+  // Direct Firestore listener on queue/{effectiveConsultationId} so queueType transfer triggers instant switch
+  useEffect(() => {
+    if (!effectiveConsultationId) return;
+    const unsubDoc = onSnapshot(
+      doc(db, 'queue', effectiveConsultationId),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const newQType = data?.queueType as string | undefined;
+          if (newQType && newQType !== prevQueueTypeRef.current) {
+            prevQueueTypeRef.current = newQType;
+            if (newQType === 'psychologist') {
+              setActiveProfessional('psychologist');
+            } else if (newQType === 'doctor') {
+              setActiveProfessional('doctor');
+            }
+          }
+        }
+      },
+      () => {}
+    );
+    return () => unsubDoc();
+  }, [effectiveConsultationId]);
+
+  // Also watch myQueueEntry.queueType & incoming transfer/clinician messages to auto-switch activeProfessional
+  useEffect(() => {
+    const qType = myQueueEntry?.queueType;
+    if (qType && qType !== prevQueueTypeRef.current) {
+      prevQueueTypeRef.current = qType;
+      if (qType === 'psychologist') {
+        setActiveProfessional('psychologist');
+      } else if (qType === 'doctor') {
+        setActiveProfessional('doctor');
+      }
+    }
+  }, [myQueueEntry?.queueType]);
+
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+
+    // 1. Check latest queue transfer message
+    const transferMsgs = messages.filter(
+      (m) => m.isQueueTransfer || (typeof m.text === 'string' && m.text.includes('ENCAMINHAMENTO DE FILA'))
+    );
+    if (transferMsgs.length > 0) {
+      const latestTransfer = transferMsgs[transferMsgs.length - 1];
+      if (latestTransfer.id && lastHandledTransferMsgIdRef.current !== latestTransfer.id) {
+        lastHandledTransferMsgIdRef.current = latestTransfer.id;
+        const txt = (latestTransfer.text || '').toLowerCase();
+        if (
+          latestTransfer.targetQueueType === 'psychologist' ||
+          txt.includes('psicólogo') ||
+          txt.includes('psicologo') ||
+          txt.includes('marco antônio')
+        ) {
+          setActiveProfessional('psychologist');
+          return;
+        } else if (
+          latestTransfer.targetQueueType === 'doctor' ||
+          txt.includes('médico') ||
+          txt.includes('medico') ||
+          txt.includes('guilherme')
+        ) {
+          setActiveProfessional('doctor');
+          return;
+        }
+      }
+    }
+
+    // 2. If a clinician sends a new message with an explicit professionalRole, follow that professional
+    const lastMsg = messages[messages.length - 1];
+    if (
+      lastMsg &&
+      lastMsg.sender === 'doctor' &&
+      lastMsg.professionalRole &&
+      lastMsg.id !== lastHandledRoleMsgIdRef.current
+    ) {
+      lastHandledRoleMsgIdRef.current = lastMsg.id;
+      setActiveProfessional(lastMsg.professionalRole);
+    }
+  }, [messages]);
+
+  const isPsicoChat = activeProfessional === 'psychologist';
+
   const isConsultationConcluded = useMemo(() => {
     // If patient is waiting in queue or actively in consultation, consultation is NOT finished
     if (myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation')) {
@@ -158,16 +277,144 @@ export function ChatScreen() {
   }, [isConsultationFinished, messages, effectiveConsultationId, patientId, queue]);
 
   const hasDoctorMessages = messages.some(m => m.sender === 'doctor');
+  const hasTransferOrDualChat = !!(
+    (myQueueEntry as any)?.allowDualChat ||
+    messages.some(m => m.isQueueTransfer || m.text?.includes('ENCAMINHAMENTO DE FILA'))
+  );
 
-  // Waiting guard overlay is ONLY shown if patient is strictly in waiting queue and has never been attended by the doctor yet
+  // Waiting guard overlay is ONLY shown if patient is strictly in waiting queue and has never been attended or transferred yet
   const isWaitingInQueue = hasPaidConsultation && 
     !isConsultationConcluded && 
     !consultationActive && 
     !hasDoctorMessages && 
+    !hasTransferOrDualChat &&
     myQueueEntry?.status !== 'in-consultation' && 
     (myQueueEntry?.status === 'waiting' || (inQueue && !consultationActive));
 
   const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
+
+  // Interactive Neurodivergent Assessment State for Patient in Chat
+  const [activePatientTest, setActivePatientTest] = useState<'adhd' | 'autism' | null>(null);
+  const [patientTestStep, setPatientTestStep] = useState(0);
+  const [patientTestScores, setPatientTestScores] = useState<Record<number, number>>({});
+  const [patientTestProfile, setPatientTestProfile] = useState<'adulto' | 'crianca'>('adulto');
+  const [isSubmittingPatientTest, setIsSubmittingPatientTest] = useState(false);
+
+  const startPatientTest = (type: 'adhd' | 'autism') => {
+    const existingRes = type === 'adhd'
+      ? (answers?.adhdTestResult || myQueueEntry?.answers?.adhdTestResult)
+      : (answers?.autismTestResult || myQueueEntry?.answers?.autismTestResult);
+    setPatientTestScores(existingRes?.answers ? { ...existingRes.answers } : {});
+    setPatientTestStep(0);
+    setActivePatientTest(type);
+  };
+
+  const handleSelectPatientTestOption = (points: number) => {
+    const nextScores = { ...patientTestScores, [patientTestStep]: points };
+    setPatientTestScores(nextScores);
+    const questions = activePatientTest === 'adhd' ? ADHD_QUESTIONS : AUTISM_QUESTIONS;
+    if (patientTestStep < questions.length - 1) {
+      setPatientTestStep((prev) => prev + 1);
+    }
+  };
+
+  const handleFinishPatientTest = async () => {
+    if (!activePatientTest || isSubmittingPatientTest) return;
+    setIsSubmittingPatientTest(true);
+    try {
+      const isAdhd = activePatientTest === 'adhd';
+      const totalPts = Object.values(patientTestScores).reduce((a, b) => a + b, 0);
+      const pct = Math.min(99, Math.max(16, Math.round((totalPts / 36) * 100)));
+
+      let classification = '';
+      if (isAdhd) {
+        if (pct >= 70) classification = 'Alta Compatibilidade Neurocomportamental (TDAH)';
+        else if (pct >= 42) classification = 'Indícios Moderados de Desatenção & Sobrecarga Executiva';
+        else classification = 'Sinais Leves de Oscilação de Foco & Estresse';
+      } else {
+        if (pct >= 66) classification = 'Forte Indicativo de Traços do Espectro (TEA) & Hipersensibilidade';
+        else if (pct >= 40) classification = 'Traços Moderados de Sensibilidade Sensorial & Rigidez Cognitiva';
+        else classification = 'Sensibilidade Sensorial Leve';
+      }
+
+      const payload: any = {
+        scorePercent: pct,
+        totalPoints: totalPts,
+        maxPoints: 36,
+        questionsCount: 12,
+        classification,
+        completedAt: new Date().toISOString(),
+        answers: patientTestScores,
+        completedBy: 'patient',
+      };
+
+      if (!isAdhd) {
+        payload.targetProfile = patientTestProfile === 'adulto' ? 'Adulto (Próprio Paciente)' : 'Criança / Dependente';
+      }
+
+      const testKey = isAdhd ? 'adhdTestResult' : 'autismTestResult';
+      const targetId = effectiveConsultationId || patientId || auth.currentUser?.uid || myQueueEntry?.id;
+      const updatedAnswers = {
+        ...(myQueueEntry?.answers || {}),
+        ...(answers || {}),
+        [testKey]: payload,
+      };
+
+      // 1. Update local store immediately
+      useStore.setState((state) => ({
+        answers: updatedAnswers,
+        queue: state.queue.map((p) =>
+          p.id === targetId ? { ...p, answers: updatedAnswers } : p
+        ),
+      }));
+
+      try {
+        localStorage.setItem('mecura_patient_answers', JSON.stringify(updatedAnswers));
+      } catch {}
+
+      // 2. Send completed result card message into the chat stream so Doctor & Psychologist see it immediately
+      await addMessage(
+        isAdhd
+          ? {
+              text: `✅ Avaliação de TDAH (ASRS-18) Finalizada pelo Paciente:\n• Índice de Compatibilidade: ${pct}%\n• Classificação: ${classification}\n• Pontuação: ${totalPts}/36 pontos (12 perguntas respondidas).`,
+              sender: 'user',
+              type: 'adhd_test_card',
+              adhdTestData: payload,
+            }
+          : {
+              text: `✅ Mapeamento de Autismo / TEA Finalizado pelo Paciente:\n• Índice Neurocomportamental: ${pct}%\n• Perfil: ${payload.targetProfile}\n• Classificação: ${classification}\n• Pontuação: ${totalPts}/36 pontos (12 perguntas respondidas).`,
+              sender: 'user',
+              type: 'autism_test_card',
+              autismTestData: payload,
+            },
+        targetId
+      );
+
+      // 3. Persist updated answers to Firestore and Backend Server Queue
+      if (targetId) {
+        try {
+          await setDoc(doc(db, 'queue', targetId), { answers: updatedAnswers, hasUnread: true }, { merge: true });
+          await setDoc(doc(db, 'users', targetId), { answers: updatedAnswers }, { merge: true });
+        } catch (err) {
+          console.warn('Could not persist test result to Firestore:', err);
+        }
+
+        fetch('/api/queue/update-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: targetId,
+            answers: updatedAnswers,
+            hasUnread: true,
+          }),
+        }).catch(() => {});
+      }
+
+      setActivePatientTest(null);
+    } finally {
+      setIsSubmittingPatientTest(false);
+    }
+  };
 
   const handleGeneratePDF = async () => {
     setIsGeneratingPDF(true);
@@ -370,8 +617,17 @@ export function ChatScreen() {
 
     addMessage({
       text: textToSend.trim(),
-      sender: 'user'
+      sender: 'user',
+      professionalRole: activeProfessional
     }, effectiveConsultationId);
+
+    if (effectiveConsultationId) {
+      updateDoc(doc(db, 'queue', effectiveConsultationId), {
+        lastMessageTarget: activeProfessional,
+        hasUnread: true,
+        lastMessageAt: new Date().toISOString()
+      }).catch(() => {});
+    }
     
     setInputText('');
   };
@@ -405,6 +661,7 @@ export function ChatScreen() {
         await addMessage({
           sender: 'user',
           type: 'document',
+          professionalRole: activeProfessional,
           text: `📎 Documento anexado pelo paciente: ${file.name}`,
           attachment: {
             name: file.name,
@@ -515,52 +772,92 @@ export function ChatScreen() {
 
   return (
     <div className="flex flex-col h-full bg-mecura-bg relative overflow-hidden">
-      {/* Header */}
-      <div className="bg-mecura-surface/90 backdrop-blur-md border-b border-mecura-elevated p-4 flex items-center gap-4 z-20 shrink-0">
-        <button 
-          onClick={() => navigate(-1)}
-          className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-colors"
-        >
-          <ChevronLeft className="w-6 h-6 pr-0.5" />
-        </button>
-        {(() => {
-          const isPsicoChat = selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist');
-          return (
-            <>
-              <div className="relative">
-                <div className={`w-12 h-12 rounded-full overflow-hidden border-2 ${isPsicoChat ? 'border-purple-400' : 'border-mecura-elevated'}`}>
-                  <img src={isPsicoChat ? "/pscologo.jpeg" : "/doctor-avatar.png"} alt={isPsicoChat ? "Marco Antônio Boastik" : "Dr. Guilherme"} className="w-full h-full object-cover" />
-                </div>
-                <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-mecura-surface ${isPsicoChat ? 'bg-purple-400' : 'bg-mecura-neon'}`} />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-white font-bold text-lg leading-tight">
-                  {isPsicoChat ? 'Marco Antônio Boastik' : 'Dr. Guilherme Taveira Dias'}
-                </h2>
-                <p className="text-xs text-mecura-silver">
-                  {isPsicoChat ? 'CRP: 08/49215 • Psicólogo' : 'CRM: 12345/SP'}
-                </p>
-              </div>
-            </>
-          );
-        })()}
-        <div className="flex items-center gap-2">
-          {! (selectedOffer === 'psychologist' || (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist')) && (
+      {/* Header & Dual Professional Switcher */}
+      <div className="bg-mecura-surface/95 backdrop-blur-md border-b border-mecura-elevated z-20 shrink-0">
+        <div className="p-3.5 sm:p-4 flex items-center gap-3 sm:gap-4">
+          <button 
+            onClick={() => navigate(-1)}
+            className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-silver hover:text-white transition-colors shrink-0 cursor-pointer"
+          >
+            <ChevronLeft className="w-6 h-6 pr-0.5" />
+          </button>
+
+          <div className="relative shrink-0">
+            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 transition-colors ${isPsicoChat ? 'border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.35)]' : 'border-mecura-neon shadow-[0_0_12px_rgba(166,255,0,0.25)]'}`}>
+              <img src={isPsicoChat ? "/pscologo.jpeg" : "/doctor-avatar.png"} alt={isPsicoChat ? "Marco Antônio Boastik" : "Dr. Guilherme"} className="w-full h-full object-cover" />
+            </div>
+            <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-mecura-surface ${isPsicoChat ? 'bg-purple-400' : 'bg-mecura-neon'}`} />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-white font-bold text-base sm:text-lg leading-tight truncate">
+                {isPsicoChat ? 'Marco Antônio Boastik' : 'Dr. Guilherme Taveira Dias'}
+              </h2>
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                isPsicoChat
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-400/40'
+                  : 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/40'
+              }`}>
+                {isPsicoChat ? 'Psicólogo' : 'Médico'}
+              </span>
+            </div>
+            <p className="text-xs text-mecura-silver truncate">
+              {isPsicoChat ? 'CRP: 08/49215 • Saúde Mental & Acolhimento' : 'CRM: 12345/SP • Prescrição & Acompanhamento'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <button 
               onClick={() => navigate('/protocol')}
-              className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors border border-mecura-neon/20"
+              className="w-10 h-10 rounded-full bg-mecura-surface-light flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors border border-mecura-neon/20 cursor-pointer"
               title="Ver Protocolo & Receituário"
             >
               <Droplets className="w-5 h-5" />
             </button>
-          )}
-          <button 
-            onClick={handleFinish}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-mecura-surface-light hover:bg-mecura-surface border border-mecura-elevated text-xs font-bold text-mecura-silver hover:text-white transition-all shadow-sm cursor-pointer"
-            title="Acessar Área do Paciente"
+            <button 
+              onClick={handleFinish}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-mecura-surface-light hover:bg-mecura-surface border border-mecura-elevated text-xs font-bold text-mecura-silver hover:text-white transition-all shadow-sm cursor-pointer"
+              title="Acessar Área do Paciente"
+            >
+              <User className="w-3.5 h-3.5 text-mecura-neon" />
+              <span className="hidden sm:inline">Meu Painel</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Barra de Alternância entre os 2 Profissionais (Médico e Psicólogo) */}
+        <div className="px-3.5 sm:px-4 pb-3 pt-1 flex items-center gap-2 border-t border-white/5 bg-[#0D0D15]/90">
+          <button
+            type="button"
+            onClick={() => setActiveProfessional('doctor')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+              !isPsicoChat
+                ? 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/50 shadow-[0_0_15px_rgba(166,255,0,0.15)]'
+                : 'bg-white/[0.03] hover:bg-white/[0.07] text-mecura-silver hover:text-white border-white/10'
+            }`}
           >
-            <User className="w-3.5 h-3.5 text-mecura-neon" />
-            <span className="hidden sm:inline">Meu Painel</span>
+            <Stethoscope className={`w-3.5 h-3.5 shrink-0 ${!isPsicoChat ? 'text-mecura-neon' : 'text-mecura-silver'}`} />
+            <span className="truncate">Chat Médico (Dr. Guilherme)</span>
+            {myQueueEntry?.queueType === 'doctor' && (
+              <span className="w-2 h-2 rounded-full bg-mecura-neon animate-pulse shrink-0" title="Fila atual" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveProfessional('psychologist')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border ${
+              isPsicoChat
+                ? 'bg-purple-500/25 text-purple-200 border-purple-400/60 shadow-[0_0_15px_rgba(168,85,247,0.25)]'
+                : 'bg-white/[0.03] hover:bg-white/[0.07] text-mecura-silver hover:text-white border-white/10'
+            }`}
+          >
+            <Brain className={`w-3.5 h-3.5 shrink-0 ${isPsicoChat ? 'text-purple-300' : 'text-mecura-silver'}`} />
+            <span className="truncate">Chat Psicólogo (Marco Antônio)</span>
+            {myQueueEntry?.queueType === 'psychologist' && (
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse shrink-0" title="Encaminhado para Psicólogo" />
+            )}
           </button>
         </div>
       </div>
@@ -575,10 +872,10 @@ export function ChatScreen() {
             Atendimento Pendente
           </span>
           <h2 className="text-2xl font-serif font-bold text-white mb-2">
-            Aguarde o Dr. Guilherme te chamar
+            {isPsicoChat ? 'Aguarde o Psicólogo Marco Antônio te chamar' : 'Aguarde o Dr. Guilherme te chamar'}
           </h2>
           <p className="text-sm text-mecura-silver max-w-xs mb-8 leading-relaxed">
-            Você está na fila de espera. O médico te chamará pelo aplicativo e pelo WhatsApp assim que for a sua vez!
+            Você está na fila de espera. O profissional te chamará pelo aplicativo e pelo WhatsApp assim que for a sua vez!
           </p>
           <div className="flex flex-col gap-3 w-full max-w-xs">
             <button
@@ -599,12 +896,96 @@ export function ChatScreen() {
 
       {/* Chat Area */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+        {/* Banner Informativo do Chat do Psicólogo / Alternância */}
+        {isPsicoChat ? (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 via-[#171126] to-[#12121C] border border-purple-500/40 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300 shrink-0">
+                <Brain className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-white font-bold text-xs sm:text-sm">
+                    Chat com Psicólogo Marco Antônio Boastik
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30">
+                    {myQueueEntry?.queueType === 'psychologist' && myQueueEntry?.status === 'waiting'
+                      ? '⏳ Na Fila do Psicólogo'
+                      : '🟢 Canal Ativo'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-mecura-silver mt-0.5 leading-relaxed">
+                  Envie suas mensagens abaixo para o Psicólogo ou clique no botão ao lado para acessar também o chat do Médico (Dr. Guilherme).
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveProfessional('doctor')}
+              className="px-3 py-2 rounded-xl bg-mecura-neon/15 hover:bg-mecura-neon/25 border border-mecura-neon/40 text-mecura-neon text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 transition-all cursor-pointer"
+            >
+              <Stethoscope className="w-3.5 h-3.5" />
+              <span>Acessar Chat do Médico</span>
+            </button>
+          </div>
+        ) : hasTransferOrDualChat ? (
+          <div className="p-3.5 rounded-2xl bg-[#12161F] border border-mecura-neon/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-xs text-mecura-pearl">
+              <Stethoscope className="w-4 h-4 text-mecura-neon shrink-0" />
+              <span>
+                Você está visualizando o chat com o <strong>Dr. Guilherme (Médico)</strong>. Você também pode alternar para o chat do <strong>Psicólogo Marco Antônio</strong>.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveProfessional('psychologist')}
+              className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/50 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 transition-all cursor-pointer"
+            >
+              <Brain className="w-3.5 h-3.5 text-purple-300" />
+              <span>Ir p/ Chat do Psicólogo</span>
+            </button>
+          </div>
+        ) : null}
+
         <AnimatePresence>
-          {[...messages].sort((a, b) => {
-            const tA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
-            const tB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
-            return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
-          }).map((msg, msgIndex) => (
+          {[...messages]
+            .filter((msg) => {
+              const isTransferMsg = Boolean(
+                msg.isQueueTransfer || (typeof msg.text === 'string' && msg.text.includes('ENCAMINHAMENTO DE FILA'))
+              );
+              const isSharedTestCard = msg.type === 'adhd_test_card' || msg.type === 'autism_test_card';
+              if (isTransferMsg || isSharedTestCard) return true;
+
+              const isExplicitPsicoMsg =
+                msg.professionalRole === 'psychologist' ||
+                msg.type === 'psychological_report' ||
+                msg.docType === 'laudo_psicologico' ||
+                Boolean(
+                  typeof msg.text === 'string' &&
+                    (msg.text.includes('Marco Antônio') || msg.text.includes('Psicólogo Marco'))
+                );
+
+              if (isPsicoChat) {
+                if (isExplicitPsicoMsg) return true;
+                if (
+                  !msg.professionalRole &&
+                  (selectedOffer === 'psychologist' ||
+                    (typeof window !== 'undefined' && localStorage.getItem('last_offer') === 'psychologist')) &&
+                  !(typeof msg.text === 'string' && msg.text.includes('Dr. Guilherme'))
+                ) {
+                  return true;
+                }
+                return false;
+              } else {
+                return !isExplicitPsicoMsg;
+              }
+            })
+            .sort((a, b) => {
+              const tA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
+              const tB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
+              return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
+            })
+            .map((msg, msgIndex) => (
             <motion.div
               key={`${msg.id || 'chat-msg'}-${msgIndex}`}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -1149,69 +1530,197 @@ export function ChatScreen() {
                 </div>
               </div>
             ) : msg.type === 'adhd_test_card' ? (
-              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#0B1520] via-[#0D1826] to-[#070D14] border border-sky-400/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl text-white">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-14 h-14 bg-sky-500/20 border border-sky-400/40 text-sky-300 rounded-2xl flex items-center justify-center">
-                    <Brain className="w-7 h-7" />
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-sky-300 uppercase tracking-widest font-mono">ASRS-18 • 12 Domínios</span>
-                    {msg.adhdTestData?.scorePercent !== undefined && (
-                      <p className="text-2xl font-black text-mecura-neon font-mono">
-                        {msg.adhdTestData.scorePercent}%
-                      </p>
+              (() => {
+                const resolvedAdhd =
+                  msg.adhdTestData?.scorePercent !== undefined
+                    ? msg.adhdTestData
+                    : answers?.adhdTestResult || myQueueEntry?.answers?.adhdTestResult;
+                const hasCompletedAdhd = resolvedAdhd && resolvedAdhd.scorePercent !== undefined;
+
+                return (
+                  <div className="w-[92%] sm:w-[82%] bg-gradient-to-br from-[#0B1520] via-[#0D1826] to-[#070D14] border border-sky-400/40 rounded-3xl p-5 sm:p-6 mb-2 relative overflow-hidden group shadow-2xl text-white">
+                    <div className="flex justify-between items-start mb-4 gap-3">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-sky-500/20 border border-sky-400/40 text-sky-300 rounded-2xl flex items-center justify-center shrink-0">
+                        <Brain className="w-6 h-6 sm:w-7 sm:h-7" />
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-sky-300 uppercase tracking-widest font-mono block">
+                          ASRS-18 • 12 Domínios
+                        </span>
+                        {hasCompletedAdhd ? (
+                          <p className="text-2xl font-black text-mecura-neon font-mono">
+                            {resolvedAdhd.scorePercent}%
+                          </p>
+                        ) : (
+                          <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 border border-sky-400/40 text-sky-200">
+                            Aguardando Resposta
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {hasCompletedAdhd ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-mecura-neon/15 border border-mecura-neon/40 text-mecura-neon">
+                            ✓ Avaliação Concluída • Enviada ao Médico e Psicólogo
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider block">
+                          Laudo de Rastreio Neurocomportamental: TDAH
+                        </span>
+                        <h3 className="text-base sm:text-lg font-bold text-white">
+                          {resolvedAdhd.classification || 'Avaliação Computada'}
+                        </h3>
+                        {resolvedAdhd.totalPoints !== undefined && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs text-sky-200">
+                              Pontuação clínica: <strong>{resolvedAdhd.totalPoints}</strong> / {resolvedAdhd.maxPoints || 36} pontos
+                            </p>
+                            <div className="w-full h-2 bg-black/60 rounded-full overflow-hidden border border-sky-400/20">
+                              <div
+                                className="h-full bg-gradient-to-r from-sky-400 to-mecura-neon rounded-full transition-all duration-500"
+                                style={{ width: `${resolvedAdhd.scorePercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                          🎯 <strong>Conduta Integrada:</strong> Modulação endocanabinoide de foco sustentado no Córtex Pré-Frontal (CBD + CBG) associada a acompanhamento médico e psicológico.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startPatientTest('adhd')}
+                          className="w-full py-3 px-4 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 text-sky-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+                        >
+                          <RotateCcw className="w-4 h-4 text-sky-300" />
+                          <span>Revisar ou Refazer Avaliação de TDAH (12 Perguntas)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider block mb-1">
+                            Solicitação Clínica • Teste Interativo de TDAH
+                          </span>
+                          <h3 className="text-base sm:text-lg font-bold text-white mb-1.5">
+                            Escala ASRS-18 de Foco, Atenção & Função Executiva
+                          </h3>
+                          <p className="text-xs text-mecura-pearl/90 leading-relaxed">
+                            {msg.text ||
+                              'O profissional solicitou o preenchimento desta avaliação de 12 perguntas rápidas. Ao finalizar, o resultado aparecerá automaticamente na tela do médico e do psicólogo.'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startPatientTest('adhd')}
+                          className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-sky-400 to-mecura-neon text-black font-black text-sm flex items-center justify-center gap-2.5 shadow-[0_0_24px_rgba(56,189,248,0.35)] hover:brightness-110 transition-all cursor-pointer active:scale-[0.98]"
+                        >
+                          <ClipboardList className="w-5 h-5" />
+                          <span>Iniciar Avaliação de TDAH Agora (12 Perguntas)</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider block">
-                    Laudo de Rastreio Neurocomportamental: TDAH
-                  </span>
-                  <h3 className="text-lg font-bold text-white">
-                    {msg.adhdTestData?.classification || 'Avaliação Computada'}
-                  </h3>
-                  {msg.adhdTestData?.totalPoints !== undefined && (
-                    <p className="text-xs text-sky-200">
-                      Pontuação clínica: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
-                    </p>
-                  )}
-                  <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
-                    🎯 <strong>Conduta Integrada:</strong> Modulação endocanabinoide de foco sustentado no Córtex Pré-Frontal (CBD + CBG) associada a acompanhamento médico e psicológico.
-                  </div>
-                </div>
-              </div>
+                );
+              })()
             ) : msg.type === 'autism_test_card' ? (
-              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#160D22] via-[#1D102D] to-[#0E0716] border border-purple-400/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl text-white">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-14 h-14 bg-purple-500/20 border border-purple-400/40 text-purple-300 rounded-2xl flex items-center justify-center">
-                    <Sparkles className="w-7 h-7" />
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-purple-300 uppercase tracking-widest font-mono">TEA • 12 Perguntas</span>
-                    {msg.autismTestData?.scorePercent !== undefined && (
-                      <p className="text-2xl font-black text-mecura-neon font-mono">
-                        {msg.autismTestData.scorePercent}%
-                      </p>
+              (() => {
+                const resolvedAutism =
+                  msg.autismTestData?.scorePercent !== undefined
+                    ? msg.autismTestData
+                    : answers?.autismTestResult || myQueueEntry?.answers?.autismTestResult;
+                const hasCompletedAutism = resolvedAutism && resolvedAutism.scorePercent !== undefined;
+
+                return (
+                  <div className="w-[92%] sm:w-[82%] bg-gradient-to-br from-[#160D22] via-[#1D102D] to-[#0E0716] border border-purple-400/40 rounded-3xl p-5 sm:p-6 mb-2 relative overflow-hidden group shadow-2xl text-white">
+                    <div className="flex justify-between items-start mb-4 gap-3">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-purple-500/20 border border-purple-400/40 text-purple-300 rounded-2xl flex items-center justify-center shrink-0">
+                        <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-purple-300 uppercase tracking-widest font-mono block">
+                          TEA • 12 Perguntas
+                        </span>
+                        {hasCompletedAutism ? (
+                          <p className="text-2xl font-black text-mecura-neon font-mono">
+                            {resolvedAutism.scorePercent}%
+                          </p>
+                        ) : (
+                          <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-200">
+                            Aguardando Resposta
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {hasCompletedAutism ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-mecura-neon/15 border border-mecura-neon/40 text-mecura-neon">
+                            ✓ Mapeamento Concluído • Enviado ao Médico e Psicólogo
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider block">
+                          Mapeamento de Sensibilidade Sensorial e TEA
+                        </span>
+                        <h3 className="text-base sm:text-lg font-bold text-white">
+                          {resolvedAutism.classification || 'Mapeamento Computado'}
+                        </h3>
+                        {resolvedAutism.totalPoints !== undefined && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs text-purple-200">
+                              Perfil: <strong>{resolvedAutism.targetProfile || 'Adulto'}</strong> • Pontuação: <strong>{resolvedAutism.totalPoints}</strong> / {resolvedAutism.maxPoints || 36} pontos
+                            </p>
+                            <div className="w-full h-2 bg-black/60 rounded-full overflow-hidden border border-purple-400/20">
+                              <div
+                                className="h-full bg-gradient-to-r from-purple-400 to-mecura-neon rounded-full transition-all duration-500"
+                                style={{ width: `${resolvedAutism.scorePercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                          🧩 <strong>Conduta Integrada:</strong> Regulação do eixo sensorial e estabilização de humor/GABA com formulação Full Spectrum e suporte psicológico continuado.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startPatientTest('autism')}
+                          className="w-full py-3 px-4 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/40 text-purple-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+                        >
+                          <RotateCcw className="w-4 h-4 text-purple-300" />
+                          <span>Revisar ou Refazer Mapeamento TEA (12 Perguntas)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider block mb-1">
+                            Solicitação Clínica • Mapeamento Interativo de Autismo (TEA)
+                          </span>
+                          <h3 className="text-base sm:text-lg font-bold text-white mb-1.5">
+                            Mapeamento Neurocomportamental & Sensibilidade Sensorial
+                          </h3>
+                          <p className="text-xs text-mecura-pearl/90 leading-relaxed">
+                            {msg.text ||
+                              'O profissional solicitou o preenchimento deste mapeamento de 12 perguntas sobre regulação sensorial e emocional. Ao finalizar, o resultado aparecerá automaticamente para o médico e o psicólogo.'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startPatientTest('autism')}
+                          className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-purple-500 to-mecura-neon text-black font-black text-sm flex items-center justify-center gap-2.5 shadow-[0_0_24px_rgba(168,85,247,0.35)] hover:brightness-110 transition-all cursor-pointer active:scale-[0.98]"
+                        >
+                          <ClipboardList className="w-5 h-5" />
+                          <span>Iniciar Avaliação de Autismo / TEA (12 Perguntas)</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider block">
-                    Mapeamento de Sensibilidade Sensorial e TEA
-                  </span>
-                  <h3 className="text-lg font-bold text-white">
-                    {msg.autismTestData?.classification || 'Mapeamento Computado'}
-                  </h3>
-                  {msg.autismTestData?.totalPoints !== undefined && (
-                    <p className="text-xs text-purple-200">
-                      Perfil: <strong>{msg.autismTestData?.targetProfile || 'Adulto'}</strong> • Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
-                    </p>
-                  )}
-                  <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
-                    🧩 <strong>Conduta Integrada:</strong> Regulação do eixo sensorial e estabilização de humor/GABA com formulação Full Spectrum e suporte psicológico continuado.
-                  </div>
-                </div>
-              </div>
+                );
+              })()
             ) : (msg.type === 'document' || msg.attachment) ? (
               <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#161622] to-[#0A0A0F] border border-white/20 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
                 <div className="relative z-10">
@@ -1314,11 +1823,57 @@ export function ChatScreen() {
                   <p className="text-white text-sm">O pagamento da Consulta Premium (R$ 249,90) foi confirmado. O médico já foi notificado.</p>
                 </div>
               </div>
+            ) : (msg.isQueueTransfer || (typeof msg.text === 'string' && msg.text.includes('ENCAMINHAMENTO DE FILA'))) ? (
+              <div className="w-[92%] sm:w-[85%] bg-gradient-to-br from-[#171126] via-[#12121D] to-[#0D0D15] border border-purple-500/45 rounded-3xl p-5 mb-2 shadow-xl space-y-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300 shrink-0">
+                    <Brain className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-400/30 inline-block">
+                      Encaminhamento Multidisciplinar Ativo
+                    </span>
+                    <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">
+                      {msg.text}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveProfessional('psychologist')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                      isPsicoChat
+                        ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.35)]'
+                        : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 border-purple-400/40'
+                    }`}
+                  >
+                    <Brain className="w-4 h-4" />
+                    <span>{isPsicoChat ? '✓ No Chat do Psicólogo' : 'Abrir Chat do Psicólogo'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveProfessional('doctor')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                      !isPsicoChat
+                        ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.3)]'
+                        : 'bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon border-mecura-neon/40'
+                    }`}
+                  >
+                    <Stethoscope className="w-4 h-4" />
+                    <span>{!isPsicoChat ? '✓ No Chat do Médico' : 'Acessar Chat do Médico'}</span>
+                  </button>
+                </div>
+              </div>
             ) : (
               <div 
                 className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${
                   msg.sender === 'user' 
-                    ? 'bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20' 
+                    ? isPsicoChat
+                      ? 'bg-purple-500/15 text-white rounded-tr-sm border border-purple-400/30'
+                      : 'bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20' 
                     : 'bg-mecura-surface text-mecura-pearl rounded-tl-sm border border-mecura-elevated'
                 }`}
               >
@@ -1329,7 +1884,7 @@ export function ChatScreen() {
               <span className="text-[10px] text-mecura-silver font-medium">
                 {msg.timestamp && !isNaN(new Date(msg.timestamp).getTime()) ? format(new Date(msg.timestamp), 'HH:mm') : ''}
               </span>
-              {msg.sender === 'user' && <CheckCheck className="w-3.5 h-3.5 text-mecura-neon" />}
+              {msg.sender === 'user' && <CheckCheck className={`w-3.5 h-3.5 ${isPsicoChat ? 'text-purple-400' : 'text-mecura-neon'}`} />}
             </div>
           </motion.div>
         ))}
@@ -1397,7 +1952,9 @@ export function ChatScreen() {
               type="button"
               onClick={() => patientFileInputRef.current?.click()}
               disabled={isUploadingFile}
-              className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-mecura-surface border border-mecura-elevated text-mecura-silver hover:text-mecura-neon hover:border-mecura-neon/50 flex items-center justify-center transition-all cursor-pointer shrink-0 disabled:opacity-50"
+              className={`w-12 h-12 md:w-14 md:h-14 rounded-full bg-mecura-surface border border-mecura-elevated text-mecura-silver flex items-center justify-center transition-all cursor-pointer shrink-0 disabled:opacity-50 ${
+                isPsicoChat ? 'hover:text-purple-400 hover:border-purple-400/50' : 'hover:text-mecura-neon hover:border-mecura-neon/50'
+              }`}
               title="Anexar documento ou receita antiga"
             >
               {isUploadingFile ? (
@@ -1409,10 +1966,263 @@ export function ChatScreen() {
             <PatientChatInputBar
               onSend={(text) => handleSend(text)}
               disabled={isUploadingFile}
+              isPsico={isPsicoChat}
+              placeholder={
+                isPsicoChat
+                  ? "Escreva para o Psicólogo Marco Antônio..."
+                  : "Escreva para o Médico Dr. Guilherme..."
+              }
             />
           </div>
         </div>
       )}
+
+      {/* Modal Interativo de Avaliação Neurodivergente (12 Perguntas) para o Paciente no Chat */}
+      <AnimatePresence>
+        {activePatientTest && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="w-full max-w-xl bg-[#0D111A] border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            >
+              {(() => {
+                const isAdhd = activePatientTest === 'adhd';
+                const questions = isAdhd ? ADHD_QUESTIONS : AUTISM_QUESTIONS;
+                const currentQ = questions[patientTestStep];
+                const answeredCount = Object.keys(patientTestScores).length;
+                const livePts = Object.values(patientTestScores).reduce((a, b) => a + b, 0);
+                const livePct = Math.min(99, Math.max(16, Math.round((livePts / 36) * 100)));
+
+                return (
+                  <>
+                    {/* Modal Header */}
+                    <div
+                      className={`p-4 sm:p-5 border-b border-white/10 flex items-center justify-between ${
+                        isAdhd
+                          ? 'bg-gradient-to-r from-sky-950/60 via-[#0D111A] to-[#0D111A]'
+                          : 'bg-gradient-to-r from-purple-950/60 via-[#0D111A] to-[#0D111A]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                            isAdhd
+                              ? 'bg-sky-500/20 border-sky-400/40 text-sky-300'
+                              : 'bg-purple-500/20 border-purple-400/40 text-purple-300'
+                          }`}
+                        >
+                          {isAdhd ? <Brain className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
+                        </div>
+                        <div>
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-widest block ${
+                              isAdhd ? 'text-sky-400' : 'text-purple-400'
+                            }`}
+                          >
+                            {isAdhd
+                              ? 'Avaliação Clínica de TDAH (Escala ASRS-18)'
+                              : 'Mapeamento Neurocomportamental TEA (Autismo)'}
+                          </span>
+                          <h3 className="text-sm sm:text-base font-black text-white">
+                            Pergunta {patientTestStep + 1} de {questions.length}
+                          </h3>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActivePatientTest(null)}
+                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white transition-colors cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Progress & Target Profile Selector (for TEA) */}
+                    <div className="px-4 sm:px-6 pt-3 pb-2 bg-black/30 border-b border-white/5 space-y-2.5">
+                      {!isAdhd && (
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-mecura-silver font-medium">Perfil avaliado:</span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setPatientTestProfile('adulto')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                                patientTestProfile === 'adulto'
+                                  ? 'bg-purple-500 text-white'
+                                  : 'bg-white/5 text-mecura-silver hover:text-white'
+                              }`}
+                            >
+                              Adulto (Próprio Paciente)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPatientTestProfile('crianca')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                                patientTestProfile === 'crianca'
+                                  ? 'bg-purple-500 text-white'
+                                  : 'bg-white/5 text-mecura-silver hover:text-white'
+                              }`}
+                            >
+                              Criança / Dependente
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step Pills */}
+                      <div className="grid grid-cols-12 gap-1">
+                        {questions.map((_, idx) => {
+                          const isAnswered = patientTestScores[idx] !== undefined;
+                          const isCurrent = idx === patientTestStep;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setPatientTestStep(idx)}
+                              className={`h-2 rounded-full transition-all cursor-pointer ${
+                                isCurrent
+                                  ? isAdhd
+                                    ? 'bg-sky-400 ring-2 ring-sky-400/40'
+                                  : 'bg-purple-400 ring-2 ring-purple-400/40'
+                                  : isAnswered
+                                  ? 'bg-mecura-neon/70'
+                                  : 'bg-white/10 hover:bg-white/20'
+                              }`}
+                              title={`Ir para pergunta ${idx + 1}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Question Body */}
+                    <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+                      <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                              isAdhd
+                                ? 'bg-sky-500/15 text-sky-300 border border-sky-400/30'
+                                : 'bg-purple-500/15 text-purple-300 border border-purple-400/30'
+                            }`}
+                          >
+                            Domínio {patientTestStep + 1}: {currentQ.domain}
+                          </span>
+                          <span className="text-[10px] text-mecura-silver font-mono">
+                            {currentQ.neuralTarget}
+                          </span>
+                        </div>
+                        <p className="text-sm sm:text-base font-bold text-white leading-relaxed pt-1">
+                          {currentQ.question}
+                        </p>
+                      </div>
+
+                      {/* 4 Frequency Options */}
+                      <div className="space-y-2">
+                        {FREQUENCY_OPTIONS.map((opt) => {
+                          const isSelected = patientTestScores[patientTestStep] === opt.points;
+                          return (
+                            <button
+                              key={opt.points}
+                              type="button"
+                              onClick={() => handleSelectPatientTestOption(opt.points)}
+                              className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
+                                isSelected
+                                  ? isAdhd
+                                    ? 'bg-sky-500/20 border-sky-400 text-white shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+                                    : 'bg-purple-500/20 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.2)]'
+                                  : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/10 text-mecura-pearl'
+                              }`}
+                            >
+                              <div>
+                                <div className="text-xs sm:text-sm font-bold text-white">
+                                  {opt.label}
+                                </div>
+                                <div className="text-[11px] text-mecura-silver">{opt.sub}</div>
+                              </div>
+                              <div
+                                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold shrink-0 ${
+                                  isSelected
+                                    ? 'bg-mecura-neon text-black'
+                                    : 'bg-white/5 text-mecura-silver'
+                                }`}
+                              >
+                                +{opt.points} pts
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Modal Footer */}
+                    <div className="p-4 sm:p-5 border-t border-white/10 bg-[#090C12] flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPatientTestStep((prev) => Math.max(0, prev - 1))}
+                        disabled={patientTestStep === 0}
+                        className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Anterior</span>
+                      </button>
+
+                      <div className="text-center">
+                        <span className="text-[11px] text-mecura-silver block">
+                          Respondidas: <strong className="text-white">{answeredCount}/12</strong>
+                        </span>
+                        {answeredCount > 0 && (
+                          <span className="text-[10px] text-mecura-neon font-mono font-bold">
+                            Índice parcial: {livePct}%
+                          </span>
+                        )}
+                      </div>
+
+                      {patientTestStep < questions.length - 1 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPatientTestStep((prev) => Math.min(questions.length - 1, prev + 1))
+                          }
+                          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            isAdhd
+                              ? 'bg-sky-500 hover:bg-sky-400 text-black'
+                              : 'bg-purple-500 hover:bg-purple-400 text-white'
+                          }`}
+                        >
+                          <span>Próxima</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleFinishPatientTest}
+                          disabled={isSubmittingPatientTest}
+                          className="px-5 py-2.5 rounded-xl bg-mecura-neon hover:brightness-110 text-black text-xs sm:text-sm font-black flex items-center gap-2 shadow-[0_0_20px_rgba(166,255,0,0.35)] transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span>
+                            {isSubmittingPatientTest
+                              ? 'Enviando...'
+                              : 'Finalizar e Enviar Resultado'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

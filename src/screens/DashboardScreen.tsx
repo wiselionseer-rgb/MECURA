@@ -856,11 +856,25 @@ export function DashboardScreen() {
             )}
           </div>
           
-          {/* Botão de Nova Triagem (Para quem já é paciente e quer nova consulta) */}
+          {/* Botão de Nova Triagem ou Voltar para a Fila (bloqueia nova triagem enquanto houver atendimento aberto) */}
           <motion.div
             variants={itemVariants}
-            className="mt-4 flex items-center justify-between bg-[#161622] border border-white/5 rounded-2xl p-4 cursor-pointer hover:bg-white/5 transition-colors"
+            className={`mt-4 flex items-center justify-between rounded-2xl p-4 cursor-pointer transition-colors ${
+              isWaitingInQueue || isDoctorCalling || canEnterWaitingQueue
+                ? 'bg-[#161622] border border-mecura-neon/30 hover:bg-mecura-neon/10'
+                : 'bg-[#161622] border border-white/5 hover:bg-white/5'
+            }`}
             onClick={() => {
+              if (isWaitingInQueue || isDoctorCalling || canEnterWaitingQueue) {
+                if (isDoctorCalling) {
+                  navigate('/chat');
+                } else if (isWaitingInQueue) {
+                  navigate('/queue');
+                } else {
+                  handleEnterQueue();
+                }
+                return;
+              }
               useStore.getState().clearTriage();
               navigate('/onboarding');
             }}
@@ -870,8 +884,16 @@ export function DashboardScreen() {
                 <Stethoscope className="w-5 h-5 text-mecura-neon" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-white">Nova Triagem Clínica</h4>
-                <p className="text-xs text-[#8A8A9E]">Iniciar avaliação para uma nova queixa</p>
+                <h4 className="text-sm font-bold text-white">
+                  {isWaitingInQueue || isDoctorCalling || canEnterWaitingQueue
+                    ? 'Voltar para a Fila'
+                    : 'Nova Triagem Clínica'}
+                </h4>
+                <p className="text-xs text-[#8A8A9E]">
+                  {isWaitingInQueue || isDoctorCalling || canEnterWaitingQueue
+                    ? 'Atendimento em aberto • Nova triagem liberada após finalizar'
+                    : 'Iniciar avaliação para uma nova queixa'}
+                </p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-[#8A8A9E]" />

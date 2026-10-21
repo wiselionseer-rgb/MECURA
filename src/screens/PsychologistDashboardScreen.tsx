@@ -55,7 +55,7 @@ const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 export function PsychologistDashboardScreen() {
   const navigate = useNavigate();
   const { 
-    userName, queue, startConsultation, subscribeToQueue, 
+    userName, queue, startConsultation, subscribeToQueue, subscribeToMessages,
     messages, addMessage, activeConsultationId,
     consultationHistory, subscribeToAllConsultationHistory,
     transferPatientQueue, answers
@@ -89,7 +89,7 @@ export function PsychologistDashboardScreen() {
   const [reportEmissionDate, setReportEmissionDate] = useState(format(new Date(), 'dd/MM/yyyy'));
   const [psychologistName, setPsychologistName] = useState('Marco Antônio Boastik');
   const [psychologistCrp, setPsychologistCrp] = useState('CRP 08/49215');
-  const [reportPurpose, setReportPurpose] = useState('Avaliação Psicológica Clínica e Pericial para Fins de Tratamento em Saúde Mental e Salvaguarda Terapêutica.');
+  const [reportPurpose, setReportPurpose] = useState('Avaliação Psicológica Clínica para Fins de Tratamento em Saúde Mental e Salvaguarda Terapêutica.');
   const [reportDemand, setReportDemand] = useState('');
   const [reportProcedures, setReportProcedures] = useState('Realizada entrevista psicológica clínica semiestruturada, anamnese direcionada, exame pormenorizado das funções psíquicas superiores e rastreio de sintomas conforme as diretrizes da Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.');
   const [reportAnalysis, setReportAnalysis] = useState('');
@@ -190,18 +190,29 @@ export function PsychologistDashboardScreen() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Subscribe to messages for the currently selected patient in real time
+  useEffect(() => {
+    if (!currentPatient?.id) return;
+    const unsubMsgs = subscribeToMessages(currentPatient.id);
+    if (currentPatient.hasUnread) {
+      updateDoc(doc(db, 'queue', currentPatient.id), { hasUnread: false }).catch(() => {});
+    }
+    return () => unsubMsgs();
+  }, [currentPatient?.id, subscribeToMessages]);
+
   // Filter patients belonging to psychologist queue
   const psychologistQueue = useMemo(() => {
     return queue.filter(p => {
       const qType = (p as any).queueType;
       const plan = (p as any).plan;
       const offer = (p as any).selectedOffer;
+      const allowDual = !!(p as any).allowDualChat;
 
-      // Strictly exclude if explicitly assigned or transferred to doctor
-      if (qType === 'doctor') return false;
+      // Strictly exclude if explicitly assigned to doctor and not dual-chat
+      if (!allowDual && qType === 'doctor') return false;
 
-      // Belongs to psychologist if queueType is psychologist/complete, OR plan/offer is psychologist/complete
-      const isPsico = qType === 'psychologist' || qType === 'complete' || (plan === 'psychologist' || offer === 'psychologist' || plan === 'complete' || offer === 'complete');
+      // Belongs to psychologist if queueType is psychologist/complete, allowDualChat is active, OR plan/offer is psychologist/complete
+      const isPsico = allowDual || qType === 'psychologist' || qType === 'complete' || (plan === 'psychologist' || offer === 'psychologist' || plan === 'complete' || offer === 'complete');
       
       // Filter by status
       const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
@@ -218,6 +229,7 @@ export function PsychologistDashboardScreen() {
   const handleSelectPatient = async (patient: any) => {
     setCurrentPatient(patient);
     startConsultation(patient.id);
+    subscribeToMessages(patient.id);
 
     // Initialize report fields
     const pName = patient.patientName || (patient as any).name || 'Paciente';
@@ -235,7 +247,7 @@ export function PsychologistDashboardScreen() {
       const saved = localStorage.getItem(savedKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.purpose) setReportPurpose(parsed.purpose);
+        if (parsed.purpose) setReportPurpose(parsed.purpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
         if (parsed.demandDescription) setReportDemand(parsed.demandDescription);
         if (parsed.technicalProcedures) setReportProcedures(parsed.technicalProcedures);
         if (parsed.clinicalAnalysis) setReportAnalysis(parsed.clinicalAnalysis);
@@ -271,7 +283,8 @@ export function PsychologistDashboardScreen() {
     try {
       await addMessage({
         text,
-        sender: 'doctor' // Sender role for clinician
+        sender: 'doctor', // Sender role for clinician
+        professionalRole: 'psychologist'
       }, currentPatient.id);
       
       if (!textToSend) setInputText('');
@@ -386,6 +399,7 @@ export function PsychologistDashboardScreen() {
 
         await addMessage({
           sender: 'doctor',
+          professionalRole: 'psychologist',
           type: 'psychological_report',
           docType: 'laudo_psicologico',
           text: `📄 Laudo Psicológico Oficial emitido por Marco Antônio Boastik (CRP 08/49215) para ${reportPatientName}. Diagnóstico: ${reportDiagnosticHypothesis}`,
@@ -454,11 +468,16 @@ export function PsychologistDashboardScreen() {
           ? `📋 Convite Clínico: O psicólogo Marco Antônio solicitou o preenchimento da Escala ASRS-18 (12 Perguntas) para mapeamento de TDAH.`
           : `🧠 Laudo do Teste de TDAH (ASRS-18 — 12 Domínios Neurais):\n• Correspondência: ${adhdData.scorePercent}%\n• Classificação: ${adhdData.classification}\n• Pontuação: ${adhdData.totalPoints}/${adhdData.maxPoints || 36} pontos.`,
         sender: 'doctor',
+        professionalRole: 'psychologist',
         type: 'adhd_test_card',
-        adhdTestData: isInvite ? undefined : adhdData,
+        adhdTestData: isInvite ? { isInvite: true, invitedAt: new Date().toISOString() } : adhdData,
       };
       await addMessage(msgPayload, currentPatient.id);
-      showToast('✓ Resultado do Teste de TDAH anexado ao chat!');
+      showToast(
+        isInvite
+          ? '✓ Convite da Avaliação de TDAH enviado ao chat do paciente!'
+          : '✓ Resultado do Teste de TDAH anexado ao chat!'
+      );
     } catch (e) {
       console.error('Erro ao enviar card de TDAH:', e);
       showToast('Erro ao anexar teste no chat.');
@@ -474,11 +493,16 @@ export function PsychologistDashboardScreen() {
           ? `📋 Convite Clínico: O psicólogo Marco Antônio solicitou o preenchimento do Mapeamento Neurocomportamental para Autismo / TEA (12 Perguntas).`
           : `🧩 Mapeamento de Autismo (TEA — 12 Perguntas):\n• Correspondência: ${autismData.scorePercent}%\n• Perfil: ${autismData.targetProfile || 'Adulto'}\n• Classificação: ${autismData.classification}\n• Pontuação: ${autismData.totalPoints}/${autismData.maxPoints || 36} pontos.`,
         sender: 'doctor',
+        professionalRole: 'psychologist',
         type: 'autism_test_card',
-        autismTestData: isInvite ? undefined : autismData,
+        autismTestData: isInvite ? { isInvite: true, invitedAt: new Date().toISOString() } : autismData,
       };
       await addMessage(msgPayload, currentPatient.id);
-      showToast('✓ Resultado do Teste de Autismo anexado ao chat!');
+      showToast(
+        isInvite
+          ? '✓ Convite do Mapeamento de Autismo enviado ao chat do paciente!'
+          : '✓ Resultado do Teste de Autismo anexado ao chat!'
+      );
     } catch (e) {
       console.error('Erro ao enviar card de Autismo:', e);
       showToast('Erro ao anexar teste no chat.');
@@ -509,16 +533,55 @@ export function PsychologistDashboardScreen() {
     try {
       await setDoc(doc(db, 'queue', currentPatient.id), { answers: updatedAnswers }, { merge: true });
       await setDoc(doc(db, 'users', currentPatient.id), { answers: updatedAnswers }, { merge: true });
-      fetch('/api/queue/force-join', {
+      fetch('/api/queue/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedPatient),
+        body: JSON.stringify({ patientId: currentPatient.id, answers: updatedAnswers }),
       }).catch(() => {});
     } catch (e) {
       console.warn('Could not persist test to firestore:', e);
     }
     showToast(`✓ Avaliação de ${testType === 'adhd' ? 'TDAH' : 'Autismo'} salva com sucesso no prontuário!`);
   };
+
+  // Real-time sync when patient finishes TDAH or Autism test in ChatScreen
+  useEffect(() => {
+    if (!currentPatient?.id) return;
+    const qPatient = queue.find((p) => p.id === currentPatient.id);
+    let latestMsgAdhd: any = null;
+    let latestMsgAutism: any = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!latestMsgAdhd && m?.type === 'adhd_test_card' && m?.adhdTestData?.scorePercent !== undefined) {
+        latestMsgAdhd = m.adhdTestData;
+      }
+      if (!latestMsgAutism && m?.type === 'autism_test_card' && m?.autismTestData?.scorePercent !== undefined) {
+        latestMsgAutism = m.autismTestData;
+      }
+    }
+
+    const nextAdhd = latestMsgAdhd || qPatient?.answers?.adhdTestResult || currentPatient?.answers?.adhdTestResult;
+    const nextAutism = latestMsgAutism || qPatient?.answers?.autismTestResult || currentPatient?.answers?.autismTestResult;
+
+    const prevAdhdAt = currentPatient?.answers?.adhdTestResult?.completedAt;
+    const prevAutismAt = currentPatient?.answers?.autismTestResult?.completedAt;
+    const prevAdhdPct = currentPatient?.answers?.adhdTestResult?.scorePercent;
+    const prevAutismPct = currentPatient?.answers?.autismTestResult?.scorePercent;
+
+    const adhdChanged = nextAdhd && (nextAdhd.completedAt !== prevAdhdAt || nextAdhd.scorePercent !== prevAdhdPct);
+    const autismChanged = nextAutism && (nextAutism.completedAt !== prevAutismAt || nextAutism.scorePercent !== prevAutismPct);
+
+    if (adhdChanged || autismChanged) {
+      const mergedAnswers = {
+        ...(currentPatient.answers || {}),
+        ...(qPatient?.answers || {}),
+        ...(nextAdhd ? { adhdTestResult: nextAdhd } : {}),
+        ...(nextAutism ? { autismTestResult: nextAutism } : {}),
+      };
+      setCurrentPatient((prev: any) => (prev ? { ...prev, answers: mergedAnswers } : prev));
+      setShowNeuroTestsBanner(true);
+    }
+  }, [queue, messages, currentPatient?.id]);
 
   // Audio recording handlers
   const startRecordingAudio = async () => {
@@ -540,6 +603,7 @@ export function PsychologistDashboardScreen() {
           if (currentPatient) {
             await addMessage({
               sender: 'doctor',
+              professionalRole: 'psychologist',
               text: '🎤 Mensagem de voz do Psicólogo Marco Antônio Boastik',
               attachment: {
                 name: 'audio_psicologo.webm',
@@ -740,7 +804,7 @@ export function PsychologistDashboardScreen() {
               </p>
             </div>
           ) : (
-            psychologistQueue.map((patient) => {
+            psychologistQueue.map((patient, pIdx) => {
               const isSelected = currentPatient?.id === patient.id;
               const isWaiting = patient.status === 'waiting';
               const isInConsultation = patient.status === 'in-consultation';
@@ -769,7 +833,7 @@ export function PsychologistDashboardScreen() {
 
               return (
                 <div
-                  key={patient.id}
+                  key={`${patient.id || 'psico-patient'}-${pIdx}`}
                   onClick={() => handleSelectPatient(patient)}
                   className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
                     isSelected
@@ -1158,7 +1222,7 @@ export function PsychologistDashboardScreen() {
 
                 return (
                   <div
-                    key={msg.id || idx}
+                    key={`${msg.id || 'psico-msg'}-${idx}`}
                     className={`flex flex-col ${isFromPsychologist ? 'items-end' : 'items-start'}`}
                   >
                     {msg.type === 'adhd_test_card' ? (
@@ -1170,7 +1234,11 @@ export function PsychologistDashboardScreen() {
                             </div>
                             <div>
                               <h4 className="text-xs font-black text-white uppercase tracking-wider">
-                                Laudo de Rastreio TDAH
+                                {msg.adhdTestData?.scorePercent !== undefined
+                                  ? msg.sender === 'user'
+                                    ? '✓ Avaliação TDAH Respondida'
+                                    : 'Laudo de Rastreio TDAH'
+                                  : 'Convite TDAH Enviado'}
                               </h4>
                               <span className="text-[10px] text-sky-300">Escala ASRS-18 • 12 Domínios</span>
                             </div>
@@ -1181,19 +1249,53 @@ export function PsychologistDashboardScreen() {
                             </span>
                           )}
                         </div>
-                        <div className="space-y-1.5 text-xs text-mecura-silver">
-                          <div className="text-white font-bold text-xs">
-                            {msg.adhdTestData?.classification || 'Avaliação Computada'}
-                          </div>
-                          {msg.adhdTestData?.totalPoints !== undefined && (
-                            <div className="text-[11px] text-sky-200">
-                              Pontuação: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                        {msg.adhdTestData?.scorePercent !== undefined ? (
+                          <div className="space-y-2 text-xs text-mecura-silver">
+                            <div className="text-white font-bold text-xs">
+                              {msg.adhdTestData.classification || 'Avaliação Computada'}
                             </div>
-                          )}
-                          <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-mecura-pearl leading-relaxed">
-                            🎯 <strong>Diretriz Clínica:</strong> Modulação dopaminérgica e noradrenérgica no Córtex Pré-Frontal. Protocolo sugerido: CBD + CBG (Foco Diurno) com acompanhamento psicológico integrado.
+                            {msg.adhdTestData.totalPoints !== undefined && (
+                              <div className="text-[11px] text-sky-200">
+                                Pontuação: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                              </div>
+                            )}
+                            <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-mecura-pearl leading-relaxed">
+                              🎯 <strong>Diretriz Clínica:</strong> Modulação dopaminérgica e noradrenérgica no Córtex Pré-Frontal. Protocolo sugerido: CBD + CBG (Foco Diurno) com acompanhamento psicológico integrado.
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowNeuroTestsBanner(true)}
+                              className="px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-sky-300" />
+                              <span>Ver Painel Completo e 12 Respostas</span>
+                            </button>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="space-y-1.5 text-xs text-mecura-silver">
+                            <p className="text-[11px] text-mecura-pearl leading-relaxed">
+                              {msg.text || 'Convite enviado para o paciente responder às 12 perguntas da escala TDAH no chat.'}
+                            </p>
+                            {currentPatient?.answers?.adhdTestResult?.scorePercent !== undefined ? (
+                              <div className="p-2 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon text-[11px] font-bold flex items-center justify-between">
+                                <span>
+                                  ✓ Concluído pelo paciente ({currentPatient.answers.adhdTestResult.scorePercent}%)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNeuroTestsBanner(true)}
+                                  className="underline text-white ml-2 cursor-pointer"
+                                >
+                                  Ver Resultado
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="block text-[10px] text-sky-300/80">
+                                ⏳ Aguardando o paciente finalizar a avaliação no chat...
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <span className="block text-[9px] text-right text-sky-300/70 pt-1">
                           {msg.timestamp instanceof Date 
                             ? msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -1209,7 +1311,11 @@ export function PsychologistDashboardScreen() {
                             </div>
                             <div>
                               <h4 className="text-xs font-black text-white uppercase tracking-wider">
-                                Mapeamento TEA (Autismo)
+                                {msg.autismTestData?.scorePercent !== undefined
+                                  ? msg.sender === 'user'
+                                    ? '✓ Mapeamento TEA Respondido'
+                                    : 'Mapeamento TEA (Autismo)'
+                                  : 'Convite TEA Enviado'}
                               </h4>
                               <span className="text-[10px] text-purple-300">
                                 Perfil: {msg.autismTestData?.targetProfile || 'Adulto'} • 12 Perguntas
@@ -1222,19 +1328,53 @@ export function PsychologistDashboardScreen() {
                             </span>
                           )}
                         </div>
-                        <div className="space-y-1.5 text-xs text-mecura-silver">
-                          <div className="text-white font-bold text-xs">
-                            {msg.autismTestData?.classification || 'Mapeamento Computado'}
-                          </div>
-                          {msg.autismTestData?.totalPoints !== undefined && (
-                            <div className="text-[11px] text-purple-200">
-                              Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                        {msg.autismTestData?.scorePercent !== undefined ? (
+                          <div className="space-y-2 text-xs text-mecura-silver">
+                            <div className="text-white font-bold text-xs">
+                              {msg.autismTestData.classification || 'Mapeamento Computado'}
                             </div>
-                          )}
-                          <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-mecura-pearl leading-relaxed">
-                            🧩 <strong>Diretriz Clínica:</strong> Regulação da homeostase do tônus de Anandamida e equilíbrio excitatório/inibitório GABA-Glutamato. Protocolo sugerido: Full Spectrum com acompanhamento biopsicossocial.
+                            {msg.autismTestData.totalPoints !== undefined && (
+                              <div className="text-[11px] text-purple-200">
+                                Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                              </div>
+                            )}
+                            <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-[11px] text-mecura-pearl leading-relaxed">
+                              🧩 <strong>Diretriz Clínica:</strong> Regulação da homeostase do tônus de Anandamida e equilíbrio excitatório/inibitório GABA-Glutamato. Protocolo sugerido: Full Spectrum com acompanhamento biopsicossocial.
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowNeuroTestsBanner(true)}
+                              className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-purple-200 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-purple-300" />
+                              <span>Ver Painel Completo e 12 Respostas</span>
+                            </button>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="space-y-1.5 text-xs text-mecura-silver">
+                            <p className="text-[11px] text-mecura-pearl leading-relaxed">
+                              {msg.text || 'Convite enviado para o paciente responder às 12 perguntas do Mapeamento TEA no chat.'}
+                            </p>
+                            {currentPatient?.answers?.autismTestResult?.scorePercent !== undefined ? (
+                              <div className="p-2 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon text-[11px] font-bold flex items-center justify-between">
+                                <span>
+                                  ✓ Concluído pelo paciente ({currentPatient.answers.autismTestResult.scorePercent}%)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNeuroTestsBanner(true)}
+                                  className="underline text-white ml-2 cursor-pointer"
+                                >
+                                  Ver Resultado
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="block text-[10px] text-purple-300/80">
+                                ⏳ Aguardando o paciente finalizar o mapeamento no chat...
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <span className="block text-[9px] text-right text-purple-300/70 pt-1">
                           {msg.timestamp instanceof Date 
                             ? msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })

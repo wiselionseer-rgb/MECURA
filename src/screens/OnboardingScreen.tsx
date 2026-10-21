@@ -199,7 +199,89 @@ const STEPS = [
     const [authError, setAuthError] = useState('');
     const [showForgotPassword, setShowForgotPassword] = useState(false);
     const [showExistingAccountPrompt, setShowExistingAccountPrompt] = useState(false);
+    const [hasOpenQueueConsultation, setHasOpenQueueConsultation] = useState(false);
+    const [isDoctorCallingNow, setIsDoctorCallingNow] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+
+    // Helper to check if patient currently has an open/active consultation in queue (not yet finished)
+    const checkPatientOpenQueueStatus = async (uid: string, userData: any) => {
+      let queueData: any = null;
+      try {
+        const qDoc = await getDoc(doc(db, 'queue', uid));
+        if (qDoc.exists()) {
+          queueData = qDoc.data();
+        }
+      } catch (e) {
+        console.warn('[ONBOARDING] Could not read queue doc:', e);
+      }
+
+      let storeQueueItem = useStore.getState().queue.find(
+        (p: any) =>
+          p.id === uid ||
+          (userData?.email && p.email && p.email.toLowerCase().trim() === userData.email.toLowerCase().trim())
+      );
+
+      if (!storeQueueItem) {
+        try {
+          const res = await fetch('/api/queue');
+          if (res.ok) {
+            const serverQueue = await res.json();
+            if (Array.isArray(serverQueue)) {
+              storeQueueItem = serverQueue.find(
+                (p: any) =>
+                  p.id === uid ||
+                  (userData?.email && p.email && p.email.toLowerCase().trim() === userData.email.toLowerCase().trim())
+              );
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      const qStatus = queueData?.status || storeQueueItem?.status;
+      const isQueueWaitingOrActive = qStatus === 'waiting' || qStatus === 'in-consultation';
+      const isExplicitlyFinished =
+        qStatus === 'finished' ||
+        (!isQueueWaitingOrActive &&
+          (userData?.consultationStatus === 'finished' || userData?.isConsultationFinished === true));
+
+      const isAwaitingOrNotStarted =
+        !isQueueWaitingOrActive &&
+        (userData?.consultationStatus === 'awaiting_payment' || userData?.consultationStatus === 'not_started');
+
+      const hasPaidInDoc =
+        userData?.pagamento_consulta === true ||
+        userData?.hasPaid === true ||
+        userData?.isPaid === true ||
+        userData?.bypassedPayment === true ||
+        queueData?.pagamento_consulta === true ||
+        (storeQueueItem as any)?.pagamento_consulta === true;
+
+      const isOpen =
+        isQueueWaitingOrActive ||
+        (!isExplicitlyFinished &&
+          !isAwaitingOrNotStarted &&
+          (userData?.inQueue === true ||
+            userData?.consultationStatus === 'waiting' ||
+            userData?.consultationStatus === 'in-consultation' ||
+            userData?.consultationActive === true ||
+            userData?.doctorActive === true ||
+            hasPaidInDoc));
+
+      const isCalling =
+        isOpen &&
+        (qStatus === 'in-consultation' ||
+          userData?.consultationStatus === 'in-consultation' ||
+          userData?.consultationActive === true ||
+          userData?.doctorActive === true);
+
+      return {
+        isOpen,
+        isCalling,
+        queueData: queueData || storeQueueItem || null
+      };
+    };
   
     const progress = ((currentStep + 1) / STEPS.length) * 100;
     const step = STEPS[currentStep];
@@ -211,47 +293,73 @@ const STEPS = [
     }, [currentStep]);
     
     useEffect(() => {
-      // Se já estiver logado (ou store tiver dados), pré-preenche dados e avança para etapa de triagem
+      // Se já estiver logado (e não tiver deslogado manualmente), verifica conta e status da fila
       const unsubscribe = auth.onAuthStateChanged(async (user) => {
+        if (typeof window !== 'undefined' && localStorage.getItem('mecura_logged_out') === 'true') {
+          return;
+        }
         if (user && currentStep === 0) {
           try {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
-            if (userDoc.exists()) {
-              const data = userDoc.data();
-              if (data.name && !userName) setUserName(data.name);
-              if (data.email && !userEmail) setUserEmail(data.email);
-              if (data.phone && !userPhone) setUserPhone(data.phone);
-              if (data.cpf && !userCpf) setUserCpf(data.cpf);
-              if (data.birthDate && !userBirthDate) setUserBirthDate(data.birthDate);
-              if (data.answers) {
-                Object.entries(data.answers).forEach(([key, value]) => {
-                  setAnswer(key, value);
-                });
-                if (data.answers.birthDate && !data.birthDate) setUserBirthDate(data.answers.birthDate);
-                if (data.answers.cpf && !data.cpf) setUserCpf(data.answers.cpf);
-                if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
-              }
+            const data = userDoc.exists() ? userDoc.data() : {};
+            const { isOpen, isCalling, queueData } = await checkPatientOpenQueueStatus(user.uid, data);
 
-              // Restore payment state only if user has an active, unfinished paid consultation
-              const isAwaitingOrFinished = (
-                data.consultationStatus === 'awaiting_payment' ||
-                data.consultationStatus === 'not_started' ||
-                data.consultationStatus === 'finished' ||
-                data.isConsultationFinished === true
-              );
-              if (!isAwaitingOrFinished && (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true)) {
-                setPagamentoConsulta(true);
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
-              } else {
-                setPagamentoConsulta(false);
-                if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
+            const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
+            if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente' && !userName) {
+              setUserName(resolvedName.trim());
+            }
+            if ((data.email || queueData?.email) && !userEmail) setUserEmail(data.email || queueData?.email);
+            if ((data.phone || queueData?.phone) && !userPhone) setUserPhone(data.phone || queueData?.phone);
+            if ((data.cpf || queueData?.cpf) && !userCpf) setUserCpf(data.cpf || queueData?.cpf);
+            if ((data.birthDate || queueData?.birthDate) && !userBirthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
+            const mergedAnswers = { ...(queueData?.answers || {}), ...(data.answers || {}) };
+            if (Object.keys(mergedAnswers).length > 0) {
+              Object.entries(mergedAnswers).forEach(([key, value]) => {
+                setAnswer(key, value);
+              });
+              if (mergedAnswers.birthDate && !data.birthDate) setUserBirthDate(mergedAnswers.birthDate);
+              if (mergedAnswers.cpf && !data.cpf) setUserCpf(mergedAnswers.cpf);
+              if (mergedAnswers.phone && !data.phone) setUserPhone(mergedAnswers.phone);
+            }
+
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_patientId', user.uid);
+            }
+            useStore.setState({ patientId: user.uid });
+
+            if (isOpen) {
+              setPagamentoConsulta(true);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_pagamento', 'true');
+                localStorage.removeItem('mecura_consultation_finished');
               }
-              if (!isAwaitingOrFinished && (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium' || data.plan === 'complete')) {
-                setPagamentoPremium(true);
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
-              } else {
-                setPagamentoPremium(false);
-                if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
+              const isPrem = !!(data.pagamento_premium || data.isPremium || data.plan === 'premium' || data.plan === 'complete' || queueData?.isPremium || queueData?.plan === 'premium');
+              setPagamentoPremium(isPrem);
+              if (typeof window !== 'undefined') {
+                if (isPrem) localStorage.setItem('mecura_premium', 'true');
+                else localStorage.removeItem('mecura_premium');
+              }
+              useStore.setState({
+                inQueue: !isCalling,
+                consultationActive: isCalling,
+                isConsultationFinished: false,
+                pagamento_consulta: true,
+                pagamento_premium: isPrem,
+                activeConsultationId: user.uid
+              });
+              setHasCompletedOnboarding(true);
+              setHasOpenQueueConsultation(true);
+              setIsDoctorCallingNow(isCalling);
+              setShowExistingAccountPrompt(true);
+              return;
+            } else {
+              setHasOpenQueueConsultation(false);
+              setIsDoctorCallingNow(false);
+              setPagamentoConsulta(false);
+              setPagamentoPremium(false);
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('mecura_pagamento');
+                localStorage.removeItem('mecura_premium');
               }
             }
           } catch (err) {
@@ -262,7 +370,7 @@ const STEPS = [
         }
       });
       return () => unsubscribe();
-    }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium]);
+    }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium, setHasCompletedOnboarding]);
 
   const handleNext = async () => {
       if (step.id === 'auth') {
@@ -273,8 +381,84 @@ const STEPS = [
         setIsLoading(true);
         setAuthError('');
         try {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('mecura_logged_out');
+          }
+          const trimmedEmail = userEmail.trim();
+
+          const handleExistingUserLogin = async (resolvedUid: string, resolvedUserData: any) => {
+            const data = resolvedUserData || {};
+            const { isOpen, isCalling, queueData } = await checkPatientOpenQueueStatus(resolvedUid, data);
+
+            const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
+            if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente') {
+              setUserName(resolvedName.trim());
+              if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', resolvedName.trim());
+            }
+            if (data.phone || queueData?.phone) setUserPhone(data.phone || queueData?.phone);
+            if (data.cpf || queueData?.cpf) setUserCpf(data.cpf || queueData?.cpf);
+            if (data.birthDate || queueData?.birthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
+            const mergedAnswers = { ...(queueData?.answers || {}), ...(data.answers || {}) };
+            if (Object.keys(mergedAnswers).length > 0) {
+              Object.entries(mergedAnswers).forEach(([key, value]) => {
+                setAnswer(key, value);
+              });
+              if (mergedAnswers.birthDate && !data.birthDate) setUserBirthDate(mergedAnswers.birthDate);
+              if (mergedAnswers.cpf && !data.cpf) setUserCpf(mergedAnswers.cpf);
+              if (mergedAnswers.phone && !data.phone) setUserPhone(mergedAnswers.phone);
+            }
+
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_patientId', resolvedUid);
+            }
+            useStore.setState({ patientId: resolvedUid });
+
+            if (isOpen) {
+              setPagamentoConsulta(true);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_pagamento', 'true');
+                localStorage.removeItem('mecura_consultation_finished');
+              }
+              const isPrem = !!(data.pagamento_premium || data.isPremium || data.plan === 'premium' || data.plan === 'complete' || queueData?.isPremium || queueData?.plan === 'premium');
+              setPagamentoPremium(isPrem);
+              if (typeof window !== 'undefined') {
+                if (isPrem) localStorage.setItem('mecura_premium', 'true');
+                else localStorage.removeItem('mecura_premium');
+              }
+              useStore.setState({
+                inQueue: !isCalling,
+                consultationActive: isCalling,
+                isConsultationFinished: false,
+                pagamento_consulta: true,
+                pagamento_premium: isPrem,
+                activeConsultationId: resolvedUid
+              });
+              setHasCompletedOnboarding(true);
+              setHasOpenQueueConsultation(true);
+              setIsDoctorCallingNow(isCalling);
+              setShowExistingAccountPrompt(true);
+              setIsLoading(false);
+              return true;
+            } else {
+              setHasOpenQueueConsultation(false);
+              setIsDoctorCallingNow(false);
+              setPagamentoConsulta(false);
+              setPagamentoPremium(false);
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('mecura_pagamento');
+                localStorage.removeItem('mecura_premium');
+              }
+              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid || data.isConsultationFinished || data.consultationStatus === 'finished' || data.hadPreviousConsultation || queueData) {
+                setHasCompletedOnboarding(true);
+                setShowExistingAccountPrompt(true);
+                setIsLoading(false);
+                return true;
+              }
+            }
+            return false;
+          };
+
           if (isLogin) {
-            const trimmedEmail = userEmail.trim();
             let resolvedUid: string | null = null;
             let resolvedUserData: any = null;
 
@@ -284,6 +468,8 @@ const STEPS = [
               const uDoc = await getDoc(doc(db, 'users', resolvedUid));
               if (uDoc.exists()) {
                 resolvedUserData = uDoc.data();
+              } else {
+                resolvedUserData = { email: trimmedEmail };
               }
             } catch (authErr: any) {
               // Fallback: If Firebase Auth password fails, verify if patient reset password via CPF in Firestore
@@ -306,91 +492,72 @@ const STEPS = [
               }
             }
 
-            if (resolvedUid && resolvedUserData) {
-              const data = resolvedUserData;
-              if (data.name && typeof data.name === 'string' && data.name.trim().toLowerCase() !== 'paciente') {
-                setUserName(data.name.trim());
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', data.name.trim());
-              }
-              if (data.phone) setUserPhone(data.phone);
-              if (data.cpf) setUserCpf(data.cpf);
-              if (data.birthDate) setUserBirthDate(data.birthDate);
-              if (data.answers) {
-                Object.entries(data.answers).forEach(([key, value]) => {
-                  setAnswer(key, value);
-                });
-                if (data.answers.birthDate && !data.birthDate) setUserBirthDate(data.answers.birthDate);
-                if (data.answers.cpf && !data.cpf) setUserCpf(data.answers.cpf);
-                if (data.answers.phone && !data.phone) setUserPhone(data.answers.phone);
-              }
-
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('mecura_patientId', resolvedUid);
-              }
-              useStore.setState({ patientId: resolvedUid });
-
-              // Restore payment state only if consultation is active/waiting (not finished or awaiting new payment)
-              const isAwaitingOrFinished = (
-                data.consultationStatus === 'awaiting_payment' ||
-                data.consultationStatus === 'not_started' ||
-                data.consultationStatus === 'finished' ||
-                data.isConsultationFinished === true
-              );
-              if (!isAwaitingOrFinished && (data.pagamento_consulta === true || data.hasPaid === true || data.isPaid === true)) {
-                setPagamentoConsulta(true);
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
-              } else {
-                setPagamentoConsulta(false);
-                if (typeof window !== 'undefined') localStorage.removeItem('mecura_pagamento');
-              }
-              if (!isAwaitingOrFinished && (data.pagamento_premium === true || data.isPremium === true || data.plan === 'premium' || data.plan === 'complete')) {
-                setPagamentoPremium(true);
-                if (typeof window !== 'undefined') localStorage.setItem('mecura_premium', 'true');
-              } else {
-                setPagamentoPremium(false);
-                if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
-              }
-              
-              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid || data.isConsultationFinished || data.consultationStatus === 'finished') {
-                setHasCompletedOnboarding(true);
-                setShowExistingAccountPrompt(true);
-                setIsLoading(false);
-                return;
-              }
+            if (resolvedUid) {
+              const handled = await handleExistingUserLogin(resolvedUid, resolvedUserData);
+              if (handled) return;
             }
           } else {
-            const trimmedEmail = userEmail.trim();
-            const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
             try {
-              await setDoc(doc(db, 'users', userCredential.user.uid), {
-                email: trimmedEmail,
-                password: password,
-                hasCompletedOnboarding: false,
-                pagamento_consulta: false,
-                pagamento_premium: false,
-                hasPaid: false,
-                isPaid: false,
-                inQueue: false,
-                consultationStatus: 'not_started',
-                createdAt: new Date().toISOString(),
-                tier: 'basic'
-              }, { merge: true });
+              const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+              try {
+                await setDoc(doc(db, 'users', userCredential.user.uid), {
+                  email: trimmedEmail,
+                  password: password,
+                  hasCompletedOnboarding: false,
+                  pagamento_consulta: false,
+                  pagamento_premium: false,
+                  hasPaid: false,
+                  isPaid: false,
+                  inQueue: false,
+                  consultationStatus: 'not_started',
+                  createdAt: new Date().toISOString(),
+                  tier: 'basic'
+                }, { merge: true });
 
-              // Reset any stale payment state from localStorage/store
-              setPagamentoConsulta(false);
-              setPagamentoPremium(false);
-              useStore.setState({ inQueue: false, consultationActive: false, isConsultationFinished: false });
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('mecura_patientId', userCredential.user.uid);
-                localStorage.removeItem('mecura_pagamento');
-                localStorage.removeItem('mecura_premium');
-                localStorage.removeItem('mecura_consultation_active');
-                localStorage.removeItem('mecura_queue_display_pos');
-                localStorage.removeItem('mecura_queue_entered_at');
-                localStorage.removeItem('mecura_queue_notified_10m');
+                // Reset any stale payment state from localStorage/store
+                setPagamentoConsulta(false);
+                setPagamentoPremium(false);
+                useStore.setState({ inQueue: false, consultationActive: false, isConsultationFinished: false });
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_patientId', userCredential.user.uid);
+                  localStorage.removeItem('mecura_pagamento');
+                  localStorage.removeItem('mecura_premium');
+                  localStorage.removeItem('mecura_consultation_active');
+                  localStorage.removeItem('mecura_queue_display_pos');
+                  localStorage.removeItem('mecura_queue_entered_at');
+                  localStorage.removeItem('mecura_queue_notified_10m');
+                }
+              } catch (e) {
+                console.error("Error creating early user data", e);
               }
-            } catch (e) {
-              console.error("Error creating early user data", e);
+            } catch (createErr: any) {
+              // Se o e-mail já existir e o paciente digitou sua senha na aba Criar Conta, autentica e localiza a conta automaticamente
+              if (createErr.code === 'auth/email-already-in-use') {
+                let resolvedUid: string | null = null;
+                let resolvedUserData: any = null;
+                try {
+                  const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+                  resolvedUid = userCredential.user.uid;
+                  const uDoc = await getDoc(doc(db, 'users', resolvedUid));
+                  resolvedUserData = uDoc.exists() ? uDoc.data() : { email: trimmedEmail };
+                } catch {
+                  const usersRef = collection(db, 'users');
+                  const qSnap = await getDocs(query(usersRef, where('email', '==', trimmedEmail)));
+                  const matchedDoc = qSnap.docs.find(d => d.data().password === password);
+                  if (matchedDoc) {
+                    resolvedUid = matchedDoc.id;
+                    resolvedUserData = matchedDoc.data();
+                  } else {
+                    throw createErr;
+                  }
+                }
+                if (resolvedUid) {
+                  const handled = await handleExistingUserLogin(resolvedUid, resolvedUserData);
+                  if (handled) return;
+                }
+              } else {
+                throw createErr;
+              }
             }
           }
           setCurrentStep(1);
@@ -414,6 +581,42 @@ const STEPS = [
           setIsLoading(false);
         }
         return;
+      }
+
+      if (step.id === 'name') {
+        const cleanCpf = (userCpf || '').replace(/\D/g, '');
+        if (cleanCpf.length === 11) {
+          const activeByCpf = useStore.getState().queue.find(
+            (p: any) =>
+              (p.status === 'waiting' || p.status === 'in-consultation') &&
+              (p.cpf || p.answers?.cpf || '').replace(/\D/g, '') === cleanCpf
+          );
+          if (activeByCpf) {
+            const isCalling = activeByCpf.status === 'in-consultation';
+            if (activeByCpf.patientName && activeByCpf.patientName.toLowerCase() !== 'paciente') {
+              setUserName(activeByCpf.patientName);
+            }
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_patientId', activeByCpf.id);
+              localStorage.setItem('mecura_pagamento', 'true');
+              localStorage.removeItem('mecura_consultation_finished');
+            }
+            setPagamentoConsulta(true);
+            useStore.setState({
+              patientId: activeByCpf.id,
+              activeConsultationId: activeByCpf.id,
+              pagamento_consulta: true,
+              inQueue: !isCalling,
+              consultationActive: isCalling,
+              isConsultationFinished: false
+            });
+            setHasCompletedOnboarding(true);
+            setHasOpenQueueConsultation(true);
+            setIsDoctorCallingNow(isCalling);
+            setShowExistingAccountPrompt(true);
+            return;
+          }
+        }
       }
 
       if (currentStep < STEPS.length - 1) {
@@ -1532,7 +1735,7 @@ const STEPS = [
 
       <AnimatePresence>
         {showExistingAccountPrompt && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div key="existing-account-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1543,49 +1746,94 @@ const STEPS = [
                 <CheckCircle className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold text-white mb-2">Conta Localizada!</h3>
-              <p className="text-mecura-silver text-sm mb-6 leading-relaxed">
-                Olá, <strong className="text-white">{userName || 'Paciente'}</strong>! Você já possui cadastro ativo na plataforma. Deseja realizar uma nova triagem/consulta ou acessar seu painel?
-              </p>
-              <div className="flex flex-col gap-3">
-                <Button 
-                  className="w-full shadow-lg shadow-mecura-neon/20 font-bold"
-                  onClick={() => {
-                    useStore.getState().clearTriage();
-                    setShowExistingAccountPrompt(false);
-                    setCurrentStep(1);
-                    setOnboardingStep(1);
-                  }}
-                >
-                  Continuar Nova Triagem
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="w-full border-mecura-elevated text-mecura-silver hover:text-white"
-                  onClick={() => {
-                    setShowExistingAccountPrompt(false);
-                    navigate('/dashboard');
-                  }}
-                >
-                  Ir para Meu Painel
-                </Button>
-              </div>
+              {hasOpenQueueConsultation ? (
+                <>
+                  <p className="text-mecura-silver text-sm mb-6 leading-relaxed">
+                    Olá, <strong className="text-white">{userName || 'Paciente'}</strong>! Identificamos que você já possui um atendimento pago em aberto na fila. Você só pode realizar uma nova triagem após finalizar o atendimento atual.
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <Button 
+                      className="w-full shadow-lg shadow-mecura-neon/20 font-bold"
+                      onClick={() => {
+                        setShowExistingAccountPrompt(false);
+                        const targetUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('mecura_pagamento', 'true');
+                          localStorage.removeItem('mecura_consultation_finished');
+                          localStorage.removeItem('mecura_logged_out');
+                        }
+                        setPagamentoConsulta(true);
+                        useStore.setState({
+                          pagamento_consulta: true,
+                          inQueue: !isDoctorCallingNow,
+                          consultationActive: isDoctorCallingNow,
+                          isConsultationFinished: false,
+                          ...(targetUid ? { patientId: targetUid, activeConsultationId: targetUid } : {})
+                        });
+                        navigate('/queue');
+                      }}
+                    >
+                      Voltar para a Fila
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="w-full border-mecura-elevated text-mecura-silver hover:text-white"
+                      onClick={() => {
+                        setShowExistingAccountPrompt(false);
+                        navigate('/dashboard');
+                      }}
+                    >
+                      Ir para Meu Painel
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-mecura-silver text-sm mb-6 leading-relaxed">
+                    Olá, <strong className="text-white">{userName || 'Paciente'}</strong>! Você já possui cadastro ativo na plataforma. Deseja realizar uma nova triagem/consulta ou acessar seu painel?
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <Button 
+                      className="w-full shadow-lg shadow-mecura-neon/20 font-bold"
+                      onClick={() => {
+                        useStore.getState().clearTriage();
+                        setShowExistingAccountPrompt(false);
+                        setCurrentStep(1);
+                        setOnboardingStep(1);
+                      }}
+                    >
+                      Continuar Nova Triagem
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="w-full border-mecura-elevated text-mecura-silver hover:text-white"
+                      onClick={() => {
+                        setShowExistingAccountPrompt(false);
+                        navigate('/dashboard');
+                      }}
+                    >
+                      Ir para Meu Painel
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </div>
         )}
-
-        <PasswordResetCpfModal
-          isOpen={showForgotPassword}
-          onClose={() => setShowForgotPassword(false)}
-          initialEmail={userEmail}
-          onPasswordResetSuccess={(email, newPass) => {
-            setIsLogin(true);
-            setUserEmail(email);
-            setPassword(newPass);
-            setAuthError('');
-            setShowForgotPassword(false);
-          }}
-        />
       </AnimatePresence>
+
+      <PasswordResetCpfModal
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+        initialEmail={userEmail}
+        onPasswordResetSuccess={(email, newPass) => {
+          setIsLogin(true);
+          setUserEmail(email);
+          setPassword(newPass);
+          setAuthError('');
+          setShowForgotPassword(false);
+        }}
+      />
 
       </div>
     </div>

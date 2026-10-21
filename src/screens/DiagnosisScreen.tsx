@@ -250,7 +250,7 @@ export function DiagnosisScreen() {
                       Disponível Agora
                     </p>
                     <p className="text-[11px] text-[#A1A1AA] mt-1.5 leading-relaxed">
-                      Psicólogo clínico e pericial. Avaliação de saúde mental, suporte emocional e emissão de laudo psicológico completo para tratamento e Habeas Corpus.
+                      Psicólogo clínico. Avaliação de saúde mental, suporte emocional e emissão de laudo psicológico completo para tratamento e Habeas Corpus.
                     </p>
                   </div>
                 </div>

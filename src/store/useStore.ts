@@ -33,6 +33,9 @@ export interface Message {
   id: string;
   text?: string;
   sender: 'user' | 'doctor';
+  professionalRole?: 'doctor' | 'psychologist';
+  isQueueTransfer?: boolean;
+  targetQueueType?: 'doctor' | 'psychologist';
   timestamp: Date;
   type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'psychological_report' | 'document' | 'adhd_test_card' | 'autism_test_card';
   docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
@@ -887,13 +890,16 @@ export const useStore = create<AppState>((set, get) => ({
       plan: existingPlan,
       selectedOffer: existingPlan,
       queueType: targetQueueType,
+      allowDualChat: true,
+      activeProfessionalChat: targetQueueType,
+      transferredAt: new Date().toISOString(),
       pagamento_consulta: true,
       hasPaid: true,
       isPaid: true,
       status: 'waiting',
       inQueue: true,
       consultationStatus: 'waiting',
-      consultationActive: false,
+      consultationActive: true,
       hasUnread: true,
       lastMessageText: lastMsg,
       lastMessageAt: new Date().toISOString()
@@ -931,6 +937,9 @@ export const useStore = create<AppState>((set, get) => ({
         email,
         answers,
         queueType: targetQueueType,
+        allowDualChat: true,
+        activeProfessionalChat: targetQueueType,
+        transferredAt: new Date().toISOString(),
         plan: existingPlan,
         selectedOffer: existingPlan,
         isPremium: isPrem,
@@ -938,7 +947,7 @@ export const useStore = create<AppState>((set, get) => ({
         hasPaid: true,
         isPaid: true,
         consultationStatus: 'waiting',
-        consultationActive: false,
+        consultationActive: true,
         inQueue: true,
         lastUpdated: new Date().toISOString()
       }, { merge: true });
@@ -963,7 +972,10 @@ export const useStore = create<AppState>((set, get) => ({
       await addMessage({
         text: `📋 ENCAMINHAMENTO DE FILA: Seu atendimento foi transferido para a fila do ${targetLabel}. Por favor, aguarde que o profissional de saúde irá te atender em breve.`,
         sender: 'doctor',
-        type: 'text'
+        type: 'text',
+        professionalRole: targetQueueType,
+        isQueueTransfer: true,
+        targetQueueType
       }, patientId);
     } catch (e) {
       console.warn("Error sending transfer message:", e);

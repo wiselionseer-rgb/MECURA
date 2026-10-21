@@ -17,6 +17,7 @@ import {
   ClipboardList,
   AlertCircle
 } from 'lucide-react';
+import { useStore } from '../../store/useStore';
 
 export const ADHD_QUESTIONS = [
   {
@@ -218,9 +219,43 @@ export function NeurodivergentTestsCard({
   role = 'doctor',
   compact = false,
 }: NeurodivergentTestsCardProps) {
-  const pAns = patient?.answers || fallbackAnswers || {};
-  const adhdRes = pAns?.adhdTestResult;
-  const autismRes = pAns?.autismTestResult;
+  const { queue, messages } = useStore();
+
+  const liveQueuePatient = useMemo(() => {
+    if (!patient?.id || !Array.isArray(queue)) return null;
+    return queue.find((p) => p.id === patient.id) || null;
+  }, [queue, patient?.id]);
+
+  const latestChatAdhdRes = useMemo(() => {
+    if (!Array.isArray(messages)) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.type === 'adhd_test_card' && m?.adhdTestData && m.adhdTestData.scorePercent !== undefined) {
+        return m.adhdTestData;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const latestChatAutismRes = useMemo(() => {
+    if (!Array.isArray(messages)) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.type === 'autism_test_card' && m?.autismTestData && m.autismTestData.scorePercent !== undefined) {
+        return m.autismTestData;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const pAns = {
+    ...(fallbackAnswers || {}),
+    ...(patient?.answers || {}),
+    ...(liveQueuePatient?.answers || {}),
+  };
+
+  const adhdRes = latestChatAdhdRes || liveQueuePatient?.answers?.adhdTestResult || pAns?.adhdTestResult;
+  const autismRes = latestChatAutismRes || liveQueuePatient?.answers?.autismTestResult || pAns?.autismTestResult;
 
   const [activeModal, setActiveModal] = useState<'details_adhd' | 'details_autism' | 'administer_adhd' | 'administer_autism' | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);

@@ -275,16 +275,17 @@ export function DoctorDashboardScreen() {
     exchangeRate, patientId, transferPatientQueue
   } = useStore();
 
-  // Filter patients that belong to the doctor queue (exclude psychologist queue)
+  // Filter patients that belong to the doctor queue (retain dual-chat patients so patient can talk to both professionals)
   const doctorQueue = useMemo(() => {
     return (queue || []).filter(p => {
       const qType = (p as any).queueType;
       const plan = (p as any).plan;
       const offer = (p as any).selectedOffer;
+      const allowDual = !!(p as any).allowDualChat || (p as any).lastMessageTarget === 'doctor';
 
-      // Exclude if explicitly assigned or transferred to psychologist
-      if (qType === 'psychologist') return false;
-      if (qType !== 'doctor' && (plan === 'psychologist' || offer === 'psychologist')) return false;
+      // Exclude ONLY if strictly psychologist-only and not dual-chat
+      if (!allowDual && qType === 'psychologist') return false;
+      if (!allowDual && qType !== 'doctor' && (plan === 'psychologist' || offer === 'psychologist')) return false;
 
       return true;
     });
@@ -3934,10 +3935,14 @@ export function DoctorDashboardScreen() {
           : `🧠 Laudo do Teste de TDAH (ASRS-18 — 12 Domínios Neurais):\n• Correspondência: ${adhdData.scorePercent}%\n• Classificação: ${adhdData.classification}\n• Pontuação: ${adhdData.totalPoints}/${adhdData.maxPoints || 36} pontos.`,
         sender: 'doctor',
         type: 'adhd_test_card',
-        adhdTestData: isInvite ? undefined : adhdData,
+        adhdTestData: isInvite ? { isInvite: true, invitedAt: new Date().toISOString() } : adhdData,
       };
       await addMessage(msgPayload, targetPatientId);
-      showActionToast('✓ Resultado do Teste de TDAH anexado ao chat da consulta!');
+      showActionToast(
+        isInvite
+          ? '✓ Convite da Avaliação de TDAH enviado ao chat do paciente!'
+          : '✓ Resultado do Teste de TDAH anexado ao chat da consulta!'
+      );
     } catch (e) {
       console.error('Erro ao enviar card de TDAH:', e);
       showActionToast('Erro ao anexar teste no chat.');
@@ -3958,10 +3963,14 @@ export function DoctorDashboardScreen() {
           : `🧩 Mapeamento de Autismo (TEA — 12 Perguntas):\n• Correspondência: ${autismData.scorePercent}%\n• Perfil: ${autismData.targetProfile || 'Adulto'}\n• Classificação: ${autismData.classification}\n• Pontuação: ${autismData.totalPoints}/${autismData.maxPoints || 36} pontos.`,
         sender: 'doctor',
         type: 'autism_test_card',
-        autismTestData: isInvite ? undefined : autismData,
+        autismTestData: isInvite ? { isInvite: true, invitedAt: new Date().toISOString() } : autismData,
       };
       await addMessage(msgPayload, targetPatientId);
-      showActionToast('✓ Resultado do Teste de Autismo anexado ao chat da consulta!');
+      showActionToast(
+        isInvite
+          ? '✓ Convite do Mapeamento de Autismo enviado ao chat do paciente!'
+          : '✓ Resultado do Teste de Autismo anexado ao chat da consulta!'
+      );
     } catch (e) {
       console.error('Erro ao enviar card de Autismo:', e);
       showActionToast('Erro ao anexar teste no chat.');
@@ -3992,16 +4001,55 @@ export function DoctorDashboardScreen() {
     try {
       await setDoc(doc(db, 'queue', targetPatient.id), { answers: updatedAnswers }, { merge: true });
       await setDoc(doc(db, 'users', targetPatient.id), { answers: updatedAnswers }, { merge: true });
-      fetch('/api/queue/force-join', {
+      fetch('/api/queue/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedPatient),
+        body: JSON.stringify({ patientId: targetPatient.id, answers: updatedAnswers }),
       }).catch(() => {});
     } catch (e) {
       console.warn('Could not persist test in doctor dashboard:', e);
     }
     showActionToast(`✓ Avaliação de ${testType === 'adhd' ? 'TDAH' : 'Autismo'} salva com sucesso!`);
   };
+
+  // Real-time sync when patient finishes TDAH or Autism test in ChatScreen
+  useEffect(() => {
+    if (!currentPatient?.id) return;
+    const qPatient = queue.find((p) => p.id === currentPatient.id);
+    let latestMsgAdhd: any = null;
+    let latestMsgAutism: any = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!latestMsgAdhd && m?.type === 'adhd_test_card' && m?.adhdTestData?.scorePercent !== undefined) {
+        latestMsgAdhd = m.adhdTestData;
+      }
+      if (!latestMsgAutism && m?.type === 'autism_test_card' && m?.autismTestData?.scorePercent !== undefined) {
+        latestMsgAutism = m.autismTestData;
+      }
+    }
+
+    const nextAdhd = latestMsgAdhd || qPatient?.answers?.adhdTestResult || currentPatient?.answers?.adhdTestResult;
+    const nextAutism = latestMsgAutism || qPatient?.answers?.autismTestResult || currentPatient?.answers?.autismTestResult;
+
+    const prevAdhdAt = currentPatient?.answers?.adhdTestResult?.completedAt;
+    const prevAutismAt = currentPatient?.answers?.autismTestResult?.completedAt;
+    const prevAdhdPct = currentPatient?.answers?.adhdTestResult?.scorePercent;
+    const prevAutismPct = currentPatient?.answers?.autismTestResult?.scorePercent;
+
+    const adhdChanged = nextAdhd && (nextAdhd.completedAt !== prevAdhdAt || nextAdhd.scorePercent !== prevAdhdPct);
+    const autismChanged = nextAutism && (nextAutism.completedAt !== prevAutismAt || nextAutism.scorePercent !== prevAutismPct);
+
+    if (adhdChanged || autismChanged) {
+      const mergedAnswers = {
+        ...(currentPatient.answers || {}),
+        ...(qPatient?.answers || {}),
+        ...(nextAdhd ? { adhdTestResult: nextAdhd } : {}),
+        ...(nextAutism ? { autismTestResult: nextAutism } : {}),
+      };
+      setCurrentPatient((prev: any) => (prev ? { ...prev, answers: mergedAnswers } : prev));
+      setShowNeuroTestsBanner(true);
+    }
+  }, [queue, messages, currentPatient?.id]);
 
   const handleGenerateAnalysis = async (
     force: boolean = false,
@@ -5172,10 +5220,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                     if (targetPatient) {
                       const pName = targetPatient.patientName || (targetPatient as any).name || 'Paciente';
                       await transferPatientQueue(targetPatient.id, 'psychologist');
-                      showActionToast(`✓ Paciente ${pName} encaminhado para a fila do Psicólogo!`);
-                      if (currentPatient?.id === targetPatient.id) {
-                        setCurrentPatient(null);
-                      }
+                      showActionToast(`✓ Paciente ${pName} encaminhado para a fila do Psicólogo! O chat permanece liberado para ambos os profissionais.`);
                     } else {
                       showActionToast('Nenhum paciente selecionado ou aguardando.');
                     }
@@ -6021,10 +6066,16 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                           </div>
                           <div>
                             <span className="text-[10px] text-sky-300 font-bold uppercase tracking-wider bg-sky-500/15 border border-sky-400/30 px-2 py-0.5 rounded-full inline-block mb-1">
-                              Avaliação ASRS-18 • 12 Domínios
+                              {msg.adhdTestData?.scorePercent !== undefined
+                                ? msg.sender === 'user'
+                                  ? '✓ Avaliação Respondida pelo Paciente'
+                                  : 'Avaliação ASRS-18 • 12 Domínios'
+                                : 'Convite Enviado ao Paciente'}
                             </span>
                             <h4 className="text-sm font-bold text-white">
-                              Laudo de Rastreio Neurocomportamental: TDAH
+                              {msg.adhdTestData?.scorePercent !== undefined
+                                ? 'Laudo de Rastreio Neurocomportamental: TDAH'
+                                : 'Solicitação de Preenchimento: Escala TDAH (12 Perguntas)'}
                             </h4>
                           </div>
                         </div>
@@ -6036,19 +6087,53 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                           </div>
                         )}
                       </div>
-                      <div className="space-y-2 text-xs text-mecura-silver">
-                        <div className="text-white font-bold text-sm">
-                          {msg.adhdTestData?.classification || 'Avaliação Computada'}
-                        </div>
-                        {msg.adhdTestData?.totalPoints !== undefined && (
-                          <div className="text-xs text-sky-200">
-                            Pontuação Obtida: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                      {msg.adhdTestData?.scorePercent !== undefined ? (
+                        <div className="space-y-2.5 text-xs text-mecura-silver">
+                          <div className="text-white font-bold text-sm">
+                            {msg.adhdTestData.classification || 'Avaliação Computada'}
                           </div>
-                        )}
-                        <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
-                          🎯 <strong>Diretriz Farmacológica:</strong> Modulação dopaminérgica no Córtex Pré-Frontal. Protocolo recomendado: CBD + CBG (Foco Diurno) com acompanhamento médico e psicológico integrado.
+                          {msg.adhdTestData.totalPoints !== undefined && (
+                            <div className="text-xs text-sky-200">
+                              Pontuação Obtida: <strong>{msg.adhdTestData.totalPoints}</strong> / {msg.adhdTestData.maxPoints || 36} pontos
+                            </div>
+                          )}
+                          <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                            🎯 <strong>Diretriz Farmacológica:</strong> Modulação dopaminérgica no Córtex Pré-Frontal. Protocolo recomendado: CBD + CBG (Foco Diurno) com acompanhamento médico e psicológico integrado.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowNeuroTestsBanner(true)}
+                            className="px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-sky-300" />
+                            <span>Ver Painel Completo e 12 Respostas</span>
+                          </button>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="space-y-2 text-xs text-mecura-silver">
+                          <p className="text-mecura-pearl leading-relaxed">
+                            {msg.text || 'Convite enviado para o paciente responder às 12 perguntas da escala ASRS-18 diretamente no chat.'}
+                          </p>
+                          {currentPatient?.answers?.adhdTestResult?.scorePercent !== undefined ? (
+                            <div className="p-2.5 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon font-bold flex items-center justify-between">
+                              <span>
+                                ✓ Paciente já concluiu o teste ({currentPatient.answers.adhdTestResult.scorePercent}% — {currentPatient.answers.adhdTestResult.classification})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setShowNeuroTestsBanner(true)}
+                                className="underline text-white ml-2 cursor-pointer"
+                              >
+                                Ver Resultado
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-sky-300/80">
+                              ⏳ Assim que o paciente finalizar a avaliação no chat dele, o resultado aparecerá automaticamente aqui e no painel superior.
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : msg.type === 'autism_test_card' ? (
                     <div className="w-[90%] md:w-[75%] max-w-xl rounded-2xl bg-gradient-to-br from-[#160D22] via-[#1D102D] to-[#0E0716] border border-purple-400/40 p-5 text-white shadow-xl mb-2 space-y-3 relative group">
@@ -6072,10 +6157,16 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                           </div>
                           <div>
                             <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider bg-purple-500/15 border border-purple-400/30 px-2 py-0.5 rounded-full inline-block mb-1">
-                              Mapeamento TEA (Autismo) • 12 Perguntas
+                              {msg.autismTestData?.scorePercent !== undefined
+                                ? msg.sender === 'user'
+                                  ? '✓ Mapeamento Respondido pelo Paciente'
+                                  : 'Mapeamento TEA (Autismo) • 12 Perguntas'
+                                : 'Convite Enviado ao Paciente'}
                             </span>
                             <h4 className="text-sm font-bold text-white">
-                              Sensibilidade Sensorial & Rigidez Cognitiva
+                              {msg.autismTestData?.scorePercent !== undefined
+                                ? 'Sensibilidade Sensorial & Rigidez Cognitiva'
+                                : 'Solicitação de Preenchimento: Mapeamento TEA (12 Perguntas)'}
                             </h4>
                           </div>
                         </div>
@@ -6087,19 +6178,53 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                           </div>
                         )}
                       </div>
-                      <div className="space-y-2 text-xs text-mecura-silver">
-                        <div className="text-white font-bold text-sm">
-                          {msg.autismTestData?.classification || 'Mapeamento Computado'}
-                        </div>
-                        {msg.autismTestData?.totalPoints !== undefined && (
-                          <div className="text-xs text-purple-200">
-                            Perfil: <strong>{msg.autismTestData?.targetProfile || 'Adulto'}</strong> • Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                      {msg.autismTestData?.scorePercent !== undefined ? (
+                        <div className="space-y-2.5 text-xs text-mecura-silver">
+                          <div className="text-white font-bold text-sm">
+                            {msg.autismTestData.classification || 'Mapeamento Computado'}
                           </div>
-                        )}
-                        <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
-                          🧩 <strong>Diretriz Farmacológica:</strong> Restauração do tônus de Anandamida e modulação do equilíbrio excitatório GABA/Glutamato. Protocolo recomendado: Full Spectrum com regulação sensorial.
+                          {msg.autismTestData.totalPoints !== undefined && (
+                            <div className="text-xs text-purple-200">
+                              Perfil: <strong>{msg.autismTestData?.targetProfile || 'Adulto'}</strong> • Pontuação: <strong>{msg.autismTestData.totalPoints}</strong> / {msg.autismTestData.maxPoints || 36} pontos
+                            </div>
+                          )}
+                          <div className="p-3 rounded-xl bg-black/40 border border-white/10 text-xs text-mecura-pearl leading-relaxed">
+                            🧩 <strong>Diretriz Farmacológica:</strong> Restauração do tônus de Anandamida e modulação do equilíbrio excitatório GABA/Glutamato. Protocolo recomendado: Full Spectrum com regulação sensorial.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowNeuroTestsBanner(true)}
+                            className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-purple-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-purple-300" />
+                            <span>Ver Painel Completo e 12 Respostas</span>
+                          </button>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="space-y-2 text-xs text-mecura-silver">
+                          <p className="text-mecura-pearl leading-relaxed">
+                            {msg.text || 'Convite enviado para o paciente responder às 12 perguntas do Mapeamento de Autismo (TEA) diretamente no chat.'}
+                          </p>
+                          {currentPatient?.answers?.autismTestResult?.scorePercent !== undefined ? (
+                            <div className="p-2.5 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon font-bold flex items-center justify-between">
+                              <span>
+                                ✓ Paciente já concluiu o mapeamento ({currentPatient.answers.autismTestResult.scorePercent}% — {currentPatient.answers.autismTestResult.classification})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setShowNeuroTestsBanner(true)}
+                                className="underline text-white ml-2 cursor-pointer"
+                              >
+                                Ver Resultado
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-purple-300/80">
+                              ⏳ Assim que o paciente finalizar o mapeamento no chat dele, o resultado aparecerá automaticamente aqui e no painel superior.
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : msg.sender === 'doctor' ? (
                     <div className="max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-sm relative group bg-mecura-neon/10 text-white rounded-tr-sm border border-mecura-neon/20 flex flex-col mb-2">
