@@ -39,6 +39,7 @@ import {
 } from '../data/programmedPrescriptions';
 import { PrescriptionItemData } from '../utils/pdfGenerator';
 import { useAdminStore } from '../store/useAdminStore';
+import { getBestCategoryIdForProduct } from '../utils/productCatalog';
 import { 
   enrichMedicationDetails, 
   NATIONAL_ASSOCIATION_PRODUCTS, 
@@ -78,7 +79,7 @@ export function ProgrammedPrescriptionsModal({
   onApplyProfile,
   onDirectEmitPDF
 }: ProgrammedPrescriptionsModalProps) {
-  const { productCategories } = useAdminStore();
+  const { productCategories, addProduct } = useAdminStore();
   const [profiles, setProfiles] = useState<ProgrammedPrescriptionProfile[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [activeProfileId, setActiveProfileId] = useState<string>('perfil-ansiedade');
@@ -116,15 +117,16 @@ export function ProgrammedPrescriptionsModal({
   const [newProtocolDescription, setNewProtocolDescription] = useState('');
   const [newProtocolNotes, setNewProtocolNotes] = useState('- Administrar conforme posologia médica.\n- Preferencialmente após refeição com lipídios para melhor absorção.\n- Armazenar ao abrigo de luz e calor excessivo.');
 
-  // Form State: Add Medication to Protocol
+  // Form State: Add / Edit Medication in Protocol
+  const [editingMedIndex, setEditingMedIndex] = useState<number | null>(null);
   const [medAddTab, setMedAddTab] = useState<'catalog' | 'manual'>('catalog');
   const [catalogSearchTerm, setCatalogSearchTerm] = useState('');
-  const [catalogOriginFilter, setCatalogOriginFilter] = useState<'all' | 'importados' | 'nacionais' | 'pangaia' | 'flowermed' | 'greenbudz' | 'flores' | 'soucannabis' | 'abrace' | 'abecmed'>('all');
+  const [catalogOriginFilter, setCatalogOriginFilter] = useState<string>('all');
   const [medName, setMedName] = useState('');
   const [medBrand, setMedBrand] = useState('Associação Brasileira (Nacional)');
   const [medOrigin, setMedOrigin] = useState<'Nacional' | 'Importado'>('Nacional');
-  const [medActiveIngredients, setMedActiveIngredients] = useState('');
-  const [medConcentration, setMedConcentration] = useState('');
+  const [medActiveIngredients, setMedActiveIngredients] = useState('Canabidiol (CBD) Full Spectrum');
+  const [medConcentration, setMedConcentration] = useState('100 mg/mL (3.000 mg de CBD) • Frasco de 30 mL');
   const [medQuantity, setMedQuantity] = useState('01 Frasco de 30 mL');
   const [medForm, setMedForm] = useState('Solução Oleosa Sublingual (Gotas)');
   const [medRoute, setMedRoute] = useState('Via Sublingual / Oral');
@@ -162,11 +164,20 @@ export function ProgrammedPrescriptionsModal({
           `${p.name} ${p.manufacturer || ''} ${p.brand || ''} ${categoryName}`
         );
 
+      const resolvedOrigin: 'Nacional' | 'Importado' = isImported ? 'Importado' : 'Nacional';
+      const resolvedBrand = p.manufacturer || defaultBrand || p.brand || categoryName;
+      const enriched = enrichMedicationDetails(p.name, resolvedBrand, resolvedOrigin, p.type, p);
+
       list.push({
         ...p,
         categoryName,
-        origin: isImported ? 'Importado' : 'Nacional',
-        brand: p.manufacturer || defaultBrand || p.brand || categoryName
+        origin: resolvedOrigin,
+        brand: resolvedBrand,
+        activeIngredients: p.activeIngredients || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum',
+        concentration: p.concentration || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL',
+        pharmaceuticalForm: p.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+        quantity: p.quantity || enriched.quantity || '01 Frasco de 30 mL',
+        administrationRoute: p.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral'
       });
     };
 
@@ -282,6 +293,14 @@ export function ProgrammedPrescriptionsModal({
       result = result.filter(p => /abrace/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'abecmed') {
       result = result.filter(p => /abec/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+    } else if (catalogOriginFilter.startsWith('brand_')) {
+      const targetCat = productCategories.find(c => c.id === catalogOriginFilter);
+      const brandNameLower = (((targetCat as any)?.name || targetCat?.title || '') as string).split('(')[0].trim().toLowerCase();
+      const catNames = new Set((targetCat?.products || []).map(cp => cp.name.trim().toLowerCase()));
+      result = result.filter(p =>
+        catNames.has((p.name || '').trim().toLowerCase()) ||
+        (brandNameLower && `${p.brand || ''} ${p.manufacturer || ''} ${p.categoryName || ''}`.toLowerCase().includes(brandNameLower))
+      );
     }
 
     if (!catalogSearchTerm.trim()) {
@@ -351,9 +370,9 @@ export function ProgrammedPrescriptionsModal({
     showToast(`✓ Protocolo "${targetName}" salvo e programado com sucesso!`);
   };
 
-  // 2. Add Medication to Active Profile
+  // 2. Add or Edit Medication in Active Profile
   const handleOpenAddMedicationModal = () => {
-    // Reset fields to sensible defaults
+    setEditingMedIndex(null);
     setMedName('');
     setMedBrand('Associação Brasileira (Nacional)');
     setMedOrigin('Nacional');
@@ -369,13 +388,69 @@ export function ProgrammedPrescriptionsModal({
     setShowAddMedicationModal(true);
   };
 
+  const handleOpenEditMedicationModal = (index: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!activeProfile || !activeProfile.items[index]) return;
+    const item = activeProfile.items[index];
+    const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
+
+    setEditingMedIndex(index);
+    setMedName(item.name || '');
+    setMedBrand(item.brand || enriched.brand || 'Associação Brasileira (Nacional)');
+    setMedOrigin(item.origin === 'Importado' ? 'Importado' : 'Nacional');
+    setMedActiveIngredients(item.activeIngredients || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum');
+    setMedConcentration(item.concentration || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL');
+    setMedQuantity(item.quantity || enriched.quantity || '01 Frasco de 30 mL');
+    setMedForm(item.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)');
+    setMedRoute(item.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral');
+    setMedDosageLines(
+      Array.isArray(item.dosage) && item.dosage.length > 0
+        ? item.dosage.join('\n')
+        : typeof item.dosage === 'string' && item.dosage
+          ? item.dosage
+          : 'Iniciar com 03 a 05 gotas 2 vezes ao dia.\nReter sob a língua por 60 segundos antes de engolir.'
+    );
+    setMedDescription(item.description || enriched.description || '');
+    setMedAddTab('manual');
+    setShowAddMedicationModal(true);
+  };
+
+  const handleAutoFillFromMedicationName = (targetName?: string) => {
+    const queryName = (targetName ?? medName).trim();
+    if (!queryName) {
+      showToast('⚠️ Digite o nome do medicamento para preencher os dados automaticamente.');
+      return;
+    }
+    const matchedCatalog = allCatalogProducts.find(
+      p => p.name.toLowerCase() === queryName.toLowerCase() || p.name.toLowerCase().includes(queryName.toLowerCase())
+    );
+    const enriched = enrichMedicationDetails(
+      matchedCatalog?.name || queryName,
+      matchedCatalog?.brand || medBrand,
+      matchedCatalog?.origin || medOrigin,
+      matchedCatalog?.type,
+      matchedCatalog
+    );
+    setMedBrand(matchedCatalog?.brand || enriched.brand || medBrand || 'Associação Brasileira (Nacional)');
+    setMedOrigin((matchedCatalog?.origin === 'Importado' || enriched.origin?.includes('Importado')) ? 'Importado' : 'Nacional');
+    setMedActiveIngredients(matchedCatalog?.activeIngredients || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum');
+    setMedConcentration(matchedCatalog?.concentration || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL');
+    setMedQuantity(matchedCatalog?.quantity || enriched.quantity || '01 Frasco de 30 mL');
+    setMedForm(matchedCatalog?.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)');
+    setMedRoute(matchedCatalog?.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral');
+    if (enriched.usageInstructions) {
+      setMedDosageLines(enriched.usageInstructions);
+    }
+    showToast('✓ Princípio ativo, concentração, forma farmacêutica, via e quantidade preenchidos!');
+  };
+
   const handleSelectCatalogProduct = (prod: any) => {
     const enriched = enrichMedicationDetails(prod.name, prod.manufacturer || prod.brand, prod.origin, prod.type, prod);
     setMedName(prod.name);
     setMedBrand(prod.manufacturer || prod.brand || enriched.brand || 'Associação Brasileira');
-    setMedOrigin((prod.origin === 'Nacional' || prod.origin === 'Importado') ? prod.origin : (enriched.origin || 'Nacional'));
-    setMedActiveIngredients(prod.activeIngredients || enriched.activeIngredients || prod.type || '');
-    setMedConcentration(prod.concentration || enriched.concentration || '');
+    setMedOrigin((prod.origin === 'Nacional' || prod.origin === 'Importado') ? prod.origin : (enriched.origin?.includes('Importado') ? 'Importado' : 'Nacional'));
+    setMedActiveIngredients(prod.activeIngredients || enriched.activeIngredients || prod.type || 'Canabidiol (CBD) Full Spectrum');
+    setMedConcentration(prod.concentration || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL');
     setMedQuantity(prod.quantity || enriched.quantity || '01 Frasco de 30 mL');
     setMedForm(prod.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)');
     setMedRoute(prod.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral');
@@ -399,6 +474,8 @@ export function ProgrammedPrescriptionsModal({
     }
     if (!activeProfile) return;
 
+    const enrichedFallback = enrichMedicationDetails(medName.trim(), medBrand.trim(), medOrigin);
+
     const dosageLinesArray = medDosageLines
       .split('\n')
       .map(l => l.trim())
@@ -406,27 +483,52 @@ export function ProgrammedPrescriptionsModal({
 
     const newMedItem: PrescriptionItemData = {
       name: medName.trim(),
-      brand: medBrand.trim(),
+      brand: medBrand.trim() || enrichedFallback.brand || 'Associação Brasileira (Nacional)',
       origin: medOrigin,
-      activeIngredients: medActiveIngredients.trim() || undefined,
-      concentration: medConcentration.trim() || undefined,
-      pharmaceuticalForm: medForm.trim() || 'Solução Oleosa Sublingual (Gotas)',
-      quantity: medQuantity.trim() || '01 Frasco',
-      administrationRoute: medRoute.trim() || 'Via Sublingual / Oral',
+      activeIngredients: medActiveIngredients.trim() || enrichedFallback.activeIngredients || 'Canabidiol (CBD) Full Spectrum',
+      concentration: medConcentration.trim() || enrichedFallback.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL',
+      pharmaceuticalForm: medForm.trim() || enrichedFallback.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+      quantity: medQuantity.trim() || enrichedFallback.quantity || '01 Frasco de 30 mL',
+      administrationRoute: medRoute.trim() || enrichedFallback.administrationRoute || 'Via Sublingual / Oral',
       dosage: dosageLinesArray.length > 0 ? dosageLinesArray : ['Tomar conforme orientação médica.'],
-      description: medDescription.trim() || undefined
+      description: medDescription.trim() || enrichedFallback.description || undefined
     };
+
+    const nextItems = editingMedIndex !== null
+      ? activeProfile.items.map((it, idx) => (idx === editingMedIndex ? newMedItem : it))
+      : [...activeProfile.items, newMedItem];
 
     const updatedProfile: ProgrammedPrescriptionProfile = {
       ...activeProfile,
-      items: [...activeProfile.items, newMedItem]
+      items: nextItems
     };
 
     const updatedProfiles = profiles.map(p => p.id === activeProfile.id ? updatedProfile : p);
     setProfiles(updatedProfiles);
     saveProgrammedProfiles(updatedProfiles);
+
+    // Also register in the global Brand Tab catalog so it stays organized in the brand's tab
+    const targetCategoryId = getBestCategoryIdForProduct(newMedItem.origin, newMedItem.brand);
+    addProduct(targetCategoryId, {
+      name: newMedItem.name,
+      manufacturer: newMedItem.brand,
+      origin: newMedItem.origin,
+      type: newMedItem.pharmaceuticalForm,
+      activeIngredients: newMedItem.activeIngredients,
+      concentration: newMedItem.concentration,
+      pharmaceuticalForm: newMedItem.pharmaceuticalForm,
+      administrationRoute: newMedItem.administrationRoute,
+      quantity: newMedItem.quantity,
+      description: newMedItem.description || `${newMedItem.activeIngredients} • ${newMedItem.concentration}`
+    });
+
     setShowAddMedicationModal(false);
-    showToast(`✓ Medicamento "${newMedItem.name}" adicionado e salvo ao protocolo "${activeProfile.name}"!`);
+    setEditingMedIndex(null);
+    showToast(
+      editingMedIndex !== null
+        ? `✓ Medicamento "${newMedItem.name}" atualizado no protocolo e na aba da marca "${newMedItem.brand}"!`
+        : `✓ Medicamento "${newMedItem.name}" adicionado ao protocolo e salvo na aba da marca "${newMedItem.brand}"!`
+    );
   };
 
   // 3. Delete Medication from Active Profile
@@ -1106,65 +1208,109 @@ export function ProgrammedPrescriptionsModal({
                       </div>
                     ) : (
                       <div className="space-y-2.5">
-                        {activeProfile.items.map((item, idx) => (
-                          <div 
-                            key={`item-${idx}`}
-                            className="p-3.5 rounded-2xl bg-[#131320] border border-white/10 hover:border-mecura-neon/30 transition-all space-y-2 group relative"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                    {item.origin || 'Nacional'}
-                                  </span>
-                                  <span className="text-[10px] text-[#8A8A9E]">
-                                    {item.brand || 'Associação'}
-                                  </span>
+                        {activeProfile.items.map((item, idx) => {
+                          const enrichedItem = enrichMedicationDetails(item.name || '', item.brand, item.origin, item.type);
+                          const displayActivePrinciple = item.activeIngredients || enrichedItem.activeIngredients || 'Canabidiol (CBD) Full Spectrum';
+                          const displayConcentration = item.concentration || enrichedItem.concentration || '100 mg/mL (3.000 mg)';
+                          const displayForm = item.pharmaceuticalForm || enrichedItem.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)';
+                          const displayRoute = item.administrationRoute || enrichedItem.administrationRoute || 'Via Sublingual / Oral';
+                          const displayQuantity = item.quantity || enrichedItem.quantity || '01 Frasco de 30 mL';
+
+                          return (
+                            <div 
+                              key={`item-${idx}`}
+                              className="p-3.5 rounded-2xl bg-[#131320] border border-white/10 hover:border-mecura-neon/30 transition-all space-y-2.5 group relative"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                      item.origin === 'Importado'
+                                        ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                    }`}>
+                                      {item.origin === 'Importado' ? '🌐 Importado' : '🇧🇷 Nacional'}
+                                    </span>
+                                    <span className="text-[10px] text-[#A2A2BC] font-semibold">
+                                      {item.brand || enrichedItem.brand || 'Associação'}
+                                    </span>
+                                  </div>
+                                  <h6 className="text-xs sm:text-sm font-bold text-white mt-1">
+                                    {item.name}
+                                  </h6>
                                 </div>
-                                <h6 className="text-xs sm:text-sm font-bold text-white mt-0.5">
-                                  {item.name}
-                                </h6>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[11px] font-bold text-purple-200 bg-purple-500/20 border border-purple-500/40 px-2.5 py-0.5 rounded-lg">
+                                    Qtd: {displayQuantity}
+                                  </span>
+
+                                  {/* BOTAO EDITAR MEDICAMENTO INDIVIDUAL */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenEditMedicationModal(idx, e)}
+                                    className="p-1.5 rounded-lg text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/20 transition-colors cursor-pointer"
+                                    title="Editar Princípio Ativo, Via, Forma Farmacêutica, Quantidade e Posologia"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  {/* BOTAO EXCLUIR MEDICAMENTO INDIVIDUAL */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleDeleteMedication(idx, e)}
+                                    className="p-1.5 rounded-lg text-[#8A8A9E] hover:text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer"
+                                    title="Remover este medicamento do protocolo"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[11px] font-semibold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-lg">
-                                  {item.quantity}
-                                </span>
+                              <div className="text-[11px] text-[#B8B8CC] bg-black/40 p-3 rounded-xl border border-white/10 space-y-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <div className="bg-white/[0.03] border border-white/5 rounded-lg p-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 block">
+                                      Princípio Ativo
+                                    </span>
+                                    <span className="text-white font-semibold">{displayActivePrinciple}</span>
+                                  </div>
+                                  <div className="bg-white/[0.03] border border-white/5 rounded-lg p-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-300 block">
+                                      Concentração
+                                    </span>
+                                    <span className="text-white font-semibold">{displayConcentration}</span>
+                                  </div>
+                                  <div className="bg-white/[0.03] border border-white/5 rounded-lg p-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-300 block">
+                                      Forma Farmacêutica
+                                    </span>
+                                    <span className="text-white font-semibold">{displayForm}</span>
+                                  </div>
+                                  <div className="bg-white/[0.03] border border-white/5 rounded-lg p-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 block">
+                                      Via de Administração & Quantidade
+                                    </span>
+                                    <span className="text-white font-semibold">{displayRoute} • {displayQuantity}</span>
+                                  </div>
+                                </div>
 
-                                {/* BOTAO EXCLUIR MEDICAMENTO INDIVIDUAL */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMedication(idx)}
-                                  className="p-1 rounded-lg text-[#8A8A9E] hover:text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer"
-                                  title="Remover este medicamento do protocolo"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                <div className="pt-1.5 border-t border-white/10">
+                                  <span className="font-bold text-mecura-neon block mb-0.5">Posologia Recomendada:</span>
+                                  {Array.isArray(item.dosage) ? (
+                                    <ul className="list-disc pl-4 space-y-0.5 text-[#D0D0E5]">
+                                      {item.dosage.map((step, sIdx) => (
+                                        <li key={`step-${sIdx}`}>{step}</li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="text-[#D0D0E5]">{item.dosage}</p>
+                                  )}
+                                </div>
                               </div>
                             </div>
-
-                            <div className="text-[11px] text-[#A0A0B5] bg-black/30 p-2.5 rounded-xl border border-white/5 space-y-1">
-                              {item.concentration && (
-                                <p><strong>Concentração:</strong> {item.concentration}</p>
-                              )}
-                              {item.administrationRoute && (
-                                <p><strong>Via:</strong> {item.administrationRoute} • <em>{item.pharmaceuticalForm}</em></p>
-                              )}
-                              <div className="mt-1 pt-1 border-t border-white/5">
-                                <span className="font-bold text-mecura-neon block mb-0.5">Posologia Recomendada:</span>
-                                {Array.isArray(item.dosage) ? (
-                                  <ul className="list-disc pl-4 space-y-0.5 text-[#C0C0D5]">
-                                    {item.dosage.map((step, sIdx) => (
-                                      <li key={`step-${sIdx}`}>{step}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="text-[#C0C0D5]">{item.dosage}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1242,22 +1388,27 @@ export function ProgrammedPrescriptionsModal({
             </div>
           </div>
 
-          {/* Modal / Popup: Adicionar Medicamento ao Protocolo */}
+          {/* Modal / Popup: Adicionar ou Editar Medicamento ao Protocolo */}
           {showAddMedicationModal && (
             <div className="fixed inset-0 z-[140] flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md">
-              <div className="w-full max-w-2xl bg-[#12121E] border border-purple-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(168,85,247,0.3)] space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="w-full max-w-2xl bg-[#12121E] border border-purple-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(168,85,247,0.3)] space-y-4 max-h-[92vh] overflow-y-auto">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300">
                       <Pill className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="text-base font-bold text-white">Adicionar Medicamento ao Protocolo</h4>
+                      <h4 className="text-base font-bold text-white">
+                        {editingMedIndex !== null ? 'Editar Medicamento do Protocolo' : 'Adicionar Medicamento ao Protocolo'}
+                      </h4>
                       <p className="text-xs text-purple-300 font-medium">Vinculando a: {activeProfile?.name}</p>
                     </div>
                   </div>
                   <button 
-                    onClick={() => setShowAddMedicationModal(false)}
+                    onClick={() => {
+                      setShowAddMedicationModal(false);
+                      setEditingMedIndex(null);
+                    }}
                     className="p-1.5 rounded-lg text-[#8A8A9E] hover:text-white"
                   >
                     <X className="w-5 h-5" />
@@ -1288,7 +1439,7 @@ export function ProgrammedPrescriptionsModal({
                     }`}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    <span>Personalizado / Manual</span>
+                    <span>Personalizado / Manual (Dados Completos)</span>
                   </button>
                 </div>
 
@@ -1300,7 +1451,7 @@ export function ProgrammedPrescriptionsModal({
                         type="text"
                         value={catalogSearchTerm}
                         onChange={(e) => setCatalogSearchTerm(e.target.value)}
-                        placeholder="Buscar por nome (ex: Óleo CBD, Pangaia, Flowermed, Flores 14g, SouCannabis, ABRACE, CBN)..."
+                        placeholder="Buscar por nome, princípio ativo, via ou forma (ex: Óleo CBD, Pangaia, Flowermed, Flores 14g, SouCannabis, ABRACE, CBN)..."
                         className="w-full bg-[#0A0A12] border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-[#666680] focus:outline-none focus:border-purple-400"
                         autoFocus
                       />
@@ -1318,17 +1469,23 @@ export function ProgrammedPrescriptionsModal({
                         { id: 'flores', label: '🌿 Flores In Natura (14g)' },
                         { id: 'soucannabis', label: '🌱 SouCannabis Nacional' },
                         { id: 'abrace', label: '🌿 ABRACE Esperança' },
-                        { id: 'abecmed', label: '🟠 ABECMED Nacional' }
+                        { id: 'abecmed', label: '🟠 ABECMED Nacional' },
+                        ...productCategories
+                          .filter(c => c.id.startsWith('brand_'))
+                          .map(c => ({
+                            id: c.id,
+                            label: `🏷️ ${(((c as any).name || c.title || '') as string).split('(')[0].trim()} (${(c.products || []).length})`
+                          }))
                       ].map(f => (
                         <button
                           key={f.id}
                           type="button"
-                          onClick={() => setCatalogOriginFilter(f.id as any)}
+                          onClick={() => setCatalogOriginFilter(f.id)}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                             catalogOriginFilter === f.id
                               ? f.id === 'importados' || f.id === 'pangaia' || f.id === 'flowermed' || f.id === 'greenbudz' || f.id === 'flores'
                                 ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30'
-                                : f.id === 'nacionais' || f.id === 'soucannabis' || f.id === 'abrace' || f.id === 'abecmed'
+                                : f.id === 'nacionais' || f.id === 'soucannabis' || f.id === 'abrace' || f.id === 'abecmed' || f.id.startsWith('brand_')
                                   ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/30'
                                   : 'bg-purple-600 text-white shadow-md'
                               : 'bg-white/5 hover:bg-white/10 text-[#8A8A9E] hover:text-white border border-white/5'
@@ -1339,7 +1496,7 @@ export function ProgrammedPrescriptionsModal({
                       ))}
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                    <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                       {filteredCatalogProducts.length === 0 ? (
                         <div className="text-center py-8 text-[#8A8A9E] text-xs">
                           Nenhum medicamento encontrado para esta busca ou filtro.
@@ -1351,13 +1508,13 @@ export function ProgrammedPrescriptionsModal({
                             <div
                               key={`cat-${idx}`}
                               onClick={() => handleSelectCatalogProduct(prod)}
-                              className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 group ${
+                              className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-3 group ${
                                 isImported
                                   ? 'bg-sky-950/20 hover:bg-sky-900/30 border-sky-500/20 hover:border-sky-400/50'
                                   : 'bg-emerald-950/20 hover:bg-emerald-900/30 border-emerald-500/20 hover:border-emerald-400/50'
                               }`}
                             >
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1 space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${
                                     isImported 
@@ -1379,22 +1536,38 @@ export function ProgrammedPrescriptionsModal({
                                     </span>
                                   ) : null}
                                 </div>
-                                <h5 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate mt-1">
+                                <h5 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors mt-0.5">
                                   {prod.name}
                                 </h5>
-                                {prod.concentration && (
-                                  <p className="text-[11px] text-[#A0A0B5] truncate mt-0.5">{prod.concentration}</p>
-                                )}
+                                <div className="text-[11px] text-[#B8B8CE] space-y-0.5">
+                                  <p className="truncate">
+                                    <strong className="text-emerald-300">Princípio Ativo:</strong> {prod.activeIngredients}
+                                  </p>
+                                  <p className="truncate">
+                                    <strong className="text-purple-300">Concentração:</strong> {prod.concentration}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/10 text-sky-300 font-semibold">
+                                    Forma: {prod.pharmaceuticalForm}
+                                  </span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/10 text-amber-300 font-semibold">
+                                    Via: {prod.administrationRoute}
+                                  </span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-200 font-semibold">
+                                    Qtd: {prod.quantity}
+                                  </span>
+                                </div>
                               </div>
                               <button
                                 type="button"
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1 shadow-sm ${
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1 shadow-sm self-center ${
                                   isImported
                                     ? 'bg-sky-500 text-black hover:bg-sky-400'
                                     : 'bg-emerald-500 text-black hover:bg-emerald-400'
                                 }`}
                               >
-                                <Plus className="w-3.5 h-3.5" /> Adicionar
+                                <Plus className="w-3.5 h-3.5" /> Selecionar
                               </button>
                             </div>
                           );
@@ -1408,85 +1581,198 @@ export function ProgrammedPrescriptionsModal({
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Nome do Medicamento *</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-[#A2A2BC]">Nome do Medicamento *</label>
+                          <button
+                            type="button"
+                            onClick={() => handleAutoFillFromMedicationName()}
+                            className="text-[10px] font-bold text-mecura-neon hover:underline flex items-center gap-1 cursor-pointer"
+                            title="Preencher Princípio Ativo, Concentração, Forma, Via e Quantidade automaticamente com base no nome"
+                          >
+                            <Sparkles className="w-3 h-3" /> Auto-preencher dados
+                          </button>
+                        </div>
                         <input
                           type="text"
                           value={medName}
-                          onChange={(e) => setMedName(e.target.value)}
-                          placeholder="Ex: ÓLEO INTEGRAL CBD 100mg/ml"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setMedName(val);
+                            const exactMatch = allCatalogProducts.find(
+                              p => p.name.trim().toLowerCase() === val.trim().toLowerCase()
+                            );
+                            if (exactMatch) {
+                              handleAutoFillFromMedicationName(exactMatch.name);
+                            }
+                          }}
+                          placeholder="Ex: Broad SPECTRUM CBD, CBN 1065mg"
                           className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Marca ou Associação</label>
+                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Marca ou Associação *</label>
                         <input
                           type="text"
+                          list="protocol-med-brands"
                           value={medBrand}
                           onChange={(e) => setMedBrand(e.target.value)}
-                          placeholder="Ex: Associação SouCannabis / ABRACE / Flowermed"
+                          placeholder="Ex: Associação Nacional / SouCannabis / ABRACE / Pangaia / Flowermed"
                           className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
                         />
+                        <datalist id="protocol-med-brands">
+                          <option value="Associação Nacional (Brasil)" />
+                          <option value="Associação Brasileira (Nacional)" />
+                          <option value="SouCannabis (Associação Nacional)" />
+                          <option value="ABRACE Esperança (Associação Nacional)" />
+                          <option value="ABECMED (Associação Brasileira)" />
+                          <option value="Pangaia Biopharma (EUA)" />
+                          <option value="Flowermed (EUA)" />
+                          <option value="GreenBudzCBD (EUA)" />
+                        </datalist>
                       </div>
+                    </div>
+
+                    {/* Princípio Ativo (Destaque Completo) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-emerald-300 flex items-center gap-1">
+                          <span>Princípio Ativo (Composição / Fitocanabinoides) *</span>
+                        </label>
+                        <span className="text-[10px] text-[#8A8A9E]">Exibido na receita e no protocolo</span>
+                      </div>
+                      <input
+                        type="text"
+                        list="protocol-med-active-principles"
+                        value={medActiveIngredients}
+                        onChange={(e) => setMedActiveIngredients(e.target.value)}
+                        placeholder="Ex: Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg (0% THC)"
+                        className="w-full bg-[#0A0A12] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-emerald-400"
+                      />
+                      <datalist id="protocol-med-active-principles">
+                        <option value="Canabidiol (CBD) Full Spectrum + Fitocanabinoides Menores (< 0,3% THC)" />
+                        <option value="Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) — Total 1.065 mg (0% THC)" />
+                        <option value="Canabidiol (CBD) Broad Spectrum (0,0% THC) enriquecido com Terpenos" />
+                        <option value="Canabidiol (CBD) Isolado Puro (>99,8% de pureza — 0,0% THC)" />
+                        <option value="Extrato Equilibrado de Cannabis Sativa: Canabidiol (CBD) + Delta-9-THC (Proporção 1:1)" />
+                        <option value="Canabidiol (CBD) + Canabinol (CBN) Full Spectrum (Proporção 2:1)" />
+                        <option value="Canabidiol (CBD) + Canabigerol (CBG) Full Spectrum (Proporção 2:1)" />
+                        <option value="Canabidiol (CBD) + Canabigerol (CBG) + Canabinol (CBN) Full Spectrum (4:1:1)" />
+                        <option value="Tetrahidrocanabinol (Delta-9-THC) Full Spectrum + Canabidiol (CBD) (10:1)" />
+                        <option value="Inflorescências de Cannabis Sativa L. ricas em Canabidiol (CBD) + Terpenos" />
+                        <option value="Canabinoides Totais em Base Dermatológica Transdérmica com Arnica e Copaíba" />
+                      </datalist>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Origem</label>
+                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Origem *</label>
                         <select
                           value={medOrigin}
                           onChange={(e) => setMedOrigin(e.target.value as any)}
                           className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-400"
                         >
                           <option value="Nacional">🇧🇷 Nacional (Associação)</option>
-                          <option value="Importado">🌐 Importado</option>
+                          <option value="Importado">🌐 Importado (RDC 660)</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Concentração</label>
+                        <label className="text-[11px] font-bold text-purple-300 block mb-1">Concentração *</label>
                         <input
                           type="text"
+                          list="protocol-med-concentrations"
                           value={medConcentration}
                           onChange={(e) => setMedConcentration(e.target.value)}
-                          placeholder="Ex: 100 mg/mL (3.000 mg)"
-                          className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
+                          placeholder="Ex: 100 mg/mL (3.000 mg) • Frasco 30 mL"
+                          className="w-full bg-[#0A0A12] border border-purple-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
                         />
+                        <datalist id="protocol-med-concentrations">
+                          <option value="100 mg/mL (Total 3.000 mg de CBD) • Frasco de 30 mL" />
+                          <option value="60 mg/mL (Total 1.800 mg) • Frasco de 30 mL" />
+                          <option value="50 mg/mL (Total 1.500 mg) • Frasco de 30 mL" />
+                          <option value="30 mg/mL (Total 900 mg) • Frasco de 30 mL" />
+                          <option value="200 mg/mL (Total 6.000 mg de CBD) • Frasco de 30 mL" />
+                          <option value="CBD + CBN 1.065 mg (71 mg/mL) • Frasco de 15 mL" />
+                          <option value="25 mg de CBD Full Spectrum por goma (Pote com 28 a 30 gomas)" />
+                          <option value="50 mg de CBD por cápsula (Frasco com 30 cápsulas — 1.500 mg)" />
+                          <option value="500 mg de Fitocanabinoides em 50 g" />
+                        </datalist>
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Quantidade</label>
+                        <label className="text-[11px] font-bold text-amber-300 block mb-1">Quantidade *</label>
                         <input
                           type="text"
+                          list="protocol-med-quantities"
                           value={medQuantity}
                           onChange={(e) => setMedQuantity(e.target.value)}
                           placeholder="Ex: 01 Frasco de 30 mL"
-                          className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
+                          className="w-full bg-[#0A0A12] border border-amber-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-amber-400"
                         />
+                        <datalist id="protocol-med-quantities">
+                          <option value="01 Frasco de 30 mL" />
+                          <option value="02 Frascos de 30 mL" />
+                          <option value="03 Frascos de 30 mL" />
+                          <option value="01 Frasco de 15 mL" />
+                          <option value="02 Frascos de 15 mL" />
+                          <option value="01 Pote com 30 Gomas" />
+                          <option value="01 Frasco com 28 Gomas" />
+                          <option value="01 Frasco com 30 Cápsulas" />
+                          <option value="01 Pote de 50 g" />
+                          <option value="01 Frasco de 100 mL com bomba dosadora" />
+                          <option value="01 Pacote Selado de 14 gramas" />
+                        </datalist>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Forma Farmacêutica</label>
+                        <label className="text-[11px] font-bold text-sky-300 block mb-1">Forma Farmacêutica *</label>
                         <input
                           type="text"
+                          list="protocol-med-forms"
                           value={medForm}
                           onChange={(e) => setMedForm(e.target.value)}
                           placeholder="Ex: Solução Oleosa Sublingual (Gotas)"
-                          className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
+                          className="w-full bg-[#0A0A12] border border-sky-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-sky-400"
                         />
+                        <datalist id="protocol-med-forms">
+                          <option value="Solução Oleosa Sublingual (Gotas)" />
+                          <option value="Gomas Mastigáveis Veganas (Gummies)" />
+                          <option value="Cápsulas Gelatinosas Orais (Softgels)" />
+                          <option value="Pomada Dérmica Tópica" />
+                          <option value="Creme Dérmico Tópico Analgésico" />
+                          <option value="Spray Sublingual / Nasal Transmucoso" />
+                          <option value="Flores in natura secas para inalação vaporizada" />
+                          <option value="Adesivo Transdérmico de Liberação Lenta (Patch)" />
+                          <option value="Extrato Concentrado em Seringa Dosadora" />
+                        </datalist>
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-[#A2A2BC] block mb-1">Via de Administração</label>
+                        <label className="text-[11px] font-bold text-sky-300 block mb-1">Via de Administração *</label>
                         <input
                           type="text"
+                          list="protocol-med-routes"
                           value={medRoute}
                           onChange={(e) => setMedRoute(e.target.value)}
                           placeholder="Ex: Via Sublingual / Oral"
-                          className="w-full bg-[#0A0A12] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-purple-400"
+                          className="w-full bg-[#0A0A12] border border-sky-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-[#55556A] focus:outline-none focus:border-sky-400"
                         />
+                        <datalist id="protocol-med-routes">
+                          <option value="Via Sublingual / Oral" />
+                          <option value="Via Sublingual" />
+                          <option value="Via Sublingual Diurna" />
+                          <option value="Via Sublingual Noturna" />
+                          <option value="Via Sublingual de 12 em 12 horas" />
+                          <option value="Via Oral Mastigável" />
+                          <option value="Via Oral" />
+                          <option value="Uso Tópico / Dermatológico" />
+                          <option value="Via Inalatória (Vaporização Medicinal)" />
+                          <option value="Via Transdérmica (Cutânea)" />
+                          <option value="Via Nasal Transmucosa" />
+                        </datalist>
                       </div>
                     </div>
 
@@ -1508,7 +1794,10 @@ export function ProgrammedPrescriptionsModal({
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
                   <button
                     type="button"
-                    onClick={() => setShowAddMedicationModal(false)}
+                    onClick={() => {
+                      setShowAddMedicationModal(false);
+                      setEditingMedIndex(null);
+                    }}
                     className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-[#8A8A9E] hover:text-white"
                   >
                     Cancelar
@@ -1519,7 +1808,7 @@ export function ProgrammedPrescriptionsModal({
                     className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black text-xs font-black shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all flex items-center gap-1.5 cursor-pointer"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>Salvar no Protocolo</span>
+                    <span>{editingMedIndex !== null ? 'Atualizar no Protocolo' : 'Salvar no Protocolo'}</span>
                   </button>
                 </div>
               </div>

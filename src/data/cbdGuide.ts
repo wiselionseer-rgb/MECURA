@@ -2188,35 +2188,74 @@ function _enrichMedicationDetails(
 
   if (guideMatch) {
     const isNat = guideMatch.origin === 'Nacional' || (guideMatch.manufacturer || '').toLowerCase().includes('associação');
-    const matchNameLower = (guideMatch.name || '').toLowerCase();
-    const matchTypeLower = (guideMatch.type || '').toLowerCase();
+    const matchNameLower = (guideMatch.name || pName || '').toLowerCase();
+    const matchTypeLower = (guideMatch.type || type || '').toLowerCase();
     const matchFormLower = (guideMatch.pharmaceuticalForm || '').toLowerCase();
+    const detailsJoined = Array.isArray(guideMatch.details) ? guideMatch.details.join(' • ') : '';
+    const detailsLower = detailsJoined.toLowerCase();
 
     const isGummy = matchTypeLower.includes('goma') || matchTypeLower.includes('gumm') || matchTypeLower.includes('comestível') ||
                     matchNameLower.includes('goma') || matchNameLower.includes('gumm') || matchFormLower.includes('goma');
-    const isFlower = matchTypeLower.includes('flor') || matchNameLower.includes('flor') || matchFormLower.includes('flor');
-    const isTopical = matchTypeLower.includes('pomada') || matchNameLower.includes('pomada') || matchTypeLower.includes('tópico') || matchFormLower.includes('pomada');
-    const isSyrup = matchTypeLower.includes('syrup') || matchNameLower.includes('syrup') || matchTypeLower.includes('xarope');
+    const isCapsule = matchTypeLower.includes('cápsula') || matchTypeLower.includes('capsula') || matchTypeLower.includes('softgel') ||
+                      matchNameLower.includes('cápsula') || matchNameLower.includes('capsula') || matchNameLower.includes('softgel') || matchFormLower.includes('cápsula');
+    const isSpray = matchTypeLower.includes('spray') || matchNameLower.includes('spray') || matchFormLower.includes('spray');
+    const isPatch = matchTypeLower.includes('adesivo') || matchTypeLower.includes('transdérmico') || matchNameLower.includes('adesivo') || matchNameLower.includes('patch');
+    const isSuppository = matchTypeLower.includes('supositório') || matchNameLower.includes('supositório') || matchFormLower.includes('supositório');
+    const isConcentrate = matchTypeLower.includes('concentrado') || matchTypeLower.includes('isolado de') || matchNameLower.includes('rick simpson') ||
+                          matchNameLower.includes('rso') || matchNameLower.includes('hemp formula');
+    const isFlower = !isConcentrate && (matchTypeLower.includes('flor') || matchNameLower.includes('flor') || matchFormLower.includes('flor'));
+    const isTopical = matchTypeLower.includes('pomada') || matchNameLower.includes('pomada') || matchTypeLower.includes('tópico') ||
+                      matchTypeLower.includes('creme') || matchNameLower.includes('creme') || matchFormLower.includes('pomada') || matchFormLower.includes('creme');
+    const isSyrup = matchTypeLower.includes('syrup') || matchNameLower.includes('syrup') || matchTypeLower.includes('xarope') || matchNameLower.includes('xarope');
 
     let defaultForm = 'Solução Oleosa Sublingual (Gotas)';
-    let defaultQty = guideMatch.name.includes('15ml') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL';
+    let defaultQty = (matchNameLower.includes('15ml') || detailsLower.includes('15ml')) ? '01 Frasco de 15 mL'
+      : (matchNameLower.includes('50ml') || detailsLower.includes('50ml')) ? '01 Frasco de 50 mL'
+      : '01 Frasco de 30 mL';
     let defaultRoute = 'Via Sublingual / Oral';
     let defaultUsage = '• Tomar 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.';
 
     if (isGummy) {
-      defaultForm = 'Gomas Mastigáveis Veganas';
-      defaultQty = guideMatch.quantity || '01 Pote com 20 a 30 gomas';
-      defaultRoute = 'Via Oral';
+      defaultForm = 'Gomas Mastigáveis Veganas (Gummies)';
+      defaultQty = guideMatch.quantity || (detailsLower.includes('30 goma') || detailsLower.includes('30 un') ? '01 Pote com 30 Gomas' : detailsLower.includes('28') ? '01 Pote com 28 Gomas' : '01 Pote com 20 a 30 Gomas');
+      defaultRoute = 'Via Oral Mastigável';
       defaultUsage = '• Mastigar 01 goma ao final da tarde ou 1 hora antes de dormir por via oral. Mastigar bem antes de engolir.';
+    } else if (isCapsule) {
+      defaultForm = 'Cápsulas Gelatinosas Orais (Softgels)';
+      defaultQty = guideMatch.quantity || '01 Frasco com 30 Cápsulas';
+      defaultRoute = 'Via Oral';
+      defaultUsage = '• Ingerir 01 cápsula com água por via oral 1 a 2 vezes ao dia conforme orientação médica.';
+    } else if (isSpray) {
+      defaultForm = matchNameLower.includes('nasal') ? 'Spray Nasal Transmucoso' : 'Spray Sublingual / Mucosa Oral';
+      defaultQty = guideMatch.quantity || (detailsLower.includes('15ml') ? '01 Frasco Spray de 15 mL' : '01 Frasco Spray Dosador');
+      defaultRoute = matchNameLower.includes('nasal') ? 'Via Nasal Transmucosa' : 'Via Sublingual / Mucosa Oral';
+      defaultUsage = '• Aplicar 01 a 02 jatos na mucosa sublingual ou oral conforme necessidade clínica.';
+    } else if (isPatch) {
+      defaultForm = 'Adesivo Transdérmico de Liberação Lenta (Patch)';
+      defaultQty = guideMatch.quantity || '01 Caixa com 05 Adesivos Transdérmicos';
+      defaultRoute = 'Via Transdérmica (Cutânea)';
+      defaultUsage = '• Aplicar 01 adesivo sobre pele limpa e seca a cada 72 horas, alternando o local de aplicação.';
+    } else if (isSuppository) {
+      defaultForm = 'Supositório Transmucoso';
+      defaultQty = guideMatch.quantity || '01 Caixa com 10 Supositórios';
+      defaultRoute = 'Via Intravaginal / Retal';
+      defaultUsage = '• Introduzir 01 unidade em crises álgicas pélvicas conforme orientação médica.';
+    } else if (isConcentrate) {
+      defaultForm = matchNameLower.includes('rso') || detailsLower.includes('seringa')
+        ? 'Extrato Pastoso Concentrado em Seringa Dosadora'
+        : 'Extrato Concentrado Purificado de Cânhamo';
+      defaultQty = guideMatch.quantity || (detailsLower.includes('10ml') ? '01 Seringa Dosadora de 10 mL' : '01 Embalagem com 10 Doses (5g)');
+      defaultRoute = matchNameLower.includes('rso') ? 'Via Sublingual (Microdosagem)' : 'Via Inalatória (Vaporização de Concentrados 180°C–210°C)';
+      defaultUsage = '• Utilizar microdose conforme protocolo médico individualizado.';
     } else if (isFlower) {
-      defaultForm = 'Flores Secas In Natura (14g)';
-      defaultQty = guideMatch.quantity || '01 Embalagem Selada (14g)';
-      defaultRoute = 'Via Inalatória (Vaporização Medicinal)';
+      defaultForm = 'Flores Secas In Natura para Vaporização Medicinal';
+      defaultQty = guideMatch.quantity || (detailsLower.includes('15g') ? '01 Embalagem Selada de 15g' : detailsLower.includes('5 unidades') ? '01 Embalagem com 05 Unidades' : '01 Embalagem Selada de 14g');
+      defaultRoute = 'Via Inalatória (Vaporização Medicinal sem Combustão)';
       defaultUsage = '• Utilizar em vaporizador térmico medicinal a 170°C-195°C para resgate agudo. Não fumar.';
     } else if (isTopical) {
-      defaultForm = 'Pomada Canábica Terapêutica';
-      defaultQty = guideMatch.quantity || '01 Pote de 50g';
-      defaultRoute = 'Uso Tópico';
+      defaultForm = matchNameLower.includes('creme') ? 'Creme Dermatológico Tópico' : 'Pomada Canábica Terapêutica';
+      defaultQty = guideMatch.quantity || (detailsLower.includes('100g') || detailsLower.includes('100 ml') ? '01 Bisnaga / Frasco de 100g' : '01 Pote de 50g');
+      defaultRoute = 'Uso Tópico / Dermatológico (Uso Externo)';
       defaultUsage = '• Aplicar quantidade suficiente sobre a área afetada 2 a 3 vezes ao dia, massageando suavemente até completa absorção.';
     } else if (isSyrup) {
       defaultForm = 'Xarope Hidrossolúvel Nano-emulsão';
@@ -2225,13 +2264,63 @@ function _enrichMedicationDetails(
       defaultUsage = '• Ingerir 1 a 2 mL diluído em água ou puro sob demanda.';
     }
 
+    // Infer rich activeIngredients when missing
+    let resolvedActive = guideMatch.activeIngredients;
+    if (!resolvedActive) {
+      if (matchNameLower.includes('1065') || (matchNameLower.includes('broad') && matchNameLower.includes('cbn'))) {
+        resolvedActive = 'Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) — Total 1.065 mg (0% THC)';
+      } else if (matchNameLower.includes('thcv')) {
+        resolvedActive = 'Canabidiol (CBD) Full Spectrum + Tetrahidrocanabivarina (THCV)';
+      } else if (matchNameLower.includes('cbg') && matchNameLower.includes('cbn')) {
+        resolvedActive = 'Canabidiol (CBD) + Canabigerol (CBG) + Canabinol (CBN) Full Spectrum';
+      } else if (matchNameLower.includes('cbg')) {
+        resolvedActive = 'Canabidiol (CBD) + Canabigerol (CBG) Biodisponível';
+      } else if (matchNameLower.includes('cbn')) {
+        resolvedActive = 'Canabidiol (CBD) + Canabinol (CBN) para Indução do Sono';
+      } else if (matchNameLower.includes('thca')) {
+        resolvedActive = 'Ácido Tetrahidrocanabinólico (THCa) + Fitocanabinoides e Terpenos';
+      } else if (matchNameLower.includes('1:1') || (matchNameLower.includes('thc') && matchNameLower.includes('cbd'))) {
+        resolvedActive = 'Extrato Equilibrado de Cannabis Sativa: Canabidiol (CBD) + Delta-9-THC';
+      } else if (matchNameLower.includes('rso') || matchNameLower.includes('predominante thc') || matchNameLower.includes('alto thc')) {
+        resolvedActive = 'Extrato Integral Rico em Tetrahidrocanabinol (Delta-9-THC) + Fitocanabinoides';
+      } else if (matchNameLower.includes('isolado') || matchNameLower.includes('isolate') || detailsLower.includes('0% thc')) {
+        resolvedActive = 'Canabidiol (CBD) Isolado / Broad Spectrum Puro (0,0% THC)';
+      } else if (isGummy) {
+        resolvedActive = 'Fitocanabinoides Padronizados (Extrato Live Rosin / Broad Spectrum)';
+      } else {
+        resolvedActive = 'Canabidiol (CBD) Full Spectrum + Terpenos Bioativos (< 0,3% THC)';
+      }
+    }
+
+    // Infer rich concentration when missing
+    let resolvedConcentration = guideMatch.concentration || (guideMatch.description?.match(/Composição:\s*([^.\n]+)/i)?.[1]?.trim());
+    if (!resolvedConcentration) {
+      if (matchNameLower.includes('1065')) {
+        resolvedConcentration = 'CBD + CBN 1.065 mg (71 mg/mL) • Frasco de 15 mL';
+      } else if (matchNameLower.includes('6000mg') || matchNameLower.includes('200 mg/ml') || matchNameLower.includes('200mg/ml')) {
+        resolvedConcentration = '200 mg/mL (Total 6.000 mg de CBD) • ~5 a 10 mg/gota';
+      } else if (matchNameLower.includes('3000mg') || matchNameLower.includes('100 mg/ml') || matchNameLower.includes('100mg/ml')) {
+        resolvedConcentration = '100 mg/mL (Total 3.000 mg de Canabinoides) • Frasco de 30 mL';
+      } else if (matchNameLower.includes('1500 mg cbd + 1500 mg thcv')) {
+        resolvedConcentration = '100 mg/mL (50 mg/mL CBD + 50 mg/mL THCV • Total 3.000 mg)';
+      } else if (matchNameLower.includes('2000mg')) {
+        resolvedConcentration = '66,6 mg/mL (Total 2.000 mg em 30 mL)';
+      } else if (matchNameLower.includes('50mg/ml') || matchNameLower.includes('50 mg/ml') || matchNameLower.includes('1500mg')) {
+        resolvedConcentration = '50 mg/mL (Total 1.500 mg em 30 mL)';
+      } else if (detailsJoined) {
+        resolvedConcentration = detailsJoined;
+      } else {
+        resolvedConcentration = '100 mg/mL (3.000 mg) • Padronizado com Certificado COA';
+      }
+    }
+
     return {
       name: guideMatch.name,
-      activeIngredients: guideMatch.activeIngredients || (isGummy ? 'Fitocanabinoides Padronizados (Live Rosin / Broad Spectrum)' : 'Extrato Padronizado de Cannabis Sativa'),
-      concentration: guideMatch.concentration || (guideMatch.description?.match(/Composição:\s*([^.\n]+)/i)?.[1]?.trim()) || (isGummy ? 'Conforme rotulagem da embalagem' : 'Conforme especificação clínica'),
+      activeIngredients: resolvedActive,
+      concentration: resolvedConcentration,
       pharmaceuticalForm: isGummy ? (guideMatch.pharmaceuticalForm && !/solução oleosa/i.test(guideMatch.pharmaceuticalForm) ? guideMatch.pharmaceuticalForm : defaultForm) : (guideMatch.pharmaceuticalForm || defaultForm),
       quantity: guideMatch.quantity || defaultQty,
-      administrationRoute: isGummy ? 'Via Oral' : (guideMatch.administrationRoute || defaultRoute),
+      administrationRoute: isGummy ? 'Via Oral Mastigável' : (guideMatch.administrationRoute || defaultRoute),
       brand: guideMatch.manufacturer || (isNat ? 'Associação Nacional' : 'GreenBudzCBD'),
       origin: guideMatch.origin || (isNat ? 'Nacional' : 'Importado'),
       type: guideMatch.type || (isNat ? 'Óleo Medicinal Nacional' : (isGummy ? 'Goma comestível' : 'Extrato Canabinoide')),
@@ -2244,11 +2333,25 @@ function _enrichMedicationDetails(
 
   const originLower = (origin || '').toLowerCase();
   const brandLower = (brand || '').toLowerCase();
-  const isImportedExplicit = originLower.includes('import') || originLower.includes('eua') || brandLower.includes('flowermed') || brandLower.includes('greenbudz');
-  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRACE|ABRASCORP|AMAME|APEPI/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação') || brandLower.includes('abrace'));
+  const isImportedExplicit = originLower.includes('import') || originLower.includes('eua') || brandLower.includes('flowermed') || brandLower.includes('greenbudz') || brandLower.includes('pangaia');
+  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRACE|ABRASCORP|AMAME|APEPI|SouCannabis/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação') || brandLower.includes('abrace') || brandLower.includes('soucannabis'));
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
   const typeLower = (type || '').toLowerCase();
+
+  // Extract concentration hint from name if present
+  const inferredConcFromName = (() => {
+    if (nameLower.includes('1065')) return 'CBD + CBN 1.065 mg (71 mg/mL) • Frasco de 15 mL';
+    if (nameLower.includes('6000') || nameLower.includes('200mg/ml') || nameLower.includes('200 mg/ml') || nameLower.includes('20%')) return '200 mg/mL (Total 6.000 mg) • Frasco de 30 mL';
+    if (nameLower.includes('3000') || nameLower.includes('100mg/ml') || nameLower.includes('100 mg/ml') || nameLower.includes('10%')) return '100 mg/mL (Total 3.000 mg) • Frasco de 30 mL';
+    if (nameLower.includes('1800') || nameLower.includes('60mg/ml') || nameLower.includes('60 mg/ml') || nameLower.includes('6%')) return '60 mg/mL (Total 1.800 mg) • Frasco de 30 mL';
+    if (nameLower.includes('1500') || nameLower.includes('50mg/ml') || nameLower.includes('50 mg/ml') || nameLower.includes('5%')) return '50 mg/mL (Total 1.500 mg) • Frasco de 30 mL';
+    if (nameLower.includes('900') || nameLower.includes('30mg/ml') || nameLower.includes('30 mg/ml') || nameLower.includes('3%')) return '30 mg/mL (Total 900 mg) • Frasco de 30 mL';
+    if (nameLower.includes('500mg') || nameLower.includes('500 mg')) return '500 mg de Canabinoides Ativos';
+    if (nameLower.includes('25mg') || nameLower.includes('25 mg')) return '25 mg de Canabinoides por unidade';
+    if (nameLower.includes('10mg') || nameLower.includes('10 mg')) return '10 mg de Canabinoides por unidade';
+    return null;
+  })();
 
   // Handling for syrups
   if (typeLower.includes('syrup') || nameLower.includes('syrup') || typeLower.includes('xarope') || nameLower.includes('xarope')) {
@@ -2257,7 +2360,7 @@ function _enrichMedicationDetails(
       activeIngredients: 'Nano Delta-9-THC Hidrossolúvel 500mg',
       concentration: '2,8 mg/mL | Total 500 mg de Δ9-THC Nano',
       pharmaceuticalForm: 'Xarope Hidrossolúvel Nano-emulsão (Syrup)',
-      quantity: '01 Frasco 177ml',
+      quantity: '01 Frasco de 177 mL',
       administrationRoute: 'Via Oral (Diluído ou Puro)',
       brand: brand || 'Flowermed',
       origin: prodOrigin,
@@ -2267,13 +2370,13 @@ function _enrichMedicationDetails(
   }
   
   // Custom parsing for the newly added products to give them correct presentation
-  if (typeLower.includes('cápsula') || nameLower.includes('cápsula')) {
+  if (typeLower.includes('cápsula') || nameLower.includes('cápsula') || nameLower.includes('softgel')) {
     return {
       name: pName,
-      activeIngredients: pName.includes('Isolado') ? 'Canabidiol (CBD) Isolado' : (pName.includes('CBG') ? 'Canabidiol (CBD) + Canabigerol (CBG)' : 'Canabidiol (CBD) + Canabinol (CBN)'),
-      concentration: 'Conforme rótulo',
-      pharmaceuticalForm: 'Cápsulas Gelatinosas (Via Oral)',
-      quantity: '01 Frasco',
+      activeIngredients: pName.includes('Isolado') ? 'Canabidiol (CBD) Isolado Puro (0% THC)' : (pName.includes('CBG') ? 'Canabidiol (CBD) + Canabigerol (CBG)' : (pName.includes('CBN') ? 'Canabidiol (CBD) + Canabinol (CBN)' : 'Canabidiol (CBD) Full Spectrum')),
+      concentration: inferredConcFromName || '25 mg a 50 mg por cápsula (Pote com 30 cápsulas)',
+      pharmaceuticalForm: 'Cápsulas Gelatinosas Orais (Softgels)',
+      quantity: '01 Frasco com 30 Cápsulas',
       administrationRoute: 'Via Oral',
       brand: manufacturer,
       origin: prodOrigin,
@@ -2285,11 +2388,11 @@ function _enrichMedicationDetails(
   if (typeLower.includes('spray') || nameLower.includes('spray')) {
     return {
       name: pName,
-      activeIngredients: pName.includes('THC') ? 'Tetrahidrocanabinol (THC) + Canabidiol (CBD)' : 'Canabidiol (CBD) Broad Spectrum',
-      concentration: 'Conforme rótulo',
-      pharmaceuticalForm: 'Spray Sublingual/Oral',
-      quantity: '01 Frasco',
-      administrationRoute: 'Via Sublingual ou Mucosa Oral',
+      activeIngredients: pName.includes('THC') ? 'Tetrahidrocanabinol (THC) + Canabidiol (CBD)' : 'Canabidiol (CBD) Broad Spectrum + Terpenos Calmantes',
+      concentration: inferredConcFromName || '60 mg/mL a 100 mg/mL (Total 1.000 mg em 15 mL)',
+      pharmaceuticalForm: nameLower.includes('nasal') ? 'Spray Nasal Transmucoso' : 'Spray Sublingual / Mucosa Oral',
+      quantity: '01 Frasco Spray de 15 mL',
+      administrationRoute: nameLower.includes('nasal') ? 'Via Nasal Transmucosa' : 'Via Sublingual ou Mucosa Oral',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Absorção rápida pelas mucosas.',
@@ -2297,14 +2400,14 @@ function _enrichMedicationDetails(
     };
   }
 
-  if (typeLower.includes('adesivo') || typeLower.includes('transdérmico') || nameLower.includes('adesivo')) {
+  if (typeLower.includes('adesivo') || typeLower.includes('transdérmico') || nameLower.includes('adesivo') || nameLower.includes('patch')) {
     return {
       name: pName,
       activeIngredients: 'Canabidiol (CBD) + Tetrahidrocanabinol (THC) 1:1',
-      concentration: '20mg CBD + 20mg THC / adesivo',
+      concentration: '20 mg CBD + 20 mg THC por adesivo (Liberação 72h)',
       pharmaceuticalForm: 'Adesivo Transdérmico (Patch)',
-      quantity: '01 Caixa',
-      administrationRoute: 'Via Transdérmica',
+      quantity: '01 Caixa com 05 Adesivos',
+      administrationRoute: 'Via Transdérmica (Cutânea)',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Liberação lenta e contínua.',
@@ -2316,9 +2419,9 @@ function _enrichMedicationDetails(
     return {
       name: pName,
       activeIngredients: 'Canabidiol (CBD) + Tetrahidrocanabinol (THC)',
-      concentration: '50mg CBD + 10mg THC / unidade',
-      pharmaceuticalForm: 'Supositório Pélvico/Vaginal',
-      quantity: '01 Caixa',
+      concentration: '50 mg CBD + 10 mg THC por unidade',
+      pharmaceuticalForm: 'Supositório Pélvico / Vaginal / Retal',
+      quantity: '01 Caixa com 10 Unidades',
       administrationRoute: 'Via Intravaginal / Retal',
       brand: manufacturer,
       origin: prodOrigin,
@@ -2330,11 +2433,11 @@ function _enrichMedicationDetails(
   if (typeLower.includes('tópica') || typeLower.includes('creme') || typeLower.includes('pomada') || nameLower.includes('creme') || nameLower.includes('pomada')) {
     return {
       name: pName,
-      activeIngredients: pName.includes('CBG') ? 'Canabidiol (CBD) + Canabigerol (CBG)' : 'Fitocanabinoides (CBD predominante)',
-      concentration: 'Conforme rótulo',
-      pharmaceuticalForm: 'Creme / Pomada Tópica',
-      quantity: '01 Bisnaga/Pote',
-      administrationRoute: 'Via Tópica (Uso Externo)',
+      activeIngredients: pName.includes('CBG') ? 'Canabidiol (CBD) 1.000 mg + Canabigerol (CBG) 500 mg' : 'Fitocanabinoides Totais (CBD predominante) em Base Dermatológica',
+      concentration: inferredConcFromName || '500 mg a 1.500 mg de Canabinoides por embalagem',
+      pharmaceuticalForm: nameLower.includes('creme') ? 'Creme Dermatológico Tópico' : 'Pomada Canábica Terapêutica',
+      quantity: nameLower.includes('100') ? '01 Bisnaga / Frasco de 100 g' : '01 Pote de 50 g',
+      administrationRoute: 'Uso Tópico / Dermatológico (Uso Externo)',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Ação local em receptores cutâneos e articulares.',
@@ -2345,11 +2448,11 @@ function _enrichMedicationDetails(
   if (typeLower.includes('flor') || typeLower.includes('in natura') || nameLower.includes('flor')) {
     return {
       name: pName,
-      activeIngredients: 'Canabidiol (CBD) e Fitocanabinoides (In Natura)',
-      concentration: '~15% CBD (Variável por safra)',
-      pharmaceuticalForm: 'Flor Seca de Cânhamo (In Natura)',
-      quantity: '01 Embalagem',
-      administrationRoute: 'Via Inalatória (Vaporização)',
+      activeIngredients: nameLower.includes('thc') ? 'Inflorescências de Cannabis Sativa L. ricas em THC + Terpenos' : 'Inflorescências de Cannabis Sativa L. ricas em Canabidiol (CBD) + Terpenos',
+      concentration: '~15% a 20% de Fitocanabinoides Ativos (Padronizado)',
+      pharmaceuticalForm: 'Flores Secas In Natura para Vaporização',
+      quantity: nameLower.includes('15g') ? '01 Embalagem Selada de 15 g' : '01 Embalagem Selada de 14 g',
+      administrationRoute: 'Via Inalatória (Vaporização Medicinal sem Combustão)',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Rápida biodisponibilidade para resgate.',
@@ -2360,11 +2463,11 @@ function _enrichMedicationDetails(
   if (typeLower.includes('goma') || typeLower.includes('comestível') || nameLower.includes('goma') || nameLower.includes('gummies')) {
     return {
       name: pName,
-      activeIngredients: nameLower.includes('thc') ? 'Fitocanabinoides Padronizados: Canabidiol (CBD) + Delta-9-THC' : 'Canabidiol (CBD) Broad Spectrum (0% THC)',
-      concentration: '10mg a 20mg por goma (Verificar rótulo)',
-      pharmaceuticalForm: 'Gomas Mastigáveis Veganas',
-      quantity: '01 Pote com 20 a 30 gomas',
-      administrationRoute: 'Via Oral',
+      activeIngredients: nameLower.includes('thc') ? 'Fitocanabinoides Padronizados: Canabidiol (CBD) + Delta-9-THC' : (nameLower.includes('cbn') ? 'Canabidiol (CBD) + Canabinol (CBN) Broad Spectrum' : 'Canabidiol (CBD) Broad Spectrum (0% THC)'),
+      concentration: inferredConcFromName || '25 mg de Fitocanabinoides por goma (Pote com 30 unidades)',
+      pharmaceuticalForm: 'Gomas Mastigáveis Veganas (Gummies)',
+      quantity: '01 Pote com 30 Gomas',
+      administrationRoute: 'Via Oral Mastigável',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Sinergia terapêutica e fácil administração.',
@@ -2376,10 +2479,10 @@ function _enrichMedicationDetails(
      return {
       name: pName,
       activeIngredients: 'Fitocanabinoides Altamente Concentrados (CBD ou THC predominante)',
-      concentration: 'Alta Potência (Aprox. 700mg a 800mg por grama)',
-      pharmaceuticalForm: 'Extrato Concentrado Sólido/Pastoso',
-      quantity: '01 Seringa ou Pote (1g a 10g)',
-      administrationRoute: 'Via Sublingual ou Vaporização',
+      concentration: 'Alta Potência (700 mg a 800 mg/g — 70% a 80%)',
+      pharmaceuticalForm: 'Extrato Concentrado Pastoso em Seringa Dosadora',
+      quantity: '01 Seringa Dosadora de 10 mL (ou 5 g)',
+      administrationRoute: 'Via Sublingual ou Vaporização de Concentrados',
       brand: manufacturer,
       origin: prodOrigin,
       description: 'Extrato potente para quadros severos e refratários.',
@@ -2389,17 +2492,24 @@ function _enrichMedicationDetails(
 
   // DEFAULT (ÓLEOS)
   const dropsPerMl = 'Aproximadamente 25 gotas por mL';
-  const dropsNote = 'Aproximadamente 25 gotas por mL.';
 
   return {
     name: pName,
-    activeIngredients: isNational 
-      ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD)' 
-      : 'Canabidiol (CBD) Full Spectrum / Broad Spectrum',
-    concentration: 'Variável (Verificar concentração no rótulo)',
+    activeIngredients: nameLower.includes('cbn')
+      ? 'Canabidiol (CBD) + Canabinol (CBN) Full/Broad Spectrum'
+      : nameLower.includes('cbg')
+        ? 'Canabidiol (CBD) + Canabigerol (CBG) Full Spectrum'
+        : nameLower.includes('1:1') || (nameLower.includes('thc') && nameLower.includes('cbd'))
+          ? 'Extrato Equilibrado de Cannabis Sativa (CBD + Delta-9-THC)'
+          : nameLower.includes('isolado') || nameLower.includes('isolate')
+            ? 'Canabidiol (CBD) Isolado Puro (>99% — 0% THC)'
+            : isNational 
+              ? 'Extrato Integral de Cannabis Sativa Rico em Canabidiol (CBD) Full Spectrum' 
+              : 'Canabidiol (CBD) Full Spectrum / Broad Spectrum',
+    concentration: inferredConcFromName || '100 mg/mL (Total 3.000 mg de CBD) • Frasco de 30 mL',
     pharmaceuticalForm: `Solução Oleosa Sublingual (Gotas • ${dropsPerMl})`,
-    quantity: '01 Frasco de 30ml',
-    administrationRoute: 'Via Sublingual',
+    quantity: nameLower.includes('15ml') || nameLower.includes('1065') ? '01 Frasco de 15 mL' : '01 Frasco de 30 mL',
+    administrationRoute: 'Via Sublingual / Oral',
     brand: manufacturer,
     origin: prodOrigin,
     description: 'Modulação terapêutica do Sistema Endocanabinoide.',

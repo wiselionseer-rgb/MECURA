@@ -1,7 +1,7 @@
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted } from '../utils/productCatalog';
+import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted, buildCustomBrandCategory, getBestCategoryIdForProduct } from '../utils/productCatalog';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -221,23 +221,35 @@ export const useAdminStore = create<AdminState>()(
       addProduct: (categoryId, product) => {
         unmarkProductAsDeleted(product.name);
         set((state) => {
-          let categoryFound = false;
-          let updated = state.productCategories.map(c => {
-            if (c.id === categoryId) {
-              categoryFound = true;
-              const cleanP = (product.name || '').trim().toLowerCase();
-              const filtered = c.products.filter(p => (p.name || '').trim().toLowerCase() !== cleanP);
-              return { ...c, products: [product, ...filtered] };
-            }
-            return c;
-          });
-          if (!categoryFound) {
-            updated.unshift({
-              id: categoryId,
-              title: categoryId === 'associacoes_nacionais' ? 'Associações Nacionais' : (categoryId === 'pangaia_oficial' ? 'Pangaia Biopharmaceuticals' : 'Produtos Cadastrados'),
-              products: [product]
-            });
+          const brandCategoryId = getBestCategoryIdForProduct(product.origin, product.manufacturer);
+          const targetCategoryIds = new Set<string>();
+          if (brandCategoryId) {
+            targetCategoryIds.add(brandCategoryId);
           }
+          if (categoryId && categoryId !== 'all' && categoryId !== 'auto_brand') {
+            targetCategoryIds.add(categoryId);
+          }
+
+          let updated = [...state.productCategories];
+          const cleanP = (product.name || '').trim().toLowerCase();
+
+          targetCategoryIds.forEach(targetId => {
+            const existingIdx = updated.findIndex(c => c.id === targetId);
+            if (existingIdx !== -1) {
+              const cat = updated[existingIdx];
+              const filtered = cat.products.filter(p => (p.name || '').trim().toLowerCase() !== cleanP);
+              updated[existingIdx] = { ...cat, products: [product, ...filtered] };
+            } else {
+              const newCat = buildCustomBrandCategory(
+                targetId,
+                product.manufacturer || 'Marca Cadastrada',
+                product.origin || 'Nacional',
+                [product]
+              );
+              updated = [newCat, ...updated];
+            }
+          });
+
           const merged = mergeProductCatalogs(cbdGuideData, updated);
           syncCatalogToFirestore(merged);
           return { productCategories: merged };
@@ -252,14 +264,17 @@ export const useAdminStore = create<AdminState>()(
         }
         set((state) => {
           let found = false;
-          const updated = state.productCategories.map(c => {
+          let updatedProductFull: CBDProduct | null = null;
+          let updated = state.productCategories.map(c => {
             const isTargetCat = !categoryId || categoryId === 'all' || c.id === categoryId;
             const hasProd = c.products.some(p => (p.name || '').trim().toLowerCase() === oldClean);
             if (isTargetCat || hasProd) {
               const updatedProds = c.products.map(p => {
                 if ((p.name || '').trim().toLowerCase() === oldClean) {
                   found = true;
-                  return { ...p, ...productData };
+                  const mergedProd = { ...p, ...productData };
+                  updatedProductFull = mergedProd;
+                  return mergedProd;
                 }
                 return p;
               });
@@ -271,35 +286,35 @@ export const useAdminStore = create<AdminState>()(
             return c;
           });
 
-          if (!found) {
-            let targetIdx = -1;
-            if (categoryId && categoryId !== 'all') {
-              targetIdx = updated.findIndex(c => c.id === categoryId);
-            }
-            if (targetIdx === -1) {
-              const manuf = (productData.manufacturer || '').toLowerCase();
-              const origin = (productData.origin || '').toLowerCase();
-              if (manuf.includes('pangaia')) targetIdx = updated.findIndex(c => c.id === 'pangaia_oficial');
-              else if (manuf.includes('soucannabis')) targetIdx = updated.findIndex(c => c.id === 'soucannabis_oficial');
-              else if (origin === 'nacional' || manuf.includes('associação')) targetIdx = updated.findIndex(c => c.id === 'associacoes_nacionais');
-            }
-            if (targetIdx === -1 && updated.length > 0) {
-              targetIdx = 0;
-            }
+          const fullProd: CBDProduct = updatedProductFull || {
+            name: productData.name || productName,
+            manufacturer: productData.manufacturer || 'Associação Brasileira',
+            type: productData.type || 'Óleo Sublingual',
+            origin: productData.origin || 'Nacional',
+            ...productData
+          };
 
-            if (targetIdx !== -1) {
-              const fullProd: CBDProduct = {
-                name: productData.name || productName,
-                manufacturer: productData.manufacturer || 'Associação Brasileira',
-                type: productData.type || 'Óleo Sublingual',
-                origin: productData.origin || 'Nacional',
-                ...productData
-              };
-              updated[targetIdx] = {
-                ...updated[targetIdx],
-                products: [fullProd, ...updated[targetIdx].products.filter(p => (p.name || '').trim().toLowerCase() !== oldClean)]
-              };
+          const brandCatId = getBestCategoryIdForProduct(fullProd.origin, fullProd.manufacturer);
+          if (brandCatId) {
+            const bIdx = updated.findIndex(c => c.id === brandCatId);
+            const targetClean = (fullProd.name || '').trim().toLowerCase();
+            if (bIdx !== -1) {
+              const hasInBrand = updated[bIdx].products.some(p => (p.name || '').trim().toLowerCase() === targetClean);
+              if (!hasInBrand) {
+                updated[bIdx] = {
+                  ...updated[bIdx],
+                  products: [fullProd, ...updated[bIdx].products.filter(p => (p.name || '').trim().toLowerCase() !== oldClean)]
+                };
+              }
+            } else {
+              const newCat = buildCustomBrandCategory(brandCatId, fullProd.manufacturer, fullProd.origin, [fullProd]);
+              updated = [newCat, ...updated];
             }
+          } else if (!found && updated.length > 0) {
+            updated[0] = {
+              ...updated[0],
+              products: [fullProd, ...updated[0].products.filter(p => (p.name || '').trim().toLowerCase() !== oldClean)]
+            };
           }
 
           const merged = mergeProductCatalogs(cbdGuideData, updated);

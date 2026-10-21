@@ -6,20 +6,99 @@ import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
  * Cleanly merges base code catalog, local admin store, and cloud Firestore catalog
  * ensuring all medications (both default and custom added) are present without duplication.
  */
+export function slugifyBrandName(manufacturer?: string): string {
+  const clean = (manufacturer || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return clean || 'marca_personalizada';
+}
+
+export function buildCustomBrandCategory(
+  categoryId: string,
+  manufacturerName: string,
+  origin: string = 'Nacional',
+  initialProducts: CBDProduct[] = []
+): CBDCategory {
+  const cleanBrand = (manufacturerName || 'Marca Cadastrada').trim();
+  const isImported = (origin || '').toLowerCase().includes('importado');
+  return {
+    id: categoryId,
+    title: `${cleanBrand.toUpperCase()} — CATÁLOGO DE MEDICAMENTOS (${isImported ? 'IMPORTADO • RDC 660' : 'ASSOCIAÇÃO / NACIONAL'})`,
+    description: `Catálogo oficial de medicamentos e formulações da marca/associação ${cleanBrand}. Todos os produtos desta marca ficam agrupados nesta aba para facilitar a consulta clínica e a prescrição médica.`,
+    indicationsList: [
+      'Dor Crônica & Fibromialgia',
+      'Ansiedade, Estresse & Insônia',
+      'Modulação do Sistema Endocanabinoide',
+      'Prescrição Médica Individualizada'
+    ],
+    dosageGuidance: 'Administração e titulação individualizada conforme prescrição médica ("Start Low, Go Slow").',
+    products: initialProducts
+  };
+}
+
+/**
+ * Cleanly merges base code catalog, local admin store, and cloud Firestore catalog
+ * ensuring all medications (both default and custom added) are present without duplication
+ * and grouping manually added products into their respective Brand Tabs.
+ */
 export function mergeProductCatalogs(
   baseCategories: CBDCategory[] = cbdGuideData,
   storeCategories?: CBDCategory[],
   cloudCategories?: CBDCategory[]
 ): CBDCategory[] {
   const categoryMap = new Map<string, CBDCategory>();
+  const baseProductNames = new Set<string>();
 
   // 1. Initialize with base categories from code
   baseCategories.forEach(cat => {
+    cat.products.forEach(p => {
+      if (p && p.name) {
+        baseProductNames.add(p.name.trim().toLowerCase());
+      }
+    });
     categoryMap.set(cat.id, {
       ...cat,
       products: [...cat.products]
     });
   });
+
+  // Helper to insert or update a product inside a target category in categoryMap
+  const upsertProductInCategory = (targetCatId: string, prod: CBDProduct, fallbackCatMeta?: Partial<CBDCategory>) => {
+    if (!prod || !prod.name) return;
+    const cleanName = prod.name.trim().toLowerCase();
+
+    if (!categoryMap.has(targetCatId)) {
+      const built = buildCustomBrandCategory(
+        targetCatId,
+        prod.manufacturer || fallbackCatMeta?.title || 'Marca Cadastrada',
+        prod.origin || 'Nacional',
+        []
+      );
+      categoryMap.set(targetCatId, {
+        ...built,
+        ...(fallbackCatMeta?.description ? { description: fallbackCatMeta.description } : {}),
+        ...(fallbackCatMeta?.indicationsList ? { indicationsList: fallbackCatMeta.indicationsList } : {}),
+        ...(fallbackCatMeta?.dosageGuidance ? { dosageGuidance: fallbackCatMeta.dosageGuidance } : {}),
+        title:
+          fallbackCatMeta?.title && fallbackCatMeta.title !== 'Produtos Cadastrados'
+            ? fallbackCatMeta.title
+            : built.title,
+        products: []
+      });
+    }
+
+    const target = categoryMap.get(targetCatId)!;
+    const existingIdx = target.products.findIndex(ep => (ep.name || '').trim().toLowerCase() === cleanName);
+    if (existingIdx === -1) {
+      target.products.unshift({ ...prod });
+    } else {
+      target.products[existingIdx] = { ...target.products[existingIdx], ...prod };
+    }
+  };
 
   // Helper to merge a list of categories
   const mergeList = (categoriesToMerge?: CBDCategory[]) => {
@@ -28,26 +107,42 @@ export function mergeProductCatalogs(
     categoriesToMerge.forEach(sourceCat => {
       if (!sourceCat || !sourceCat.id) return;
 
-      if (categoryMap.has(sourceCat.id)) {
+      const isGenericLooseCategory =
+        sourceCat.title === 'Produtos Cadastrados' ||
+        sourceCat.id === 'produtos_cadastrados' ||
+        sourceCat.id === 'custom_products';
+
+      if (categoryMap.has(sourceCat.id) && !isGenericLooseCategory) {
         const target = categoryMap.get(sourceCat.id)!;
-        const targetProductNames = new Set(target.products.map(p => (p.name || '').trim().toLowerCase()));
 
         // Merge products
         if (Array.isArray(sourceCat.products)) {
           sourceCat.products.forEach(p => {
             if (!p || !p.name) return;
             const cleanName = p.name.trim().toLowerCase();
+            const isBaseProd = baseProductNames.has(cleanName);
+            const bestBrandCatId = getBestCategoryIdForProduct(p.origin, p.manufacturer);
 
-            if (!targetProductNames.has(cleanName)) {
-              target.products.unshift({ ...p });
-              targetProductNames.add(cleanName);
-            } else {
-              // Update existing product with newer properties without erasing rich base fields
-              const idx = target.products.findIndex(ep => (ep.name || '').trim().toLowerCase() === cleanName);
-              if (idx !== -1) {
-                target.products[idx] = { ...target.products[idx], ...p };
+            // If this is a manually added product with a custom brand (or a different official brand than where it was accidentally dropped),
+            // make sure it is ALSO present in its proper Brand Tab so it never stays loose!
+            if (!isBaseProd && bestBrandCatId && bestBrandCatId !== sourceCat.id) {
+              upsertProductInCategory(bestBrandCatId, p);
+              // If sourceCat was a brand category that doesn't match the product's manufacturer (e.g. default 'soucannabis_oficial' when user typed another brand),
+              // don't pollute SouCannabis with a different brand's product
+              const isSourceOfficialBrand = [
+                'soucannabis_oficial',
+                'pangaia_oficial',
+                'abrace_oficial',
+                'abecmed_oficial',
+                'flowermed_oficial',
+                'greenbudz_oficial'
+              ].includes(sourceCat.id);
+              if (isSourceOfficialBrand) {
+                return;
               }
             }
+
+            upsertProductInCategory(sourceCat.id, p, sourceCat);
           });
         }
 
@@ -57,11 +152,16 @@ export function mergeProductCatalogs(
           target.indicationsList = Array.from(combinedIndications);
         }
       } else {
-        // Brand new category created dynamically
-        categoryMap.set(sourceCat.id, {
-          ...sourceCat,
-          products: Array.isArray(sourceCat.products) ? [...sourceCat.products] : []
-        });
+        // Either a custom brand category (`brand_*`) or a legacy loose category (`Produtos Cadastrados`)
+        if (Array.isArray(sourceCat.products)) {
+          sourceCat.products.forEach(p => {
+            if (!p || !p.name) return;
+            const targetId = isGenericLooseCategory
+              ? getBestCategoryIdForProduct(p.origin, p.manufacturer)
+              : sourceCat.id;
+            upsertProductInCategory(targetId, p, isGenericLooseCategory ? undefined : sourceCat);
+          });
+        }
       }
     });
   };
@@ -109,8 +209,12 @@ export function mergeProductCatalogs(
 
   // 5. Filter out all products deleted by the doctor across all categories
   const deletedSet = getDeletedProductNames();
-  categoryMap.forEach(cat => {
+  categoryMap.forEach((cat, key) => {
     cat.products = cat.products.filter(p => !deletedSet.has((p.name || '').trim().toLowerCase()));
+    // Remove empty custom brand categories if all their products were deleted
+    if (key.startsWith('brand_') && cat.products.length === 0) {
+      categoryMap.delete(key);
+    }
   });
 
   // 6. Merge doctor-saved custom Bula overrides from localStorage
@@ -127,7 +231,11 @@ export function mergeProductCatalogs(
     }
   }
 
-  return Array.from(categoryMap.values());
+  // Order categories so custom brand tabs (`brand_*`) and official brand tabs appear prominently at the top
+  const allCats = Array.from(categoryMap.values());
+  const customBrandCats = allCats.filter(c => c.id.startsWith('brand_'));
+  const otherCats = allCats.filter(c => !c.id.startsWith('brand_'));
+  return [...customBrandCats, ...otherCats];
 }
 
 /**
@@ -460,19 +568,164 @@ export function subscribeToFirestoreCatalog(onUpdate: (categories: CBDCategory[]
 }
 
 /**
- * Returns the best matching category ID for a given product origin and manufacturer/brand name
+ * Returns the best matching category ID for a given product origin and manufacturer/brand name.
+ * For any custom brand name not matching the built-in brands, returns `brand_<slug>` so the brand gets its own dedicated tab.
  */
 export function getBestCategoryIdForProduct(origin?: string, manufacturer?: string): string {
   const cleanM = (manufacturer || '').toLowerCase().trim();
+  if (!cleanM) {
+    return origin === 'Importado' ? 'pangaia_oficial' : 'associacoes_nacionais';
+  }
   if (cleanM.includes('soucannabis') || cleanM.includes('sou cannabis')) return 'soucannabis_oficial';
   if (cleanM.includes('abrace')) return 'abrace_oficial';
   if (cleanM.includes('abec')) return 'abecmed_oficial';
-  if (cleanM.includes('pangaia') || cleanM.includes('maná')) return 'pangaia_oficial';
+  if (cleanM.includes('pangaia') || cleanM.includes('maná') || cleanM.includes('taio') || cleanM.includes('táio')) return 'pangaia_oficial';
   if (cleanM.includes('flowermed')) return 'flowermed_oficial';
-  if (cleanM.includes('flor') || cleanM.includes('extração') || cleanM.includes('folheto')) return 'flores_extracoes';
+  if (cleanM.includes('greenbudz') || cleanM.includes('green budz')) return 'greenbudz_oficial';
+  if (cleanM.includes('flores in natura') || cleanM.includes('flores & extrações') || cleanM.includes('folheto')) return 'flores_extracoes';
+  if (
+    cleanM === 'associação nacional' ||
+    cleanM === 'associacao nacional' ||
+    cleanM === 'associação brasileira' ||
+    cleanM === 'associacao brasileira' ||
+    cleanM === 'associação brasileira (nacional)' ||
+    cleanM === 'associação nacional (brasil)' ||
+    cleanM === 'associações nacionais' ||
+    cleanM === 'associação / laboratório'
+  ) {
+    return 'associacoes_nacionais';
+  }
 
-  if (origin === 'Importado') return 'pangaia_oficial';
-  return 'associacoes_nacionais';
+  return `brand_${slugifyBrandName(manufacturer)}`;
+}
+
+export interface BrandTabItem {
+  categoryId: string;
+  brandName: string;
+  badge: string;
+  emoji: string;
+  origin: 'Nacional' | 'Importado';
+  isCustomBrand: boolean;
+  productCount: number;
+  theme: 'emerald' | 'cyan' | 'neon' | 'sky' | 'purple' | 'amber';
+}
+
+/**
+ * Extracts all Brand Tabs (both official brands and user-created custom brands) from the merged product categories
+ */
+export function getBrandTabsFromCategories(categories: CBDCategory[] = []): BrandTabItem[] {
+  const catById = new Map<string, CBDCategory>();
+  categories.forEach(c => catById.set(c.id, c));
+
+  const officialTabs: BrandTabItem[] = [
+    {
+      categoryId: 'soucannabis_oficial',
+      brandName: 'SouCannabis',
+      badge: 'Associação Nacional',
+      emoji: '🌱',
+      origin: 'Nacional',
+      isCustomBrand: false,
+      productCount: catById.get('soucannabis_oficial')?.products.length || 0,
+      theme: 'emerald'
+    },
+    {
+      categoryId: 'pangaia_oficial',
+      brandName: 'Pangaia Biopharma',
+      badge: 'EUA • RDC 660',
+      emoji: '🌐',
+      origin: 'Importado',
+      isCustomBrand: false,
+      productCount: catById.get('pangaia_oficial')?.products.length || 0,
+      theme: 'cyan'
+    },
+    {
+      categoryId: 'abrace_oficial',
+      brandName: 'ABRACE Esperança',
+      badge: 'Associação',
+      emoji: '🌿',
+      origin: 'Nacional',
+      isCustomBrand: false,
+      productCount: catById.get('abrace_oficial')?.products.length || 0,
+      theme: 'neon'
+    },
+    {
+      categoryId: 'abecmed_oficial',
+      brandName: 'ABECMED',
+      badge: 'Associação',
+      emoji: '🏢',
+      origin: 'Nacional',
+      isCustomBrand: false,
+      productCount: catById.get('abecmed_oficial')?.products.length || 0,
+      theme: 'neon'
+    },
+    {
+      categoryId: 'flowermed_oficial',
+      brandName: 'Flowermed',
+      badge: 'EUA • FDA',
+      emoji: '🌸',
+      origin: 'Importado',
+      isCustomBrand: false,
+      productCount: catById.get('flowermed_oficial')?.products.length || 0,
+      theme: 'sky'
+    },
+    {
+      categoryId: 'greenbudz_oficial',
+      brandName: 'GreenBudzCBD',
+      badge: 'EUA • RDC 660',
+      emoji: '💎',
+      origin: 'Importado',
+      isCustomBrand: false,
+      productCount: catById.get('greenbudz_oficial')?.products.length || 0,
+      theme: 'purple'
+    },
+    {
+      categoryId: 'flores_extracoes',
+      brandName: 'Flores In Natura & Extrações',
+      badge: '14g / Extrações',
+      emoji: '🍃',
+      origin: 'Importado',
+      isCustomBrand: false,
+      productCount: catById.get('flores_extracoes')?.products.length || 0,
+      theme: 'emerald'
+    },
+    {
+      categoryId: 'associacoes_nacionais',
+      brandName: 'Associações Nacionais',
+      badge: 'Brasil',
+      emoji: '🇧🇷',
+      origin: 'Nacional',
+      isCustomBrand: false,
+      productCount: catById.get('associacoes_nacionais')?.products.length || 0,
+      theme: 'emerald'
+    }
+  ];
+
+  const customTabs: BrandTabItem[] = [];
+  categories.forEach(cat => {
+    if (cat.id.startsWith('brand_')) {
+      const firstProd = cat.products[0];
+      const rawBrandName =
+        firstProd?.manufacturer ||
+        cat.title.split('—')[0]?.trim() ||
+        cat.id.replace(/^brand_/, '').replace(/_/g, ' ');
+      const isImp =
+        (firstProd?.origin || '').toLowerCase().includes('importado') ||
+        cat.title.toLowerCase().includes('importado');
+      customTabs.push({
+        categoryId: cat.id,
+        brandName: rawBrandName,
+        badge: isImp ? 'Importado • RDC 660' : 'Marca / Associação',
+        emoji: isImp ? '🌐' : '🏷️',
+        origin: isImp ? 'Importado' : 'Nacional',
+        isCustomBrand: true,
+        productCount: cat.products.length,
+        theme: isImp ? 'cyan' : 'amber'
+      });
+    }
+  });
+
+  // Put custom brands right at the start of the tabs bar so the doctor immediately sees any brand they created!
+  return [...customTabs, ...officialTabs];
 }
 
 export interface RegisteredManufacturerInfo {
@@ -489,12 +742,11 @@ export interface RegisteredManufacturerInfo {
 }
 
 /**
- * Returns the 6 official curated Associations (Nacionais) and Imported Companies (Importadas):
- * - Nacional: SouCannabis, ABECMED, ABRACE
- * - Importado: FlowerMed, Pangaia, GreenBudz
+ * Returns the 6 official curated Associations (Nacionais) and Imported Companies (Importadas)
+ * plus any custom brands registered by the doctor.
  */
-export function getRegisteredManufacturers(_categories: CBDCategory[] = []): RegisteredManufacturerInfo[] {
-  return [
+export function getRegisteredManufacturers(categories: CBDCategory[] = []): RegisteredManufacturerInfo[] {
+  const baseList: RegisteredManufacturerInfo[] = [
     // Associações Brasileiras (Nacionais)
     {
       id: 'soucannabis',
@@ -564,6 +816,29 @@ export function getRegisteredManufacturers(_categories: CBDCategory[] = []): Reg
       productCount: 12
     }
   ];
+
+  const customBrands: RegisteredManufacturerInfo[] = [];
+  categories.forEach(cat => {
+    if (cat.id.startsWith('brand_') && cat.products.length > 0) {
+      const firstProd = cat.products[0];
+      const brandName = firstProd?.manufacturer || cat.title.split('—')[0]?.trim() || 'Marca Personalizada';
+      const isImp = (firstProd?.origin || '').toLowerCase().includes('importado');
+      customBrands.push({
+        id: cat.id,
+        name: brandName,
+        shortName: brandName,
+        origin: isImp ? 'Importado' : 'Nacional',
+        badgeText: isImp ? 'Importado • Marca Cadastrada' : 'Associação / Marca Nacional',
+        description: cat.description || `Catálogo personalizado da marca ${brandName} com ${cat.products.length} medicamento(s).`,
+        highlights: ['Aba Exclusiva', `${cat.products.length} Medicamento(s)`],
+        nationalCode: isImp ? undefined : 'all',
+        importedCode: isImp ? 'all' : undefined,
+        productCount: cat.products.length
+      });
+    }
+  });
+
+  return [...customBrands, ...baseList];
 }
 
 

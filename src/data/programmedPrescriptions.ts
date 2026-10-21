@@ -1,4 +1,5 @@
 import { PrescriptionItemData } from '../utils/pdfGenerator';
+import { enrichMedicationDetails } from './cbdGuide';
 
 export interface ProgrammedPrescriptionProfile {
   id: string;
@@ -507,31 +508,66 @@ export const DEFAULT_PROGRAMMED_PROFILES: ProgrammedPrescriptionProfile[] = [
 const STORAGE_KEY = 'mecura_programmed_prescriptions';
 const DELETED_KEY = 'mecura_deleted_profile_ids';
 
+function ensureCompleteProfileItems(profiles: ProgrammedPrescriptionProfile[]): ProgrammedPrescriptionProfile[] {
+  return profiles.map(profile => ({
+    ...profile,
+    items: (profile.items || []).map(item => {
+      const enriched = enrichMedicationDetails(item.name || '', item.brand, item.origin, item.type);
+      const isGenericText = (val?: string) =>
+        !val || !val.trim() || /conforme rótulo|conforme especificação|variável \(verificar/i.test(val);
+
+      return {
+        ...item,
+        brand: item.brand?.trim() || enriched.brand || 'Associação Brasileira (Nacional)',
+        origin: item.origin?.trim() || enriched.origin || 'Nacional',
+        activeIngredients: !isGenericText(item.activeIngredients)
+          ? item.activeIngredients!.trim()
+          : (enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum + Fitocanabinoides'),
+        concentration: !isGenericText(item.concentration)
+          ? item.concentration!.trim()
+          : (enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL'),
+        pharmaceuticalForm: !isGenericText(item.pharmaceuticalForm)
+          ? item.pharmaceuticalForm!.trim()
+          : (enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)'),
+        quantity: !isGenericText(item.quantity)
+          ? item.quantity!.trim()
+          : (enriched.quantity || '01 Frasco de 30 mL'),
+        administrationRoute: !isGenericText(item.administrationRoute)
+          ? item.administrationRoute!.trim()
+          : (enriched.administrationRoute || 'Via Sublingual / Oral'),
+        dosage: Array.isArray(item.dosage) && item.dosage.length > 0
+          ? item.dosage
+          : ['Iniciar com 03 a 05 gotas 2 vezes ao dia por via sublingual.', 'Reter sob a língua por 60 segundos antes de engolir.']
+      };
+    })
+  }));
+}
+
 export function getProgrammedProfiles(): ProgrammedPrescriptionProfile[] {
-  if (typeof window === 'undefined') return DEFAULT_PROGRAMMED_PROFILES;
+  if (typeof window === 'undefined') return ensureCompleteProfileItems(DEFAULT_PROGRAMMED_PROFILES);
   try {
     const rawDeleted = localStorage.getItem(DELETED_KEY);
     const deletedIds = new Set<string>(rawDeleted ? JSON.parse(rawDeleted) : []);
 
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return DEFAULT_PROGRAMMED_PROFILES.filter(p => !deletedIds.has(p.id));
+      return ensureCompleteProfileItems(DEFAULT_PROGRAMMED_PROFILES.filter(p => !deletedIds.has(p.id)));
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       const existingIds = new Set(parsed.map((p: any) => p.id));
       const missingDefaults = DEFAULT_PROGRAMMED_PROFILES.filter(p => !existingIds.has(p.id) && !deletedIds.has(p.id));
-      if (missingDefaults.length > 0) {
-        const merged = [...parsed, ...missingDefaults];
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        return merged;
-      }
-      return parsed.filter((p: any) => !deletedIds.has(p.id));
+      const combined = missingDefaults.length > 0
+        ? [...parsed, ...missingDefaults]
+        : parsed.filter((p: any) => !deletedIds.has(p.id));
+      const completed = ensureCompleteProfileItems(combined);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(completed));
+      return completed;
     }
   } catch (e) {
     console.warn('Erro ao carregar receitas programadas do localStorage:', e);
   }
-  return DEFAULT_PROGRAMMED_PROFILES;
+  return ensureCompleteProfileItems(DEFAULT_PROGRAMMED_PROFILES);
 }
 
 export function saveProgrammedProfiles(profiles: ProgrammedPrescriptionProfile[], deletedId?: string) {

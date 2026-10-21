@@ -194,7 +194,7 @@ export function PrescriptionEditorModal({
   const [newProdQuantity, setNewProdQuantity] = useState('01 Frasco de 30 mL');
   const [newProdDosage, setNewProdDosage] = useState('Tomar 05 gotas sublinguais de 12/12 horas. Reter 60 segundos antes de deglutir.');
   const [newProdActiveIngredients, setNewProdActiveIngredients] = useState('');
-  const [saveToGlobalCatalog, setSaveToGlobalCatalog] = useState(false);
+  const [saveToGlobalCatalog, setSaveToGlobalCatalog] = useState(true);
   const [feedbackBannerText, setFeedbackBannerText] = useState<string | null>(null);
   const [showProgrammedModal, setShowProgrammedModal] = useState(false);
 
@@ -422,6 +422,14 @@ export function PrescriptionEditorModal({
         result = result.filter(p => /óleo|oil|gotas|sublingual/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
       } else if (librarySelectedCategory === 'topicos') {
         result = result.filter(p => /pomada|creme|tópico|pele/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
+      } else if (librarySelectedCategory.startsWith('brand_')) {
+        const targetCat = productCategories.find(c => c.id === librarySelectedCategory);
+        const brandNameLower = (((targetCat as any)?.name || targetCat?.title || '') as string).split('(')[0].trim().toLowerCase();
+        const catNames = new Set((targetCat?.products || []).map(cp => cp.name.trim().toLowerCase()));
+        result = result.filter(p =>
+          catNames.has((p.name || '').trim().toLowerCase()) ||
+          (brandNameLower && (p.manufacturer || '').toLowerCase().includes(brandNameLower))
+        );
       } else {
         result = result.filter(p => p.categoryName === librarySelectedCategory);
       }
@@ -3244,7 +3252,13 @@ export function PrescriptionEditorModal({
                     { id: 'flowermed', label: '🇺🇸 Linha Flowermed' },
                     { id: 'flores', label: '🌿 Flores & Extrações' },
                     { id: 'oleos', label: '💧 Óleos Sublinguais' },
-                    { id: 'topicos', label: '🧴 Pomadas & Tópicos' }
+                    { id: 'topicos', label: '🧴 Pomadas & Tópicos' },
+                    ...productCategories
+                      .filter(c => c.id.startsWith('brand_'))
+                      .map(c => ({
+                        id: c.id,
+                        label: `🏷️ ${(((c as any).name || c.title || '') as string).split('(')[0].trim()} (${(c.products || []).length})`
+                      }))
                   ].map(cat => (
                     <button
                       key={cat.id}

@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
-import { mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, getBestCategoryIdForProduct, getBrandTabsFromCategories } from '../utils/productCatalog';
 import { useStore } from '../store/useStore';
 import { ProductBulaModal } from './ProductBulaModal';
 
@@ -47,6 +47,11 @@ export function CBDGuideView() {
   const productCategories = React.useMemo(() => {
     return mergeProductCatalogs(cbdGuideData, storeCategories, cloudCategories);
   }, [storeCategories, cloudCategories]);
+
+  const brandTabs = React.useMemo(() => {
+    return getBrandTabsFromCategories(productCategories);
+  }, [productCategories]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [diseaseFilter, setDiseaseFilter] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
@@ -66,13 +71,15 @@ export function CBDGuideView() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [selectedDisease, setSelectedDisease] = useState<{name: string, category: CBDCategory} | null>(null);
 
-  // States for adding a new product directly from the CBD Guide
+  // States for adding a new product / brand directly from the CBD Guide
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [isCreatingNewBrandMode, setIsCreatingNewBrandMode] = useState(false);
   const [newProdName, setNewProdName] = useState('');
   const [newProdManufacturer, setNewProdManufacturer] = useState('SouCannabis');
-  const [newProdCategory, setNewProdCategory] = useState<string>('soucannabis_oficial');
+  const [newProdCategory, setNewProdCategory] = useState<string>('auto_brand');
   const [newProdOrigin, setNewProdOrigin] = useState<'Nacional' | 'Importado'>('Nacional');
   const [newProdType, setNewProdType] = useState('Óleo Full Spectrum');
+  const [newProdActiveIngredients, setNewProdActiveIngredients] = useState('Canabidiol (CBD) Full Spectrum');
   const [newProdConcentration, setNewProdConcentration] = useState('');
   const [newProdForm, setNewProdForm] = useState('Solução Oleosa Sublingual (Gotas)');
   const [newProdRoute, setNewProdRoute] = useState('Via Sublingual / Oral');
@@ -84,58 +91,139 @@ export function CBDGuideView() {
   const [newProdDescription, setNewProdDescription] = useState('');
   const [addSuccessToast, setAddSuccessToast] = useState<string | null>(null);
 
-  const handleSaveNewProduct = () => {
+  const openAddModalForBrand = (brandName?: string, origin?: 'Nacional' | 'Importado', createNewBrand?: boolean) => {
+    if (createNewBrand) {
+      setIsCreatingNewBrandMode(true);
+      setNewProdManufacturer('');
+      setNewProdOrigin(origin || 'Nacional');
+      setNewProdCategory('auto_brand');
+    } else if (brandName) {
+      setIsCreatingNewBrandMode(false);
+      setNewProdManufacturer(brandName);
+      setNewProdOrigin(origin || 'Nacional');
+      setNewProdCategory('auto_brand');
+    } else {
+      // If a brand tab is currently active, pre-select that brand!
+      const activeBrandTab = brandTabs.find(b => b.categoryId === selectedCategoryFilter);
+      if (activeBrandTab) {
+        setIsCreatingNewBrandMode(false);
+        setNewProdManufacturer(activeBrandTab.brandName);
+        setNewProdOrigin(activeBrandTab.origin);
+        setNewProdCategory('auto_brand');
+      } else {
+        setIsCreatingNewBrandMode(false);
+      }
+    }
+    setShowAddProductModal(true);
+  };
+
+  const handleSaveNewProduct = (keepOpenForSameBrand: boolean = false) => {
     if (!newProdName.trim()) {
       alert("Por favor, informe o nome comercial do medicamento.");
       return;
     }
+    if (!newProdManufacturer.trim()) {
+      alert("Por favor, informe o nome da Marca / Associação para agrupar o medicamento na aba.");
+      return;
+    }
 
     const cleanName = newProdName.trim();
+    const cleanBrand = newProdManufacturer.trim();
     const enriched = enrichMedicationDetails(
       cleanName,
-      newProdManufacturer.trim(),
+      cleanBrand,
       newProdOrigin,
       newProdType
     );
 
-    const targetCatId = newProdCategory || (newProdOrigin === 'Nacional' ? 'soucannabis_oficial' : 'pangaia_oficial');
+    const brandCatId = getBestCategoryIdForProduct(newProdOrigin, cleanBrand);
+    const targetCatId = (newProdCategory && newProdCategory !== 'auto_brand') ? newProdCategory : brandCatId;
+
+    const resolvedActive = newProdActiveIngredients.trim() || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum';
+    const resolvedConcentration = newProdConcentration.trim() || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL';
+    const resolvedForm = newProdForm.trim() || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)';
+    const resolvedRoute = newProdRoute.trim() || enriched.administrationRoute || 'Via Sublingual / Oral';
+    const resolvedQuantity = newProdQuantity.trim() || enriched.quantity || '01 Frasco de 30 mL';
 
     const createdProduct: CBDProduct = {
       name: cleanName,
-      manufacturer: newProdManufacturer.trim() || 'Associação / Laboratório',
+      manufacturer: cleanBrand,
       type: newProdType.trim() || 'Óleo Full Spectrum',
-      concentration: newProdConcentration.trim() || enriched.concentration || '',
+      activeIngredients: resolvedActive,
+      concentration: resolvedConcentration,
+      pharmaceuticalForm: resolvedForm,
+      administrationRoute: resolvedRoute,
+      quantity: resolvedQuantity,
       origin: newProdOrigin,
       details: [
-        newProdConcentration.trim() || enriched.concentration || 'Concentração padronizada',
-        newProdForm.trim() || 'Solução Oleosa',
-        newProdQuantity.trim() || 'Frasco 30 mL',
-        newProdRoute.trim() || 'Via Sublingual'
+        resolvedConcentration,
+        resolvedForm,
+        resolvedQuantity,
+        resolvedRoute
       ],
       indications: newProdIndications.trim() || 'Dores Crônicas, Ansiedade, Insônia',
       usageInstructions: newProdPosology.trim() || 'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
+      posologyDetails: newProdPosology.trim() || 'Tomar 03 a 05 gotas sublinguais de 12/12 horas.',
       priceBRL: newProdPriceBRL ? Number(newProdPriceBRL.replace(/[^0-9.]/g, '')) : undefined,
       priceUSD: newProdPriceUSD ? Number(newProdPriceUSD.replace(/[^0-9.]/g, '')) : undefined,
-      description: newProdDescription.trim() || `Medicamento registrado pelo médico no Guia CBD.`
+      description: newProdDescription.trim() || `Medicamento da marca ${cleanBrand} registrado no Guia CBD.`
     };
+
+    // Save custom bula override so enrichMedicationDetails has all fields immediately
+    if (typeof window !== 'undefined') {
+      try {
+        const cleanKey = `mecura_bula_custom_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        localStorage.setItem(cleanKey, JSON.stringify({
+          name: cleanName,
+          manufacturer: cleanBrand,
+          origin: newProdOrigin,
+          type: createdProduct.type,
+          activeIngredients: resolvedActive,
+          concentration: resolvedConcentration,
+          pharmaceuticalForm: resolvedForm,
+          quantity: resolvedQuantity,
+          administrationRoute: resolvedRoute,
+          posologyDetails: createdProduct.posologyDetails,
+          usageInstructions: createdProduct.usageInstructions,
+          indications: createdProduct.indications,
+          description: createdProduct.description,
+          priceBRL: createdProduct.priceBRL,
+          priceUSD: createdProduct.priceUSD
+        }));
+      } catch {
+        // ignore
+      }
+    }
 
     addProduct(targetCatId, createdProduct);
 
-    setSelectedCategoryFilter('all');
+    // Focus directly on the Brand Tab (instead of filtering by product name) so the user sees the Brand Tab with all its medications!
+    setViewMode('categories');
+    setSelectedCategoryFilter(brandCatId);
     setDiseaseFilter('');
-    setSearchTerm(cleanName);
-    setExpandedCategories(prev => ({ ...prev, [targetCatId]: true }));
+    setSearchTerm('');
+    setExpandedCategories(prev => ({ ...prev, [brandCatId]: true, [targetCatId]: true }));
 
-    setAddSuccessToast(`✓ "${cleanName}" cadastrado e adicionado ao Guia CBD com sucesso!`);
-    setTimeout(() => setAddSuccessToast(null), 4000);
+    setAddSuccessToast(`✓ "${cleanName}" salvo dentro da aba da marca "${cleanBrand}"!`);
+    setTimeout(() => setAddSuccessToast(null), 4500);
 
-    // Reset fields and close
+    // Reset product-specific fields, keeping the brand so user can easily add more medications to the same brand
     setNewProdName('');
     setNewProdConcentration('');
     setNewProdPriceBRL('');
     setNewProdPriceUSD('');
     setNewProdDescription('');
-    setShowAddProductModal(false);
+    setIsCreatingNewBrandMode(false);
+
+    if (!keepOpenForSameBrand) {
+      setShowAddProductModal(false);
+      setTimeout(() => {
+        const el = document.getElementById(`cbd-category-${brandCatId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 120);
+    }
   };
 
   const allDiseases = React.useMemo(() => {
@@ -362,9 +450,9 @@ export function CBDGuideView() {
 
             <button
               type="button"
-              onClick={() => setShowAddProductModal(true)}
+              onClick={() => openAddModalForBrand()}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black rounded-xl text-xs md:text-sm font-black shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all cursor-pointer active:scale-95 flex-shrink-0"
-              title="Cadastrar novo produto ou medicamento no Guia CBD"
+              title="Cadastrar novo produto ou nova marca no Guia CBD"
             >
               <Plus className="w-4 h-4 text-black stroke-[3]" />
               <span>+ Adicionar Novo Produto</span>
@@ -397,125 +485,91 @@ export function CBDGuideView() {
           </div>
         )}
 
-        {/* Association & Laboratory Quick Selection Toolbar */}
+        {/* Association & Laboratory Quick Selection Toolbar (Dynamic Brand Tabs!) */}
         <div id="cbd-association-quick-select" className="pt-3 pb-1 border-t border-white/5 mt-2">
-          <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <span className="text-[11px] font-bold text-mecura-silver uppercase tracking-wider flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-mecura-neon" />
-              <span>Escolher Associação / Laboratório:</span>
+              <span>Escolher Associação / Laboratório / Marca:</span>
             </span>
-            {selectedCategoryFilter !== 'all' && (
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => setSelectedCategoryFilter('all')}
-                className="text-[11px] text-mecura-neon hover:underline font-semibold"
+                type="button"
+                onClick={() => openAddModalForBrand(undefined, 'Nacional', true)}
+                className="text-[11px] text-emerald-300 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer"
+                title="Criar uma nova aba de marca e adicionar vários medicamentos nela"
               >
-                Limpar filtro (Ver Todas)
+                <Plus className="w-3 h-3 stroke-[3]" />
+                <span>Criar Nova Marca / Aba</span>
               </button>
-            )}
+              {selectedCategoryFilter !== 'all' && (
+                <button
+                  onClick={() => setSelectedCategoryFilter('all')}
+                  className="text-[11px] text-mecura-neon hover:underline font-semibold"
+                >
+                  Limpar filtro (Ver Todas)
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
-            {/* SouCannabis - Requested specifically by the user! */}
-            <button
-              id="btn-choose-soucannabis"
-              onClick={() => handleSelectCategory('soucannabis_oficial')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border shadow-sm ${
-                selectedCategoryFilter === 'soucannabis_oficial'
+            {brandTabs.map((tab) => {
+              const isSelected = selectedCategoryFilter === tab.categoryId;
+              let btnStyle = '';
+              let badgeStyle = '';
+
+              if (tab.theme === 'emerald') {
+                btnStyle = isSelected
                   ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.35)] scale-105'
-                  : 'bg-emerald-950/40 text-emerald-300 hover:text-white hover:bg-emerald-900/50 border-emerald-500/40'
-              }`}
-            >
-              <span>🌱 SouCannabis</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                selectedCategoryFilter === 'soucannabis_oficial' ? 'bg-black text-emerald-300' : 'bg-emerald-500/20 text-emerald-200'
-              }`}>
-                Associação Nacional
-              </span>
-            </button>
-
-            {/* Pangaia Biopharmaceuticals */}
-            <button
-              id="btn-choose-pangaia"
-              onClick={() => handleSelectCategory('pangaia_oficial')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border shadow-sm ${
-                selectedCategoryFilter === 'pangaia_oficial'
+                  : 'bg-emerald-950/40 text-emerald-300 hover:text-white hover:bg-emerald-900/50 border-emerald-500/40';
+                badgeStyle = isSelected ? 'bg-black text-emerald-300' : 'bg-emerald-500/20 text-emerald-200';
+              } else if (tab.theme === 'cyan') {
+                btnStyle = isSelected
                   ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] scale-105'
-                  : 'bg-cyan-950/40 text-cyan-300 hover:text-white hover:bg-cyan-900/50 border-cyan-500/40'
-              }`}
-            >
-              <span>🌐 Pangaia Biopharma</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                selectedCategoryFilter === 'pangaia_oficial' ? 'bg-black text-cyan-300' : 'bg-cyan-500/20 text-cyan-200'
-              }`}>
-                EUA • RDC 660
-              </span>
-            </button>
-
-            {/* ABRACE */}
-            <button
-              id="btn-choose-abrace"
-              onClick={() => handleSelectCategory('abrace_oficial')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
-                selectedCategoryFilter === 'abrace_oficial'
-                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-105'
-                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
-              }`}
-            >
-              <span>🌿 ABRACE Esperança</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-mecura-silver">
-                Associação
-              </span>
-            </button>
-
-            {/* ABECMED */}
-            <button
-              id="btn-choose-abecmed"
-              onClick={() => handleSelectCategory('abecmed_oficial')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
-                selectedCategoryFilter === 'abecmed_oficial'
-                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-105'
-                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
-              }`}
-            >
-              <span>🏢 ABECMED</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-mecura-silver">
-                Associação
-              </span>
-            </button>
-
-            {/* Flowermed */}
-            <button
-              id="btn-choose-flowermed"
-              onClick={() => handleSelectCategory('flowermed_oficial')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
-                selectedCategoryFilter === 'flowermed_oficial'
+                  : 'bg-cyan-950/40 text-cyan-300 hover:text-white hover:bg-cyan-900/50 border-cyan-500/40';
+                badgeStyle = isSelected ? 'bg-black text-cyan-300' : 'bg-cyan-500/20 text-cyan-200';
+              } else if (tab.theme === 'sky') {
+                btnStyle = isSelected
                   ? 'bg-sky-400 text-black border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-105'
-                  : 'bg-sky-950/40 text-sky-300 hover:text-white border-sky-500/40'
-              }`}
-            >
-              <span>🌸 Flowermed</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-200">
-                EUA • FDA
-              </span>
-            </button>
+                  : 'bg-sky-950/40 text-sky-300 hover:text-white border-sky-500/40';
+                badgeStyle = isSelected ? 'bg-black text-sky-300' : 'bg-sky-500/20 text-sky-200';
+              } else if (tab.theme === 'purple') {
+                btnStyle = isSelected
+                  ? 'bg-purple-400 text-black border-purple-300 shadow-[0_0_15px_rgba(192,132,252,0.35)] scale-105'
+                  : 'bg-purple-950/40 text-purple-300 hover:text-white border-purple-500/40';
+                badgeStyle = isSelected ? 'bg-black text-purple-300' : 'bg-purple-500/20 text-purple-200';
+              } else if (tab.theme === 'amber') {
+                btnStyle = isSelected
+                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.35)] scale-105'
+                  : 'bg-amber-950/40 text-amber-300 hover:text-white border-amber-500/40';
+                badgeStyle = isSelected ? 'bg-black text-amber-300' : 'bg-amber-500/20 text-amber-200';
+              } else {
+                btnStyle = isSelected
+                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-105'
+                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated';
+                badgeStyle = isSelected ? 'bg-black text-mecura-neon' : 'bg-white/10 text-mecura-silver';
+              }
 
-            {/* Flores & Extrações */}
-            <button
-              id="btn-choose-flores"
-              onClick={() => handleSelectCategory('flores_extracoes')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
-                selectedCategoryFilter === 'flores_extracoes'
-                  ? 'bg-emerald-400 text-black border-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.35)] scale-105'
-                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
-              }`}
-            >
-              <span>🍃 Flores In Natura & Extrações</span>
-            </button>
+              return (
+                <button
+                  key={tab.categoryId}
+                  id={`btn-choose-${tab.categoryId}`}
+                  onClick={() => handleSelectCategory(tab.categoryId)}
+                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border shadow-sm cursor-pointer ${btnStyle}`}
+                >
+                  <span>{tab.emoji} {tab.brandName}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${badgeStyle}`}>
+                    {tab.badge} ({tab.productCount})
+                  </span>
+                </button>
+              );
+            })}
 
             {/* Ver Todas */}
             <button
               onClick={() => setSelectedCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border ${
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border cursor-pointer ${
                 selectedCategoryFilter === 'all'
                   ? 'bg-white/15 text-white border-white/30'
                   : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
@@ -856,9 +910,9 @@ export function CBDGuideView() {
                 className="bg-mecura-surface border border-mecura-elevated rounded-2xl overflow-hidden shadow-lg transition-all"
               >
                 {/* Category Header Bar */}
-                <button 
+                <div 
                   onClick={() => toggleCategory(category.id)}
-                  className="w-full p-4 md:p-5 flex items-center justify-between bg-gradient-to-r from-mecura-surface via-mecura-surface to-mecura-surface-light hover:from-mecura-surface-light hover:to-mecura-surface transition-all text-left"
+                  className="w-full p-4 md:p-5 flex items-center justify-between bg-gradient-to-r from-mecura-surface via-mecura-surface to-mecura-surface-light hover:from-mecura-surface-light hover:to-mecura-surface transition-all text-left cursor-pointer"
                 >
                   <div className="flex-1 pr-3">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -868,6 +922,25 @@ export function CBDGuideView() {
                       <span className="px-2 py-0.5 rounded-full bg-mecura-surface-light text-mecura-silver text-xs border border-white/5 font-semibold">
                         {category.products.length} {category.products.length === 1 ? 'produto' : 'produtos'}
                       </span>
+                      {(() => {
+                        const matchedTab = brandTabs.find(t => t.categoryId === category.id);
+                        const defaultBrandName = matchedTab?.brandName || category.products[0]?.manufacturer || category.title.split('—')[0].trim();
+                        const defaultOrigin: 'Nacional' | 'Importado' = matchedTab?.origin || (category.title.toLowerCase().includes('importado') ? 'Importado' : 'Nacional');
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAddModalForBrand(defaultBrandName, defaultOrigin, false);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                            title={`Adicionar novo medicamento dentro da aba ${defaultBrandName}`}
+                          >
+                            <Plus className="w-3 h-3 stroke-[3]" />
+                            <span>+ Adicionar Medicamento nesta Aba</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                     <p className="text-xs md:text-sm text-mecura-silver mt-2 leading-relaxed">
                       {category.description}
@@ -892,11 +965,46 @@ export function CBDGuideView() {
                       <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-mecura-silver" />
                     )}
                   </div>
-                </button>
+                </div>
 
                 {/* Category Content */}
                 {isExpanded && (
                   <div className="p-4 md:p-6 border-t border-mecura-elevated space-y-4">
+                    {/* Custom Brand Official Hub Card */}
+                    {category.id.startsWith('brand_') && (() => {
+                      const matchedTab = brandTabs.find(t => t.categoryId === category.id);
+                      const brandDisplay = matchedTab?.brandName || category.products[0]?.manufacturer || category.title.split('—')[0].trim();
+                      const brandOrigin: 'Nacional' | 'Importado' = matchedTab?.origin || 'Nacional';
+                      return (
+                        <div className="p-5 md:p-6 bg-gradient-to-br from-amber-950/40 via-black/60 to-[#0A0A0F] border border-amber-500/40 rounded-2xl mb-4 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-400/30 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" /> Aba Oficial da Marca • {brandOrigin}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver text-[11px] border border-white/10">
+                                {category.products.length} {category.products.length === 1 ? 'medicamento cadastrado' : 'medicamentos cadastrados'}
+                              </span>
+                            </div>
+                            <h4 className="text-lg md:text-xl font-bold text-white tracking-tight">
+                              Catálogo {brandDisplay} • Medicamentos Agrupados por Marca
+                            </h4>
+                            <p className="text-xs text-mecura-silver mt-1 max-w-2xl leading-relaxed">
+                              Todos os medicamentos adicionados com a marca <strong className="text-white">{brandDisplay}</strong> ficam organizados dentro desta aba exclusiva. Clique no botão ao lado para adicionar mais medicamentos a esta marca.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openAddModalForBrand(brandDisplay, brandOrigin, false)}
+                            className="px-4 py-2.5 bg-gradient-to-r from-amber-400 to-emerald-400 hover:from-amber-300 hover:to-emerald-300 text-black font-extrabold rounded-xl text-xs md:text-sm flex items-center gap-2 shadow-lg cursor-pointer flex-shrink-0 transition-all"
+                          >
+                            <Plus className="w-4 h-4 stroke-[3]" />
+                            <span>+ Adicionar Outro Medicamento em {brandDisplay}</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
+
                     {/* SouCannabis Official Association Hub */}
                     {category.id === 'soucannabis_oficial' && (
                       <div className="p-5 md:p-6 bg-gradient-to-br from-emerald-950/50 via-black/60 to-[#0A0A0F] border border-emerald-500/40 rounded-2xl mb-6 shadow-2xl space-y-5">
@@ -2084,7 +2192,7 @@ export function CBDGuideView() {
         />
       )}
 
-      {/* Add New Product Modal */}
+      {/* Add New Product / Brand Modal */}
       {showAddProductModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
           <div 
@@ -2100,10 +2208,10 @@ export function CBDGuideView() {
                 </div>
                 <div>
                   <h3 className="text-base sm:text-xl font-bold text-white flex items-center gap-2">
-                    Cadastrar Novo Produto no Guia CBD
+                    {isCreatingNewBrandMode ? 'Criar Nova Marca / Aba com Medicamentos' : 'Cadastrar Medicamento na Aba da Marca'}
                   </h3>
                   <p className="text-xs text-mecura-silver">
-                    Adicione novos medicamentos nacionais ou importados à biblioteca médica oficial.
+                    O medicamento ficará agrupado na aba da marca escolhida (ou criará uma nova aba de marca automaticamente).
                   </p>
                 </div>
               </div>
@@ -2118,6 +2226,122 @@ export function CBDGuideView() {
 
             {/* Form Body */}
             <div className="p-4 sm:p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1 bg-[#0A0A0F]">
+              {/* STEP 1: Brand / Tab Selection Box */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/30 via-[#12121A] to-[#12121A] border border-emerald-500/30 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="text-[11px] text-emerald-300 uppercase font-extrabold flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-mecura-neon" />
+                    <span>1. Escolha a Aba da Marca ou Digite uma Nova Marca *</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingNewBrandMode(true);
+                      setNewProdManufacturer('');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                      isCreatingNewBrandMode
+                        ? 'bg-amber-400 text-black border-amber-300 shadow-sm'
+                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                    }`}
+                  >
+                    <Plus className="w-3 h-3 stroke-[3]" />
+                    <span>+ Nova Marca / Laboratório</span>
+                  </button>
+                </div>
+
+                {/* Quick Brand Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                  {brandTabs.map((tab) => {
+                    const isSelectedBrand =
+                      !isCreatingNewBrandMode &&
+                      getBestCategoryIdForProduct(newProdOrigin, newProdManufacturer) === tab.categoryId;
+                    return (
+                      <button
+                        key={`modal-brand-${tab.categoryId}`}
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingNewBrandMode(false);
+                          setNewProdManufacturer(tab.brandName);
+                          setNewProdOrigin(tab.origin);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap border transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isSelectedBrand
+                            ? 'bg-emerald-500 text-black border-emerald-400 shadow-sm'
+                            : 'bg-white/5 text-mecura-silver hover:text-white border-white/10'
+                        }`}
+                      >
+                        <span>{tab.emoji} {tab.brandName}</span>
+                        <span className={`text-[10px] px-1 rounded ${isSelectedBrand ? 'bg-black/20 text-black' : 'bg-white/10 text-mecura-silver'}`}>
+                          {tab.productCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  {/* Nome da Marca / Associação */}
+                  <div className="sm:col-span-8">
+                    <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                      Nome da Marca / Associação / Laboratório (Nome da Aba) *
+                    </label>
+                    <input
+                      type="text"
+                      list="new-prod-guide-manufacturers"
+                      value={newProdManufacturer}
+                      onChange={(e) => setNewProdManufacturer(e.target.value)}
+                      placeholder="Digite o nome da marca (Ex: Santa Cannabis, Flor da Vida, SouCannabis...)"
+                      className="w-full bg-[#0A0A0F] border border-emerald-500/40 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-bold"
+                    />
+                    <datalist id="new-prod-guide-manufacturers">
+                      {brandTabs.map(t => (
+                        <option key={`dl-${t.categoryId}`} value={t.brandName} />
+                      ))}
+                      <option value="Santa Cannabis" />
+                      <option value="Flor da Vida" />
+                      <option value="Apepi" />
+                      <option value="Cultive" />
+                    </datalist>
+                  </div>
+
+                  {/* Origem */}
+                  <div className="sm:col-span-4">
+                    <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                      Origem da Marca
+                    </label>
+                    <select
+                      value={newProdOrigin}
+                      onChange={(e) => setNewProdOrigin(e.target.value as 'Nacional' | 'Importado')}
+                      className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-medium"
+                    >
+                      <option value="Nacional">🇧🇷 Nacional / Associação</option>
+                      <option value="Importado">🌐 Importado (RDC 660)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Live Brand Tab Destination Indicator */}
+                {newProdManufacturer.trim() && (() => {
+                  const previewCatId = getBestCategoryIdForProduct(newProdOrigin, newProdManufacturer.trim());
+                  const existingTab = brandTabs.find(t => t.categoryId === previewCatId);
+                  return (
+                    <div className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-[11px] flex items-center justify-between gap-2">
+                      {existingTab ? (
+                        <span className="text-emerald-300 font-medium">
+                          ✓ Será agrupado na aba existente <strong className="text-white">"{existingTab.brandName}"</strong> ({existingTab.productCount} {existingTab.productCount === 1 ? 'medicamento já cadastrado' : 'medicamentos já cadastrados'}).
+                        </span>
+                      ) : (
+                        <span className="text-amber-300 font-medium">
+                          ✨ Será criada uma <strong>nova aba exclusiva</strong> na barra de marcas para <strong className="text-white">"{newProdManufacturer.trim()}"</strong>! Você poderá colocar vários medicamentos dentro dela.
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* STEP 2: Medication Details */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                 {/* Nome Comercial */}
                 <div className="sm:col-span-8">
@@ -2130,81 +2354,6 @@ export function CBDGuideView() {
                     onChange={(e) => setNewProdName(e.target.value)}
                     placeholder="Ex: Óleo CBD 3000mg Full Spectrum (30ml)"
                     className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-bold"
-                  />
-                </div>
-
-                {/* Origem */}
-                <div className="sm:col-span-4">
-                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                    Origem
-                  </label>
-                  <select
-                    value={newProdOrigin}
-                    onChange={(e) => setNewProdOrigin(e.target.value as 'Nacional' | 'Importado')}
-                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-medium"
-                  >
-                    <option value="Nacional">Associação Nacional (Brasil)</option>
-                    <option value="Importado">Importado (EUA/Europa - RDC 660)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                {/* Fabricante / Associação */}
-                <div className="sm:col-span-6">
-                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                    Fabricante / Associação / Laboratório *
-                  </label>
-                  <input
-                    type="text"
-                    list="new-prod-guide-manufacturers"
-                    value={newProdManufacturer}
-                    onChange={(e) => setNewProdManufacturer(e.target.value)}
-                    placeholder="Ex: SouCannabis, ABECMED, Pangaia..."
-                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon font-semibold"
-                  />
-                  <datalist id="new-prod-guide-manufacturers">
-                    <option value="SouCannabis" />
-                    <option value="ABECMED" />
-                    <option value="ABRACE Esperança" />
-                    <option value="Pangaia Biopharmaceuticals" />
-                    <option value="Flowermed" />
-                    <option value="Santa Cannabis" />
-                    <option value="Flor da Vida" />
-                    <option value="GreenBudzCBD" />
-                    <option value="Associação Brasileira (Nacional)" />
-                  </datalist>
-                </div>
-
-                {/* Categoria do Guia */}
-                <div className="sm:col-span-6">
-                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                    Categoria no Guia CBD
-                  </label>
-                  <select
-                    value={newProdCategory}
-                    onChange={(e) => setNewProdCategory(e.target.value)}
-                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
-                  >
-                    {productCategories.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.title}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                {/* Concentração */}
-                <div className="sm:col-span-4">
-                  <label className="text-[11px] text-emerald-400 uppercase font-bold block mb-1">
-                    Composição / Concentração *
-                  </label>
-                  <input
-                    type="text"
-                    value={newProdConcentration}
-                    onChange={(e) => setNewProdConcentration(e.target.value)}
-                    placeholder="Ex: 50 mg/mL CBD (1500mg)"
-                    className="w-full bg-[#12121A] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-emerald-300 focus:outline-none focus:border-emerald-500 font-medium"
                   />
                 </div>
 
@@ -2221,64 +2370,114 @@ export function CBDGuideView() {
                     className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
                   />
                 </div>
+              </div>
 
-                {/* Forma Farmacêutica */}
-                <div className="sm:col-span-4">
-                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                    Forma Farmacêutica
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Princípio Ativo */}
+                <div className="sm:col-span-6">
+                  <label className="text-[11px] text-emerald-400 uppercase font-bold block mb-1">
+                    Princípio Ativo (Fitocanabinoides) *
                   </label>
                   <input
                     type="text"
-                    value={newProdForm}
-                    onChange={(e) => setNewProdForm(e.target.value)}
-                    placeholder="Ex: Solução Oleosa (Gotas)"
-                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                    value={newProdActiveIngredients}
+                    onChange={(e) => setNewProdActiveIngredients(e.target.value)}
+                    placeholder="Ex: Canabidiol (CBD) Full Spectrum + THC < 0,3%"
+                    className="w-full bg-[#12121A] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500 font-medium"
+                  />
+                </div>
+
+                {/* Concentração */}
+                <div className="sm:col-span-6">
+                  <label className="text-[11px] text-purple-300 uppercase font-bold block mb-1">
+                    Composição / Concentração *
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdConcentration}
+                    onChange={(e) => setNewProdConcentration(e.target.value)}
+                    placeholder="Ex: 100 mg/mL CBD (3.000 mg) • Frasco 30 mL"
+                    className="w-full bg-[#12121A] border border-purple-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-purple-200 focus:outline-none focus:border-purple-400 font-medium"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                {/* Forma Farmacêutica */}
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-sky-300 uppercase font-bold block mb-1">
+                    Forma Farmacêutica *
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdForm}
+                    onChange={(e) => setNewProdForm(e.target.value)}
+                    placeholder="Ex: Solução Oleosa Sublingual (Gotas)"
+                    className="w-full bg-[#12121A] border border-sky-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-400"
+                  />
+                </div>
+
                 {/* Via de Administração */}
-                <div className="sm:col-span-6">
-                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                    Via de Administração
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-sky-300 uppercase font-bold block mb-1">
+                    Via de Administração *
                   </label>
                   <input
                     type="text"
                     value={newProdRoute}
                     onChange={(e) => setNewProdRoute(e.target.value)}
                     placeholder="Ex: Via Sublingual / Oral"
-                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                    className="w-full bg-[#12121A] border border-sky-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-400"
                   />
                 </div>
 
                 {/* Quantidade / Volume */}
-                <div className="sm:col-span-6">
-                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                    Quantidade / Volume
+                <div className="sm:col-span-4">
+                  <label className="text-[11px] text-amber-300 uppercase font-bold block mb-1">
+                    Quantidade / Apresentação *
                   </label>
                   <input
                     type="text"
                     value={newProdQuantity}
                     onChange={(e) => setNewProdQuantity(e.target.value)}
                     placeholder="Ex: 01 Frasco de 30 mL"
-                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                    className="w-full bg-[#12121A] border border-amber-500/30 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
               </div>
 
-              {/* Indicações Clínicas */}
-              <div>
-                <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
-                  Indicações Clínicas & Patologias Alvo
-                </label>
-                <input
-                  type="text"
-                  value={newProdIndications}
-                  onChange={(e) => setNewProdIndications(e.target.value)}
-                  placeholder="Ex: Dor Crônica, Fibromialgia, Ansiedade, Insônia..."
-                  className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
-                />
+              {/* Indicações Clínicas & Vínculo Opcional */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <div className="sm:col-span-7">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Indicações Clínicas & Patologias Alvo
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdIndications}
+                    onChange={(e) => setNewProdIndications(e.target.value)}
+                    placeholder="Ex: Dor Crônica, Fibromialgia, Ansiedade, Insônia..."
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  />
+                </div>
+
+                <div className="sm:col-span-5">
+                  <label className="text-[11px] text-mecura-silver uppercase font-bold block mb-1">
+                    Vincular Também a Patologia (Opcional)
+                  </label>
+                  <select
+                    value={newProdCategory}
+                    onChange={(e) => setNewProdCategory(e.target.value)}
+                    className="w-full bg-[#12121A] border border-mecura-elevated rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-mecura-neon"
+                  >
+                    <option value="auto_brand">Somente na Aba da Marca ({newProdManufacturer || 'Marca'})</option>
+                    {productCategories
+                      .filter(cat => !cat.id.startsWith('brand_') && !['soucannabis_oficial', 'pangaia_oficial', 'abrace_oficial', 'abecmed_oficial', 'flowermed_oficial', 'greenbudz_oficial', 'flores_extracoes', 'associacoes_nacionais'].includes(cat.id))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>+ {cat.title}</option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
               {/* Posologia Sugerida */}
@@ -2339,7 +2538,7 @@ export function CBDGuideView() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 sm:p-5 border-t border-white/10 bg-[#14141F] flex items-center justify-between gap-3">
+            <div className="p-4 sm:p-5 border-t border-white/10 bg-[#14141F] flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setShowAddProductModal(false)}
@@ -2347,15 +2546,27 @@ export function CBDGuideView() {
               >
                 Cancelar
               </button>
-              <button
-                type="button"
-                onClick={handleSaveNewProduct}
-                disabled={!newProdName.trim()}
-                className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black font-extrabold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
-                <Plus className="w-4 h-4 text-black stroke-[3]" />
-                <span>Salvar Produto no Guia</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSaveNewProduct(true)}
+                  disabled={!newProdName.trim() || !newProdManufacturer.trim()}
+                  className="px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-extrabold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  title="Salva este medicamento na aba da marca e mantém a janela aberta para você adicionar mais medicamentos na mesma marca"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>Salvar e +1 nesta Marca</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveNewProduct(false)}
+                  disabled={!newProdName.trim() || !newProdManufacturer.trim()}
+                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-mecura-neon hover:from-emerald-400 hover:to-[#b5ff33] text-black font-extrabold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  <Check className="w-4 h-4 text-black stroke-[3]" />
+                  <span>Salvar na Aba da Marca</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
