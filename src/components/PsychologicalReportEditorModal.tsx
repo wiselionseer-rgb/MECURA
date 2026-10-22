@@ -51,6 +51,7 @@ interface PsychologicalReportEditorModalProps {
   patientAnswers?: any;
   onDownloadPDF: () => void;
   onSendToChat?: () => Promise<void> | void;
+  onResetFromTriage?: () => void;
   onSave?: (savedData: {
     purpose: string;
     demandDescription: string;
@@ -65,6 +66,115 @@ interface PsychologicalReportEditorModalProps {
     psychologistName: string;
     psychologistCrp: string;
   }) => void;
+}
+
+export function buildPsychologicalReportFromTriage(patientName: string, rawAnswers?: any) {
+  const ans = rawAnswers || {};
+  const pName = patientName || 'Paciente';
+  const objectivesList: string[] = Array.isArray(ans.objectives)
+    ? ans.objectives.filter(Boolean)
+    : ans.objective
+      ? [String(ans.objective)]
+      : ans.symptoms
+        ? [String(ans.symptoms)]
+        : [];
+
+  const objLower = objectivesList.join(' ').toLowerCase();
+  const isAnxiety = objLower.includes('ansiedade') || !!ans.ansiedade_diag || !!ans.panico || !!ans.estresse;
+  const isInsomnia = objLower.includes('sono') || objLower.includes('insônia') || objLower.includes('insonia');
+  const isPain = objLower.includes('dor');
+  const isDepression = objLower.includes('depress') || !!ans.tristeza;
+  const isFocus = objLower.includes('foco') || !!ans.foco || !!ans.memoria || !!ans.adhdTestResult;
+
+  // Build exact demand description from patient's triage
+  const demandParts: string[] = [];
+  if (objectivesList.length > 0) {
+    demandParts.push(
+      `O(A) paciente ${pName} buscou acolhimento e avaliação psicológica relatando como queixa(s) principal(is) na triagem: ${objectivesList.join(', ')}` +
+      (ans.intensity ? ` (intensidade referida: ${ans.intensity}/10` : '') +
+      (ans.duration ? `${ans.intensity ? `, tempo de evolução: ${ans.duration})` : ` (tempo de evolução: ${ans.duration})`}` : ans.intensity ? ')' : '') +
+      '.'
+    );
+  } else {
+    demandParts.push(
+      `O(A) paciente ${pName} buscou acolhimento e avaliação psicológica clínica para investigação e manejo de sofrimento emocional e sobrecarga psíquica.`
+    );
+  }
+
+  if (ans.diseaseOrigin && String(ans.diseaseOrigin).trim()) {
+    demandParts.push(`Histórico e origem do quadro relatados pelo(a) paciente na triagem: "${String(ans.diseaseOrigin).trim()}".`);
+  }
+  if (ans.description && String(ans.description).trim()) {
+    demandParts.push(`Relato complementar do(a) paciente sobre os sintomas: "${String(ans.description).trim()}".`);
+  }
+
+  const emotionalFlags: string[] = [];
+  if (ans.tristeza) emotionalFlags.push('humor entristecido ou rebaixamento afetivo frequente');
+  if (ans.estresse) emotionalFlags.push('sobrecarga de estresse emocional');
+  if (ans.irritado) emotionalFlags.push('irritabilidade acentuada');
+  if (ans.foco) emotionalFlags.push('dificuldade de concentração e sustentação do foco');
+  if (ans.memoria) emotionalFlags.push('queixas mnêmicas no cotidiano');
+  if (ans.panico) {
+    emotionalFlags.push(ans.panico_details ? `episódios de pânico (${String(ans.panico_details).trim()})` : 'episódios compatíveis com crises de pânico');
+  }
+  if (ans.ansiedade_diag) {
+    emotionalFlags.push(ans.ansiedade_diag_details ? `histórico prévio de ansiedade/depressão (${String(ans.ansiedade_diag_details).trim()})` : 'diagnóstico prévio de ansiedade/depressão');
+  }
+  if (emotionalFlags.length > 0) {
+    demandParts.push(`No rastreio emocional da triagem, assinalou: ${emotionalFlags.join('; ')}.`);
+  }
+
+  const treatmentDetails: string[] = [];
+  if (ans.tratamento_atual && ans.tratamento_atual_details) {
+    treatmentDetails.push(`tratamentos atuais: ${String(ans.tratamento_atual_details).trim()}`);
+  }
+  if (ans.remedios && ans.remedios_details) {
+    treatmentDetails.push(`medicações em uso: ${String(ans.remedios_details).trim()}`);
+  }
+  if (ans.cannabis && ans.cannabis_details) {
+    treatmentDetails.push(`experiência prévia com derivados canabinoides: ${String(ans.cannabis_details).trim()}`);
+  }
+  if (treatmentDetails.length > 0) {
+    demandParts.push(`Contexto terapêutico informado na triagem: ${treatmentDetails.join(' | ')}.`);
+  }
+
+  const neuroTests: string[] = [];
+  if (ans.adhdTestResult && typeof ans.adhdTestResult === 'object') {
+    neuroTests.push(`Escala ASRS-18 (TDAH): ${ans.adhdTestResult.classification || 'Realizado'} (${ans.adhdTestResult.scorePercent ?? 0}% — ${ans.adhdTestResult.totalPoints ?? 0}/${ans.adhdTestResult.maxPoints ?? 36} pts)`);
+  }
+  if (ans.autismTestResult && typeof ans.autismTestResult === 'object') {
+    neuroTests.push(`Rastreio TEA (${ans.autismTestResult.targetProfile || 'Adulto'}): ${ans.autismTestResult.classification || 'Realizado'} (${ans.autismTestResult.scorePercent ?? 0}% — ${ans.autismTestResult.totalPoints ?? 0}/${ans.autismTestResult.maxPoints ?? 36} pts)`);
+  }
+  if (neuroTests.length > 0) {
+    demandParts.push(`Instrumentos psicométricos de rastreio respondidos pelo(a) paciente: ${neuroTests.join('; ')}.`);
+  }
+
+  // Build CID-10 / CID-11 hypothesis from patient's actual triage
+  const cids: string[] = [];
+  if (isAnxiety) cids.push('F41.1 (Transtorno de Ansiedade Generalizada)');
+  if (ans.panico) cids.push('F41.0 (Transtorno de Pânico)');
+  if (isDepression) cids.push('F32.1 (Episódio Depressivo Moderado)');
+  if (isInsomnia) cids.push('F51.0 (Insônia Não-Orgânica)');
+  if (isFocus || ans.adhdTestResult) cids.push('F90.0 (Distúrbios da Atividade e da Atenção / TDAH)');
+  if (ans.autismTestResult) cids.push('F84.0 (Transtorno do Espectro Autista)');
+  if (isPain) cids.push('F45.4 (Transtorno Doloroso Somatoforme Persistente)');
+  if (cids.length === 0) {
+    cids.push('F41.1 (Transtorno de Ansiedade Generalizada)', 'F43.2 (Transtorno de Adaptação / Estresse)');
+  }
+
+  return {
+    purpose: "Avaliação Psicológica Clínica para Fins de Tratamento em Saúde Mental, Documentação Clínica e Acompanhamento Psicoterápico.",
+    demandDescription: demandParts.join(' '),
+    technicalProcedures:
+      "Foram realizadas entrevistas clínicas psicológicas semiestruturadas com foco em anamnese biopsicossocial, escuta qualificada da história clínica informada pelo(a) paciente na triagem e exame detalhado das funções psíquicas superiores, em estrita consonância com a Resolução CFP nº 06/2019.",
+    clinicalAnalysis:
+      `Ao exame psíquico atual, o(a) paciente ${pName} apresenta-se lúcido(a) e orientado(a) alo e autopsiquicamente. Discurso coerente e estruturado, com tonalidade afetiva congruente às queixas relatadas na triagem (${objectivesList.length > 0 ? objectivesList.join(', ') : 'sobrecarga emocional'}). ` +
+      (emotionalFlags.length > 0 ? `Observa-se repercussão clínica de ${emotionalFlags.join(', ')}, ` : 'Nota-se reatividade emocional frente aos estressores cotidianos, ') +
+      "sem alterações de sensopercepção ou juízo crítico da realidade. Evidencia-se impacto funcional na qualidade de vida e necessidade de suporte psicoterápico e regulação biopsicossocial.",
+    diagnosticHypothesis: cids.join(' / '),
+    conclusion:
+      `Com base nos dados colhidos na triagem e na avaliação clínica psicológica, atesta-se que o(a) paciente ${pName} apresenta quadro compatível com ${cids.join(', ')}, demandando acompanhamento multidisciplinar e psicoterápico contínuo para estabilização emocional, redução de danos psíquicos e promoção de sua qualidade de vida.`
+  };
 }
 
 export function PsychologicalReportEditorModal({
@@ -97,6 +207,7 @@ export function PsychologicalReportEditorModal({
   patientAnswers,
   onDownloadPDF,
   onSendToChat,
+  onResetFromTriage,
   onSave
 }: PsychologicalReportEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
@@ -110,6 +221,22 @@ export function PsychologicalReportEditorModal({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handlePullFromTriage = () => {
+    if (onResetFromTriage) {
+      onResetFromTriage();
+      showToast("✓ Dados recarregados exatamente da triagem do paciente!");
+      return;
+    }
+    const built = buildPsychologicalReportFromTriage(patientName, patientAnswers);
+    setPurpose(built.purpose);
+    setDemandDescription(built.demandDescription);
+    setTechnicalProcedures(built.technicalProcedures);
+    setClinicalAnalysis(built.clinicalAnalysis);
+    setDiagnosticHypothesis(built.diagnosticHypothesis);
+    setConclusion(built.conclusion);
+    showToast("✓ Dados recarregados exatamente da triagem do paciente!");
   };
 
   const handleSave = () => {
@@ -136,19 +263,19 @@ export function PsychologicalReportEditorModal({
 
   const handleAiGenerate = async () => {
     setIsGeneratingAi(true);
-    showToast("🤖 IA analisando queixas clínicas e gerando parecer psicológico...");
+    showToast("🤖 IA analisando queixas clínicas da triagem do paciente...");
 
     try {
       const prompt = `Você é o psicólogo clínico Marco Antônio Boastik (CRP 08/49215).
-Com base nas queixas do paciente (${patientName}, CPF: ${cpf}, respostas da triagem: ${JSON.stringify(patientAnswers || {})}), elabore o conteúdo técnico de um Laudo Psicológico em conformidade com a Resolução CFP nº 06/2019.
+Com base EXCLUSIVAMENTE nas queixas e histórico informados pelo paciente atual (${patientName}, CPF: ${cpf}, respostas da triagem: ${JSON.stringify(patientAnswers || {})}), elabore o conteúdo técnico de um Laudo Psicológico em conformidade com a Resolução CFP nº 06/2019. Não invente dados de outros pacientes.
 Responda em formato JSON estruturado com os seguintes campos:
 {
   "purpose": "Identificação e finalidade formal do documento",
-  "demandDescription": "Descrição da demanda, queixas emocionais e histórico clínico",
+  "demandDescription": "Descrição fiel da demanda, queixas emocionais, origem do quadro e histórico clínico relatados pelo paciente na triagem",
   "technicalProcedures": "Procedimentos técnico-científicos adotados (entrevistas, anamnese, exames de estado mental)",
-  "clinicalAnalysis": "Exame pormenorizado das funções psíquicas (orientação, humor, afeto, ideação, sono, sintomas ansiosos e somatizações)",
+  "clinicalAnalysis": "Exame pormenorizado das funções psíquicas congruente com a triagem do paciente",
   "diagnosticHypothesis": "CID-10 / CID-11 correspondentes com código e descrição",
-  "conclusion": "Parecer conclusivo do psicólogo, indicando o impacto biopsicossocial e recomendando acompanhamento psicológico e terapias integrativas"
+  "conclusion": "Parecer conclusivo do psicólogo para este paciente"
 }`;
 
       let aiResult: any = null;
@@ -166,7 +293,7 @@ Responda em formato JSON estruturado com os seguintes campos:
           }
         }
       } catch (apiErr) {
-        console.warn("Gemini direct call warning, using intelligent psychology fallback generator:", apiErr);
+        console.warn("Gemini direct call warning, using triage psychology generator:", apiErr);
       }
 
       if (aiResult && aiResult.demandDescription) {
@@ -177,35 +304,26 @@ Responda em formato JSON estruturado com os seguintes campos:
         if (aiResult.diagnosticHypothesis) setDiagnosticHypothesis(aiResult.diagnosticHypothesis);
         if (aiResult.conclusion) setConclusion(aiResult.conclusion);
       } else {
-        const ans = patientAnswers || {};
-        const isAnxiety = ans.objective?.toLowerCase().includes('ansiedade') || ans.symptoms?.toLowerCase().includes('ansiedade') || true;
-        const isInsomnia = ans.objective?.toLowerCase().includes('sono') || ans.symptoms?.toLowerCase().includes('sono') || ans.symptoms?.toLowerCase().includes('insônia');
-        const isPain = ans.objective?.toLowerCase().includes('dor') || ans.symptoms?.toLowerCase().includes('dor');
-
-        setPurpose("Avaliação Psicológica Clínica para Fins de Tratamento em Saúde Mental, Documentação e Acompanhamento Psicoterápico.");
-        setDemandDescription(
-          `O(A) paciente ${patientName || 'Paciente'} buscou acolhimento psicológico relatando quadro crônico de sobrecarga psíquica e sofrimento emocional, com queixas centrais de ${isAnxiety ? 'angústia persistente, hipervigilância, inquietação e oscilações do humor' : 'estresse e exaustão emocional'}${isInsomnia ? ', associados a distúrbios graves do sono com dificuldade de relaxamento psicofísico' : ''}${isPain ? ' e repercussões psicológicas do convívio com dor crônica intratável' : ''}. Refere prejuízos substanciais em suas relações interpessoais, rendimento profissional e qualidade global de vida.`
-        );
-        setTechnicalProcedures(
-          "Foram realizadas entrevistas clínicas psicológicas semiestruturadas com foco em anamnese biopsicossocial, escuta qualificada da narrativa do paciente e exame detalhado das funções psíquicas superiores, em estrita consonância com a Resolução CFP nº 06/2019."
-        );
-        setClinicalAnalysis(
-          "Ao exame psíquico atual, o(a) paciente apresenta-se lúcido(a) e orientado(a) no tempo e no espaço. Discurso coeso com tonalidade afetiva marcada por apreensão e humor deprimido/ansioso reativo. Nota-se hiperatividade autonômica frente a estressores, fadiga cognitiva e redução do limiar de tolerância à frustração. Inexistência de ideação delirante ou sintomas psicóticos desestruturantes. Observa-se padrão de sofrimento psíquico expressivo com desregulação do ritmo circadiano e necessidade imperativa de estabilização do tônus afetivo."
-        );
-        setDiagnosticHypothesis(
-          isInsomnia 
-            ? "F41.1 (Transtorno de Ansiedade Generalizada) / F51.0 (Insônia Não-Orgânica Reativa) / F43.2 (Transtorno de Adaptação)"
-            : "F41.1 (Transtorno de Ansiedade Generalizada) / F32.1 (Episódio Depressivo Moderado) / F43.1 (Estresse Pós-Traumático Reativo)"
-        );
-        setConclusion(
-          `Com base nas evidências clínicas e psicométricas colhidas, atesta-se que o(a) paciente ${patientName || 'examinado(a)'} apresenta quadro psicopatológico que justifica plenamente intervenção multidisciplinar contínua. Recomenda-se acompanhamento psicoterápico sistemático e respalda-se, sob a ótica da saúde mental, o acesso irrestrito às abordagens integrativas de regulação do estresse e equilíbrio endocanabinoide, visando a redução de danos emocionais e a preservação de sua dignidade biopsicossocial.`
-        );
+        const built = buildPsychologicalReportFromTriage(patientName, patientAnswers);
+        setPurpose(built.purpose);
+        setDemandDescription(built.demandDescription);
+        setTechnicalProcedures(built.technicalProcedures);
+        setClinicalAnalysis(built.clinicalAnalysis);
+        setDiagnosticHypothesis(built.diagnosticHypothesis);
+        setConclusion(built.conclusion);
       }
 
-      showToast("✨ Laudo psicológico redigido pela IA com sucesso!");
+      showToast("✨ Laudo psicológico gerado com base na triagem do paciente!");
     } catch (e: any) {
       console.error("Falha ao gerar com IA:", e);
-      showToast("Aviso: conteúdo padrão clínico estruturado carregado.");
+      const built = buildPsychologicalReportFromTriage(patientName, patientAnswers);
+      setPurpose(built.purpose);
+      setDemandDescription(built.demandDescription);
+      setTechnicalProcedures(built.technicalProcedures);
+      setClinicalAnalysis(built.clinicalAnalysis);
+      setDiagnosticHypothesis(built.diagnosticHypothesis);
+      setConclusion(built.conclusion);
+      showToast("✓ Laudo preenchido diretamente com os dados da triagem do paciente.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -314,22 +432,34 @@ Responda em formato JSON estruturado com os seguintes campos:
                   <div className="flex items-center gap-2.5">
                     <Sparkles className="w-5 h-5 text-purple-300 fill-current shrink-0" />
                     <div>
-                      <h4 className="text-xs font-bold text-white">Assistente de Redação Clínica com IA</h4>
+                      <h4 className="text-xs font-bold text-white">Assistente de Redação Clínica & Triagem</h4>
                       <p className="text-[11px] text-mecura-silver">
-                        Analisa automaticamente os sintomas do paciente e gera parecer técnico completo.
+                        Puxa automaticamente todas as respostas da triagem do paciente selecionado para ajustes finais.
                       </p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleAiGenerate}
-                    disabled={isGeneratingAi}
-                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <Sparkles className="w-4 h-4 fill-current" />
-                    <span>{isGeneratingAi ? 'Redigindo Laudo...' : 'Gerar Texto com IA'}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={handlePullFromTriage}
+                      className="flex-1 sm:flex-none px-3.5 py-2 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/40 text-purple-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="Recarregar laudo exatamente com o que o paciente preencheu na triagem"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Puxar Dados da Triagem</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAiGenerate}
+                      disabled={isGeneratingAi}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <Sparkles className="w-4 h-4 fill-current" />
+                      <span>{isGeneratingAi ? 'Redigindo Laudo...' : 'Gerar Texto com IA'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Grid Identificação do Paciente e Profissional */}

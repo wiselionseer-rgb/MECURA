@@ -39,8 +39,8 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { auth, db } from '../firebase';
-import { doc, setDoc, updateDoc, collection, onSnapshot, query, where, getDocs, addDoc } from 'firebase/firestore';
-import { PsychologicalReportEditorModal } from '../components/PsychologicalReportEditorModal';
+import { doc, setDoc, updateDoc, getDoc, collection, onSnapshot, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { PsychologicalReportEditorModal, buildPsychologicalReportFromTriage } from '../components/PsychologicalReportEditorModal';
 import { AreaPasswordModal } from '../components/AreaPasswordModal';
 import { generatePsychologicalReportPDF } from '../utils/pdfGenerator';
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
@@ -225,42 +225,129 @@ export function PsychologistDashboardScreen() {
     });
   }, [queue, queueFilter, queueSearchTerm]);
 
+  // Reset or populate psychological report directly from current patient's triage
+  const applyPsicoTriageDefaults = (pName: string, mergedAnswers: any) => {
+    const built = buildPsychologicalReportFromTriage(pName, mergedAnswers);
+    setReportPurpose(built.purpose);
+    setReportDemand(built.demandDescription);
+    setReportProcedures(built.technicalProcedures);
+    setReportAnalysis(built.clinicalAnalysis);
+    setReportDiagnosticHypothesis(built.diagnosticHypothesis);
+    setReportConclusion(built.conclusion);
+  };
+
+  const handleResetPsicoReportFromTriage = () => {
+    const pName = currentPatient?.patientName || (currentPatient as any)?.name || reportPatientName || 'Paciente';
+    const pAns = currentPatient?.answers || {};
+    applyPsicoTriageDefaults(pName, pAns);
+    if (currentPatient?.id) {
+      try {
+        localStorage.removeItem(`mecura_psico_report_${currentPatient.id}`);
+      } catch {}
+    }
+  };
+
   // Select patient and load report state
   const handleSelectPatient = async (patient: any) => {
-    setCurrentPatient(patient);
     startConsultation(patient.id);
     subscribeToMessages(patient.id);
 
-    // Initialize report fields
-    const pName = patient.patientName || (patient as any).name || 'Paciente';
-    const pCpf = (patient as any).cpf || patient.answers?.cpf || '';
-    const pBirth = (patient as any).birthDate || patient.answers?.birthDate || '';
+    let enrichedPatient: any = {
+      ...patient,
+      answers: { ...(patient.answers || {}) }
+    };
+
+    try {
+      const [activeSnap, queueSnap, userSnap] = await Promise.all([
+        getDoc(doc(db, 'active_consultations', patient.id)).catch(() => null),
+        getDoc(doc(db, 'queue', patient.id)).catch(() => null),
+        getDoc(doc(db, 'users', patient.id)).catch(() => null)
+      ]);
+
+      const activeData = activeSnap && activeSnap.exists() ? activeSnap.data() : {};
+      const queueData = queueSnap && queueSnap.exists() ? queueSnap.data() : {};
+      const userData = userSnap && userSnap.exists() ? userSnap.data() : {};
+
+      const mergedAnswers = {
+        ...(activeData?.answers || {}),
+        ...(userData?.answers || {}),
+        ...(queueData?.answers || {}),
+        ...(patient.answers || {})
+      };
+
+      enrichedPatient = {
+        ...activeData,
+        ...userData,
+        ...queueData,
+        ...patient,
+        patientName:
+          patient.patientName ||
+          (patient as any).name ||
+          queueData?.patientName ||
+          userData?.name ||
+          activeData?.patientName ||
+          'Paciente',
+        cpf:
+          (patient as any).cpf ||
+          mergedAnswers.cpf ||
+          queueData?.cpf ||
+          userData?.cpf ||
+          '',
+        birthDate:
+          (patient as any).birthDate ||
+          mergedAnswers.birthDate ||
+          queueData?.birthDate ||
+          userData?.birthDate ||
+          '',
+        phone:
+          (patient as any).phone ||
+          mergedAnswers.phone ||
+          queueData?.phone ||
+          userData?.phone ||
+          '',
+        answers: mergedAnswers
+      };
+    } catch (err) {
+      console.warn("Could not enrich patient triage in PsychologistDashboard:", err);
+    }
+
+    setCurrentPatient(enrichedPatient);
+
+    // Initialize report fields strictly for this patient
+    const pName = enrichedPatient.patientName || (enrichedPatient as any).name || 'Paciente';
+    const pCpf = enrichedPatient.cpf || enrichedPatient.answers?.cpf || '';
+    const pBirth = enrichedPatient.birthDate || enrichedPatient.answers?.birthDate || '';
     
     setReportPatientName(pName);
     setReportCpf(pCpf);
     setReportBirthDate(pBirth);
     setReportEmissionDate(format(new Date(), 'dd/MM/yyyy'));
 
-    // Check if report was previously saved in localStorage
+    // Check if report was previously saved in localStorage for THIS patient ID and matches their name
     const savedKey = `mecura_psico_report_${patient.id}`;
+    let loadedFromCache = false;
     try {
       const saved = localStorage.getItem(savedKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.purpose) setReportPurpose(parsed.purpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
-        if (parsed.demandDescription) setReportDemand(parsed.demandDescription);
-        if (parsed.technicalProcedures) setReportProcedures(parsed.technicalProcedures);
-        if (parsed.clinicalAnalysis) setReportAnalysis(parsed.clinicalAnalysis);
-        if (parsed.diagnosticHypothesis) setReportDiagnosticHypothesis(parsed.diagnosticHypothesis);
-        if (parsed.conclusion) setReportConclusion(parsed.conclusion);
-      } else {
-        // Defaults based on patient's answers
-        const symptoms = patient.answers?.symptoms || patient.answers?.objective || 'sintomas ansiosos e estresse';
-        setReportDemand(`Paciente comparece relatando sofrimento emocional caracterizado por ${symptoms}, com sobrecarga psicológica, tensão psicofísica e prejuízos no padrão de sono e rotina.`);
-        setReportAnalysis(`Ao exame psíquico, o(a) paciente apresenta-se orientado(a) e lúcido(a), com discurso articulado. Tonalidade afetiva ansiosa e reativa aos estressores cotidianos. Ausência de alterações na sensopercepção.`);
-        setReportConclusion(`Recomenda-se acompanhamento psicoterápico continuado e intervenções de acolhimento emocional para promoção da homeostase biopsicossocial do paciente.`);
+        const savedNameNorm = String(parsed.patientName || '').trim().toLowerCase();
+        const currNameNorm = String(pName).trim().toLowerCase();
+        const isSamePatient = !savedNameNorm || savedNameNorm === currNameNorm;
+        if (isSamePatient && parsed.demandDescription) {
+          if (parsed.purpose) setReportPurpose(parsed.purpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
+          if (parsed.demandDescription) setReportDemand(parsed.demandDescription);
+          if (parsed.technicalProcedures) setReportProcedures(parsed.technicalProcedures);
+          if (parsed.clinicalAnalysis) setReportAnalysis(parsed.clinicalAnalysis);
+          if (parsed.diagnosticHypothesis) setReportDiagnosticHypothesis(parsed.diagnosticHypothesis);
+          if (parsed.conclusion) setReportConclusion(parsed.conclusion);
+          loadedFromCache = true;
+        }
       }
     } catch {}
+
+    if (!loadedFromCache) {
+      applyPsicoTriageDefaults(pName, enrichedPatient.answers);
+    }
 
     // Update status to in-consultation if currently waiting
     if (patient.status === 'waiting') {
@@ -346,6 +433,16 @@ export function PsychologistDashboardScreen() {
   // AI Generation trigger
   const handleGenerateReportAi = async () => {
     if (!currentPatient) return;
+    const pName = currentPatient.patientName || (currentPatient as any).name || 'Paciente';
+    const pCpf = (currentPatient as any).cpf || currentPatient.answers?.cpf || '';
+    const pBirth = (currentPatient as any).birthDate || currentPatient.answers?.birthDate || '';
+    setReportPatientName(pName);
+    setReportCpf(pCpf);
+    setReportBirthDate(pBirth);
+    setReportEmissionDate(format(new Date(), 'dd/MM/yyyy'));
+    if (!reportDemand || !reportDemand.toLowerCase().includes(pName.split(' ')[0].toLowerCase())) {
+      applyPsicoTriageDefaults(pName, currentPatient.answers);
+    }
     setShowReportModal(true);
   };
 
@@ -1086,30 +1183,93 @@ export function PsychologistDashboardScreen() {
 
             {/* Triage Info Banner (if toggled) */}
             {showTriageInfo && currentPatient?.answers && (
-              <div className="p-4 bg-[#141420] border-b border-purple-500/30 text-xs text-purple-100 space-y-3 animate-fadeIn shrink-0">
+              <div className="p-4 bg-[#141420] border-b border-purple-500/30 text-xs text-purple-100 space-y-3 animate-fadeIn shrink-0 max-h-[42vh] overflow-y-auto custom-scrollbar">
                 <div className="flex items-center justify-between border-b border-purple-500/20 pb-2">
                   <h4 className="font-bold text-purple-300 flex items-center gap-1.5">
                     <ClipboardList className="w-4 h-4 text-purple-400" />
-                    Respostas da Triagem Clínica do Paciente
+                    Respostas da Triagem Clínica de {currentPatient.patientName || 'Paciente'}
                   </h4>
                   <button onClick={() => setShowTriageInfo(false)} className="text-mecura-silver hover:text-white">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-                  <div>
-                    <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Objetivo / Demanda:</span>
-                    <span className="font-semibold text-white">{currentPatient.answers.objective || 'Saúde Mental & Acolhimento'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Sintomas Relatados:</span>
-                    <span className="font-semibold text-white">{currentPatient.answers.symptoms || 'Ansiedade, estresse e insônia'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Padrão de Sono:</span>
-                    <span className="font-semibold text-white">{currentPatient.answers.sleep || 'Insônia / sono não reparador'}</span>
-                  </div>
-                </div>
+                {(() => {
+                  const ans = currentPatient.answers || {};
+                  const objs = Array.isArray(ans.objectives) && ans.objectives.length > 0
+                    ? ans.objectives.join(', ')
+                    : ans.objective || ans.symptoms || 'Não informado na triagem';
+                  const emoList: string[] = [];
+                  if (ans.tristeza) emoList.push('Tristeza frequente');
+                  if (ans.estresse) emoList.push('Estresse elevado');
+                  if (ans.irritado) emoList.push('Irritabilidade');
+                  if (ans.foco) emoList.push('Dificuldade de foco');
+                  if (ans.memoria) emoList.push('Queixa de memória');
+                  if (ans.panico) emoList.push(ans.panico_details ? `Pânico (${ans.panico_details})` : 'Crises de pânico');
+                  if (ans.ansiedade_diag) emoList.push(ans.ansiedade_diag_details ? `Ansiedade/Depressão (${ans.ansiedade_diag_details})` : 'Ansiedade/Depressão prévia');
+
+                  return (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        <div>
+                          <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Objetivos / Queixas Principais:</span>
+                          <span className="font-semibold text-white">{objs}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Intensidade & Duração:</span>
+                          <span className="font-semibold text-white">
+                            {ans.intensity ? `${ans.intensity}/10` : 'Não informada'} • {ans.duration || 'Duração não informada'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Rastreio Emocional:</span>
+                          <span className="font-semibold text-white">
+                            {emoList.length > 0 ? emoList.join(', ') : 'Sem marcadores adicionais assinalados'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {(ans.diseaseOrigin || ans.description) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-purple-500/20">
+                          {ans.diseaseOrigin && (
+                            <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                              <span className="text-[10px] text-purple-300 uppercase block font-bold mb-0.5">Histórico / Origem do Quadro:</span>
+                              <p className="text-white/90 leading-relaxed">{ans.diseaseOrigin}</p>
+                            </div>
+                          )}
+                          {ans.description && (
+                            <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                              <span className="text-[10px] text-purple-300 uppercase block font-bold mb-0.5">Relato Complementar do Paciente:</span>
+                              <p className="text-white/90 leading-relaxed">{ans.description}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {(ans.tratamento_atual_details || ans.remedios_details || ans.cannabis_details) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-purple-500/20">
+                          {ans.tratamento_atual_details && (
+                            <div className="bg-black/30 p-2 rounded-xl border border-white/5">
+                              <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Tratamento Atual:</span>
+                              <span className="text-white font-medium">{ans.tratamento_atual_details}</span>
+                            </div>
+                          )}
+                          {ans.remedios_details && (
+                            <div className="bg-black/30 p-2 rounded-xl border border-white/5">
+                              <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Medicações em Uso:</span>
+                              <span className="text-white font-medium">{ans.remedios_details}</span>
+                            </div>
+                          )}
+                          {ans.cannabis_details && (
+                            <div className="bg-black/30 p-2 rounded-xl border border-white/5">
+                              <span className="text-[10px] text-mecura-silver uppercase block font-semibold">Uso Prévio de Cannabis:</span>
+                              <span className="text-white font-medium">{ans.cannabis_details}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* TDAH and Autism indicators inside triage */}
                 {(currentPatient.answers.adhdTestResult || currentPatient.answers.autismTestResult) && (
@@ -1553,6 +1713,7 @@ export function PsychologistDashboardScreen() {
         patientAnswers={currentPatient?.answers}
         onDownloadPDF={handleDownloadReportPdf}
         onSendToChat={currentPatient ? handleSendReportToChat : undefined}
+        onResetFromTriage={handleResetPsicoReportFromTriage}
         onSave={handleSaveReportData}
       />
 

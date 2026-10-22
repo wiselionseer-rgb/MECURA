@@ -89,6 +89,15 @@ interface MedicalReportEditorModalProps {
     doctorCrm: string;
     doctorSpecialty: string;
   }) => void;
+  onResetFromTriage?: () => {
+    diagnosis: string;
+    rationale: string;
+    treatmentPlan: string;
+    monitoring: string;
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+  } | void;
   isSendingToChat?: boolean;
   reportType?: 'inicial' | 'evolutivo';
   prescribedItems?: PrescriptionItemData[];
@@ -122,6 +131,7 @@ export function MedicalReportEditorModal({
   onDownloadPDF,
   onSendToChat,
   onSave,
+  onResetFromTriage,
   isSendingToChat = false,
   reportType = 'inicial',
   prescribedItems = []
@@ -144,7 +154,7 @@ export function MedicalReportEditorModal({
   const [localTreatmentPlan, setLocalTreatmentPlan] = useState(treatmentPlan);
   const [localMonitoring, setLocalMonitoring] = useState(monitoring);
 
-  // Keep local state in sync when modal opens or reportType changes
+  // Keep local state in sync when modal opens, reportType changes, or patient changes
   useEffect(() => {
     if (isOpen) {
       setLocalPatientName(patientName);
@@ -159,7 +169,7 @@ export function MedicalReportEditorModal({
       setLocalTreatmentPlan(treatmentPlan);
       setLocalMonitoring(monitoring);
     }
-  }, [isOpen, reportType]);
+  }, [isOpen, reportType, patientName, cpf, birthDate, diagnosis, rationale, treatmentPlan, monitoring]);
 
   // Synchronize all edited fields back to parent
   const syncToParent = () => {
@@ -472,15 +482,43 @@ export function MedicalReportEditorModal({
 
                 {/* Section 2: Diagnóstico e Quadro Clínico */}
                 <div className="p-4 bg-mecura-surface/40 border border-mecura-elevated rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
                       <ClipboardList className="w-4 h-4" />
-                      2. Diagnóstico & Histórico do Quadro Clínico
+                      2. Diagnóstico & Histórico do Quadro Clínico (Triagem do Paciente)
                     </label>
-                    <span className="text-[10px] text-mecura-silver">Anamnese, sintomas, refratariedade</span>
+                    <div className="flex items-center gap-2">
+                      {onResetFromTriage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fresh = onResetFromTriage();
+                            if (fresh) {
+                              setLocalPatientName(fresh.patientName);
+                              setLocalBirthDate(fresh.birthDate);
+                              setLocalCpf(fresh.cpf);
+                              setLocalDiagnosis(fresh.diagnosis);
+                              setLocalRationale(fresh.rationale);
+                              setLocalTreatmentPlan(fresh.treatmentPlan);
+                              setLocalMonitoring(fresh.monitoring);
+                            }
+                            setIsSavedFeedback(true);
+                            const now = new Date();
+                            setLastSavedTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+                            setTimeout(() => setIsSavedFeedback(false), 2500);
+                          }}
+                          className="px-2.5 py-1 bg-mecura-neon/15 hover:bg-mecura-neon/25 border border-mecura-neon/40 text-mecura-neon rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Recarregar história clínica e diagnóstico diretamente da triagem deste paciente"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Puxar Dados da Triagem</span>
+                        </button>
+                      )}
+                      <span className="text-[10px] text-mecura-silver hidden sm:inline">Anamnese, sintomas, refratariedade</span>
+                    </div>
                   </div>
                   <textarea
-                    rows={5}
+                    rows={6}
                     value={localDiagnosis}
                     onChange={(e) => setLocalDiagnosis(e.target.value)}
                     className="w-full bg-[#0A0A0F] border border-mecura-elevated rounded-xl p-3.5 text-xs md:text-sm text-white focus:outline-none focus:border-amber-500/50 resize-none leading-relaxed"

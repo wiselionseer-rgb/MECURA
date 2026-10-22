@@ -1080,7 +1080,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     patientData?.isEvolutivo !== false
   );
 
-  // Fallback to saved report in localStorage if custom fields were not explicitly passed
+  // Fallback to saved report in localStorage ONLY if it strictly matches this patient
   let savedStorageReport: any = null;
   try {
     const rawSaved = localStorage.getItem('mecura_saved_reports_v2');
@@ -1088,15 +1088,21 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       const parsed = JSON.parse(rawSaved);
       const reportKeyType = isEvolutivo ? 'evolutivo' : 'inicial';
       const candidateKeys = [
+        patientData?.patientId ? `id:${String(patientData.patientId).toLowerCase().trim()}` : '',
         (patientData?.patientId || '').toLowerCase().trim(),
-        sanitizedUserName.toLowerCase().trim(),
-        (rawUserName || '').toLowerCase().trim(),
-        'paciente_atual'
+        sanitizedUserName && sanitizedUserName.toLowerCase() !== 'paciente' ? `name:${sanitizedUserName.toLowerCase().trim()}` : '',
+        sanitizedUserName && sanitizedUserName.toLowerCase() !== 'paciente' ? sanitizedUserName.toLowerCase().trim() : ''
       ].filter(Boolean);
       for (const k of candidateKeys) {
-        if (parsed?.[k]?.[reportKeyType]) {
-          savedStorageReport = parsed[k][reportKeyType];
-          break;
+        const candidateReport = parsed?.[k]?.[reportKeyType];
+        if (candidateReport) {
+          // Verify that the cached report does not belong to a different patient name
+          const cachedName = (candidateReport.patientName || '').trim().toLowerCase();
+          const targetName = (sanitizedUserName || '').trim().toLowerCase();
+          if (!cachedName || !targetName || targetName === 'paciente' || cachedName === targetName) {
+            savedStorageReport = candidateReport;
+            break;
+          }
         }
       }
     }
@@ -1114,7 +1120,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         patientName: sanitizedUserName,
         birthDate: birthDateText,
         cpf: cpfText,
-        objectives: patientData?.answers?.objectives || ['Ansiedade e Dor Crônica'],
+        objectives: patientData?.answers?.objectives,
         intensity: patientData?.answers?.intensity,
         duration: patientData?.answers?.duration,
         description: patientData?.answers?.description,
@@ -1123,10 +1129,15 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         remedios_details: patientData?.answers?.remedios_details,
         doenca_cronica: patientData?.answers?.doenca_cronica,
         doenca_cronica_details: patientData?.answers?.doenca_cronica_details,
+        tratamento_atual: patientData?.answers?.tratamento_atual,
+        tratamento_atual_details: patientData?.answers?.tratamento_atual_details,
         digestivo: patientData?.answers?.digestivo,
         digestivo_details: patientData?.answers?.digestivo_details,
+        cannabis: patientData?.answers?.cannabis,
+        cannabis_details: patientData?.answers?.cannabis_details,
         mainSymptoms: patientData?.answers?.mainSymptoms,
-        pathology: patientData?.answers?.pathology
+        pathology: patientData?.answers?.pathology,
+        answers: patientData?.answers
       }, isEvolutivo ? 'evolutivo' : 'inicial')
     : null;
 

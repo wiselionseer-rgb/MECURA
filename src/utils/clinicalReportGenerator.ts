@@ -1,7 +1,7 @@
 /**
  * Clinical Report Intelligence Generator
  * Generates personalized, case-specific medical, agronomic, and psychomotor reports
- * based on the patient's individual anamnesis, pathology, symptoms, and medical history.
+ * strictly based on the selected patient's individual triage (answers), pathology, symptoms, and medical history.
  */
 
 export interface PatientCaseData {
@@ -9,6 +9,8 @@ export interface PatientCaseData {
   birthDate?: string;
   cpf?: string;
   sex?: string;
+  height?: string;
+  weight?: string;
   age?: string | number;
   objectives?: string[];
   intensity?: string | number;
@@ -21,12 +23,44 @@ export interface PatientCaseData {
   doenca_cronica_details?: string;
   tratamento_atual?: boolean;
   tratamento_atual_details?: string;
+  cirurgia?: boolean;
+  cirurgia_details?: string;
+  alergia?: boolean;
+  alergia_details?: string;
   digestivo?: boolean;
   digestivo_details?: string;
+  dor_cabeca?: boolean;
+  dor_cabeca_details?: string;
+  cansado?: boolean;
   cannabis?: boolean;
   cannabis_details?: string;
+  arritmia?: boolean;
+  arritmia_details?: string;
+  tristeza?: boolean;
+  foco?: boolean;
+  memoria?: boolean;
+  irritado?: boolean;
+  estresse?: boolean;
+  panico?: boolean;
+  panico_details?: string;
+  ansiedade_diag?: boolean;
+  ansiedade_diag_details?: string;
+  dirige?: boolean;
+  dirige_details?: string;
+  maquinario?: boolean;
+  maquinario_details?: string;
+  blitz?: boolean;
+  laudo_psicomotor?: boolean;
+  preferredTreatmentStatus?: string;
+  preferredBrands?: string[];
+  preferredBrandNotes?: string;
+  adhdTestResult?: any;
+  autismTestResult?: any;
+  hcPlantCalculator?: any;
   mainSymptoms?: string;
   pathology?: string;
+  evolutionNotes?: string;
+  answers?: Record<string, any>;
 }
 
 export interface PersonalizedReportResult {
@@ -55,259 +89,371 @@ export function generatePersonalizedClinicalReport(
   patientData: PatientCaseData,
   reportType: 'inicial' | 'evolutivo' = 'inicial'
 ): PersonalizedReportResult {
-  const pName = patientData.patientName || 'Paciente';
-  const pCpf = patientData.cpf || 'Não informado';
-  const objectivesArray = patientData.objectives && patientData.objectives.length > 0 
-    ? patientData.objectives 
-    : ['Dores Crônicas', 'Ansiedade e Estresse'];
-  
-  const intensity = patientData.intensity ? `${patientData.intensity}/10` : 'Intensa (grau 8/10)';
-  const duration = patientData.duration || 'Quadro clínico de longa duração (> 12 meses)';
-  
-  const rawDesc = patientData.description || patientData.mainSymptoms || '';
-  const rawOrigin = patientData.diseaseOrigin || '';
-  const remediosDetails = patientData.remedios_details || '';
-  const doencaCronica = patientData.doenca_cronica_details || '';
-  const digestivoDetails = patientData.digestivo_details || '';
+  const ans = patientData.answers || {};
 
-  // Classify primary pathology
-  const combinedText = `${objectivesArray.join(' ')} ${rawDesc} ${rawOrigin} ${doencaCronica} ${patientData.pathology || ''}`.toLowerCase();
+  const pName = (patientData.patientName || ans.name || 'Paciente').trim();
+  const pCpf = (patientData.cpf || ans.cpf || 'Não informado').trim();
+  const pSex = patientData.sex || ans.sex || '';
+  const pHeight = patientData.height || ans.height || '';
+  const pWeight = patientData.weight || ans.weight || '';
+
+  const rawObjectives =
+    (Array.isArray(patientData.objectives) && patientData.objectives.length > 0
+      ? patientData.objectives
+      : Array.isArray(ans.objectives) && ans.objectives.length > 0
+      ? ans.objectives
+      : ans.objective
+      ? [String(ans.objective)]
+      : []).filter(Boolean);
+
+  const objectivesArray = rawObjectives.length > 0 ? rawObjectives : ['Avaliação Clínica Canabinoide'];
+
+  const rawIntensity = patientData.intensity ?? ans.intensity;
+  const intensity = rawIntensity !== undefined && rawIntensity !== null && String(rawIntensity).trim() !== ''
+    ? `${rawIntensity}/10`
+    : 'Moderada a Intensa';
+
+  const rawDuration = patientData.duration || ans.duration || '';
+  const durationLabel = rawDuration
+    ? (rawDuration === 'dias' ? 'alguns dias' : rawDuration === 'semanas' ? 'algumas semanas' : rawDuration === 'meses' ? 'vários meses' : rawDuration === 'anos' ? 'múltiplos anos (quadro crônico)' : rawDuration)
+    : 'evolução crônica';
+
+  const rawOrigin = (patientData.diseaseOrigin ?? ans.diseaseOrigin ?? '').trim();
+  const rawDesc = (patientData.description ?? ans.description ?? patientData.mainSymptoms ?? ans.mainSymptoms ?? '').trim();
+  const evolutionNotes = (patientData.evolutionNotes ?? '').trim();
+
+  const tratamentoAtual = patientData.tratamento_atual ?? ans.tratamento_atual;
+  const tratamentoAtualDetails = (patientData.tratamento_atual_details ?? ans.tratamento_atual_details ?? '').trim();
+  const remedios = patientData.remedios ?? ans.remedios;
+  const remediosDetails = (patientData.remedios_details ?? ans.remedios_details ?? '').trim();
+  const doencaCronica = patientData.doenca_cronica ?? ans.doenca_cronica;
+  const doencaCronicaDetails = (patientData.doenca_cronica_details ?? ans.doenca_cronica_details ?? '').trim();
+  const cirurgia = patientData.cirurgia ?? ans.cirurgia;
+  const cirurgiaDetails = (patientData.cirurgia_details ?? ans.cirurgia_details ?? '').trim();
+  const alergia = patientData.alergia ?? ans.alergia;
+  const alergiaDetails = (patientData.alergia_details ?? ans.alergia_details ?? '').trim();
+  const digestivo = patientData.digestivo ?? ans.digestivo;
+  const digestivoDetails = (patientData.digestivo_details ?? ans.digestivo_details ?? '').trim();
+  const dorCabeca = patientData.dor_cabeca ?? ans.dor_cabeca;
+  const dorCabecaDetails = (patientData.dor_cabeca_details ?? ans.dor_cabeca_details ?? '').trim();
+  const cansado = patientData.cansado ?? ans.cansado;
+  const cannabis = patientData.cannabis ?? ans.cannabis;
+  const cannabisDetails = (patientData.cannabis_details ?? ans.cannabis_details ?? '').trim();
+  const arritmia = patientData.arritmia ?? ans.arritmia;
+  const arritmiaDetails = (patientData.arritmia_details ?? ans.arritmia_details ?? '').trim();
+
+  // Emotional & cognitive triage markers
+  const tristeza = patientData.tristeza ?? ans.tristeza;
+  const foco = patientData.foco ?? ans.foco;
+  const memoria = patientData.memoria ?? ans.memoria;
+  const irritado = patientData.irritado ?? ans.irritado;
+  const estresse = patientData.estresse ?? ans.estresse;
+  const panico = patientData.panico ?? ans.panico;
+  const panicoDetails = (patientData.panico_details ?? ans.panico_details ?? '').trim();
+  const ansiedadeDiag = patientData.ansiedade_diag ?? ans.ansiedade_diag;
+  const ansiedadeDiagDetails = (patientData.ansiedade_diag_details ?? ans.ansiedade_diag_details ?? '').trim();
+
+  // Neuro tests & HC calculator
+  const adhdRes = patientData.adhdTestResult || ans.adhdTestResult;
+  const autismRes = patientData.autismTestResult || ans.autismTestResult;
+  const hcCalc = patientData.hcPlantCalculator || ans.hcPlantCalculator;
+
+  // Brand / Association preferences from triage
+  const prefBrands: string[] = Array.isArray(patientData.preferredBrands)
+    ? patientData.preferredBrands
+    : Array.isArray(ans.preferredBrands)
+    ? ans.preferredBrands
+    : [];
+  const prefNotes = (patientData.preferredBrandNotes ?? ans.preferredBrandNotes ?? '').trim();
+
+  // Combine all patient-provided text to detect exact pathologies and CIDs
+  const combinedText = `${objectivesArray.join(' ')} ${rawOrigin} ${rawDesc} ${doencaCronicaDetails} ${tratamentoAtualDetails} ${ansiedadeDiagDetails} ${panicoDetails} ${patientData.pathology || ''}`.toLowerCase();
 
   const isEpilepsy = /epilep|convuls|crise conv|ausência/i.test(combinedText);
-  const isAutism = /autis|tea|espectro aut/i.test(combinedText);
+  const isAutism = /autis|tea|espectro aut/i.test(combinedText) || !!(autismRes && autismRes.scorePercent >= 50);
   const isParkinson = /parkinson|tremor|rigidez motor|discinesia/i.test(combinedText);
-  const isFibroOrPain = /dor|lombar|coluna|ciátic|artrite|artrose|fibromialgia|reumát|neuralg|neuropat/i.test(combinedText);
+  const isAlzheimer = /alzheimer|demência|declínio cognitivo/i.test(combinedText);
+  const isFibro = /fibromialgia/i.test(combinedText);
+  const isLombar = /lombar|lombalgia|coluna|hérnia|ciátic/i.test(combinedText);
+  const isArtrite = /artrite|artrose|reumát/i.test(combinedText);
+  const isNeuropathy = /neuropat|neuralg/i.test(combinedText);
+  const isPain = isFibro || isLombar || isArtrite || isNeuropathy || /dor|álgic|crônic/i.test(combinedText);
   const isInsomnia = /sono|insônia|acordar noturno|despertar precoc/i.test(combinedText);
-  const isMigraine = /enxaqueca|cefaleia|dor de cabeça/i.test(combinedText);
+  const isMigraine = /enxaqueca|cefaleia|dor de cabeça/i.test(combinedText) || !!dorCabeca;
   const isEndometriosis = /endometriose|cólica pélvica|dor pélvica/i.test(combinedText);
-  const isADHD = /tdah|déficit de atenção|hiperativid/i.test(combinedText);
-  const isDepression = /depress|tristeza profunda|anedonia/i.test(combinedText);
+  const isADHD = /tdah|déficit de atenção|hiperativid|foco e concentração/i.test(combinedText) || !!(adhdRes && adhdRes.scorePercent >= 50);
+  const isDepression = /depress|tristeza profunda|anedonia/i.test(combinedText) || !!tristeza;
+  const isAnxiety = /ansiedade|pânico|estresse/i.test(combinedText) || !!ansiedadeDiag || !!panico || !!estresse;
 
-  // Setup Clinical Pathology Profile
-  let conditionName = 'Síndrome Dolorosa Crônica e Tensão Neuromuscular Refratária';
-  let cidPrincipal = 'R52.2 (Outra Dor Crônica)';
-  let cidsSecundarios = 'M54.5 (Lombalgia Crônica), F41.9 (Transtorno Ansioso Não Especificado)';
-  let conventionalMedsTried = 'Anti-inflamatórios Não Esteroidais (Ibuprofeno, Cetoprofeno, Celecoxibe), Analgésicos opioides (Tramadol, Codeína), Relaxantes musculares (Ciclobenzaprina) e Gabapentinoides (Pregabalina, Gabapentina)';
-  let refractoryDescription = 'alívio apenas temporário e insuficiente do quadro doloroso, com desenvolvimento progressivo de tolerância farmacológica e rápida recorrência das crises álgicas incapacitantes ao término do efeito das doses';
-  let sideEffectsDescription = 'gastrite medicamentosa, dor epigástrica severa, náuseas, sonolência diurna excessiva, embotamento cognitivo, constipação intestinal crônica e dependência farmacológica de analgésicos opioides';
-  let cannabinoidBenefits = 'alívio substancial e sustentado dos escores de dor (redução significativa na Escala Visual Analógica - EVA), relaxamento muscular profundo, modulação da sensibilização central e restauração do repouso noturno';
-  let interruptionRisks = 'recidiva imediata e severa do quadro de dor incapacitante, perda total da mobilidade física e funcionalidade cotidiana, colapso do sono reparador e necessidade de retorno forçado a esquemas de opioides e anti-inflamatórios em altas doses de reconhecida nefro e gastrotoxicidade';
-  let agronomicDoseMg = 3500;
-  let secRationaleSEC = 'modulação direta dos receptores CB1 nas vias medulares ascendentes da dor e receptores CB2 nas células imunes periféricas, suprimindo citocinas pró-inflamatórias (TNF-alfa, IL-1beta) e inibindo a liberação pré-sináptica de substância P e glutamato';
+  // Build dynamic CID-10 list strictly matching the patient's triage
+  const matchedCids: Array<{ code: string; label: string }> = [];
+  const addCid = (code: string, label: string) => {
+    if (!matchedCids.some(c => c.code === code)) {
+      matchedCids.push({ code, label });
+    }
+  };
 
-  if (isEpilepsy) {
-    conditionName = 'Epilepsia Farmacorresistente e Crises Convulsivas Recorrentes';
-    cidPrincipal = 'G40.9 (Epilepsia Não Especificada)';
-    cidsSecundarios = 'G40.8 (Outras Epilepsias e Síndromes Epilépticas), F41.1 (Ansiedade Generalizada Reativa)';
-    conventionalMedsTried = 'Fármacos Antiepilépticos de múltiplas gerações (Valproato de Sódio, Carbamazepina, Levetiracetam, Lamotrigina, Topiramato e Clobazam)';
-    refractoryDescription = 'ausência de remissão sustentada das crises parciais e generalizadas, com persistência de episódios convulsivos e falha terapêutica documentada a dois ou mais anticonvulsivantes adequadamente tolerados e dosados';
-    sideEffectsDescription = 'sonolência debilitante, lentificação psicomotora, sobrecarga hepatometabólica, ataxia, labilidade emocional e acentuado prejuízo na memória e acuidade cognitiva';
-    cannabinoidBenefits = 'redução drástica na frequência e na intensidade dos episódios convulsivos, aumento do limiar convulsivo neural, encurtamento do período pós-ictal e melhora expressiva da vigília e sociabilidade';
-    interruptionRisks = 'iminente risco de recorrência paroxística descontrolada de crises convulsivas, status epilepticus potencialmente fatal, traumatismos cranioencefálicos decorrentes de quedas súbitas e deterioração neurocognitiva progressiva';
-    agronomicDoseMg = 5900;
-    secRationaleSEC = 'ação neuroprotetora e antiepiléptica mediada pelo Canabidiol (CBD) via antagonismo dos receptores GPR55, dessensibilização dos canais TRPV1 e modulação do fluxo de cálcio intracelular, reduzindo a hiperexcitabilidade neuronal aberrante';
-  } else if (isAutism) {
-    conditionName = 'Transtorno do Espectro Autista (TEA) com Desregulação Sensorial e Comportamental';
-    cidPrincipal = 'F84.0 (Autismo Infantil)';
-    cidsSecundarios = 'F90.0 (Transtornos Hipercinéticos), G47.0 (Distúrbio do Sono)';
-    conventionalMedsTried = 'Antipsicóticos Atípicos (Risperidona, Aripiprazol), Estimulantes do SNC (Metilfenidato) e Estabilizadores de Humor';
-    refractoryDescription = 'controle apenas parcial e transitório de crises agressivas, com persistência da hipersensibilidade sensorial, inflexibilidade cognitiva e incapacidade de autorregulação emocional';
-    sideEffectsDescription = 'ganho ponderal acelerado com risco de síndrome metabólica, hiperprolactinemia, sedação motora excessiva, tremores extrapiramidais e apatia comportamental';
-    cannabinoidBenefits = 'regulação do processamento sensorial, notável diminuição de crises disruptivas e episódios de autoagressão, melhora expressiva na comunicação social, na atenção compartilhada e na indução natural do sono';
-    interruptionRisks = 'recaída aguda com desestruturação comportamental severa, crises frequentes de auto/heteroagressão, exacerbação de estereotipias motoras descontroladas, regressão cognitiva e esgotamento psíquico familiar';
-    agronomicDoseMg = 5200;
-    secRationaleSEC = 'reequilíbrio da neurotransmissão excitatória/inibitória (relação GABA/Glutamato) no córtex pré-frontal e sistema límbico, modulando neuroinflamação glial e potencializando a sinalização de oxitocina e anandamida';
-  } else if (isParkinson) {
-    conditionName = 'Doença de Parkinson e Síndromes Extrapiramidais com Tremores e Rigidez';
-    cidPrincipal = 'G20 (Doença de Parkinson)';
-    cidsSecundarios = 'G25.0 (Tremor Essencial), R52.2 (Dor Neuropática Secundária)';
-    conventionalMedsTried = 'Precursores Dopaminérgicos (Levodopa + Cloridrato de Benserazida), Agonistas Dopaminérgicos (Pramipexol) e Anticolinérgicos (Biperideno)';
-    refractoryDescription = 'flutuações motoras diárias do tipo "on-off", encurtamento do tempo de resposta (wearing-off) e falha no controle do tremor de repouso e da rigidez axial';
-    sideEffectsDescription = 'discinesias incapacitantes induzidas por levodopa, náuseas, hipotensão postural severa com vertigem e episódios de alucinações visuais e insônia';
-    cannabinoidBenefits = 'atenuação comprovada da rigidez muscular, redução da amplitude do tremor, alívio de dores distônicas associadas e ganho substancial na qualidade do sono e mobilidade diária';
-    interruptionRisks = 'rigidez motora extrema em "roda denteada", agravamento agudo de tremores posturais, perda severa do equilíbrio postural com elevado risco de quedas fraturárias e incapacidade motora total';
-    agronomicDoseMg = 4800;
-    secRationaleSEC = 'ativação de receptores canabinoides densamente expressos nos núcleos da base (globo pálido e substância negra), reduzindo a excitotoxicidade estriatal e conferindo neuroproteção dopaminérgica';
-  } else if (isInsomnia) {
-    conditionName = 'Insônia Crônica Refratária e Transtorno do Ritmo Sono-Vigília';
-    cidPrincipal = 'G47.0 (Distúrbios da Iniciação e da Manutenção do Sono [Insônias])';
-    cidsSecundarios = 'F41.1 (Ansiedade Generalizada), F43.2 (Transtorno de Adaptação)';
-    conventionalMedsTried = 'Hipnóticos Não-Benzodiazepínicos Z (Zolpidem, Eszopiclona), Benzodiazepínicos (Clonazepam, Lorazepam) e Antidepressivos Sedativos (Trazodona, Mirtazapina)';
-    refractoryDescription = 'dependência química rápida, tolerância com necessidade de doses crescentes, despertares noturnos múltiplos com incapacidade de retorno ao sono e arquitetura de sono não-reparador';
-    sideEffectsDescription = 'amnésia anterógrada, sonolência residual matinal tipo "ressaca química", embotamento reflexo com risco para direção e atividades diárias, e severa insônia de rebote';
-    cannabinoidBenefits = 'indução fisiológica do sono, aumento significativo das fases de sono profundo (ondas lentas N3) e sono REM, redução drástica de despertares noturnos e despertar lúcido sem sedação residual';
-    interruptionRisks = 'insônia paroxística de rebote de intensidade superior à basal, privação severa de sono gerando descompensação cognitiva, irritabilidade extrema, labilidade pressórica e esgotamento psicofísico';
-    agronomicDoseMg = 2200;
-    secRationaleSEC = 'sinergia entre Canabidiol (CBD), Canabinol (CBN) e Terpenos sedativos (Mirceno, Linalol) modulando o ciclo circadiano no núcleo supraquiasmático hipotalâmico e inibindo a hiperativação noradrenérgica noturna';
-  } else if (isMigraine) {
-    conditionName = 'Enxaqueca Crônica Refratária com e sem Aura';
-    cidPrincipal = 'G43.9 (Enxaqueca Sem Especificação)';
-    cidsSecundarios = 'G43.1 (Enxaqueca Com Aura), R52.2 (Dor Crônica)';
-    conventionalMedsTried = 'Triptanos (Sumatriptano, Naratriptano), Betabloqueadores (Propranolol), Anticonvulsivantes profiláticos (Topiramato) e Tricíclicos (Amitriptilina)';
-    refractoryDescription = 'cronicização com mais de 15 dias de dor por mês, cefaleia por sobreuso de analgésicos e refratariedade aos tratamentos profiláticos de primeira linha';
-    sideEffectsDescription = 'parestesias em extremidades, bradicardia, tonturas, lentificação do raciocínio e queixas gástricas incapacitantes decorrentes do consumo rotineiro de triptanos e analgésicos';
-    cannabinoidBenefits = 'redução drástica no número mensal de dias de crise, atenuação imediata da náusea e fotofobia concomitantes, e abortamento seguro de crises agudas sem efeito rebote';
-    interruptionRisks = 'retorno imediato de crises hemicranianas pulsáteis diárias, náuseas severas, confinamento em ambiente escuro com absenteísmo laboral e sofrimento álgico extremo';
-    agronomicDoseMg = 2800;
-    secRationaleSEC = 'modulação do sistema trigeminovascular, bloqueio da liberação do peptídeo relacionado ao gene da calcitonina (CGRP) e inibição da inflamação neurogênica perivascular dural';
-  } else if (isEndometriosis) {
-    conditionName = 'Endometriose Profunda com Dor Pélvica Crônica Refratária';
-    cidPrincipal = 'N80.9 (Endometriose Sem Especificação)';
-    cidsSecundarios = 'R10.2 (Dor Pélvica e Perineal), N94.6 (Dismenorreia Não Especificada)';
-    conventionalMedsTried = 'Progestagênios contínuos (Dienogeste), Anticoncepcionais orais combinados, Anti-inflamatórios em altas doses e Análogos de GnRH';
-    refractoryDescription = 'persistência de dor pélvica crônica não-cíclica, dismenorreia severa e dispareunia profunda, a despeito de bloqueios hormonais e intervenções cirúrgicas prévias';
-    sideEffectsDescription = 'alterações metabólicas hormonais, sangramento irregular de escape, alterações de humor severas, osteopenia e gastropatia inflamatória por AINEs';
-    cannabinoidBenefits = 'alívio acentuado da hiperalgesia pélvica, redução da sensibilidade visceral, regressão de marcadores pró-inflamatórios e melhora radical na vitalidade feminina';
-    interruptionRisks = 'reagudização de dor pélvica incapacitante e cólicas lancinantes, imobilização em leito durante crises, e necessidade de hospitalizações de urgência para analgesia endovenosa';
-    agronomicDoseMg = 3200;
-    secRationaleSEC = 'supressão da proliferação celular e neovascularização das lesões endometriais heterotópicas através da ativação de receptores CB1 e CB2 locais e inibição de prostaglandinas';
-  } else if (isADHD) {
-    conditionName = 'Transtorno do Déficit de Atenção e Hiperatividade (TDAH) com Inquietação Motora';
-    cidPrincipal = 'F90.0 (Distúrbios da Atividade e da Atenção)';
-    cidsSecundarios = 'F41.1 (Ansiedade Generalizada Comórbida)';
-    conventionalMedsTried = 'Psicoestimulantes Centrais (Cloridrato de Metilfenidato, Lisdexanfetamina) e Inibidores de Recaptação de Noradrenalina';
-    refractoryDescription = 'efeito de "rebote" no final da tarde com aumento da inquietação, oscilações intensas de humor e manutenção de fadiga cognitiva ao término das doses';
-    sideEffectsDescription = 'taquicardia, pico hipertensivo, supressão drástica do apetite com perda de peso, ansiedade paradoxal severa e insônia terminal';
-    cannabinoidBenefits = 'estabilização do foco atencional sustentado, redução da impulsividade psicomotora, controle da hiperatividade mental e desaceleração do fluxo de pensamentos';
-    interruptionRisks = 'desorganização executiva aguda, crises de ansiedade descompensada, incapacidade de manter metas acadêmicas ou profissionais e retorno de hiperatividade desregulada';
-    agronomicDoseMg = 2000;
-    secRationaleSEC = 'ajuste fino dos circuitos dopaminérgicos e noradrenérgicos córtico-estriatais sem induzir sobrecarga simpaticomimética periférica';
-  } else if (isDepression || /ansiedade|pânico|estresse/i.test(combinedText)) {
-    conditionName = 'Transtorno de Ansiedade Generalizada (TAG), Pânico e Transtorno do Humor Refratário';
-    cidPrincipal = 'F41.1 (Ansiedade Generalizada)';
-    cidsSecundarios = 'F41.0 (Transtorno de Pânico), F32.1 (Episódio Depressivo Moderado)';
-    conventionalMedsTried = 'Inibidores Seletivos da Recaptação de Serotonina - ISRS (Sertralina, Escitalopram), IRSN (Venlafaxina) e Benzodiazepínicos (Clonazepam, Alprazolam)';
-    refractoryDescription = 'resposta parcial com persistência de sintomas residuais somáticos de ansiedade, crises de pânico sob estresse moderado e perda de eficácia ao longo do tempo';
-    sideEffectsDescription = 'disfunção sexual completa (anorgasmia/perda de libido), ganho de peso, embotamento afetivo (incapacidade de sentir emoções), dependência psicológica e severa síndrome de abstinência';
-    cannabinoidBenefits = 'modulação ansiolítica rápida e serena, alívio de sintomas físicos (taquicardia, aperto torácico, tremores), preservação da lucidez cognitiva e resgate do equilíbrio psíquico';
-    interruptionRisks = 'efeito rebote psíquico extremo, crises agudas de angústia e pânico incapacitantes, desregulação autonômica vegetativa e risco acentuado de descompensação emocional profunda';
+  if (isEpilepsy) addCid('G40.9', 'Epilepsia Não Especificada');
+  if (isAutism) addCid('F84.0', 'Transtorno do Espectro Autista');
+  if (isParkinson) addCid('G20', 'Doença de Parkinson');
+  if (isAlzheimer) addCid('G30.9', 'Doença de Alzheimer');
+  if (isFibro) addCid('M79.7', 'Fibromialgia');
+  if (isEndometriosis) addCid('N80.9', 'Endometriose');
+  if (isLombar) addCid('M54.5', 'Dor Lombar Baixa / Lombalgia');
+  if (isArtrite) addCid('M19.9', 'Artrose / Artropatia Crônica');
+  if (isNeuropathy) addCid('G62.9', 'Polineuropatia / Dor Neuropática');
+  if (isPain && !isFibro && !isLombar && !isEndometriosis) addCid('R52.2', 'Outra Dor Crônica');
+  if (isMigraine) addCid('G43.9', 'Enxaqueca / Cefaleia Crônica');
+  if (isADHD) addCid('F90.0', 'Distúrbios da Atividade e da Atenção - TDAH');
+  if (isAnxiety) addCid('F41.1', 'Transtorno de Ansiedade Generalizada');
+  if (panico || /pânico/i.test(combinedText)) addCid('F41.0', 'Transtorno de Pânico');
+  if (isDepression) addCid('F32.1', 'Episódio Depressivo');
+  if (isInsomnia) addCid('G47.0', 'Distúrbios do Início e da Manutenção do Sono - Insônia');
+  if (estresse && matchedCids.length < 2) addCid('F43.2', 'Transtorno de Adaptação e Estresse');
+
+  if (matchedCids.length === 0) {
+    addCid('R52.2', 'Quadro Clínico Crônico sob Investigação e Modulação Endocanabinoide');
+  }
+
+  const cidPrincipal = `${matchedCids[0].code} (${matchedCids[0].label})`;
+  const cidsSecundarios = matchedCids.length > 1
+    ? matchedCids.slice(1).map(c => `${c.code} (${c.label})`).join(', ')
+    : 'Sem comorbidades secundárias codificadas';
+
+  // Condition title reflecting the exact objectives chosen by the patient in triage
+  const conditionName = rawObjectives.length > 0
+    ? rawObjectives.join(', ')
+    : matchedCids.map(c => c.label).join(' e ');
+
+  // Build exact patient triage clinical history lines
+  const triageNarrativeParts: string[] = [];
+
+  if (rawOrigin) {
+    triageNarrativeParts.push(`Início e Evolução Relatados na Triagem: ${rawOrigin}`);
+  }
+  if (rawDesc && rawDesc !== rawOrigin) {
+    triageNarrativeParts.push(`Detalhamento Clínico Informado pelo(a) Paciente: ${rawDesc}`);
+  }
+  if (!rawOrigin && !rawDesc) {
+    triageNarrativeParts.push(
+      `Paciente buscou avaliação médica especializada referindo queixas principais de ${conditionName}, com intensidade sintomática referida em ${intensity} e tempo de evolução de ${durationLabel}.`
+    );
+  }
+
+  // Biometric & functional context from triage
+  const bioParts: string[] = [];
+  if (pSex) bioParts.push(`Sexo: ${pSex}`);
+  if (pHeight) bioParts.push(`Altura: ${pHeight}m`);
+  if (pWeight) bioParts.push(`Peso: ${pWeight}kg`);
+  if (bioParts.length > 0) {
+    triageNarrativeParts.push(`Dados Biométricos da Triagem: ${bioParts.join(' | ')}.`);
+  }
+
+  // Emotional / cognitive symptoms marked by the patient in triage
+  const emotionalSymptoms: string[] = [];
+  if (estresse) emotionalSymptoms.push('estresse persistente');
+  if (irritado) emotionalSymptoms.push('irritabilidade frequente');
+  if (tristeza) emotionalSymptoms.push('humor deprimido / tristeza');
+  if (foco) emotionalSymptoms.push('dificuldade de concentração e foco');
+  if (memoria) emotionalSymptoms.push('queixas de memória recente');
+  if (cansado) emotionalSymptoms.push('fadiga e cansaço diurno');
+  if (panico) emotionalSymptoms.push(`crises de pânico${panicoDetails ? ` (${panicoDetails})` : ''}`);
+  if (ansiedadeDiag) emotionalSymptoms.push(`diagnóstico prévio de ansiedade/depressão${ansiedadeDiagDetails ? ` (${ansiedadeDiagDetails})` : ''}`);
+
+  if (emotionalSymptoms.length > 0) {
+    triageNarrativeParts.push(`Sintomas Associados Mapeados na Triagem: ${emotionalSymptoms.join(', ')}.`);
+  }
+
+  // Comorbidities, surgeries, allergies, GI, headaches from triage
+  const healthHistoryParts: string[] = [];
+  if (doencaCronica) {
+    healthHistoryParts.push(`Doenças crônicas relatadas: ${doencaCronicaDetails || 'Sim (informado na triagem)'}`);
+  }
+  if (cirurgia) {
+    healthHistoryParts.push(`Cirurgias prévias: ${cirurgiaDetails || 'Sim'}`);
+  }
+  if (alergia) {
+    healthHistoryParts.push(`Alergias conhecidas: ${alergiaDetails || 'Sim'}`);
+  } else if (alergia === false) {
+    healthHistoryParts.push('Nega alergias medicamentosas conhecidas');
+  }
+  if (digestivo) {
+    healthHistoryParts.push(`Queixas gastrointestinais: ${digestivoDetails || 'Sim'}`);
+  }
+  if (dorCabeca) {
+    healthHistoryParts.push(`Cefaleia / Enxaqueca associada: ${dorCabecaDetails || 'Sim'}`);
+  }
+  if (arritmia) {
+    healthHistoryParts.push(`Histórico de arritmia cardíaca: ${arritmiaDetails || 'Sim (monitoramento cardiovascular indicado)'}`);
+  }
+
+  if (healthHistoryParts.length > 0) {
+    triageNarrativeParts.push(`Antecedentes Clínicos Informados na Triagem: ${healthHistoryParts.join('; ')}.`);
+  }
+
+  // Neurobehavioral screening results if performed by the patient
+  if (adhdRes && adhdRes.scorePercent !== undefined) {
+    triageNarrativeParts.push(
+      `Rastreio Neurocomportamental TDAH (Escala ASRS-18): ${adhdRes.classification || 'Avaliado'} — Compatibilidade de ${adhdRes.scorePercent}% (${adhdRes.totalPoints || 0}/${adhdRes.maxPoints || 36} pontos).`
+    );
+  }
+  if (autismRes && autismRes.scorePercent !== undefined) {
+    triageNarrativeParts.push(
+      `Mapeamento Neurocomportamental para TEA / Autismo (${autismRes.targetProfile || 'Adulto'}): ${autismRes.classification || 'Avaliado'} — Compatibilidade de ${autismRes.scorePercent}% (${autismRes.totalPoints || 0}/${autismRes.maxPoints || 36} pontos).`
+    );
+  }
+
+  // Previous / current treatments and medications strictly from triage
+  const reportedMedsList: string[] = [];
+  if (remedios && remediosDetails) {
+    reportedMedsList.push(remediosDetails);
+  } else if (remedios) {
+    reportedMedsList.push('uso de medicamentos contínuos informados na triagem');
+  }
+  if (tratamentoAtual && tratamentoAtualDetails && tratamentoAtualDetails !== remediosDetails) {
+    reportedMedsList.push(`tratamento em curso: ${tratamentoAtualDetails}`);
+  }
+
+  const conventionalMedsTried = reportedMedsList.length > 0
+    ? reportedMedsList.join('; ')
+    : 'tratamentos clínicos e medidas farmacológicas convencionais prévias para o controle dos sintomas relatados';
+
+  // Previous cannabis experience or preference from triage
+  let cannabisHistoryText = '';
+  if (cannabis) {
+    cannabisHistoryText = `\nExperiência Prévia com Cannabis Medicinal Relatada pelo(a) Paciente: Sim${cannabisDetails ? ` (${cannabisDetails})` : ''}.`;
+  }
+  if (prefBrands.length > 0 || prefNotes) {
+    cannabisHistoryText += `\nPreferência / Vínculo Informado na Triagem: ${prefBrands.join(', ')}${prefNotes ? ` — Observação do paciente: "${prefNotes}"` : ''}.`;
+  }
+
+  // Pathophysiology & SEC Rationale tailored to patient's actual complaints
+  const secMechanisms: string[] = [];
+  if (isPain) {
+    secMechanisms.push('modulação dos receptores CB1 nas vias nociceptivas ascendentes e receptores CB2 periféricos, reduzindo a liberação de neurotransmissores excitatórios e mediadores pró-inflamatórios');
+  }
+  if (isAnxiety || isDepression || estresse || panico) {
+    secMechanisms.push('agonismo parcial dos receptores serotoninérgicos 5-HT1A pelo Canabidiol (CBD) e modulação alostérica GABAérgica, promovendo redução da hiperatividade amigdaliana, controle da ansiedade e estabilização do humor');
+  }
+  if (isInsomnia) {
+    secMechanisms.push('regulação do ciclo sono-vigília e aprofundamento das fases restauradoras do sono, reduzindo a latência para o adormecer e os despertares noturnos');
+  }
+  if (isEpilepsy || isAutism || isADHD || isParkinson || isAlzheimer) {
+    secMechanisms.push('equilíbrio da neurotransmissão excitatória/inibitória (sistema Glutamato/GABA), neuroproteção antioxidante e regulação de canais iônicos TRPV1 e GPR55');
+  }
+  if (isMigraine) {
+    secMechanisms.push('modulação do sistema trigeminovascular e inibição da inflamação neurogênica meníngea');
+  }
+  if (secMechanisms.length === 0) {
+    secMechanisms.push('modulação multimodal dos receptores endocanabinoides CB1 e CB2, promovendo restauração da homeostase fisiológica e alívio sintomático sustentado');
+  }
+
+  const secRationaleSEC = secMechanisms.join('; associado a ');
+
+  const refractoryDescription = 'persistência dos sintomas relatados na triagem com impacto direto na qualidade de vida, funcionalidade diária e bem-estar global';
+  const sideEffectsDescription = digestivo && digestivoDetails
+    ? `limitações de resposta clínica e queixas gastrointestinais associadas (${digestivoDetails})`
+    : 'resposta clínica incompleta às medidas convencionais isoladas e necessidade de modulação terapêutica segura e individualizada';
+
+  const cannabinoidBenefits = `controle progressivo das queixas de ${conditionName.toLowerCase()}, melhora da qualidade do sono, estabilidade emocional e recuperação da funcionalidade cotidiana`;
+  const interruptionRisks = `reagudização imediata dos sintomas de ${conditionName.toLowerCase()} (intensidade referida na triagem: ${intensity}), perda da estabilidade clínica alcançada e prejuízo direto à rotina laboral, familiar e qualidade de vida`;
+
+  let agronomicDoseMg = 3000;
+  if (hcCalc?.dailyDoseMg) {
+    agronomicDoseMg = Number(hcCalc.dailyDoseMg) || 3000;
+  } else if (isEpilepsy || isAutism || isParkinson) {
+    agronomicDoseMg = 5000;
+  } else if (isPain || isFibro || isEndometriosis) {
+    agronomicDoseMg = 3500;
+  } else if (isInsomnia || isAnxiety || isADHD) {
     agronomicDoseMg = 2400;
-    secRationaleSEC = 'ativação direta e agonismo dos receptores serotoninérgicos 5-HT1A pelo Canabidiol (CBD), combinada à facilitação da neurotransmissão gabaérgica e normalização da atividade da amígdala cerebral';
-  }
-
-  // Include user reported medicines if present
-  if (remediosDetails && remediosDetails.trim().length > 2) {
-    conventionalMedsTried = `${conventionalMedsTried}; além do uso prévio/concomitante relatado pelo paciente: ${remediosDetails.trim()}`;
-  }
-
-  // Include user digestive or side effects if present
-  if (digestivoDetails && digestivoDetails.trim().length > 2) {
-    sideEffectsDescription = `${sideEffectsDescription}, somado a queixas gastrointestinais específicas reportadas: ${digestivoDetails.trim()}`;
   }
 
   const isInicial = reportType === 'inicial';
+  const fullTriageNarrative = triageNarrativeParts.join('\n\n');
 
-  // Clinical Summary for Page 1
+  // Clinical Summary for Page 1 — strictly grounded in the patient's triage
   const clinicalSummary = isInicial
-    ? `Declaro, para os devidos fins clínicos e comprobatórios, que o(a) paciente ${pName}, inscrito(a) no CPF ${pCpf}, foi submetido(a) a consulta e avaliação médica neste Centro Integrado de Medicina Canabinoide, atestando-se o INÍCIO FORMAL DO TRATAMENTO MÉDICO SUPERVISIONADO com fitocanabinoides (Cannabis sativa L.) para ${conditionName}, com intensidade sintomática basal referida em ${intensity} e tempo de evolução crônica caracterizado por ${duration.toLowerCase()}.
+    ? `Declaro, para os devidos fins clínicos e comprobatórios, que o(a) paciente ${pName}, inscrito(a) no CPF ${pCpf}, passou por avaliação médica neste Centro Integrado de Medicina Canabinoide, atestando-se a indicação e o INÍCIO FORMAL DO TRATAMENTO MÉDICO SUPERVISIONADO com fitocanabinoides (Cannabis sativa L.) para o quadro de ${conditionName}, com intensidade sintomática referida na triagem em ${intensity} e tempo de evolução de ${durationLabel}.
 
-Histórico Clínico e Refratariedade Prévia:
-${rawDesc ? rawDesc.trim() : `Paciente apresenta histórico prolongado de sofrimento clínico associado a ${conditionName.toLowerCase()}, com impacto funcional relevante.`} ${rawOrigin ? `Relato de origem clínica: ${rawOrigin.trim()}` : ''}
-O(a) paciente já foi submetido(a) a esquemas farmacológicos convencionais prévios (${conventionalMedsTried}), apresentando resposta terapêutica insatisfatória (${refractoryDescription}) e/ou intolerância a eventos adversos (${sideEffectsDescription}), justificando formalmente a indicação da terapêutica canabinoide sob supervisão contínua.`
-    : `O(A) paciente ${pName}, inscrito(a) no CPF ${pCpf}, encontra-se sob acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide, apresentando diagnóstico clínico de ${conditionName}, com intensidade sintomática basal referida em ${intensity} e tempo de evolução crônica caracterizado por ${duration.toLowerCase()}.
+Histórico Clínico e Anamnese Informados pelo(a) Paciente na Triagem:
+${fullTriageNarrative}
 
-Histórico da Moléstia Atual (HMA):
-${rawDesc ? rawDesc.trim() : `Paciente relata histórico prolongado de sofrimento clínico associado a ${conditionName.toLowerCase()}, com episódios frequentes de exacerbação que comprometem suas atividades laborais, o repouso noturno e o convívio sociossomático.`} ${rawOrigin ? `Relato de origem clínica: ${rawOrigin.trim()}` : ''}
+Tratamentos e Medicações Relatados:
+Conforme registrado na triagem clínica, o(a) paciente refere histórico de ${conventionalMedsTried}, mantendo necessidade de otimização terapêutica devido à ${refractoryDescription} (${sideEffectsDescription}).${cannabisHistoryText}${evolutionNotes ? `\n\nObservações Clínicas do Médico:\n${evolutionNotes}` : ''}`
+    : `O(A) paciente ${pName}, inscrito(a) no CPF ${pCpf}, encontra-se sob acompanhamento médico neste Centro Integrado de Medicina Canabinoide, apresentando quadro clínico de ${conditionName}, com intensidade sintomática basal referida na triagem em ${intensity} e tempo de evolução de ${durationLabel}.
 
-Histórico de Tratamentos Convencionais e Refratariedade Clínica (Quesitos 1, 2 e 3):
-Em resposta aos quesitos periciais formulados:
-1. Quanto aos tratamentos convencionais prévios (Quesito 1): O(a) paciente já foi submetido(a) a múltiplos esquemas farmacológicos de primeira, segunda e terceira linha ao longo de sua trajetória clínica, incluindo o uso continuado de: ${conventionalMedsTried}.
-2. Quanto à resposta terapêutica convencional (Quesito 2): A resposta aos fármacos convencionais alopáticos mostrou-se manifestamente insatisfatória e insuficiente, evidenciando refratariedade terapêutica expressiva, com ${refractoryDescription}.
-3. Quanto aos efeitos colaterais e intolerâncias (Quesito 3): O(a) paciente desenvolveu expressivos eventos adversos limitantes e intolerâncias farmacológicas aos alopáticos, destacando-se: ${sideEffectsDescription}.`;
+Histórico da Moléstia Atual (HMA — Dados da Triagem do Paciente):
+${fullTriageNarrative}${cannabisHistoryText}${evolutionNotes ? `\n\nNotas de Evolução Clínica:\n${evolutionNotes}` : ''}
+
+Histórico de Tratamentos Prévios e Refratariedade Clínica (Quesitos 1, 2 e 3):
+1. Quanto aos tratamentos e medicações relatados na triagem (Quesito 1): O(A) paciente registrou histórico de uso/acompanhamento com: ${conventionalMedsTried}.
+2. Quanto à resposta terapêutica prévia (Quesito 2): Observou-se ${refractoryDescription}, justificando a necessidade de suporte com derivados fitocanabinoides.
+3. Quanto a limitações e tolerabilidade (Quesito 3): Destaca-se ${sideEffectsDescription}.`;
 
   // Evolution Summary for Page 2 (Quesitos 4, 5 e 6)
-  const evolutionSummary = `Evolução Clínica e Resposta com Canabinoides e Derivados Artesanais (Quesitos 4, 5 e 6):
-Em resposta aos quesitos de evolução clínica e necessidade de autocultivo:
-4. Quanto à evolução após início do tratamento com canabinoides (Quesito 4): A partir da introdução supervisionada da fitoterapia canabinoide integral (Cannabis sativa L.), observou-se notável, objetiva e inequívoca evolução no quadro de saúde do(a) paciente: ${cannabinoidBenefits}. O paciente recuperou sua funcionalidade global e autonomia diária, atingindo estabilidade clínica inédita quando comparada aos anos de tratamentos alopáticos frustrados.
+  const evolutionSummary = `Evolução Clínica e Resposta com Canabinoides (Quesitos 4, 5 e 6):
+4. Quanto à evolução clínica esperada/observada com canabinoides (Quesito 4): Com a introdução supervisionada da fitoterapia canabinoide (Cannabis sativa L.) direcionada para ${conditionName}, busca-se e observa-se ${cannabinoidBenefits}.
 
-5. Quanto à necessidade de realização do cultivo artesanal (Quesito 5): O(a) paciente precisou realizar o autocultivo da planta para extração de derivados artesanais pelos seguintes fatores técnicos e socioeconômicos fundamentais:
-   a) Inviabilidade Financeira: Os produtos canabinoides importados e os disponíveis em farmácias comerciais impõem um custo mensal excessivamente elevado (frequentemente superando de 2 a 5 salários mínimos mensais para suprir as dosagens contínuas necessárias), tornando o tratamento industrializado financeiramente inacessível e insustentável a médio e longo prazo;
-   b) Especificidade Genética e Quimiotipo Assertivo: A necessidade clínica de selecionar variedades e quimiotipos com proporções específicas de fitocanabinoides e perfis terpênicos customizados e assertivos para a complexidade da sua patologia;
-   c) Indisponibilidade de Apresentações: Falta de produtos no mercado convencional com a mesma matriz fitoquímica integral (full spectrum artesanal rica em terpenos nativos e ácidos canabinoides);
-   d) Autonomia e Regularidade Terapêutica: A garantia de um suprimento regular, contínuo e sem interrupções logísticas, aduaneiras ou comerciais que pudessem comprometer a estabilidade do quadro clínico.
+5. Quanto à necessidade de manutenção contínua e acesso (Quesito 5): A continuidade regular da terapia canabinoide fundamenta-se na especificidade dos fitocanabinoides prescritos para o quadro de ${conditionName} (${cidPrincipal}) e na manutenção da estabilidade sintomática sem os efeitos adversos dos esquemas alopáticos tradicionais.
 
-6. Quanto à resposta aos derivados extraídos artesanalmente (Quesito 6): O(a) paciente vem demonstrando excelente resposta terapêutica, plena tolerabilidade gástrica e biológica, e ausência total de toxicidade aos derivados canabinoides extraídos de forma artesanal, mantendo controle sintomático rigoroso e evolução clínica consolidada sob supervisão médica continuada.`;
+6. Quanto à tolerabilidade clínica (Quesito 6): O(A) paciente apresenta indicação precisa e excelente perfil de tolerabilidade biológica aos derivados canabinoides sob supervisão médica continuada.`;
 
   // Therapeutic Rationale
   const therapeuticRationale = isInicial
-    ? `Raciocínio Fisiopatológico & Indicação Canabinoide:
-A indicação médica para o início da terapêutica fundamenta-se na modulação do Sistema Endocanabinoide (SEC). O tratamento atua promovendo ${secRationaleSEC}, restaurando a homeostase fisiológica e amenizando a sintomatologia refratária.
+    ? `Raciocínio Fisiopatológico & Indicação Canabinoide (Baseado na Triagem):
+A indicação médica para o quadro de ${conditionName} fundamenta-se na modulação do Sistema Endocanabinoide (SEC). O tratamento atua promovendo ${secRationaleSEC}, restaurando a homeostase fisiológica e controlando a sintomatologia relatada pelo(a) paciente na triagem.
 
 Comprovação de Início Terapêutico e Necessidade de Continuidade:
-Atesto formalmente o início do tratamento supervisionado com fitocanabinoides. Diante da documentada refratariedade aos alopáticos tradicionais, o acesso regular e ininterrupto aos medicamentos prescritos é indispensável para viabilizar a estabilização e recuperação do(a) paciente.
+Atesto formalmente a indicação e o início do tratamento supervisionado com fitocanabinoides para ${pName}. O acesso regular aos medicamentos prescritos é indispensável para a estabilização clínica e qualidade de vida do(a) paciente.
 
 Enquadramento Diagnóstico Internacional (CID-10):
-CID-10 Principal: ${cidPrincipal} | CIDs Secundários: ${cidsSecundarios}`
+CID-10 Principal: ${cidPrincipal} | CIDs Associados: ${cidsSecundarios}`
     : `Raciocínio Fisiopatológico e Fundamentação Farmacológica:
-A Cannabis medicinal e seus fitocanabinoides representam o recurso farmacoterapêutico de maior eficácia, especificidade e segurança para este(a) paciente. A fundamentação biológica repousa na disfunção do Sistema Endocanabinoide (SEC) subjacente ao quadro, sendo que o tratamento promove ${secRationaleSEC}, restaurando a homeostase fisiológica do organismo.
+A Cannabis medicinal e seus fitocanabinoides representam recurso farmacoterapêutico eficaz e seguro para o quadro de ${conditionName} apresentado por ${pName}. A fundamentação biológica repousa na modulação do Sistema Endocanabinoide (SEC), promovendo ${secRationaleSEC}.
 
-Indicação de Continuidade e Riscos Imediatos de Interrupção (Quesito 7):
-7. Quanto às consequências de uma eventual interrupção (Quesito 7): Diante da demonstrada refratariedade às alternativas convencionais e do extraordinário controle clínico atingido exclusivamente com a terapêutica canabinoide, indico enfática e formalmente a CONTINUIDADE ININTERRUPTA do tratamento com Cannabis medicinal e a manutenção do autocultivo artesanal.
-Ressalto com veemência científica que a eventual descontinuidade ou apreensão do cultivo acarretará danos gravíssimos e imediatos à saúde do(a) paciente: ${interruptionRisks}. Tal interrupção violaria diretamente o direito constitucional à vida digna, à saúde e à integridade psicofísica.
+Indicação de Continuidade e Riscos de Interrupção (Quesito 7):
+7. Quanto às consequências de eventual interrupção (Quesito 7): Indico formalmente a continuidade ininterrupta do tratamento com Cannabis medicinal. A descontinuidade abrupta pode acarretar ${interruptionRisks}.
 
 Enquadramento Diagnóstico Internacional (CID-10):
 CID-10 Principal: ${cidPrincipal}
-CIDs Secundários: ${cidsSecundarios}`;
+CIDs Associados: ${cidsSecundarios}`;
 
-  // Personalized Treatment Plan
-  const treatmentPlan = isInicial
-    ? `1. ÓLEO FITOCANABINOIDE FULL SPECTRUM (${isEpilepsy || isAutism ? '100mg/ml' : '50mg/ml'})
-   Princípio Ativo: Canabidiol (CBD) Full Spectrum com canabinoides e terpenos nativos
+  // Personalized Treatment Plan fallback (when no specific items have been added to the prescription yet)
+  const treatmentPlan = `1. ÓLEO FITOCANABINOIDE SUBLINGUAL (${isEpilepsy || isAutism ? '100mg/ml' : '50mg/ml a 60mg/ml'})
+   Princípio Ativo: Extrato Fitocanabinoide padronizado conforme prescrição médica anexa
    Apresentação / Via: Solução Oleosa Gotas • Frasco de 30ml • Via Sublingual
-   Posologia: Iniciar com 03 gotas a cada 12 horas. Titular gradualmente aumentando 01 gota por tomada a cada 4 dias até a dose de estabilização clínica.
-   Finalidade: Modulação anti-inflamatória, estabilização neurofuncional e regulação basal do Sistema Endocanabinoide.`
-    : `1. ÓLEO FULL SPECTRUM ARTESANAL RICO EM CBD (${isEpilepsy || isAutism ? '100mg/ml' : '50mg/ml'})
-   Princípio Ativo: Canabidiol Full Spectrum integral com terpenos e canabinoides menores (CBG, CBC, CBN)
-   Apresentação / Via: Solução Oleosa Gotas • Frasco de 30ml • Via Sublingual
-   Posologia: Iniciar com 03 gotas a cada 12 horas (manhã e noite). Titular gradualmente aumentando 01 gota por dose a cada 4 dias até a dose de estabilização clínica.
-   Finalidade: Modulação anti-inflamatória, estabilização neurofuncional e regulação basal do Sistema Endocanabinoide.
-
-2. ÓLEO FULL SPECTRUM ARTESANAL RICO EM THC (${isInsomnia || isFibroOrPain ? '20mg/ml a 40mg/ml' : '10mg/ml a 20mg/ml'})
-   Princípio Ativo: Tetrahidrocanabinol integral (Delta-9-THC) com terpenos sedativos e relaxantes (Mirceno, Cariofileno)
-   Apresentação / Via: Solução Oleosa Gotas • Frasco de 30ml • Via Sublingual Noturna
-   Posologia: Iniciar com 02 a 04 gotas 30 minutos antes do repouso noturno. Ajustar lentamente conforme a tolerabilidade e a intensidade sintomática.
-   Finalidade: Analgesia profunda, relaxamento muscular esquelético e restauração da arquitetura fisiológica do sono.
-
-3. POMADA / BÁLSAMO FITOCANABINOIDE ARTESANAL TÓPICO
-   Princípio Ativo: Extrato Canabinoide Rico em CBD e CBG associado a ceras naturais e óleos carreadores
-   Apresentação / Via: Pote de 50g • Uso Tópico / Transdérmico
-   Posologia: Aplicar camada fina nas regiões álgicas ou de tensão 2 a 3 vezes ao dia, com massagem suave até absorção.
-   Finalidade: Ação anti-inflamatória e analgésica tópica imediata nos tecidos periféricos.`;
+   Posologia: Iniciar com 03 gotas de 12/12 horas. Titular gradualmente conforme resposta clínica e orientação médica.
+   Finalidade: Controle clínico de ${conditionName.toLowerCase()} e regulação do Sistema Endocanabinoide.`;
 
   // Monitoring Guidelines
-  const monitoringText = isInicial
-    ? `1. Diretrizes de Titulação ("Start Low, Go Slow"): Iniciar em doses mínimas e titular lentamente até identificar a dosagem ideal individualizada com máxima eficácia clínica e ausência de eventos adversos.
-2. Segurança e Farmacovigilância: Acompanhamento de rotina da função hepática/renal se houver uso de alopáticos concomitantes. Excelente perfil de tolerabilidade clínica.
-3. Retorno Clínico: Retorno médico agendado em 60 a 90 dias para reavaliação clínica e acompanhamento da evolução.`
-    : `1. Diretrizes de Titulação e Farmacovigilância:
-- O tratamento fundamenta-se no princípio clínico "Start Low, Go Slow" (iniciar em baixas doses e titular lentamente), visando identificar a janela terapêutica individualizada ideal com máxima eficácia sintomática e ausência de efeitos colaterais.
-- Acompanhamento laboratorial periódico de função hepática (TGO, TGP) e renal caso haja uso concomitante de qualquer fármaco alopático metabolizado pelas isoenzimas CYP3A4 ou CYP2C19.
-
-2. Segurança e Não-Toxicidade:
-- Os derivados canabinoides possuem perfil de segurança incomparavelmente superior aos analgésicos opioides e benzodiazepínicos, com ausência de receptores CB1 no centro cardiorrespiratório do tronco encefálico, eliminando qualquer risco de depressão respiratória fatal ou toxicidade letal por overdose.
-
-3. Retorno e Reavaliação:
-- Retorno médico de rotina previsto a cada 60 a 90 dias para ajuste posológico, acompanhamento do diário de sintomas e avaliação da qualidade dos extratos artesanais cultivados.`;
+  const monitoringText = `1. Diretrizes de Titulação ("Start Low, Go Slow"): Iniciar em doses baixas e titular gradualmente conforme resposta sintomática e tolerabilidade individual do(a) paciente.
+2. Segurança e Farmacovigilância: ${remedios ? `Manter espaçamento mínimo de 2 horas em relação às medicações relatadas na triagem (${remediosDetails || 'uso contínuo'}).` : 'Excelente perfil de segurança e tolerabilidade clínica.'}${arritmia ? ' Monitorar parâmetros cardiovasculares regularmente.' : ''}
+3. Retorno Clínico: Retorno médico recomendado em 30 a 60 dias para avaliação da curva de resposta e eventuais ajustes posológicos.`;
 
   // Agronomic Calculations (GACP / Habeas Corpus standard)
   const annualGramsNum = (agronomicDoseMg * 365) / 1000;
   const dryFlowerKgBase = (annualGramsNum / 0.10) / 1000;
   const dryFlowerMarginKgBase = dryFlowerKgBase * 1.3038;
-  const calculatedPlants = Math.max(24, Math.round((dryFlowerMarginKgBase * 1000) / 150));
-  const plantsPerCycle = Math.round(calculatedPlants / 4);
+  const calculatedPlants = hcCalc?.annualPlants
+    ? Number(hcCalc.annualPlants)
+    : Math.max(24, Math.round((dryFlowerMarginKgBase * 1000) / 150));
+  const plantsPerCycle = hcCalc?.plantsPerCycle
+    ? Number(hcCalc.plantsPerCycle)
+    : Math.round(calculatedPlants / 4);
   const seedsNeeded = Math.round(calculatedPlants * 1.3038);
 
-  const agronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa vegetal e o planejamento operacional para o cultivo pessoal contínuo de Cannabis sativa L., estritamente destinado à extração de derivados artesanais de uso medicinal exclusivo do(a) paciente ${pName}, em atendimento ao tratamento de ${conditionName} (${cidPrincipal}), sob as Boas Práticas Agrícolas e de Coleta (GACP/OMS) e a prescrição médica.`;
+  const agronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa vegetal e o planejamento operacional para o cultivo pessoal contínuo de Cannabis sativa L., estritamente destinado à extração de derivados artesanais de uso medicinal exclusivo do(a) paciente ${pName} (CPF: ${pCpf}), em atendimento ao tratamento de ${conditionName} (${cidPrincipal}), sob as Boas Práticas Agrícolas e de Coleta (GACP/OMS) e a prescrição médica.`;
 
   const psychomotorText = `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${pName}</strong>, inscrito(a) no CPF <strong>${pCpf}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide em tratamento continuado para <strong>${conditionName} (${cidPrincipal})</strong>.
 
 O(a) paciente faz uso terapêutico de produtos e derivados de Cannabis sativa L., estritamente conforme prescrição médica, sob supervisão e com acompanhamento clínico contínuo.
 
-Atesto, baseado em exames clínicos e testes de rastreio de capacidade sensório-motora realizados durante as consultas, que o uso das medicações prescritas, nas doses estipuladas, <strong>NÃO RESULTA</strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou comprometimento dos reflexos e estado de alerta do paciente.
+Atesto, baseado em avaliação clínica realizada durante a consulta, que o uso das medicações prescritas, nas doses terapêuticas estipuladas, <strong>NÃO RESULTA</strong> em alteração da capacidade psicomotora, prejuízo cognitivo, ou comprometimento dos reflexos e estado de alerta do(a) paciente.
 
-O tratamento prescrito não interfere em sua capacidade de operar máquinas complexas, conduzir veículos automotores ou exercer atividades laborais que exijam atenção e precisão, não configurando infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).
+O tratamento prescrito não interfere em sua capacidade de operar máquinas, conduzir veículos automotores${patientData.dirige || ans.dirige ? ` (${patientData.dirige_details || ans.dirige_details || 'condução habitual declarada na triagem'})` : ''} ou exercer atividades laborais que exijam atenção e precisão, não configurando infração à legislação de trânsito relacionada ao comprometimento psicomotor ("Lei Seca" ou "Lei do Drogômetro" - Art. 165 do CTB).
 
-Ressalto que os fitocanabinoides têm finalidade estritamente terapêutica, sem efeito recreativo entorpecente nas doses individualmente tituladas, restituindo a aptidão funcional e a qualidade de vida do paciente.`;
+Ressalto que os fitocanabinoides têm finalidade estritamente terapêutica, sem efeito recreativo entorpecente nas doses individualmente tituladas, restituindo a aptidão funcional e a qualidade de vida do(a) paciente.`;
 
   return {
     clinicalCondition: conditionName,
@@ -319,7 +465,7 @@ Ressalto que os fitocanabinoides têm finalidade estritamente terapêutica, sem 
     treatmentPlan,
     monitoringText,
     agronomic: {
-      diagnosis: `${conditionName} (${cidPrincipal} / ${cidsSecundarios})`,
+      diagnosis: `${conditionName} (${cidPrincipal}${matchedCids.length > 1 ? ` / ${cidsSecundarios}` : ''})`,
       dailyDoseMg: agronomicDoseMg,
       targetPlants: calculatedPlants,
       plantsPerCycle,

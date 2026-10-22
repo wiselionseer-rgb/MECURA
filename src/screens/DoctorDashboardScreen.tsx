@@ -617,29 +617,49 @@ export function DoctorDashboardScreen() {
   const [reportTreatmentPlan, setReportTreatmentPlan] = useState('');
   const [reportMonitoring, setReportMonitoring] = useState('');
 
-  // Helpers to persist and load customized reports per patient so doctor edits are never lost
+  // Helpers to persist and load customized reports strictly per patient so one patient's report never leaks into another's
   const getPatientReportKey = (pId?: string | null, pName?: string | null) => {
-    return (pId || pName || currentPatient?.id || currentPatient?.patientName || userName || 'paciente_atual').trim().toLowerCase();
+    const cleanId = (pId || '').trim().toLowerCase();
+    if (cleanId) return `id:${cleanId}`;
+    const cleanName = (pName || '').trim().toLowerCase();
+    if (cleanName && cleanName !== 'paciente') return `name:${cleanName}`;
+    if (currentPatient?.id) return `id:${String(currentPatient.id).trim().toLowerCase()}`;
+    if (currentPatient?.patientName && currentPatient.patientName.trim().toLowerCase() !== 'paciente') {
+      return `name:${currentPatient.patientName.trim().toLowerCase()}`;
+    }
+    return 'avulso_temp';
   };
 
-  const loadSavedReport = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor') => {
+  const loadSavedReport = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor', expectedPatientName?: string, expectedPatientId?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_reports_v2');
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return null;
 
+      const targetId = (expectedPatientId !== undefined ? expectedPatientId : currentPatient?.id) || '';
+      const targetName = (expectedPatientName || currentPatient?.patientName || '').trim().toLowerCase();
+
       const candidates: string[] = [];
-      if (patientKey) candidates.push(patientKey, patientKey.toLowerCase().trim());
-      if (standaloneTargetPatientId) candidates.push(standaloneTargetPatientId, standaloneTargetPatientId.toLowerCase().trim());
-      if (currentPatient?.id) candidates.push(currentPatient.id, currentPatient.id.toLowerCase().trim());
-      if (currentPatient?.patientName) candidates.push(currentPatient.patientName, currentPatient.patientName.toLowerCase().trim());
-      if (reportPatientName) candidates.push(reportPatientName, reportPatientName.toLowerCase().trim());
-      candidates.push('paciente_atual');
+      if (patientKey) candidates.push(patientKey.toLowerCase().trim());
+      if (targetId) {
+        candidates.push(`id:${String(targetId).toLowerCase().trim()}`);
+        candidates.push(String(targetId).toLowerCase().trim());
+      }
+      if (!targetId && targetName && targetName !== 'paciente') {
+        candidates.push(`name:${targetName}`);
+        candidates.push(targetName);
+      }
 
       for (const k of candidates) {
-        if (k && parsed[k] && parsed[k][type]) {
-          return parsed[k][type];
+        const candidate = k && parsed[k] ? parsed[k][type] : null;
+        if (candidate) {
+          // Ensure saved report actually belongs to this patient if a name is stored
+          const savedName = (candidate.patientName || '').trim().toLowerCase();
+          if (targetName && targetName !== 'paciente' && savedName && savedName !== 'paciente' && savedName !== targetName) {
+            continue;
+          }
+          return candidate;
         }
       }
       return null;
@@ -648,22 +668,29 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const saveReportToStorage = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor', data: any) => {
+  const saveReportToStorage = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor', data: any, explicitPatientId?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_reports_v2');
       const parsed = raw ? JSON.parse(raw) : {};
+      // Clean up legacy global key that caused cross-patient contamination
+      if (parsed['paciente_atual']) {
+        delete parsed['paciente_atual'];
+      }
       const payload = {
         ...data,
         updatedAt: new Date().toISOString()
       };
       const keysToSave = new Set<string>();
       if (patientKey) keysToSave.add(patientKey.toLowerCase().trim());
-      if (standaloneTargetPatientId) keysToSave.add(standaloneTargetPatientId.toLowerCase().trim());
-      if (currentPatient?.id) keysToSave.add(currentPatient.id.toLowerCase().trim());
-      if (currentPatient?.patientName) keysToSave.add(currentPatient.patientName.toLowerCase().trim());
-      if (data?.patientName) keysToSave.add(data.patientName.toLowerCase().trim());
-      if (reportPatientName) keysToSave.add(reportPatientName.toLowerCase().trim());
-      keysToSave.add('paciente_atual');
+      const resolvedId = explicitPatientId !== undefined ? explicitPatientId : (standaloneTargetPatientId || currentPatient?.id);
+      if (resolvedId) {
+        keysToSave.add(`id:${String(resolvedId).toLowerCase().trim()}`);
+        keysToSave.add(String(resolvedId).toLowerCase().trim());
+      } else if (data?.patientName && String(data.patientName).trim().toLowerCase() !== 'paciente') {
+        const cleanName = String(data.patientName).trim().toLowerCase();
+        keysToSave.add(`name:${cleanName}`);
+        keysToSave.add(cleanName);
+      }
 
       keysToSave.forEach(k => {
         if (!k) return;
@@ -689,8 +716,9 @@ export function DoctorDashboardScreen() {
     doctorCrm: string;
     doctorSpecialty: string;
   }) => {
-    const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, savedData.patientName || reportPatientName);
-    saveReportToStorage(key, medicalReportType, savedData);
+    const targetId = standaloneTargetPatientId || currentPatient?.id || null;
+    const key = getPatientReportKey(targetId, savedData.patientName || reportPatientName);
+    saveReportToStorage(key, medicalReportType, savedData, targetId);
     setReportDiagnosis(savedData.diagnosis);
     setReportRationale(savedData.rationale);
     setReportTreatmentPlan(savedData.treatmentPlan);
@@ -723,7 +751,8 @@ export function DoctorDashboardScreen() {
   };
 
   const handleSavePsychomotorReport = async (text: string) => {
-    const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, reportPatientName);
+    const targetId = standaloneTargetPatientId || currentPatient?.id || null;
+    const key = getPatientReportKey(targetId, reportPatientName);
     const dataToSave = { 
       text,
       patientName: reportPatientName,
@@ -734,7 +763,7 @@ export function DoctorDashboardScreen() {
       doctorCrm: reportDoctorCrm,
       doctorSpecialty: reportDoctorSpecialty
     };
-    saveReportToStorage(key, 'psicomotor', dataToSave);
+    saveReportToStorage(key, 'psicomotor', dataToSave, targetId);
     setPsychomotorReportText(text);
 
     const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
@@ -756,28 +785,36 @@ export function DoctorDashboardScreen() {
     showActionToast('Alterações do Laudo Psicomotor salvas com sucesso!');
   };
 
-  const loadSavedPrescription = (patientKey?: string | null) => {
+  const loadSavedPrescription = (patientKey?: string | null, expectedPatientName?: string, expectedPatientId?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return null;
 
-      const candidates: string[] = [];
-      if (patientKey) candidates.push(patientKey, patientKey.toLowerCase().trim());
-      if (standaloneTargetPatientId) candidates.push(standaloneTargetPatientId, standaloneTargetPatientId.toLowerCase().trim());
-      if (currentPatient?.id) candidates.push(currentPatient.id, currentPatient.id.toLowerCase().trim());
-      if (currentPatient?.patientName) candidates.push(currentPatient.patientName, currentPatient.patientName.toLowerCase().trim());
-      if (prescPatientName) candidates.push(prescPatientName, prescPatientName.toLowerCase().trim());
+      const targetId = (expectedPatientId !== undefined ? expectedPatientId : currentPatient?.id) || '';
+      const targetName = (expectedPatientName || currentPatient?.patientName || '').trim().toLowerCase();
 
-      for (const k of candidates) {
-        if (k && parsed[k] && parsed[k].items && Array.isArray(parsed[k].items)) {
-          return parsed[k];
-        }
+      const candidates: string[] = [];
+      if (patientKey) candidates.push(patientKey.toLowerCase().trim());
+      if (targetId) {
+        candidates.push(`id:${String(targetId).toLowerCase().trim()}`);
+        candidates.push(String(targetId).toLowerCase().trim());
+      }
+      if (!targetId && targetName && targetName !== 'paciente') {
+        candidates.push(`name:${targetName}`);
+        candidates.push(targetName);
       }
 
-      if (!patientKey && !currentPatient?.id && !standaloneTargetPatientId && parsed['paciente_atual'] && Array.isArray(parsed['paciente_atual'].items)) {
-        return parsed['paciente_atual'];
+      for (const k of candidates) {
+        const candidate = k ? parsed[k] : null;
+        if (candidate && candidate.items && Array.isArray(candidate.items)) {
+          const savedName = (candidate.patientName || '').trim().toLowerCase();
+          if (targetName && targetName !== 'paciente' && savedName && savedName !== 'paciente' && savedName !== targetName) {
+            continue;
+          }
+          return candidate;
+        }
       }
 
       return null;
@@ -786,22 +823,28 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const savePrescriptionToStorage = (patientKey: string, data: any) => {
+  const savePrescriptionToStorage = (patientKey: string, data: any, explicitPatientId?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
       const parsed = raw ? JSON.parse(raw) : {};
+      if (parsed['paciente_atual']) {
+        delete parsed['paciente_atual'];
+      }
       const payload = {
         ...data,
         updatedAt: new Date().toISOString()
       };
       const keysToSave = new Set<string>();
       if (patientKey) keysToSave.add(patientKey.toLowerCase().trim());
-      if (standaloneTargetPatientId) keysToSave.add(standaloneTargetPatientId.toLowerCase().trim());
-      if (currentPatient?.id) keysToSave.add(currentPatient.id.toLowerCase().trim());
-      if (currentPatient?.patientName) keysToSave.add(currentPatient.patientName.toLowerCase().trim());
-      if (data?.patientName) keysToSave.add(data.patientName.toLowerCase().trim());
-      if (prescPatientName) keysToSave.add(prescPatientName.toLowerCase().trim());
-      keysToSave.add('paciente_atual');
+      const resolvedId = explicitPatientId !== undefined ? explicitPatientId : (standaloneTargetPatientId || currentPatient?.id);
+      if (resolvedId) {
+        keysToSave.add(`id:${String(resolvedId).toLowerCase().trim()}`);
+        keysToSave.add(String(resolvedId).toLowerCase().trim());
+      } else if (data?.patientName && String(data.patientName).trim().toLowerCase() !== 'paciente') {
+        const cleanName = String(data.patientName).trim().toLowerCase();
+        keysToSave.add(`name:${cleanName}`);
+        keysToSave.add(cleanName);
+      }
 
       keysToSave.forEach(k => {
         if (k) parsed[k] = payload;
@@ -1532,14 +1575,33 @@ export function DoctorDashboardScreen() {
         updateDoc(doc(db, 'queue', currentPatient.id), { hasUnread: false }).catch(console.error);
       }
 
-      // Automatically load and synchronize patient's saved prescription
-      const pName = currentPatient.patientName || userName || 'Paciente';
+      // Reset previous patient's report and prescription states so nothing ever leaks between patients
+      const pName = currentPatient.patientName || (currentPatient as any).name || 'Paciente';
+      const pBirth = currentPatient.birthDate || currentPatient.answers?.birthDate || '';
+      const pCpf = currentPatient.cpf || currentPatient.answers?.cpf || '';
+      setStandaloneTargetPatientId(null);
+      setEvolutionNotes('');
+      setAddedMedications([]);
+      setReportPatientName(pName);
+      setReportBirthDate(pBirth);
+      setReportCpf(pCpf);
+      setReportDiagnosis('');
+      setReportRationale('');
+      setReportTreatmentPlan('');
+      setReportMonitoring('');
+      setPsychomotorReportText('');
+      setAgronomicPatientName(pName);
+      setAgronomicCpf(pCpf);
+      setAgronomicDiagnosis('');
+      setAgronomicText('');
+
+      // Automatically load and synchronize THIS patient's saved prescription (or clear if none)
       const patientKey = getPatientReportKey(currentPatient.id, pName);
-      const saved = loadSavedPrescription(patientKey) || currentPatient.prescriptionData;
+      const saved = loadSavedPrescription(patientKey, pName, currentPatient.id) || currentPatient.prescriptionData;
       if (saved && saved.items && Array.isArray(saved.items) && saved.items.length > 0) {
         setPrescPatientName(saved.patientName || pName);
-        setPrescBirthDate(saved.birthDate || currentPatient.birthDate || '');
-        setPrescCpf(saved.cpf || currentPatient.cpf || '');
+        setPrescBirthDate(saved.birthDate || pBirth);
+        setPrescCpf(saved.cpf || pCpf);
         setPrescEmissionDate(saved.emissionDate || format(new Date(), 'dd/MM/yyyy'));
         setPrescDoctorName(saved.doctorName || 'Dr. Guilherme Taveira Dias');
         setPrescDoctorCrm(saved.doctorCrm || 'CRM/MT 17259');
@@ -1547,22 +1609,30 @@ export function DoctorDashboardScreen() {
         setPrescItems(saved.items);
         setPrescNotes(saved.notes || '');
       } else {
-        // Query active_consultations doc to see if prescription was stored remotely
+        // Clear previous patient's items immediately before checking remote doc
+        setPrescPatientName(pName);
+        setPrescBirthDate(pBirth);
+        setPrescCpf(pCpf);
+        setPrescEmissionDate(format(new Date(), 'dd/MM/yyyy'));
+        setPrescItems([]);
+        setPrescNotes('');
+
+        // Query active_consultations doc to see if prescription was stored remotely for this patient
         getDoc(doc(db, 'active_consultations', currentPatient.id)).then(snap => {
           if (snap.exists()) {
             const data = snap.data();
             if (data.prescriptionData && data.prescriptionData.items?.length > 0) {
               const sp = data.prescriptionData;
               setPrescPatientName(sp.patientName || pName);
-              setPrescBirthDate(sp.birthDate || currentPatient.birthDate || '');
-              setPrescCpf(sp.cpf || currentPatient.cpf || '');
+              setPrescBirthDate(sp.birthDate || pBirth);
+              setPrescCpf(sp.cpf || pCpf);
               setPrescEmissionDate(sp.emissionDate || format(new Date(), 'dd/MM/yyyy'));
               setPrescDoctorName(sp.doctorName || 'Dr. Guilherme Taveira Dias');
               setPrescDoctorCrm(sp.doctorCrm || 'CRM/MT 17259');
               setPrescDoctorSpecialty(sp.doctorSpecialty || 'Especialista em Medicina Canabinoide');
               setPrescItems(sp.items);
               setPrescNotes(sp.notes || '');
-              savePrescriptionToStorage(patientKey, sp);
+              savePrescriptionToStorage(patientKey, sp, currentPatient.id);
             }
           }
         }).catch(console.warn);
@@ -1589,7 +1659,7 @@ export function DoctorDashboardScreen() {
     console.log("Starting consultation for:", patient);
     
     let enrichedPatient = { ...patient };
-    // Fetch answers and real profile data from users collection
+    // Fetch answers and real profile data from users, queue, and active_consultations collections
     try {
       const [userDoc, qSnap, cSnap] = await Promise.all([
         getDoc(doc(db, 'users', patient.id)).catch(() => null),
@@ -1598,6 +1668,7 @@ export function DoctorDashboardScreen() {
       ]);
       const userData = userDoc && userDoc.exists() ? userDoc.data() : null;
       const qd = qSnap && qSnap.exists() ? qSnap.data() : null;
+      const cd = cSnap && cSnap.exists() ? cSnap.data() : null;
       const validPlans = ['basic', 'premium', 'complete', 'psychologist'];
       const resolvedPlan = (
         (qd?.plan && validPlans.includes(qd.plan) ? qd.plan : null) ||
@@ -1615,19 +1686,27 @@ export function DoctorDashboardScreen() {
       enrichedPatient.isPremium = resolvedIsPremium;
       (enrichedPatient as any).pagamento_premium = resolvedIsPremium;
 
+      // Deep-merge all triage answers from user profile, queue, active_consultations, and local queue entry
+      // so partial queue answers never overwrite the complete onboarding triage in users/{patient.id}.answers
+      const mergedAnswers = {
+        ...(cd?.answers || {}),
+        ...(qd?.answers || {}),
+        ...(userData?.answers || {}),
+        ...(patient.answers || {}),
+        // Ensure non-empty arrays/strings from userData.answers take precedence if patient.answers had empty defaults
+        ...(Array.isArray(userData?.answers?.objectives) && userData.answers.objectives.length > 0 && (!Array.isArray(patient.answers?.objectives) || patient.answers.objectives.length === 0)
+          ? { objectives: userData.answers.objectives }
+          : {}),
+        ...(userData?.answers?.diseaseOrigin && !patient.answers?.diseaseOrigin ? { diseaseOrigin: userData.answers.diseaseOrigin } : {}),
+        ...(userData?.answers?.description && !patient.answers?.description ? { description: userData.answers.description } : {}),
+        plan: resolvedPlan,
+        selectedOffer: resolvedPlan,
+        isPremium: resolvedIsPremium,
+        pagamento_premium: resolvedIsPremium,
+      };
+      enrichedPatient.answers = mergedAnswers;
+
       if (userData) {
-         if (userData.answers && (!enrichedPatient.answers || Object.keys(enrichedPatient.answers).length === 0)) {
-           enrichedPatient.answers = userData.answers;
-         }
-         if (enrichedPatient.answers) {
-           enrichedPatient.answers = {
-             ...enrichedPatient.answers,
-             plan: resolvedPlan,
-             selectedOffer: resolvedPlan,
-             isPremium: resolvedIsPremium,
-             pagamento_premium: resolvedIsPremium,
-           };
-         }
          if (userData.name && typeof userData.name === 'string' && userData.name.trim().toLowerCase() !== 'paciente') {
            enrichedPatient.patientName = userData.name.trim();
            (enrichedPatient as any).name = userData.name.trim();
@@ -1643,13 +1722,14 @@ export function DoctorDashboardScreen() {
       }
 
       if (qd) {
+        if (!enrichedPatient.cpf && qd.cpf) enrichedPatient.cpf = qd.cpf;
+        if (!enrichedPatient.birthDate && qd.birthDate) enrichedPatient.birthDate = qd.birthDate;
         if (qd.greetingSent || qd.initialGreetingSent || qd.status === 'in-consultation' || qd.status === 'finished') {
           enrichedPatient.greetingSent = true;
           enrichedPatient.initialGreetingSent = true;
         }
       }
-      if (cSnap && cSnap.exists()) {
-        const cd = cSnap.data();
+      if (cd) {
         if (cd.greetingSent || cd.initialGreetingSent) {
           enrichedPatient.greetingSent = true;
           enrichedPatient.initialGreetingSent = true;
@@ -3204,21 +3284,26 @@ export function DoctorDashboardScreen() {
     return [...new Set(cids)]; // remove duplicates
   };
 
-  const handleOpenMedicalReportEditor = (type: 'inicial' | 'evolutivo' = 'inicial') => {
-    setStandaloneTargetPatientId(null);
-    setMedicalReportType(type);
-    const patientAnswers = currentPatient?.answers || answers;
-    const pName = currentPatient?.patientName || userName || 'Paciente';
-    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+  const buildTriageReportDefaults = (type: 'inicial' | 'evolutivo' = medicalReportType) => {
+    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
+    const patientAnswers = currentPatient
+      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
+      : (answers || {});
+    const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
 
-    const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
-    
-    // Generate clinically personalized report contents tailored to this patient's exact condition, symptoms, and medications
+    const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+      ? patientAnswers.objectives
+      : (patientAnswers?.objective ? [String(patientAnswers.objective)] : []);
+
     const personalized = generatePersonalizedClinicalReport({
       patientName: pName,
       birthDate: pBirthDate,
       cpf: pCpf,
+      sex: patientAnswers?.sex,
+      height: patientAnswers?.height,
+      weight: patientAnswers?.weight,
       objectives: objectivesArray,
       intensity: patientAnswers?.intensity,
       duration: patientAnswers?.duration,
@@ -3228,41 +3313,68 @@ export function DoctorDashboardScreen() {
       remedios_details: patientAnswers?.remedios_details,
       doenca_cronica: patientAnswers?.doenca_cronica,
       doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+      tratamento_atual: patientAnswers?.tratamento_atual,
+      tratamento_atual_details: patientAnswers?.tratamento_atual_details,
+      cirurgia: patientAnswers?.cirurgia,
+      cirurgia_details: patientAnswers?.cirurgia_details,
+      alergia: patientAnswers?.alergia,
+      alergia_details: patientAnswers?.alergia_details,
       digestivo: patientAnswers?.digestivo,
       digestivo_details: patientAnswers?.digestivo_details,
+      dor_cabeca: patientAnswers?.dor_cabeca,
+      dor_cabeca_details: patientAnswers?.dor_cabeca_details,
+      cansado: patientAnswers?.cansado,
+      cannabis: patientAnswers?.cannabis,
+      cannabis_details: patientAnswers?.cannabis_details,
+      arritmia: patientAnswers?.arritmia,
+      arritmia_details: patientAnswers?.arritmia_details,
+      tristeza: patientAnswers?.tristeza,
+      foco: patientAnswers?.foco,
+      memoria: patientAnswers?.memoria,
+      irritado: patientAnswers?.irritado,
+      estresse: patientAnswers?.estresse,
+      panico: patientAnswers?.panico,
+      panico_details: patientAnswers?.panico_details,
+      ansiedade_diag: patientAnswers?.ansiedade_diag,
+      ansiedade_diag_details: patientAnswers?.ansiedade_diag_details,
+      dirige: patientAnswers?.dirige,
+      dirige_details: patientAnswers?.dirige_details,
+      maquinario: patientAnswers?.maquinario,
+      maquinario_details: patientAnswers?.maquinario_details,
+      blitz: patientAnswers?.blitz,
+      laudo_psicomotor: patientAnswers?.laudo_psicomotor,
+      preferredTreatmentStatus: patientAnswers?.preferredTreatmentStatus,
+      preferredBrands: patientAnswers?.preferredBrands,
+      preferredBrandNotes: patientAnswers?.preferredBrandNotes,
+      adhdTestResult: patientAnswers?.adhdTestResult,
+      autismTestResult: patientAnswers?.autismTestResult,
+      hcPlantCalculator: patientAnswers?.hcPlantCalculator,
       mainSymptoms: patientAnswers?.mainSymptoms,
-      pathology: patientAnswers?.pathology
+      pathology: patientAnswers?.pathology,
+      evolutionNotes,
+      answers: patientAnswers
     }, type);
 
-    let defaultClinicalSummary = '';
-    let defaultTherapeuticRationale = '';
-
-    if (type === 'inicial') {
-      defaultClinicalSummary = personalized.clinicalSummary;
-      defaultTherapeuticRationale = personalized.therapeuticRationale;
-    } else {
-      defaultClinicalSummary = `${personalized.clinicalSummary}\n\n${evolutionNotes ? evolutionNotes + '\n\n' : ''}${personalized.evolutionSummary}`;
-      defaultTherapeuticRationale = personalized.therapeuticRationale;
-    }
+    const defaultClinicalSummary = type === 'inicial'
+      ? personalized.clinicalSummary
+      : `${personalized.clinicalSummary}\n\n${personalized.evolutionSummary}`;
+    const defaultTherapeuticRationale = personalized.therapeuticRationale;
 
     const items: PrescriptionItemData[] = [];
     const seenReportNames = new Set<string>();
 
-    // 0. Check saved prescription in localStorage first if prescItems wasn't populated yet
     const prescKey = getPatientReportKey(currentPatient?.id, pName);
-    const savedPresc = loadSavedPrescription(prescKey);
+    const savedPresc = loadSavedPrescription(prescKey, pName, currentPatient?.id);
     const activePrescItems = prescItems.length > 0 ? prescItems : (savedPresc?.items && Array.isArray(savedPresc.items) ? savedPresc.items : []);
     if (prescItems.length === 0 && activePrescItems.length > 0) {
       setPrescItems(activePrescItems);
     }
 
-    // 1. First priority: items currently in prescription editor (activePrescItems)
     activePrescItems.forEach(it => {
       items.push(it);
       seenReportNames.add(it.name.toLowerCase().trim());
     });
 
-    // 2. Second priority: items from prescription / receita_previa messages in current chat
     messages.forEach(m => {
       const anyM = m as any;
       if (anyM.prescriptionData?.items && Array.isArray(anyM.prescriptionData.items)) {
@@ -3285,21 +3397,20 @@ export function DoctorDashboardScreen() {
       }
     });
 
-    // 3. Third priority: items from individual product cards in chat
     messages.forEach(m => {
       if (m.type === 'product' && m.productData) {
-        const pName = m.productData.name;
-        const clean = pName.toLowerCase().trim();
+        const prodName = m.productData.name;
+        const clean = prodName.toLowerCase().trim();
         if (!seenReportNames.has(clean)) {
           seenReportNames.add(clean);
           const enriched = enrichMedicationDetails(
-            pName,
+            prodName,
             m.productData.brand || 'Associação Brasileira',
             m.productData.origin || 'Nacional',
             m.productData.type
           );
           items.push({
-            name: pName,
+            name: prodName,
             brand: m.productData.brand || enriched.brand,
             origin: m.productData.origin || enriched.origin,
             type: m.productData.type || enriched.type,
@@ -3334,22 +3445,88 @@ export function DoctorDashboardScreen() {
         }).join('\n\n')
       : personalized.treatmentPlan;
 
-    const defaultMonitoringText = personalized.monitoringText;
+    return {
+      pName,
+      pBirthDate,
+      pCpf,
+      defaultClinicalSummary,
+      defaultTherapeuticRationale,
+      defaultTreatmentPlan,
+      defaultMonitoringText: personalized.monitoringText
+    };
+  };
+
+  const handleResetMedicalReportFromTriage = () => {
+    const defaults = buildTriageReportDefaults(medicalReportType);
+    setReportPatientName(defaults.pName);
+    setReportBirthDate(defaults.pBirthDate);
+    setReportCpf(defaults.pCpf);
+    setReportDiagnosis(defaults.defaultClinicalSummary);
+    setReportRationale(defaults.defaultTherapeuticRationale);
+    setReportTreatmentPlan(defaults.defaultTreatmentPlan);
+    setReportMonitoring(defaults.defaultMonitoringText);
+
+    const patientKey = getPatientReportKey(currentPatient?.id, defaults.pName);
+    saveReportToStorage(patientKey, medicalReportType, {
+      patientName: defaults.pName,
+      birthDate: defaults.pBirthDate,
+      cpf: defaults.pCpf,
+      emissionDate: reportEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+      doctorName: reportDoctorName || 'Dr. Guilherme Taveira Dias',
+      doctorCrm: reportDoctorCrm || 'CRM/MT 17259',
+      doctorSpecialty: reportDoctorSpecialty || 'Especialista em Medicina Canabinoide',
+      diagnosis: defaults.defaultClinicalSummary,
+      rationale: defaults.defaultTherapeuticRationale,
+      treatmentPlan: defaults.defaultTreatmentPlan,
+      monitoring: defaults.defaultMonitoringText
+    }, currentPatient?.id);
+
+    showActionToast('✓ Dados da triagem do paciente carregados no laudo!');
+    return {
+      patientName: defaults.pName,
+      birthDate: defaults.pBirthDate,
+      cpf: defaults.pCpf,
+      diagnosis: defaults.defaultClinicalSummary,
+      rationale: defaults.defaultTherapeuticRationale,
+      treatmentPlan: defaults.defaultTreatmentPlan,
+      monitoring: defaults.defaultMonitoringText
+    };
+  };
+
+  const handleOpenMedicalReportEditor = (type: 'inicial' | 'evolutivo' = 'inicial') => {
+    setStandaloneTargetPatientId(null);
+    setMedicalReportType(type);
+
+    const defaults = buildTriageReportDefaults(type);
+    const { pName, pBirthDate, pCpf, defaultClinicalSummary, defaultTherapeuticRationale, defaultTreatmentPlan, defaultMonitoringText } = defaults;
 
     const patientKey = getPatientReportKey(currentPatient?.id, pName);
-    const saved = loadSavedReport(patientKey, type);
+    const rawSaved = loadSavedReport(patientKey, type, pName, currentPatient?.id);
 
-    setReportPatientName(saved?.patientName || pName);
-    setReportBirthDate(saved?.birthDate || pBirthDate);
-    setReportCpf(saved?.cpf || pCpf);
-    setReportEmissionDate(saved?.emissionDate || format(new Date(), 'dd/MM/yyyy'));
-    setReportDoctorName(saved?.doctorName || 'Dr. Guilherme Taveira Dias');
-    setReportDoctorCrm(saved?.doctorCrm || 'CRM/MT 17259');
-    setReportDoctorSpecialty(saved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
-    setReportDiagnosis(saved?.diagnosis || defaultClinicalSummary);
-    setReportRationale(saved?.rationale || defaultTherapeuticRationale);
-    setReportTreatmentPlan(saved?.treatmentPlan || defaultTreatmentPlan);
-    setReportMonitoring(saved?.monitoring || defaultMonitoringText);
+    // Validate that any previously saved report in localStorage actually belongs to this patient
+    // (and wasn't polluted by an older session with a different patient's name in the text)
+    let validSaved = rawSaved;
+    if (rawSaved?.diagnosis && pName && pName.toLowerCase() !== 'paciente') {
+      const matchInText = rawSaved.diagnosis.match(/paciente\s+([^,]+),\s*inscrito/i);
+      if (matchInText && matchInText[1]) {
+        const nameInDiagnosis = matchInText[1].trim().toLowerCase();
+        if (nameInDiagnosis !== pName.trim().toLowerCase()) {
+          validSaved = null;
+        }
+      }
+    }
+
+    setReportPatientName(validSaved?.patientName || pName);
+    setReportBirthDate(validSaved?.birthDate || pBirthDate);
+    setReportCpf(validSaved?.cpf || pCpf);
+    setReportEmissionDate(validSaved?.emissionDate || format(new Date(), 'dd/MM/yyyy'));
+    setReportDoctorName(validSaved?.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(validSaved?.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(validSaved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setReportDiagnosis(validSaved?.diagnosis || defaultClinicalSummary);
+    setReportRationale(validSaved?.rationale || defaultTherapeuticRationale);
+    setReportTreatmentPlan(validSaved?.treatmentPlan || defaultTreatmentPlan);
+    setReportMonitoring(validSaved?.monitoring || defaultMonitoringText);
     setMedicalReportTab('edit');
     setShowMedicalReportEditorModal(true);
   };
@@ -3357,26 +3534,35 @@ export function DoctorDashboardScreen() {
   
   const handleOpenPsychomotorReportEditor = () => {
     setStandaloneTargetPatientId(null);
-    const pName = currentPatient?.patientName || userName || 'Paciente';
-    const patientAnswers = currentPatient?.answers || answers;
-    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
+    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
+    const patientAnswers = currentPatient
+      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
+      : (answers || {});
+    const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
     
     const patientKey = getPatientReportKey(currentPatient?.id, pName);
-    const saved = loadSavedReport(patientKey, 'psicomotor');
+    const rawSaved = loadSavedReport(patientKey, 'psicomotor', pName, currentPatient?.id);
+    let validSaved = rawSaved;
+    if (rawSaved?.text && pName && pName.toLowerCase() !== 'paciente' && !rawSaved.text.toLowerCase().includes(pName.toLowerCase())) {
+      validSaved = null;
+    }
 
-    setReportPatientName(saved?.patientName || pName);
-    setReportBirthDate(saved?.birthDate || pBirthDate);
-    setReportCpf(saved?.cpf || pCpf);
-    setReportEmissionDate(saved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
-    setReportDoctorName(saved?.doctorName || 'Dr. Guilherme Taveira Dias');
-    setReportDoctorCrm(saved?.doctorCrm || 'CRM/MT 17259');
-    setReportDoctorSpecialty(saved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setReportPatientName(validSaved?.patientName || pName);
+    setReportBirthDate(validSaved?.birthDate || pBirthDate);
+    setReportCpf(validSaved?.cpf || pCpf);
+    setReportEmissionDate(validSaved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
+    setReportDoctorName(validSaved?.doctorName || 'Dr. Guilherme Taveira Dias');
+    setReportDoctorCrm(validSaved?.doctorCrm || 'CRM/MT 17259');
+    setReportDoctorSpecialty(validSaved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
 
-    if (saved?.text) {
-      setPsychomotorReportText(saved.text);
+    if (validSaved?.text) {
+      setPsychomotorReportText(validSaved.text);
     } else {
-      const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
+      const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+        ? patientAnswers.objectives
+        : [];
       const personalized = generatePersonalizedClinicalReport({
         patientName: pName,
         birthDate: pBirthDate,
@@ -3393,7 +3579,8 @@ export function DoctorDashboardScreen() {
         digestivo: patientAnswers?.digestivo,
         digestivo_details: patientAnswers?.digestivo_details,
         mainSymptoms: patientAnswers?.mainSymptoms,
-        pathology: patientAnswers?.pathology
+        pathology: patientAnswers?.pathology,
+        answers: patientAnswers
       }, 'evolutivo');
 
       setPsychomotorReportText(personalized.psychomotor.text);
@@ -3504,10 +3691,13 @@ export function DoctorDashboardScreen() {
   };
 
   const handleOpenAgronomicReportEditor = () => {
-    const pName = currentPatient?.patientName || userName || 'Paciente';
-    const patientAnswers = currentPatient?.answers || answers;
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || userCpf || 'Não informado';
-    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || userBirthDate || 'Não informada';
+    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
+    const patientAnswers = currentPatient
+      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
+      : (answers || {});
+    const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
     
     setAgronomicPatientName(pName);
     setAgronomicCpf(pCpf);
@@ -3515,7 +3705,9 @@ export function DoctorDashboardScreen() {
     setAgronomicName('Wilian Dalenogare Pereira');
     setAgronomicCrea('CREA-PR 172.458/D');
 
-    const objectivesArray = (patientAnswers?.objectives && patientAnswers?.objectives?.length > 0) ? patientAnswers.objectives : ['Ansiedade', 'Estresse crônico', 'Dores'];
+    const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+      ? patientAnswers.objectives
+      : [];
     const personalized = generatePersonalizedClinicalReport({
       patientName: pName,
       birthDate: pBirthDate,
@@ -3532,7 +3724,8 @@ export function DoctorDashboardScreen() {
       digestivo: patientAnswers?.digestivo,
       digestivo_details: patientAnswers?.digestivo_details,
       mainSymptoms: patientAnswers?.mainSymptoms,
-      pathology: patientAnswers?.pathology
+      pathology: patientAnswers?.pathology,
+      answers: patientAnswers
     }, 'evolutivo');
     
     const hcCalc = patientAnswers?.hcPlantCalculator;
@@ -3666,11 +3859,15 @@ export function DoctorDashboardScreen() {
     doctorCrm: string;
     doctorSpecialty: string;
   }) => {
-    const patientAnswers = currentPatient?.answers || answers;
+    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
+    const patientAnswers = currentPatient
+      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
+      : (answers || {});
     const isEvolutivo = medicalReportType === 'evolutivo';
     const pName = overrideData?.patientName || reportPatientName;
-    const patientKey = getPatientReportKey(currentPatient?.id, pName);
-    const saved = loadSavedReport(patientKey, medicalReportType);
+    const targetId = standaloneTargetPatientId || currentPatient?.id || null;
+    const patientKey = getPatientReportKey(targetId, pName);
+    const saved = loadSavedReport(patientKey, medicalReportType, pName, targetId);
 
     const finalPatientName = overrideData?.patientName || saved?.patientName || reportPatientName;
     const finalBirthDate = overrideData?.birthDate || saved?.birthDate || reportBirthDate;
@@ -3687,6 +3884,7 @@ export function DoctorDashboardScreen() {
     try {
       showActionToast(isEvolutivo ? "Gerando Laudo Evolutivo..." : "Gerando Laudo Inicial...");
       await generateMedicalReportPDF(finalPatientName, messages, {
+        patientId: targetId || undefined,
         customPatientName: finalPatientName,
         birthDate: finalBirthDate,
         cpf: finalCpf,
@@ -3732,13 +3930,16 @@ export function DoctorDashboardScreen() {
     try {
       setIsSendingReportToChat(true);
 
-      const patientAnswers = currentPatient?.answers || answers;
+      const qPatient = queue.find(p => p.id === targetPatientId);
+      const patientAnswers = currentPatient
+        ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
+        : (qPatient?.answers || {});
       const isEvolutivo = medicalReportType === 'evolutivo';
       const docType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
 
       const pName = overrideData?.patientName || reportPatientName;
-      const patientKey = getPatientReportKey(currentPatient?.id, pName);
-      const saved = loadSavedReport(patientKey, medicalReportType);
+      const patientKey = getPatientReportKey(targetPatientId, pName);
+      const saved = loadSavedReport(patientKey, medicalReportType, pName, targetPatientId);
 
       const finalPatientName = overrideData?.patientName || saved?.patientName || reportPatientName;
       const finalBirthDate = overrideData?.birthDate || saved?.birthDate || reportBirthDate;
@@ -3753,6 +3954,7 @@ export function DoctorDashboardScreen() {
       const finalMonitoring = overrideData?.monitoring || saved?.monitoring || reportMonitoring;
 
       const pdfBlob = await generateMedicalReportPDF(finalPatientName, messages, {
+        patientId: targetPatientId,
         customPatientName: finalPatientName,
         birthDate: finalBirthDate,
         cpf: finalCpf,
@@ -7460,341 +7662,356 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
           </section>
 
           {/* Section: Objectives */}
-          <section>
-            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Objetivos Principais
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {(currentPatient?.answers?.objectives || answers?.objectives)?.length ? (
-                (currentPatient?.answers?.objectives || answers?.objectives || []).map((obj: string, i: number) => (
-                  <span key={i} className="px-4 py-2 bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon rounded-lg text-base font-medium shadow-[0_0_10px_rgba(166,255,0,0.05)]">
-                    {obj}
-                  </span>
-                ))
-              ) : (
-                <span className="px-4 py-2 bg-mecura-surface border border-mecura-elevated text-mecura-silver rounded-lg text-base">Nenhum objetivo selecionado</span>
-              )}
-            </div>
-          </section>
-
-          {/* Section: Preferência de Marca / Associação (Triagem) */}
-          <section>
-            <h3 className="text-[13px] font-bold text-mecura-neon uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-mecura-neon" /> Preferência de Marca ou Associação (Triagem)
-            </h3>
-            {(() => {
-              const pAns = currentPatient?.answers || answers || {};
-              const pBrands: string[] = Array.isArray(pAns.preferredBrands) ? pAns.preferredBrands : [];
-              const natAssoc = pAns.preferredNationalAssociation;
-              const impBrand = pAns.preferredImportedBrand;
-              const tStatus = pAns.preferredTreatmentStatus;
-              const bNotes = pAns.preferredBrandNotes;
-              const hasAny = pBrands.length > 0 || !!natAssoc || !!impBrand || !!tStatus || !!bNotes;
-
-              const isJaFaz = tStatus === 'ja_faz' || tStatus === 'ja_usa';
-              const isPretende = tStatus === 'pretende_fazer' || tStatus === 'pretende_usar';
-              const statusText = isJaFaz
-                ? 'Já faz o tratamento com este fabricante / associação'
-                : isPretende
-                  ? 'Pretende iniciar o tratamento com este fabricante / associação'
-                  : tStatus === 'sem_preferencia'
-                    ? 'Não possui preferência prévia (aguarda indicação médica)'
-                    : 'Não informado na triagem';
-
-              return (
-                <div className="bg-mecura-surface border border-mecura-neon/30 rounded-2xl p-5 space-y-4 shadow-[0_0_20px_rgba(166,255,0,0.06)]">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-mecura-elevated pb-3">
-                    <span className="text-xs font-bold text-mecura-silver uppercase tracking-wider">
-                      Vínculo / Intenção do Paciente:
-                    </span>
-                    <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
-                      isJaFaz
-                        ? 'bg-mecura-neon/20 text-mecura-neon border-mecura-neon/40 shadow-[0_0_12px_rgba(166,255,0,0.25)]'
-                        : isPretende
-                          ? 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/30'
-                          : 'bg-mecura-elevated text-mecura-pearl border-mecura-elevated'
-                    }`}>
-                      {statusText}
-                    </span>
-                  </div>
-
-                  {hasAny ? (
-                    <>
-                      <div className="space-y-2">
-                        <span className="text-xs text-mecura-silver block">
-                          Associações Nacionais / Empresas Importadas Selecionadas:
+          {(() => {
+            const triageAns = currentPatient ? (currentPatient.answers || {}) : (answers || {});
+            return (
+              <>
+                <section>
+                  <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Objetivos Principais
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {triageAns?.objectives?.length ? (
+                      (triageAns.objectives || []).map((obj: string, i: number) => (
+                        <span key={i} className="px-4 py-2 bg-mecura-neon/10 border border-mecura-neon/30 text-mecura-neon rounded-lg text-base font-medium shadow-[0_0_10px_rgba(166,255,0,0.05)]">
+                          {obj}
                         </span>
-                        {(pBrands.length > 0 || natAssoc || impBrand) ? (
-                          <div className="flex flex-wrap gap-2">
-                            {(pBrands.length > 0 ? pBrands : [natAssoc, impBrand].filter(Boolean)).map((brand: string, idx: number) => (
-                              <div
-                                key={idx}
-                                className="px-3.5 py-2 rounded-xl bg-mecura-neon/15 border border-mecura-neon text-white font-bold text-sm flex items-center gap-2 shadow-[0_0_12px_rgba(166,255,0,0.15)]"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-mecura-neon" />
-                                <span>{brand}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setProductBrandFilter(brand);
-                                    setProductSearchTerm('');
-                                    setShowPrescriptionModal(true);
-                                  }}
-                                  className="ml-1 text-[10px] font-black uppercase bg-mecura-neon text-black px-2 py-0.5 rounded-md hover:bg-white transition-colors cursor-pointer"
-                                  title="Abrir Receituário filtrando por este fabricante"
-                                >
-                                  Prescrever
-                                </button>
+                      ))
+                    ) : (
+                      <span className="px-4 py-2 bg-mecura-surface border border-mecura-elevated text-mecura-silver rounded-lg text-base">Nenhum objetivo selecionado</span>
+                    )}
+                  </div>
+                </section>
+
+                {/* Section: Preferência de Marca / Associação (Triagem) */}
+                <section>
+                  <h3 className="text-[13px] font-bold text-mecura-neon uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-mecura-neon" /> Preferência de Marca ou Associação (Triagem)
+                  </h3>
+                  {(() => {
+                    const pAns = triageAns;
+                    const pBrands: string[] = Array.isArray(pAns.preferredBrands) ? pAns.preferredBrands : [];
+                    const natAssoc = pAns.preferredNationalAssociation;
+                    const impBrand = pAns.preferredImportedBrand;
+                    const tStatus = pAns.preferredTreatmentStatus;
+                    const bNotes = pAns.preferredBrandNotes;
+                    const hasAny = pBrands.length > 0 || !!natAssoc || !!impBrand || !!tStatus || !!bNotes;
+
+                    const isJaFaz = tStatus === 'ja_faz' || tStatus === 'ja_usa';
+                    const isPretende = tStatus === 'pretende_fazer' || tStatus === 'pretende_usar';
+                    const statusText = isJaFaz
+                      ? 'Já faz o tratamento com este fabricante / associação'
+                      : isPretende
+                        ? 'Pretende iniciar o tratamento com este fabricante / associação'
+                        : tStatus === 'sem_preferencia'
+                          ? 'Não possui preferência prévia (aguarda indicação médica)'
+                          : 'Não informado na triagem';
+
+                    return (
+                      <div className="bg-mecura-surface border border-mecura-neon/30 rounded-2xl p-5 space-y-4 shadow-[0_0_20px_rgba(166,255,0,0.06)]">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-mecura-elevated pb-3">
+                          <span className="text-xs font-bold text-mecura-silver uppercase tracking-wider">
+                            Vínculo / Intenção do Paciente:
+                          </span>
+                          <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
+                            isJaFaz
+                              ? 'bg-mecura-neon/20 text-mecura-neon border-mecura-neon/40 shadow-[0_0_12px_rgba(166,255,0,0.25)]'
+                              : isPretende
+                                ? 'bg-mecura-neon/15 text-mecura-neon border-mecura-neon/30'
+                                : 'bg-mecura-elevated text-mecura-pearl border-mecura-elevated'
+                          }`}>
+                            {statusText}
+                          </span>
+                        </div>
+
+                        {hasAny ? (
+                          <>
+                            <div className="space-y-2">
+                              <span className="text-xs text-mecura-silver block">
+                                Associações Nacionais / Empresas Importadas Selecionadas:
+                              </span>
+                              {(pBrands.length > 0 || natAssoc || impBrand) ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {(pBrands.length > 0 ? pBrands : [natAssoc, impBrand].filter(Boolean)).map((brand: string, idx: number) => (
+                                    <div
+                                      key={idx}
+                                      className="px-3.5 py-2 rounded-xl bg-mecura-neon/15 border border-mecura-neon text-white font-bold text-sm flex items-center gap-2 shadow-[0_0_12px_rgba(166,255,0,0.15)]"
+                                    >
+                                      <span className="w-2 h-2 rounded-full bg-mecura-neon" />
+                                      <span>{brand}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProductBrandFilter(brand);
+                                          setProductSearchTerm('');
+                                          setShowPrescriptionModal(true);
+                                        }}
+                                        className="ml-1 text-[10px] font-black uppercase bg-mecura-neon text-black px-2 py-0.5 rounded-md hover:bg-white transition-colors cursor-pointer"
+                                        title="Abrir Receituário filtrando por este fabricante"
+                                      >
+                                        Prescrever
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-white/80 italic">
+                                  Paciente informou que prefere recomendação direta do médico.
+                                </p>
+                              )}
+                            </div>
+
+                            {bNotes && (
+                              <div className="bg-black/40 border border-white/10 rounded-xl p-3.5">
+                                <span className="text-[11px] font-bold text-mecura-neon uppercase tracking-wider block mb-1">
+                                  Observações do Paciente sobre Produto / Associação:
+                                </span>
+                                <p className="text-sm text-white leading-relaxed italic">
+                                  "{bNotes}"
+                                </p>
                               </div>
-                            ))}
-                          </div>
+                            )}
+                          </>
                         ) : (
-                          <p className="text-sm text-white/80 italic">
-                            Paciente informou que prefere recomendação direta do médico.
+                          <p className="text-sm text-mecura-silver italic">
+                            O paciente ainda não selecionou uma associação ou marca importada específica na triagem.
                           </p>
                         )}
                       </div>
+                    );
+                  })()}
+                </section>
 
-                      {bNotes && (
-                        <div className="bg-black/40 border border-white/10 rounded-xl p-3.5">
-                          <span className="text-[11px] font-bold text-mecura-neon uppercase tracking-wider block mb-1">
-                            Observações do Paciente sobre Produto / Associação:
-                          </span>
-                          <p className="text-sm text-white leading-relaxed italic">
-                            "{bNotes}"
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sm text-mecura-silver italic">
-                      O paciente ainda não selecionou uma associação ou marca importada específica na triagem.
-                    </p>
-                  )}
-                </div>
-              );
-            })()}
-          </section>
-
-          {/* Section: Details */}
-          <section>
-            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4">
-              Detalhes do Sintoma
-            </h3>
-            <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-6 space-y-4">
-              <div className="flex justify-between items-center border-b border-mecura-elevated/50 pb-4">
-                <span className="text-base text-mecura-silver">Intensidade</span>
-                <span className="text-base font-bold text-white bg-mecura-surface-light px-3 py-1.5 rounded-md">{(currentPatient?.answers?.intensity || answers?.intensity) || '-'} / 10</span>
-              </div>
-              <div className="flex justify-between items-center border-b border-mecura-elevated/50 pb-4">
-                <span className="text-base text-mecura-silver">Duração</span>
-                <span className="text-base font-bold text-white capitalize">{(currentPatient?.answers?.duration || answers?.duration) || 'Não informada'}</span>
-              </div>
-              <div className="pt-1">
-                <span className="text-sm text-mecura-silver block mb-2">Descrição Adicional</span>
-                <p className="text-base text-mecura-pearl leading-relaxed bg-mecura-surface-light/50 p-4 rounded-xl border border-mecura-elevated/50">
-                  {(currentPatient?.answers?.description || answers?.description) || "Nenhuma descrição adicional fornecida."}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section: Physical */}
-          <section>
-            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4">
-              Físico
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
-                <span className="text-sm text-mecura-silver mb-2">Altura</span>
-                <span className="text-lg font-bold text-white">{(currentPatient?.answers?.height || answers?.height) ? `${(currentPatient?.answers?.height || answers?.height)}m` : '-'}</span>
-              </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
-                <span className="text-sm text-mecura-silver mb-2">Peso</span>
-                <span className="text-lg font-bold text-white">{(currentPatient?.answers?.weight || answers?.weight) ? `${(currentPatient?.answers?.weight || answers?.weight)}kg` : '-'}</span>
-              </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
-                <span className="text-sm text-mecura-silver mb-2">Sexo</span>
-                <span className="text-lg font-bold text-white">{(currentPatient?.answers?.sex || answers?.sex) || '-'}</span>
-              </div>
-            </div>
-          </section>
-
-          {/* Section: Driving & Risks */}
-          <section className="mb-8">
-            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 text-purple-400">
-              Condução de Veículos e Riscos
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
-                <span className="text-xs text-purple-300 block mb-2">Dirige Veículos</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.dirige || answers?.dirige) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.dirige || answers?.dirige) ? 'Sim' : 'Não'}</span>
-              </div>
-              <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
-                <span className="text-xs text-purple-300 block mb-2">Opera Maquinário</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.maquinario || answers?.maquinario) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.maquinario || answers?.maquinario) ? 'Sim' : 'Não'}</span>
-              </div>
-              <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
-                <span className="text-xs text-purple-300 block mb-2">Blitz Frequente</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.blitz || answers?.blitz) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.blitz || answers?.blitz) ? 'Sim' : 'Não'}</span>
-              </div>
-              <div className="bg-purple-500/20 border border-purple-500/40 rounded-2xl p-5">
-                <span className="text-xs text-purple-200 block mb-2 font-bold">Laudo Psicomotor</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.laudo_psicomotor || answers?.laudo_psicomotor) ? 'text-purple-400' : 'text-white'}`}>{(currentPatient?.answers?.laudo_psicomotor || answers?.laudo_psicomotor) ? 'Deseja Solicitar' : 'Não Solicitado'}</span>
-              </div>
-            </div>
-
-            {/* Agronomic / Cultivation Quick Access */}
-            <div className="mt-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                  <Sprout className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-xs text-emerald-300 font-bold block uppercase tracking-wider">Laudo Agronômico Pericial</span>
-                  <span className="text-sm font-semibold text-white">Dimensionamento de Plantas para Salvo-Conduto / Habeas Corpus</span>
-                </div>
-              </div>
-              <button
-                onClick={handleOpenAgronomicReportEditor}
-                className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition-colors shadow-[0_0_12px_rgba(16,185,129,0.25)] shrink-0"
-              >
-                Gerar Laudo Agronômico
-              </button>
-            </div>
-
-            {/* Resultados dos Testes Interativos (TDAH, Autismo TEA, Calculadora HC) */}
-            {(() => {
-              const pAns = currentPatient?.answers || answers;
-              const adhdRes = pAns?.adhdTestResult;
-              const autismRes = pAns?.autismTestResult;
-              const hcRes = pAns?.hcPlantCalculator;
-              if (!adhdRes && !autismRes && !hcRes) return null;
-
-              return (
-                <div className="mt-4 space-y-2.5">
-                  <h4 className="text-xs font-bold text-mecura-neon uppercase tracking-wider">
-                    Testes Pré-Consulta & Dimensionamento HC Realizados pelo Paciente
-                  </h4>
-                  {adhdRes && (
-                    <div className="p-3.5 rounded-2xl bg-sky-500/10 border border-sky-400/30 flex items-center justify-between gap-3">
-                      <div>
-                        <span className="text-[11px] font-bold text-sky-300 block">
-                          Teste de TDAH (ASRS-18)
-                        </span>
-                        <span className="text-xs text-white font-semibold">
-                          {adhdRes.classification} ({adhdRes.totalPoints}/{adhdRes.maxPoints} pts)
-                        </span>
-                      </div>
-                      <span className="text-lg font-black text-sky-300 font-mono">
-                        {adhdRes.scorePercent}%
-                      </span>
+                {/* Section: Details */}
+                <section>
+                  <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4">
+                    Detalhes do Sintoma
+                  </h3>
+                  <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-6 space-y-4">
+                    <div className="flex justify-between items-center border-b border-mecura-elevated/50 pb-4">
+                      <span className="text-base text-mecura-silver">Intensidade</span>
+                      <span className="text-base font-bold text-white bg-mecura-surface-light px-3 py-1.5 rounded-md">{triageAns?.intensity || '-'} / 10</span>
                     </div>
-                  )}
-                  {autismRes && (
-                    <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-400/30 flex items-center justify-between gap-3">
-                      <div>
-                        <span className="text-[11px] font-bold text-purple-300 block">
-                          Teste de Autismo — TEA ({autismRes.targetProfile || 'Adulto'})
-                        </span>
-                        <span className="text-xs text-white font-semibold">
-                          {autismRes.classification} ({autismRes.totalPoints}/{autismRes.maxPoints} pts)
-                        </span>
-                      </div>
-                      <span className="text-lg font-black text-purple-300 font-mono">
-                        {autismRes.scorePercent}%
-                      </span>
+                    <div className="flex justify-between items-center border-b border-mecura-elevated/50 pb-4">
+                      <span className="text-base text-mecura-silver">Duração</span>
+                      <span className="text-base font-bold text-white capitalize">{triageAns?.duration || 'Não informada'}</span>
                     </div>
-                  )}
-                  {hcRes && (
-                    <div className="p-3.5 rounded-2xl bg-mecura-neon/10 border border-mecura-neon/30 space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <span className="text-[11px] font-bold text-mecura-neon block">
-                            Calculadora de Plantas para HC ({hcRes.cultivationType === 'outdoor' ? 'Outdoor' : 'Indoor'})
-                          </span>
-                          <span className="text-xs text-white font-semibold">
-                            {hcRes.annualPlants} plantas/ano ({hcRes.plantsPerCycle}/ciclo) · Dose Total: {hcRes.dailyDoseMg}mg/dia · {hcRes.dryFlowersGrams}g flores/ano
-                          </span>
-                        </div>
-                        <span className="text-sm font-black text-mecura-neon font-mono shrink-0">
-                          {hcRes.annualPlants} plantas
-                        </span>
+                    {triageAns?.diseaseOrigin && (
+                      <div className="pt-1 border-b border-mecura-elevated/50 pb-4">
+                        <span className="text-sm text-mecura-silver block mb-2">Origem / Histórico do Quadro</span>
+                        <p className="text-base text-mecura-pearl leading-relaxed bg-mecura-surface-light/50 p-4 rounded-xl border border-mecura-elevated/50">
+                          {triageAns.diseaseOrigin}
+                        </p>
                       </div>
-                      {Array.isArray(hcRes.selectedMedications) && hcRes.selectedMedications.length > 0 && (
-                        <div className="pt-1.5 border-t border-white/10 space-y-1">
-                          <span className="text-[10px] text-[#A0A0B4] font-bold uppercase block">
-                            Medicamentos Cadastrados Escolhidos como Base pelo Paciente:
-                          </span>
-                          {hcRes.selectedMedications.map((m: any, i: number) => (
-                            <div key={i} className="text-[11px] text-white/90 flex items-center justify-between bg-black/30 px-2.5 py-1 rounded-lg">
-                              <span className="truncate pr-2 font-medium">{m.name}</span>
-                              <span className="text-mecura-neon font-mono shrink-0">
-                                {m.dailyUnits} {m.unitLabel} (~{m.dailyMg}mg/dia)
+                    )}
+                    <div className="pt-1">
+                      <span className="text-sm text-mecura-silver block mb-2">Descrição Adicional</span>
+                      <p className="text-base text-mecura-pearl leading-relaxed bg-mecura-surface-light/50 p-4 rounded-xl border border-mecura-elevated/50">
+                        {triageAns?.description || "Nenhuma descrição adicional fornecida."}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Section: Physical */}
+                <section>
+                  <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4">
+                    Físico
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+                      <span className="text-sm text-mecura-silver mb-2">Altura</span>
+                      <span className="text-lg font-bold text-white">{triageAns?.height ? `${triageAns.height}m` : '-'}</span>
+                    </div>
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+                      <span className="text-sm text-mecura-silver mb-2">Peso</span>
+                      <span className="text-lg font-bold text-white">{triageAns?.weight ? `${triageAns.weight}kg` : '-'}</span>
+                    </div>
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 flex flex-col items-center justify-center text-center">
+                      <span className="text-sm text-mecura-silver mb-2">Sexo</span>
+                      <span className="text-lg font-bold text-white">{triageAns?.sex || '-'}</span>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Section: Driving & Risks */}
+                <section className="mb-8">
+                  <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4 text-purple-400">
+                    Condução de Veículos e Riscos
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+                      <span className="text-xs text-purple-300 block mb-2">Dirige Veículos</span>
+                      <span className={`text-base font-bold ${triageAns?.dirige ? 'text-purple-400' : 'text-white'}`}>{triageAns?.dirige ? 'Sim' : 'Não'}</span>
+                    </div>
+                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+                      <span className="text-xs text-purple-300 block mb-2">Opera Maquinário</span>
+                      <span className={`text-base font-bold ${triageAns?.maquinario ? 'text-purple-400' : 'text-white'}`}>{triageAns?.maquinario ? 'Sim' : 'Não'}</span>
+                    </div>
+                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5">
+                      <span className="text-xs text-purple-300 block mb-2">Blitz Frequente</span>
+                      <span className={`text-base font-bold ${triageAns?.blitz ? 'text-purple-400' : 'text-white'}`}>{triageAns?.blitz ? 'Sim' : 'Não'}</span>
+                    </div>
+                    <div className="bg-purple-500/20 border border-purple-500/40 rounded-2xl p-5">
+                      <span className="text-xs text-purple-200 block mb-2 font-bold">Laudo Psicomotor</span>
+                      <span className={`text-base font-bold ${triageAns?.laudo_psicomotor ? 'text-purple-400' : 'text-white'}`}>{triageAns?.laudo_psicomotor ? 'Deseja Solicitar' : 'Não Solicitado'}</span>
+                    </div>
+                  </div>
+
+                  {/* Agronomic / Cultivation Quick Access */}
+                  <div className="mt-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                        <Sprout className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-xs text-emerald-300 font-bold block uppercase tracking-wider">Laudo Agronômico Pericial</span>
+                        <span className="text-sm font-semibold text-white">Dimensionamento de Plantas para Salvo-Conduto / Habeas Corpus</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleOpenAgronomicReportEditor}
+                      className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition-colors shadow-[0_0_12px_rgba(16,185,129,0.25)] shrink-0"
+                    >
+                      Gerar Laudo Agronômico
+                    </button>
+                  </div>
+
+                  {/* Resultados dos Testes Interativos (TDAH, Autismo TEA, Calculadora HC) */}
+                  {(() => {
+                    const pAns = triageAns;
+                    const adhdRes = pAns?.adhdTestResult;
+                    const autismRes = pAns?.autismTestResult;
+                    const hcRes = pAns?.hcPlantCalculator;
+                    if (!adhdRes && !autismRes && !hcRes) return null;
+
+                    return (
+                      <div className="mt-4 space-y-2.5">
+                        <h4 className="text-xs font-bold text-mecura-neon uppercase tracking-wider">
+                          Testes Pré-Consulta & Dimensionamento HC Realizados pelo Paciente
+                        </h4>
+                        {adhdRes && (
+                          <div className="p-3.5 rounded-2xl bg-sky-500/10 border border-sky-400/30 flex items-center justify-between gap-3">
+                            <div>
+                              <span className="text-[11px] font-bold text-sky-300 block">
+                                Teste de TDAH (ASRS-18)
+                              </span>
+                              <span className="text-xs text-white font-semibold">
+                                {adhdRes.classification} ({adhdRes.totalPoints}/{adhdRes.maxPoints} pts)
                               </span>
                             </div>
-                          ))}
-                        </div>
+                            <span className="text-lg font-black text-sky-300 font-mono">
+                              {adhdRes.scorePercent}%
+                            </span>
+                          </div>
+                        )}
+                        {autismRes && (
+                          <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-400/30 flex items-center justify-between gap-3">
+                            <div>
+                              <span className="text-[11px] font-bold text-purple-300 block">
+                                Teste de Autismo — TEA ({autismRes.targetProfile || 'Adulto'})
+                              </span>
+                              <span className="text-xs text-white font-semibold">
+                                {autismRes.classification} ({autismRes.totalPoints}/{autismRes.maxPoints} pts)
+                              </span>
+                            </div>
+                            <span className="text-lg font-black text-purple-300 font-mono">
+                              {autismRes.scorePercent}%
+                            </span>
+                          </div>
+                        )}
+                        {hcRes && (
+                          <div className="p-3.5 rounded-2xl bg-mecura-neon/10 border border-mecura-neon/30 space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <span className="text-[11px] font-bold text-mecura-neon block">
+                                  Calculadora de Plantas para HC ({hcRes.cultivationType === 'outdoor' ? 'Outdoor' : 'Indoor'})
+                                </span>
+                                <span className="text-xs text-white font-semibold">
+                                  {hcRes.annualPlants} plantas/ano ({hcRes.plantsPerCycle}/ciclo) · Dose Total: {hcRes.dailyDoseMg}mg/dia · {hcRes.dryFlowersGrams}g flores/ano
+                                </span>
+                              </div>
+                              <span className="text-sm font-black text-mecura-neon font-mono shrink-0">
+                                {hcRes.annualPlants} plantas
+                              </span>
+                            </div>
+                            {Array.isArray(hcRes.selectedMedications) && hcRes.selectedMedications.length > 0 && (
+                              <div className="pt-1.5 border-t border-white/10 space-y-1">
+                                <span className="text-[10px] text-[#A0A0B4] font-bold uppercase block">
+                                  Medicamentos Cadastrados Escolhidos como Base pelo Paciente:
+                                </span>
+                                {hcRes.selectedMedications.map((m: any, i: number) => (
+                                  <div key={i} className="text-[11px] text-white/90 flex items-center justify-between bg-black/30 px-2.5 py-1 rounded-lg">
+                                    <span className="truncate pr-2 font-medium">{m.name}</span>
+                                    <span className="text-mecura-neon font-mono shrink-0">
+                                      {m.dailyUnits} {m.unitLabel} (~{m.dailyMg}mg/dia)
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </section>
+
+                {/* Section: Health & Social */}
+                <section>
+                  <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4">
+                    Saúde & Social
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
+                      <span className="text-sm text-mecura-silver block mb-2">Tratamento Atual</span>
+                      <span className={`text-base font-bold ${triageAns?.tratamento_atual ? 'text-mecura-neon' : 'text-white'}`}>
+                        {triageAns?.tratamento_atual ? 'Sim' : 'Não'}
+                      </span>
+                      {triageAns?.tratamento_atual_details && (
+                        <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                          {triageAns.tratamento_atual_details}
+                        </p>
                       )}
                     </div>
-                  )}
-                </div>
-              );
-            })()}
-          </section>
-
-          {/* Section: Health & Social */}
-          <section>
-            <h3 className="text-[13px] font-bold text-mecura-silver uppercase tracking-[0.15em] mb-4">
-              Saúde & Social
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
-                <span className="text-sm text-mecura-silver block mb-2">Tratamento Atual</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'text-mecura-neon' : 'text-white'}`}>
-                  {(currentPatient?.answers?.tratamento_atual || answers?.tratamento_atual) ? 'Sim' : 'Não'}
-                </span>
-                {(currentPatient?.answers?.tratamento_atual_details || answers?.tratamento_atual_details) && (
-                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
-                    {currentPatient?.answers?.tratamento_atual_details || answers?.tratamento_atual_details}
-                  </p>
-                )}
-              </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
-                <span className="text-sm text-mecura-silver block mb-2">Uso de Remédios</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.remedios || answers?.remedios) ? 'text-mecura-neon' : 'text-white'}`}>
-                  {(currentPatient?.answers?.remedios || answers?.remedios) ? 'Sim' : 'Não'}
-                </span>
-                {(currentPatient?.answers?.remedios_details || answers?.remedios_details) && (
-                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
-                    {currentPatient?.answers?.remedios_details || answers?.remedios_details}
-                  </p>
-                )}
-              </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
-                <span className="text-sm text-mecura-silver block mb-2">Doença Crônica</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'text-mecura-neon' : 'text-white'}`}>
-                  {(currentPatient?.answers?.doenca_cronica || answers?.doenca_cronica) ? 'Sim' : 'Não'}
-                </span>
-                {(currentPatient?.answers?.doenca_cronica_details || answers?.doenca_cronica_details) && (
-                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
-                    {currentPatient?.answers?.doenca_cronica_details || answers?.doenca_cronica_details}
-                  </p>
-                )}
-              </div>
-              <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
-                <span className="text-sm text-mecura-silver block mb-2">Já usou Cannabis</span>
-                <span className={`text-base font-bold ${(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'text-mecura-neon' : 'text-white'}`}>
-                  {(currentPatient?.answers?.cannabis || answers?.cannabis) ? 'Sim' : 'Não'}
-                </span>
-                {(currentPatient?.answers?.cannabis_details || answers?.cannabis_details) && (
-                  <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
-                    {currentPatient?.answers?.cannabis_details || answers?.cannabis_details}
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
+                      <span className="text-sm text-mecura-silver block mb-2">Uso de Remédios</span>
+                      <span className={`text-base font-bold ${triageAns?.remedios ? 'text-mecura-neon' : 'text-white'}`}>
+                        {triageAns?.remedios ? 'Sim' : 'Não'}
+                      </span>
+                      {triageAns?.remedios_details && (
+                        <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                          {triageAns.remedios_details}
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
+                      <span className="text-sm text-mecura-silver block mb-2">Doença Crônica</span>
+                      <span className={`text-base font-bold ${triageAns?.doenca_cronica ? 'text-mecura-neon' : 'text-white'}`}>
+                        {triageAns?.doenca_cronica ? 'Sim' : 'Não'}
+                      </span>
+                      {triageAns?.doenca_cronica_details && (
+                        <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                          {triageAns.doenca_cronica_details}
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-mecura-surface/50 border border-mecura-elevated rounded-2xl p-5 col-span-2 md:col-span-1">
+                      <span className="text-sm text-mecura-silver block mb-2">Já usou Cannabis</span>
+                      <span className={`text-base font-bold ${triageAns?.cannabis ? 'text-mecura-neon' : 'text-white'}`}>
+                        {triageAns?.cannabis ? 'Sim' : 'Não'}
+                      </span>
+                      {triageAns?.cannabis_details && (
+                        <p className="text-sm text-gray-400 mt-2 italic border-t border-mecura-elevated pt-2">
+                          {triageAns.cannabis_details}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -10112,6 +10329,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         onDownloadPDF={handleDownloadMedicalReportFromEditor}
         onSendToChat={handleSendMedicalReportToChat}
         onSave={handleSaveMedicalReport}
+        onResetFromTriage={handleResetMedicalReportFromTriage}
         isSendingToChat={isSendingReportToChat}
         reportType={medicalReportType}
         prescribedItems={prescItems}
