@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
-import { useAdminStore } from '../store/useAdminStore';
+import { useAdminStore, PharmacyPreparedOrder } from '../store/useAdminStore';
+import { auth, db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { 
   ChevronLeft, 
   ShieldCheck, 
@@ -46,11 +48,67 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 export function PharmacyScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { messages, userName, userBirthDate, userCpf, userPhone, exchangeRate, pagamento_consulta, isConsultationFinished } = useStore();
-  const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText } = useAdminStore();
+  const { messages, userName, userEmail, userBirthDate, userCpf, userPhone, patientId, exchangeRate, pagamento_consulta, isConsultationFinished } = useStore();
+  const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText, pharmacyOrders, updatePharmacyOrderStatus } = useAdminStore();
   
+  const currentUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
+  const [directCloudOrder, setDirectCloudOrder] = useState<PharmacyPreparedOrder | null>(null);
+
+  useEffect(() => {
+    if (!currentUid) return;
+    const unsubOrder = onSnapshot(doc(db, 'pharmacy_orders', `order_${currentUid}`), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as PharmacyPreparedOrder;
+        if (data && Array.isArray(data.items) && data.items.length > 0) {
+          setDirectCloudOrder({ ...data, id: snap.id });
+        }
+      }
+    }, () => {});
+
+    const unsubUser = onSnapshot(doc(db, 'users', currentUid), (snap) => {
+      if (snap.exists()) {
+        const uData = snap.data();
+        if (uData?.approvedPharmacyOrder && Array.isArray(uData.approvedPharmacyOrder.items)) {
+          setDirectCloudOrder(uData.approvedPharmacyOrder);
+        }
+      }
+    }, () => {});
+
+    return () => {
+      unsubOrder();
+      unsubUser();
+    };
+  }, [currentUid]);
+
+  // Match approved order for this patient by ID, email, CPF, phone, or name
+  const approvedOrder = useMemo(() => {
+    const cleanEmail = (auth.currentUser?.email || userEmail || '').trim().toLowerCase();
+    const cleanCpf = (userCpf || '').replace(/\D/g, '');
+    const cleanPhone = (userPhone || '').replace(/\D/g, '');
+    const cleanName = (userName || '').trim().toLowerCase();
+
+    const matchedInStore = (pharmacyOrders || []).find(o => {
+      if (o.status !== 'approved' && o.status !== 'requested') return false;
+      if (currentUid && o.patientId === currentUid) return true;
+      if (cleanEmail && o.patientEmail && o.patientEmail.trim().toLowerCase() === cleanEmail) return true;
+      if (cleanCpf.length >= 11 && o.patientCpf && o.patientCpf.replace(/\D/g, '') === cleanCpf) return true;
+      if (cleanPhone.length >= 8 && o.patientPhone && o.patientPhone.replace(/\D/g, '') === cleanPhone) return true;
+      if (cleanName && cleanName !== 'paciente' && o.patientName && o.patientName.trim().toLowerCase() === cleanName) return true;
+      return false;
+    });
+
+    if (matchedInStore) return matchedInStore;
+    if (directCloudOrder && (directCloudOrder.status === 'approved' || directCloudOrder.status === 'requested')) {
+      return directCloudOrder;
+    }
+    return null;
+  }, [pharmacyOrders, directCloudOrder, currentUid, userEmail, userCpf, userPhone, userName]);
+
+  const hasApprovedOrder = !!(approvedOrder && approvedOrder.items && approvedOrder.items.length > 0);
+
   const hasPaidConsultation = !!(
     pagamento_consulta || 
+    hasApprovedOrder ||
     (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
   );
 
@@ -196,48 +254,51 @@ export function PharmacyScreen() {
         nameLower.includes('nacional')
       ));
 
-      // Resolve USD base price for imported items so that exchangeRate converts it dynamically
+      // Resolve BRL and USD prices from catalog
       let resolvedPriceUSD: number | undefined = prod.priceUSD;
+      let resolvedPriceBRL: number | undefined = prod.priceBRL;
+      const cleanName = nameLower.trim();
 
-      if (!isAssociacao) {
-        const cleanName = nameLower.trim();
-
-        const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
-        if (fe) {
-          if (fe.priceUSD) resolvedPriceUSD = fe.priceUSD;
-          else if (fe.priceBRL) resolvedPriceUSD = fe.priceBRL / 5.0;
-        }
-
-        if (!resolvedPriceUSD) {
-          const fm = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
-          if (fm) {
-            if (fm.priceUSD) resolvedPriceUSD = fm.priceUSD;
-            else if (fm.priceBRL) resolvedPriceUSD = fm.priceBRL / 5.0;
-          }
-        }
-
-        if (!resolvedPriceUSD) {
-          for (const cat of cbdGuideData) {
-            const p = cat.products.find(pr => pr.name.toLowerCase() === cleanName || cleanName.includes(pr.name.toLowerCase()) || pr.name.toLowerCase().includes(cleanName));
-            if (p) {
-              if (p.priceUSD) resolvedPriceUSD = p.priceUSD;
-              else if (p.priceBRL) resolvedPriceUSD = p.priceBRL / 5.0;
-              break;
-            }
-          }
-        }
-
-        if (!resolvedPriceUSD) {
-          if (prod.priceBRL) {
-            resolvedPriceUSD = prod.priceBRL / 5.0;
-          } else {
-            resolvedPriceUSD = index === 0 ? 80.00 : 39.90;
-          }
+      for (const cat of cbdGuideData) {
+        const p = cat.products.find(
+          pr =>
+            pr.name.toLowerCase() === cleanName ||
+            cleanName.includes(pr.name.toLowerCase()) ||
+            pr.name.toLowerCase().includes(cleanName)
+        );
+        if (p) {
+          if (p.priceBRL) resolvedPriceBRL = p.priceBRL;
+          if (p.priceUSD) resolvedPriceUSD = p.priceUSD;
+          break;
         }
       }
 
-      const unitPriceBRL = isAssociacao 
-        ? 0 
+      if (!isAssociacao) {
+        if (!resolvedPriceBRL && !resolvedPriceUSD) {
+          const fe = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          if (fe) {
+            if (fe.priceBRL) resolvedPriceBRL = fe.priceBRL;
+            if (fe.priceUSD) resolvedPriceUSD = fe.priceUSD;
+          }
+        }
+
+        if (!resolvedPriceBRL && !resolvedPriceUSD) {
+          const fm = FLOWERMED_PRODUCTS.find(p => p.name.toLowerCase() === cleanName || cleanName.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanName));
+          if (fm) {
+            if (fm.priceBRL) resolvedPriceBRL = fm.priceBRL;
+            if (fm.priceUSD) resolvedPriceUSD = fm.priceUSD;
+          }
+        }
+
+        if (!resolvedPriceUSD && !resolvedPriceBRL) {
+          resolvedPriceUSD = index === 0 ? 80.00 : 39.90;
+        }
+      }
+
+      const unitPriceBRL = resolvedPriceBRL
+        ? Number(resolvedPriceBRL.toFixed(2))
+        : isAssociacao
+        ? 0
         : Number(((resolvedPriceUSD || 80.00) * exchangeRate).toFixed(2));
 
       return {
@@ -268,20 +329,20 @@ export function PharmacyScreen() {
   // Cart State
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   
-  // Initialize quantities when items change
+  // Initialize quantities when items change (preserving 0 if already set by the patient)
   useEffect(() => {
-    const newQuantities: Record<string, number> = {};
-    importedItems.forEach(item => {
-      if (!quantities[item.id]) {
-        newQuantities[item.id] = 1;
-      } else {
-        newQuantities[item.id] = quantities[item.id];
-      }
+    setQuantities(prev => {
+      const next = { ...prev };
+      let changed = false;
+      [...importedItems, ...associacaoItems].forEach(item => {
+        if (next[item.id] === undefined) {
+          next[item.id] = 1;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
     });
-    if (Object.keys(newQuantities).length > 0 && Object.keys(quantities).length === 0) {
-      setQuantities(newQuantities);
-    }
-  }, [importedItems]);
+  }, [importedItems, associacaoItems]);
 
   const [coupon, setCoupon] = useState('');
   const [discount, setDiscount] = useState(0);
@@ -297,11 +358,18 @@ export function PharmacyScreen() {
     city: ''
   });
 
-  const handleQuantityChange = (id: string, delta: number) => {
-    setQuantities(prev => ({
-      ...prev,
-      [id]: Math.max(1, Math.min(20, (prev[id] || 1) + delta))
-    }));
+  const getItemQty = (id: string, defaultQty = 1): number => {
+    return quantities[id] !== undefined ? quantities[id] : defaultQty;
+  };
+
+  const handleQuantityChange = (id: string, delta: number, defaultQty = 1) => {
+    setQuantities(prev => {
+      const current = prev[id] !== undefined ? prev[id] : defaultQty;
+      return {
+        ...prev,
+        [id]: Math.max(0, Math.min(20, current + delta))
+      };
+    });
   };
 
   // Calculations ONLY for imported items
@@ -309,7 +377,8 @@ export function PharmacyScreen() {
     let total = 0;
     
     importedItems.forEach(item => {
-      const qty = quantities[item.id] || 1;
+      const qty = getItemQty(item.id, 1);
+      if (qty <= 0) return;
       const basePrice = item.unitPriceBRL;
       let itemTotal = basePrice * qty;
       
@@ -344,26 +413,147 @@ export function PharmacyScreen() {
     return total;
   };
 
-  const shippingFeeBRL = hasImportedItems ? SHIPPING_FEE_USD * exchangeRate : 0;
-  const fixedImportTaxBRL = hasImportedItems ? FIXED_IMPORT_TAX_BRL : 0;
   const subtotal = calculateSubtotal();
-  const totalBeforeDiscount = hasImportedItems ? (subtotal + shippingFeeBRL + fixedImportTaxBRL) : 0;
+  const hasSelectedImportedItems = hasImportedItems && subtotal > 0;
+  const shippingFeeBRL = hasSelectedImportedItems ? SHIPPING_FEE_USD * exchangeRate : 0;
+  const fixedImportTaxBRL = hasSelectedImportedItems ? FIXED_IMPORT_TAX_BRL : 0;
+  const totalBeforeDiscount = hasSelectedImportedItems ? (subtotal + shippingFeeBRL + fixedImportTaxBRL) : 0;
   const finalTotal = Math.max(0, totalBeforeDiscount - discount);
 
-  const handleSendWhatsAppOrder = () => {
-    const itemsText = importedItems.map(item => {
-      const qty = quantities[item.id] || 1;
-      return `• *${qty}x* ${item.name} (${item.brand || 'GreenBudz'})`;
-    }).join('\n');
+  // Sync quantities with approvedOrder items when approvedOrder arrives
+  useEffect(() => {
+    if (approvedOrder && approvedOrder.items.length > 0) {
+      setQuantities(prev => {
+        const next = { ...prev };
+        approvedOrder.items.forEach(it => {
+          if (next[it.id] === undefined) {
+            next[it.id] = it.unitQuantity ?? 1;
+          }
+        });
+        return next;
+      });
+      if (approvedOrder.deliveryAddress && approvedOrder.deliveryAddress.street && !address.street) {
+        setAddress({
+          cep: approvedOrder.deliveryAddress.cep || '',
+          street: approvedOrder.deliveryAddress.street || '',
+          neighborhood: approvedOrder.deliveryAddress.neighborhood || '',
+          number: approvedOrder.deliveryAddress.number || '',
+          complement: approvedOrder.deliveryAddress.complement || '',
+          state: approvedOrder.deliveryAddress.state || '',
+          city: approvedOrder.deliveryAddress.city || ''
+        });
+      }
+    }
+  }, [approvedOrder]);
 
+  const approvedSubtotalBRL = useMemo(() => {
+    if (!approvedOrder) return 0;
+    return approvedOrder.items.reduce(
+      (sum, it) => {
+        const qty = quantities[it.id] !== undefined ? quantities[it.id] : (it.unitQuantity ?? 1);
+        return sum + (Number(it.unitPriceBRL) || 0) * qty;
+      },
+      0
+    );
+  }, [approvedOrder, quantities]);
+
+  const approvedActiveCount = useMemo(() => {
+    if (!approvedOrder) return 0;
+    return approvedOrder.items.reduce(
+      (sum, it) => sum + (quantities[it.id] !== undefined ? quantities[it.id] : (it.unitQuantity ?? 1)),
+      0
+    );
+  }, [approvedOrder, quantities]);
+
+  const approvedFinalTotalBRL = useMemo(() => {
+    if (!approvedOrder || approvedActiveCount <= 0) return 0;
+    return Math.max(
+      0,
+      approvedSubtotalBRL + (Number(approvedOrder.shippingBRL) || 0) - (Number(approvedOrder.discountBRL) || 0)
+    );
+  }, [approvedOrder, approvedSubtotalBRL, approvedActiveCount]);
+
+  const handleSendWhatsAppOrder = async () => {
     const addressText = address.street.trim()
       ? `${address.street}, ${address.number || 'S/N'} ${address.complement ? `(${address.complement})` : ''}
 Bairro: ${address.neighborhood || 'Não informado'}
 Cidade: ${address.city || ''} - ${address.state || ''}
 CEP: ${address.cep || ''}`
-      : 'A combinar com a equipe';
+      : 'A confirmar com a equipe no atendimento';
 
-    const patientInfo = `Nome: ${userName || 'Paciente'}${userCpf ? `\nCPF: ${userCpf}` : ''}${userPhone ? `\nTelefone: ${userPhone}` : ''}`;
+    const pName = approvedOrder?.patientName || userName || 'Paciente';
+    const pCpf = approvedOrder?.patientCpf || userCpf || '';
+    const pPhone = approvedOrder?.patientPhone || userPhone || '';
+    const patientInfo = `Nome: ${pName}${pCpf ? `\nCPF: ${pCpf}` : ''}${pPhone ? `\nTelefone: ${pPhone}` : ''}`;
+
+    if (hasApprovedOrder && approvedOrder) {
+      const updatedItems = approvedOrder.items.map(it => ({
+        ...it,
+        unitQuantity: getItemQty(it.id, it.unitQuantity ?? 1)
+      }));
+
+      const itemsToOrder = updatedItems.filter(it => (it.unitQuantity ?? 0) > 0);
+      if (itemsToOrder.length === 0) {
+        return;
+      }
+
+      const itemsLines = itemsToOrder.map(it => {
+        const qty = it.unitQuantity ?? 1;
+        const pricePart =
+          approvedOrder.showPricesToPatient && it.unitPriceBRL > 0
+            ? ` — R$ ${(it.unitPriceBRL * qty).toFixed(2)}`
+            : '';
+        const concPart = it.concentration ? ` [${it.concentration}]` : '';
+        const dosagePart = it.dosage && it.dosage.length > 0 ? `\n   ↳ _Posologia: ${it.dosage.join(' ')}_` : '';
+        return `• *${qty}x* ${it.name} (${it.brand})${concPart}${pricePart}${dosagePart}`;
+      }).join('\n\n');
+
+      const financialBlock =
+        approvedOrder.showPricesToPatient && approvedFinalTotalBRL > 0
+          ? `\n💰 *RESUMO DO PEDIDO APROVADO:*
+Subtotal: R$ ${approvedSubtotalBRL.toFixed(2)}${approvedOrder.shippingBRL > 0 ? `\nFrete / Taxas: R$ ${approvedOrder.shippingBRL.toFixed(2)}` : ''}${approvedOrder.discountBRL > 0 ? `\nDesconto: -R$ ${approvedOrder.discountBRL.toFixed(2)}` : ''}
+*Total do Pedido: R$ ${approvedFinalTotalBRL.toFixed(2)}*\n`
+          : '';
+
+      const message = `✅ *CONFIRMAÇÃO DE PEDIDO APROVADO - FARMÁCIA MECURA* 🌿
+
+👤 *DADOS DO PACIENTE:*
+${patientInfo}
+🩺 *Médico Prescritor:* ${approvedOrder.doctorName || 'Dr. Guilherme Taveira Dias'}
+
+📦 *MEDICAMENTOS DO PEDIDO APROVADO:*
+${itemsLines}
+${financialBlock}
+🚚 *ENDEREÇO DE ENTREGA:*
+${addressText}
+
+Olá! Meu pedido já foi montado e aprovado na minha Farmácia do aplicativo. Gostaria de confirmar a solicitação do pedido e finalizar o envio! ✨`;
+
+      const targetWhats = (approvedOrder.whatsappNumber || '5566996280883').replace(/\D/g, '') || '5566996280883';
+      const whatsappUrl = `https://wa.me/${targetWhats}?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank');
+
+      await updatePharmacyOrderStatus(approvedOrder.id, 'requested', {
+        items: updatedItems,
+        subtotalBRL: approvedSubtotalBRL,
+        totalBRL: approvedFinalTotalBRL,
+        deliveryAddress: address
+      });
+
+      navigate('/dashboard');
+      return;
+    }
+
+    const baseItems = importedItems.length > 0 ? importedItems : associacaoItems;
+    const activeItemsToOrder = baseItems.filter(item => getItemQty(item.id, 1) > 0);
+    if (activeItemsToOrder.length === 0) {
+      return;
+    }
+
+    const itemsText = activeItemsToOrder.map(item => {
+      const qty = getItemQty(item.id, 1);
+      return `• *${qty}x* ${item.name} (${item.brand || 'GreenBudz'})`;
+    }).join('\n');
 
     const message = `🌿 *SOLICITAÇÃO DE PEDIDO - MEDICAMENTOS PRESCRITOS* 🌿
 
@@ -459,6 +649,229 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
       </div>
 
       <div className="space-y-4">
+        {/* 0. PEDIDO MONTADO E APROVADO PELO ADMIN (MONTADOR DE PEDIDOS PÓS-CONSULTA) */}
+        {hasApprovedOrder && approvedOrder && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-b from-[#132214] via-[#12181A] to-[#161622] border-2 border-mecura-neon/60 rounded-[26px] p-5 space-y-5 shadow-[0_0_35px_rgba(166,255,0,0.15)] relative overflow-hidden"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-mecura-neon/20 pb-4">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-mecura-neon text-[#0A0A0F] font-black text-[10px] uppercase tracking-wider">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {approvedOrder.status === 'requested' ? 'Pedido Já Solicitado no WhatsApp' : 'Pedido Aprovado & Liberado'}
+                </div>
+                <h3 className="text-lg font-serif font-bold text-white pt-1">
+                  Seu Pedido Pronto para Solicitação
+                </h3>
+                <p className="text-xs text-[#A0A0B2] leading-relaxed">
+                  Prescrito por <strong className="text-white">{approvedOrder.doctorName || 'Dr. Guilherme Taveira Dias'}</strong>
+                </p>
+              </div>
+              <div className="w-11 h-11 rounded-2xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon shrink-0">
+                <Package className="w-5 h-5" />
+              </div>
+            </div>
+
+            {approvedOrder.notes && (
+              <div className="bg-[#0A0A0F]/80 border border-mecura-neon/25 rounded-2xl p-3.5 text-xs text-white/90 leading-relaxed flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-mecura-neon shrink-0 mt-0.5" />
+                <span>{approvedOrder.notes}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {approvedOrder.items.map((item, idx) => {
+                const defaultQty = item.unitQuantity ?? 1;
+                const qty = getItemQty(item.id, defaultQty);
+                const isZeroed = qty === 0;
+                const isImp = (item.origin || '').toLowerCase().includes('importado') || (item.origin || '').toLowerCase().includes('eua');
+                const itemTotal = (Number(item.unitPriceBRL) || 0) * qty;
+
+                return (
+                  <div
+                    key={`${item.id}-${idx}`}
+                    className={`bg-[#0A0A0F] border rounded-2xl p-4 space-y-3 transition-all ${
+                      isZeroed
+                        ? 'border-[#262636]/60 opacity-60'
+                        : 'border-[#262636]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30">
+                            {item.brand}
+                          </span>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/5 text-[#8A8A9E] border border-white/10">
+                            {isImp ? '🇺🇸 Importado' : '🇧🇷 Nacional'}
+                          </span>
+                          {isZeroed && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              Não incluir agora (Zerado)
+                            </span>
+                          )}
+                        </div>
+                        <h4 className={`font-bold text-sm leading-snug pt-0.5 ${isZeroed ? 'text-white/60 line-through' : 'text-white'}`}>
+                          {item.name}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[#8A8A9E]">
+                          {item.concentration && <span className="text-mecura-neon font-mono">{item.concentration}</span>}
+                          {item.pharmaceuticalForm && <span>• {item.pharmaceuticalForm}</span>}
+                          {item.quantitySpec && <span>• {item.quantitySpec}</span>}
+                          {item.administrationRoute && <span>• {item.administrationRoute}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {item.dosage && item.dosage.length > 0 && (
+                      <div className="bg-[#161622] border border-white/5 rounded-xl p-2.5 text-xs text-white/85">
+                        <span className="text-[10px] font-bold uppercase text-mecura-neon block mb-0.5">
+                          Posologia Prescrita:
+                        </span>
+                        {item.dosage.join(' ')}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[#262636]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-[#8A8A9E]">Quantidade:</span>
+                        <div className="flex items-center gap-1 bg-[#161622] border border-[#262636] rounded-xl p-1">
+                          <button
+                            type="button"
+                            onClick={() => handleQuantityChange(item.id, -1, defaultQty)}
+                            disabled={qty <= 0}
+                            className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                              qty <= 0
+                                ? 'text-[#4A4A5E] cursor-not-allowed'
+                                : 'text-[#8A8A9E] hover:text-white hover:bg-white/5 cursor-pointer'
+                            }`}
+                            title="Diminuir quantidade (0 para não incluir)"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <span className={`font-mono font-bold w-6 text-center text-xs tabular-nums ${isZeroed ? 'text-amber-400' : 'text-white'}`}>
+                            {qty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleQuantityChange(item.id, 1, defaultQty)}
+                            className="w-7 h-7 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 rounded-lg cursor-pointer"
+                            title="Aumentar quantidade"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {qty > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setQuantities(prev => ({ ...prev, [item.id]: 0 }))}
+                            className="text-[10px] font-semibold text-[#8A8A9E] hover:text-amber-300 underline underline-offset-2 cursor-pointer ml-1"
+                          >
+                            Zerar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setQuantities(prev => ({ ...prev, [item.id]: 1 }))}
+                            className="text-[10px] font-bold text-mecura-neon hover:underline underline-offset-2 cursor-pointer ml-1"
+                          >
+                            Incluir (1 un)
+                          </button>
+                        )}
+                      </div>
+
+                      {approvedOrder.showPricesToPatient && item.unitPriceBRL > 0 ? (
+                        <div className="text-right">
+                          <span className="block text-[10px] text-[#8A8A9E]">
+                            {isZeroed ? 'Não contabilizado' : 'Valor do Item'}
+                          </span>
+                          <span className={`text-sm font-mono font-extrabold tabular-nums ${isZeroed ? 'text-[#6A6A7E]' : 'text-mecura-neon'}`}>
+                            R$ {itemTotal.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                          isZeroed
+                            ? 'text-[#8A8A9E] bg-white/5 border-white/10'
+                            : 'text-mecura-neon bg-mecura-neon/10 border-mecura-neon/25'
+                        }`}>
+                          {isZeroed ? 'Não Incluído' : 'Liberado na Receita'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Resumo Financeiro do Pedido Aprovado */}
+            {approvedOrder.showPricesToPatient && (
+              <div className="bg-[#0A0A0F] border border-[#262636] rounded-2xl p-4 space-y-2 text-xs">
+                <div className="flex justify-between text-[#8A8A9E]">
+                  <span>Subtotal dos Medicamentos</span>
+                  <span className="text-white font-mono tabular-nums">R$ {approvedSubtotalBRL.toFixed(2)}</span>
+                </div>
+                {approvedOrder.shippingBRL > 0 && approvedActiveCount > 0 && (
+                  <div className="flex justify-between text-[#8A8A9E]">
+                    <span>Frete / Taxas de Envio</span>
+                    <span className="text-white font-mono tabular-nums">R$ {approvedOrder.shippingBRL.toFixed(2)}</span>
+                  </div>
+                )}
+                {approvedOrder.discountBRL > 0 && approvedActiveCount > 0 && (
+                  <div className="flex justify-between text-emerald-400">
+                    <span>Desconto Aplicado</span>
+                    <span className="font-mono tabular-nums">- R$ {approvedOrder.discountBRL.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center pt-2 border-t border-[#262636] text-sm font-bold">
+                  <span className="text-white">Total do Pedido</span>
+                  <span className="text-mecura-neon font-mono text-base font-black tabular-nums">
+                    R$ {approvedFinalTotalBRL.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Botões de Solicitação Direta ou Informar Endereço */}
+            <div className="pt-1 flex flex-col gap-2.5">
+              <button
+                type="button"
+                disabled={approvedActiveCount <= 0}
+                onClick={() => setStep(2)}
+                className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all ${
+                  approvedActiveCount <= 0
+                    ? 'bg-[#262636] text-[#6A6A7E] cursor-not-allowed'
+                    : 'bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] shadow-[0_0_20px_rgba(166,255,0,0.25)] cursor-pointer'
+                }`}
+              >
+                <MapPin className="w-4 h-4" />
+                <span>
+                  {approvedActiveCount <= 0
+                    ? 'Selecione ao menos 1 medicamento acima'
+                    : 'Informar Endereço e Solicitar Pedido'}
+                </span>
+                {approvedActiveCount > 0 && <ChevronRight className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                disabled={approvedActiveCount <= 0}
+                onClick={handleSendWhatsAppOrder}
+                className={`w-full py-3.5 px-4 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${
+                  approvedActiveCount <= 0
+                    ? 'bg-[#1E2622] text-[#6A6A7E] cursor-not-allowed'
+                    : 'bg-[#25D366] hover:bg-[#20ba59] text-white shadow-[0_0_20px_rgba(37,211,102,0.3)] cursor-pointer'
+                }`}
+              >
+                <WhatsAppIcon className="w-5 h-5 fill-current" />
+                <span>Solicitar Pedido Agora no WhatsApp</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {(promotionsText || catalogUrl) && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -509,8 +922,8 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           </motion.div>
         )}
 
-        {/* 1. SEÇÃO DE PRODUTOS IMPORTADOS */}
-        {hasImportedItems && (
+        {/* 1. SEÇÃO DE PRODUTOS IMPORTADOS (Somente se não houver pedido aprovado substituindo ou para complementar) */}
+        {!hasApprovedOrder && hasImportedItems && (
           <div className="space-y-4">
             <h3 className="text-lg font-serif font-bold text-white flex items-center justify-between">
               <span className="flex items-center gap-2">
@@ -522,7 +935,8 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
             </h3>
             
             {importedItems.map((item, idx) => {
-              const qty = quantities[item.id] || 1;
+              const qty = getItemQty(item.id, 1);
+              const isZeroed = qty === 0;
               const basePrice = item.unitPriceBRL;
               let itemTotal = basePrice * qty;
               const nameLower = item.name.toLowerCase();
@@ -538,7 +952,12 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
               }
 
               return (
-                <div key={`${item.id || 'imp'}-${idx}`} className="bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[24px] p-5 space-y-5 shadow-lg relative overflow-hidden group mb-4">
+                <div
+                  key={`${item.id || 'imp'}-${idx}`}
+                  className={`bg-gradient-to-b from-[#161622] to-[#1A1A26] border border-[#262636] rounded-[24px] p-5 space-y-5 shadow-lg relative overflow-hidden group mb-4 transition-all ${
+                    isZeroed ? 'opacity-60' : ''
+                  }`}
+                >
                   <div className="absolute top-0 left-0 w-1 h-full bg-mecura-neon/50 opacity-0 group-hover:opacity-100 transition-opacity" />
                   
                   <div className="flex gap-4">
@@ -564,7 +983,9 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
                         <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider mb-1 block">
                           {item.brand || 'GreenBudzCBD'}
                         </span>
-                        <h4 className="font-bold text-white text-[15px] leading-tight">{item.name}</h4>
+                        <h4 className={`font-bold text-[15px] leading-tight ${isZeroed ? 'text-white/60 line-through' : 'text-white'}`}>
+                          {item.name}
+                        </h4>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {item.details.slice(0, 2).map((detail, idx) => (
@@ -579,31 +1000,65 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
                   <div className="flex items-end justify-between pt-4 border-t border-[#262636]">
                     <div className="space-y-2">
                       <span className="text-[11px] text-[#8A8A9E] font-medium">Quantidade</span>
-                      <div className="flex items-center gap-1 bg-[#0A0A0F] border border-[#262636] rounded-xl p-1 w-fit">
-                        <button 
-                          onClick={() => handleQuantityChange(item.id, -1)}
-                          className="w-8 h-8 flex items-center justify-center text-[#8A8A9E] hover:text-white hover:bg-[#1A1A26] rounded-lg transition-colors"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="font-bold text-white w-6 text-center text-sm">{qty}</span>
-                        <button 
-                          onClick={() => handleQuantityChange(item.id, 1)}
-                          className="w-8 h-8 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 rounded-lg transition-colors"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 bg-[#0A0A0F] border border-[#262636] rounded-xl p-1 w-fit">
+                          <button 
+                            type="button"
+                            disabled={qty <= 0}
+                            onClick={() => handleQuantityChange(item.id, -1, 1)}
+                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
+                              qty <= 0
+                                ? 'text-[#4A4A5E] cursor-not-allowed'
+                                : 'text-[#8A8A9E] hover:text-white hover:bg-[#1A1A26] cursor-pointer'
+                            }`}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className={`font-bold w-6 text-center text-sm ${isZeroed ? 'text-amber-400' : 'text-white'}`}>
+                            {qty}
+                          </span>
+                          <button 
+                            type="button"
+                            onClick={() => handleQuantityChange(item.id, 1, 1)}
+                            className="w-8 h-8 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {qty > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setQuantities(prev => ({ ...prev, [item.id]: 0 }))}
+                            className="text-[10px] font-semibold text-[#8A8A9E] hover:text-amber-300 underline underline-offset-2 cursor-pointer"
+                          >
+                            Zerar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setQuantities(prev => ({ ...prev, [item.id]: 1 }))}
+                            className="text-[10px] font-bold text-mecura-neon hover:underline underline-offset-2 cursor-pointer"
+                          >
+                            Incluir (1 un)
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="text-right flex flex-col items-end gap-1.5">
-                      <div className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/20 px-2.5 py-1 rounded-md">
-                        <div className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
-                        <span className="text-[10px] text-mecura-neon font-bold">
-                          Dura aprox. {Math.round((item.durationPerUnit * qty) / 30)} meses
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-bold text-white/90 bg-[#0A0A0F] border border-[#262636] px-2.5 py-1 rounded-lg shadow-sm">
-                        Item Prescrito
+                      {!isZeroed && (
+                        <div className="inline-flex items-center gap-1 bg-mecura-neon/10 border border-mecura-neon/20 px-2.5 py-1 rounded-md">
+                          <div className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
+                          <span className="text-[10px] text-mecura-neon font-bold">
+                            Dura aprox. {Math.round((item.durationPerUnit * qty) / 30)} meses
+                          </span>
+                        </div>
+                      )}
+                      <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-sm border ${
+                        isZeroed
+                          ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                          : 'text-white/90 bg-[#0A0A0F] border-[#262636]'
+                      }`}>
+                        {isZeroed ? 'Não incluir agora (Zerado)' : 'Item Prescrito'}
                       </span>
                     </div>
                   </div>
@@ -613,8 +1068,8 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           </div>
         )}
 
-        {/* 2. SEÇÃO DE PRODUTOS DE ASSOCIAÇÃO NACIONAL (SEM PREÇO / SEM COBRANÇA DE IMPORTAÇÃO) */}
-        {hasAssociacaoItems && (
+        {/* 2. SEÇÃO DE PRODUTOS DE ASSOCIAÇÃO NACIONAL */}
+        {!hasApprovedOrder && hasAssociacaoItems && (
           <div className="space-y-4 pt-2">
             <h3 className="text-lg font-serif font-bold text-white flex items-center justify-between">
               <span className="flex items-center gap-2">
@@ -633,56 +1088,112 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
               </div>
             </div>
 
-            {associacaoItems.map((item, idx) => (
-              <div key={`${item.id || 'assoc'}-${idx}`} className="bg-gradient-to-b from-[#0D1512] to-[#121A16] border border-emerald-500/30 rounded-[24px] p-5 space-y-4 shadow-lg relative overflow-hidden group mb-3">
-                <div className="flex gap-4">
-                  <div className="w-20 h-20 rounded-2xl bg-[#0A0A0F] border border-emerald-500/20 p-2 flex-shrink-0 shadow-inner relative flex items-center justify-center">
-                    <img 
-                      src={item.image || "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop"} 
-                      alt={item.name} 
-                      referrerPolicy="no-referrer" 
-                      className="w-full h-full object-contain"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        if (target.dataset.fallbackApplied) return;
-                        target.dataset.fallbackApplied = 'true';
-                        target.src = "https://placehold.co/400x400/0f241a/10b981?text=Associacao";
-                      }}
-                    />
-                    <div className="absolute -bottom-2 -right-2 bg-[#0A0A0F] border border-emerald-500/30 rounded-lg px-2 py-0.5 flex items-center gap-1 shadow-lg">
-                      <span className="text-[10px] text-white font-bold">🇧🇷</span>
+            {associacaoItems.map((item, idx) => {
+              const qty = getItemQty(item.id, 1);
+              const isZeroed = qty === 0;
+              return (
+                <div
+                  key={`${item.id || 'assoc'}-${idx}`}
+                  className={`bg-gradient-to-b from-[#0D1512] to-[#121A16] border border-emerald-500/30 rounded-[24px] p-5 space-y-4 shadow-lg relative overflow-hidden group mb-3 transition-all ${
+                    isZeroed ? 'opacity-60' : ''
+                  }`}
+                >
+                  <div className="flex gap-4">
+                    <div className="w-20 h-20 rounded-2xl bg-[#0A0A0F] border border-emerald-500/20 p-2 flex-shrink-0 shadow-inner relative flex items-center justify-center">
+                      <img 
+                        src={item.image || "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop"} 
+                        alt={item.name} 
+                        referrerPolicy="no-referrer" 
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (target.dataset.fallbackApplied) return;
+                          target.dataset.fallbackApplied = 'true';
+                          target.src = "https://placehold.co/400x400/0f241a/10b981?text=Associacao";
+                        }}
+                      />
+                      <div className="absolute -bottom-2 -right-2 bg-[#0A0A0F] border border-emerald-500/30 rounded-lg px-2 py-0.5 flex items-center gap-1 shadow-lg">
+                        <span className="text-[10px] text-white font-bold">🇧🇷</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1 block">
+                          Associação Nacional
+                        </span>
+                        <h4 className={`font-bold text-[15px] leading-tight ${isZeroed ? 'text-white/60 line-through' : 'text-white'}`}>
+                          {item.name}
+                        </h4>
+                      </div>
+                      {item.dosage && item.dosage.length > 0 && (
+                        <p className="text-xs text-mecura-silver/90 mt-1.5 line-clamp-2">
+                          {item.dosage.join(' ')}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex-1 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1 block">
-                        Associação Nacional
-                      </span>
-                      <h4 className="font-bold text-white text-[15px] leading-tight">{item.name}</h4>
-                    </div>
-                    {item.dosage && item.dosage.length > 0 && (
-                      <p className="text-xs text-mecura-silver/90 mt-1.5 line-clamp-2">
-                        {item.dosage.join(' ')}
-                      </p>
-                    )}
-                  </div>
-                </div>
 
-                <div className="pt-3 border-t border-emerald-500/20 flex items-center justify-between">
-                  <span className="text-xs text-emerald-400/80 font-medium">
-                    Fornecimento Institucional
-                  </span>
-                  <span className="text-xs font-bold text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/30">
-                    Sem cobrança no checkout
-                  </span>
+                  <div className="pt-3 border-t border-emerald-500/20 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[#8A8A9E]">Quantidade:</span>
+                      <div className="flex items-center gap-1 bg-[#0A0A0F] border border-emerald-500/30 rounded-xl p-1">
+                        <button
+                          type="button"
+                          disabled={qty <= 0}
+                          onClick={() => handleQuantityChange(item.id, -1, 1)}
+                          className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                            qty <= 0
+                              ? 'text-[#4A4A5E] cursor-not-allowed'
+                              : 'text-[#8A8A9E] hover:text-white cursor-pointer'
+                          }`}
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className={`font-mono font-bold w-6 text-center text-xs tabular-nums ${isZeroed ? 'text-amber-400' : 'text-white'}`}>
+                          {qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleQuantityChange(item.id, 1, 1)}
+                          className="w-7 h-7 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/10 rounded-lg cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {qty > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setQuantities(prev => ({ ...prev, [item.id]: 0 }))}
+                          className="text-[10px] font-semibold text-[#8A8A9E] hover:text-amber-300 underline underline-offset-2 cursor-pointer"
+                        >
+                          Zerar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setQuantities(prev => ({ ...prev, [item.id]: 1 }))}
+                          className="text-[10px] font-bold text-emerald-400 hover:underline underline-offset-2 cursor-pointer"
+                        >
+                          Incluir (1 un)
+                        </button>
+                      )}
+                    </div>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-lg border ${
+                      isZeroed
+                        ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                        : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+                    }`}>
+                      {isZeroed ? 'Não Incluído' : 'Pronto para Solicitação'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* Empty state */}
-        {!hasImportedItems && !hasAssociacaoItems && (
+        {!hasApprovedOrder && !hasImportedItems && !hasAssociacaoItems && (
           <div className="bg-[#12121A] border border-mecura-elevated rounded-[24px] p-8 text-center space-y-4 shadow-xl">
             <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto text-mecura-silver border border-white/5">
               <Package className="w-8 h-8 opacity-60" />
@@ -690,7 +1201,7 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
             <div className="space-y-1">
               <h4 className="text-white font-bold text-lg">Nenhum Medicamento Prescrito Ainda</h4>
               <p className="text-xs text-mecura-silver max-w-md mx-auto leading-relaxed">
-                A sua farmácia personalizada é individualizada e será liberada assim que o médico emitir a sua receita oficial durante o atendimento.
+                A sua farmácia personalizada é individualizada e será liberada assim que o médico emitir a sua receita oficial ou a equipe aprovar seu pedido pós-consulta.
               </p>
             </div>
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-sm mx-auto">
@@ -723,8 +1234,8 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
         )}
       </div>
 
-      {/* Resumo do Tratamento Prescrito (SEM VALORES) */}
-      {hasImportedItems ? (
+      {/* Resumo do Tratamento Prescrito (quando não está usando o card de pedido aprovado) */}
+      {!hasApprovedOrder && hasImportedItems ? (
         <div className="bg-[#161622] border border-[#262636] rounded-[24px] p-6 space-y-4 relative overflow-hidden mb-8">
           <div className="absolute -right-10 -top-10 w-32 h-32 bg-mecura-neon/5 blur-3xl rounded-full" />
           
@@ -736,7 +1247,10 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           <div className="space-y-3 text-sm relative z-10">
             <div className="flex justify-between text-[#8A8A9E]">
               <span>Medicamentos Selecionados</span>
-              <span className="text-white font-medium">{importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0)} {importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0) === 1 ? 'item' : 'itens'}</span>
+              <span className="text-white font-medium">
+                {importedItems.reduce((acc, item) => acc + getItemQty(item.id, 1), 0)}{' '}
+                {importedItems.reduce((acc, item) => acc + getItemQty(item.id, 1), 0) === 1 ? 'item' : 'itens'}
+              </span>
             </div>
             <div className="flex justify-between text-[#8A8A9E] items-center">
               <span className="flex items-center gap-1.5">
@@ -759,17 +1273,17 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
             </div>
           </div>
         </div>
-      ) : hasAssociacaoItems ? (
+      ) : !hasApprovedOrder && hasAssociacaoItems ? (
         <div className="bg-[#121A16] border border-emerald-500/20 rounded-[24px] p-6 text-center space-y-3">
           <FileText className="w-10 h-10 text-emerald-400 mx-auto opacity-80" />
           <h4 className="text-white font-bold text-base">Receita de Associação Nacional</h4>
           <p className="text-xs text-mecura-silver max-w-sm mx-auto">
-            Utilize o documento oficial da receita para efetuar a aquisição direta junto à associação brasileira indicada.
+            Utilize o documento oficial da receita ou solicite seu pedido pelo WhatsApp abaixo.
           </p>
           <button
             onClick={handleDownloadPrescription}
             disabled={isDownloadingPdf}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0A0A0F] font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-md"
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0A0A0F] font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-md cursor-pointer"
           >
             <Download className="w-4 h-4" />
             {isDownloadingPdf ? 'Baixando PDF...' : 'Baixar Receita Médica Oficial (PDF)'}
@@ -880,6 +1394,10 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
     </motion.div>
   );
 
+  const totalItemsSelectedCount = hasApprovedOrder && approvedOrder
+    ? approvedOrder.items.reduce((acc, item) => acc + getItemQty(item.id, item.unitQuantity ?? 1), 0)
+    : (importedItems.length > 0 ? importedItems : associacaoItems).reduce((acc, item) => acc + getItemQty(item.id, 1), 0);
+
   return (
     <div className="min-h-screen bg-[#000000] text-white">
       {/* Top Header */}
@@ -896,10 +1414,10 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           </button>
           <div className="text-center">
             <h1 className="font-serif font-bold text-base tracking-wide">
-              {hasImportedItems ? 'Farmácia GreenBudz' : 'Prescrição Médica'}
+              {hasApprovedOrder ? 'Seu Pedido Aprovado' : hasImportedItems ? 'Farmácia GreenBudz' : 'Prescrição Médica'}
             </h1>
             <span className="text-[10px] text-mecura-neon font-medium block">
-              {hasImportedItems ? 'Vendido e entregue por GreenBudz' : 'Dispensação & Acompanhamento'}
+              {hasApprovedOrder ? 'Pronto para Solicitação no WhatsApp' : hasImportedItems ? 'Vendido e entregue por GreenBudz' : 'Dispensação & Acompanhamento'}
             </span>
           </div>
           <button
@@ -913,7 +1431,7 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
       </div>
 
       <div className="max-w-md mx-auto px-4 pt-6">
-        {hasImportedItems && renderStepIndicator()}
+        {(hasApprovedOrder || hasImportedItems || hasAssociacaoItems) && renderStepIndicator()}
 
         <AnimatePresence mode="wait">
           {step === 1 && renderCart()}
@@ -921,49 +1439,64 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
         </AnimatePresence>
 
         {/* Sticky Bottom Action Bar */}
-        {hasImportedItems ? (
+        {(hasApprovedOrder || hasImportedItems || hasAssociacaoItems) ? (
           <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
             <div className="max-w-md mx-auto pointer-events-auto">
               <div className="bg-[#161622]/95 backdrop-blur-xl border border-[#262636] rounded-[28px] p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                 <div className="flex items-center justify-between mb-4 px-2">
                   <div className="flex flex-col">
-                    <span className="text-[11px] text-[#8A8A9E] font-medium uppercase tracking-wider">Tratamento Prescrito</span>
-                    <div className="flex items-baseline gap-1.5">
+                    <span className="text-[11px] text-[#8A8A9E] font-medium uppercase tracking-wider">
+                      {hasApprovedOrder ? 'Pedido Aprovado pela Clínica' : 'Tratamento Prescrito'}
+                    </span>
+                    <div className="flex items-baseline gap-2">
                       <span className="text-base font-bold text-white tracking-tight">
-                        {importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0)} {importedItems.reduce((acc, item) => acc + (quantities[item.id] || 1), 0) === 1 ? 'item selecionado' : 'itens selecionados'}
+                        {totalItemsSelectedCount} {totalItemsSelectedCount === 1 ? 'item no pedido' : 'itens no pedido'}
                       </span>
+                      {hasApprovedOrder && approvedOrder?.showPricesToPatient && (
+                        <span className="text-sm font-mono font-extrabold text-mecura-neon tabular-nums">
+                          • R$ {approvedFinalTotalBRL.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-lg">
-                    <span className="text-[10px] font-bold text-emerald-400">IMPORTAÇÃO OFICIAL</span>
+                    <span className="text-[10px] font-bold text-emerald-400">
+                      {hasApprovedOrder ? 'PEDIDO LIBERADO' : 'OFICIAL'}
+                    </span>
                   </div>
                 </div>
 
                 <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={totalItemsSelectedCount > 0 ? { scale: 1.02 } : {}}
+                  whileTap={totalItemsSelectedCount > 0 ? { scale: 0.98 } : {}}
+                  disabled={totalItemsSelectedCount <= 0}
                   onClick={() => {
+                    if (totalItemsSelectedCount <= 0) return;
                     if (step === 1) {
                       setStep(2);
                     } else {
                       handleSendWhatsAppOrder();
                     }
                   }}
-                  className={`w-full font-bold py-4 rounded-2xl transition-all shadow-[0_0_25px_rgba(166,255,0,0.25)] flex items-center justify-center gap-2.5 text-[15px] cursor-pointer ${
-                    step === 1
-                      ? 'bg-mecura-neon text-[#0A0A0F] hover:bg-[#b5ff33]'
-                      : 'bg-[#25D366] text-white hover:bg-[#20ba59] shadow-[0_0_25px_rgba(37,211,102,0.35)]'
+                  className={`w-full font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2.5 text-[15px] ${
+                    totalItemsSelectedCount <= 0
+                      ? 'bg-[#262636] text-[#6A6A7E] cursor-not-allowed'
+                      : step === 1
+                        ? 'bg-mecura-neon text-[#0A0A0F] hover:bg-[#b5ff33] shadow-[0_0_25px_rgba(166,255,0,0.25)] cursor-pointer'
+                        : 'bg-[#25D366] text-white hover:bg-[#20ba59] shadow-[0_0_25px_rgba(37,211,102,0.35)] cursor-pointer'
                   }`}
                 >
-                  {step === 1 ? (
+                  {totalItemsSelectedCount <= 0 ? (
+                    <span>Selecione ao menos 1 item para continuar</span>
+                  ) : step === 1 ? (
                     <>
-                      <span>Continuar para Endereço de Entrega</span>
+                      <span>Solicitar Pedido (Confirmar Entrega)</span>
                       <ChevronRight className="w-5 h-5" />
                     </>
                   ) : (
                     <>
                       <WhatsAppIcon className="w-5 h-5 fill-current" />
-                      <span>Solicitar Pedido no WhatsApp</span>
+                      <span>Solicitar Pedido e Confirmar no WhatsApp</span>
                     </>
                   )}
                 </motion.button>
@@ -971,23 +1504,9 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
                 <div className="flex items-center justify-center gap-1.5 mt-2.5 text-[#8A8A9E]">
                   <ShieldCheck className="w-3.5 h-3.5 text-mecura-neon" />
                   <span className="text-[10px]">
-                    {step === 1 ? 'Processo de importação legalizado pela Anvisa' : 'Atendimento e suporte direto com a equipe oficial'}
+                    {step === 1 ? 'Confira os medicamentos liberados e prossiga para solicitar' : 'Envia a confirmação do seu pedido diretamente para o WhatsApp oficial'}
                   </span>
                 </div>
-              </div>
-            </div>
-          </div>
-        ) : hasAssociacaoItems ? (
-          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
-            <div className="max-w-md mx-auto pointer-events-auto">
-              <div className="bg-[#161622]/95 backdrop-blur-xl border border-emerald-500/30 rounded-[28px] p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#0A0A0F] font-bold py-4 rounded-2xl transition-colors shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-2 text-[15px]"
-                >
-                  <CheckCircle2 className="w-5 h-5" />
-                  Voltar ao Painel do Paciente
-                </button>
               </div>
             </div>
           </div>

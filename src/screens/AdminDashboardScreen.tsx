@@ -40,10 +40,12 @@ import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, getDocs, deleteDoc, addDoc, setDoc } from 'firebase/firestore';
 import { INSTITUTIONAL_INFO, LEGAL_OPINION_DATA, PRIVACY_POLICY_LGPD_DATA, TERMS_OF_USE_DATA } from '../data/legalAndPrivacy';
 import { triggerAdminBackgroundPush } from '../utils/notifications';
+import { AdminOrderBuilderView } from '../components/AdminOrderBuilderView';
 
 export const AdminDashboardScreen = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'doctors' | 'chat_patient' | 'chat_doctor' | 'catalog' | 'agronomic' | 'coupons' | 'notifications' | 'agenda' | 'password_requests' | 'legal'>('overview');
+  const [catalogSubView, setCatalogSubView] = useState<'order_builder' | 'catalog_products'>('order_builder');
   
 
   const [sendingQueueIds, setSendingQueueIds] = useState<Record<string, boolean>>({});
@@ -1617,162 +1619,208 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
         )}
 
         {activeTab === 'catalog' && (
-          <div className="max-w-5xl mx-auto space-y-6">
-            <div className="flex flex-wrap justify-between items-center gap-3">
+          <div className="max-w-6xl mx-auto space-y-6">
+            {/* Top Mode Switcher: Montador de Pedidos (Pós-Consulta) vs Catálogo de Medicamentos */}
+            <div className="bg-[#161622] border border-[#262636] p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold">Catálogo de Produtos & Medicamentos</h2>
-                <p className="text-xs text-[#8A8A9E] mt-0.5">Gerencie os medicamentos e posologias oficiais disponíveis para a área médica e pacientes</p>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2.5">
+                  <Pill className="w-6 h-6 text-mecura-neon" />
+                  {catalogSubView === 'order_builder'
+                    ? 'Montador de Pedidos — Farmácia Pós-Consulta'
+                    : 'Catálogo de Produtos & Medicamentos'}
+                </h2>
+                <p className="text-xs text-[#8A8A9E] mt-1">
+                  {catalogSubView === 'order_builder'
+                    ? 'Monte o pedido com os medicamentos receitados pelo médico e aprove para liberar diretamente na Farmácia do paciente.'
+                    : 'Gerencie os medicamentos, marcas e posologias oficiais disponíveis para a área médica e pacientes.'}
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => handleOpenAddMedicine()} className="bg-mecura-neon text-black font-bold hover:bg-[#b5ff33] shadow-[0_0_15px_rgba(166,255,0,0.15)]">
-                  <Plus className="w-4 h-4 mr-2" /> + Adicionar Medicamento
-                </Button>
-                <Button variant="outline" onClick={handleManualSyncCatalog} className="border-mecura-neon/40 text-mecura-neon hover:bg-mecura-neon/10">
-                  <RefreshCw className="w-4 h-4 mr-2" /> Sincronizar na Nuvem
-                </Button>
-                <Button variant="outline" onClick={() => {
-                  if(window.confirm('Tem certeza? Isso irá restaurar o catálogo do banco de dados oficial (PDF atualizado).')) {
-                    setProductCategories(cbdGuideData);
-                    showToast('Catálogo restaurado com as bases oficiais!');
-                  }
-                }}>
-                  <RefreshCw className="w-4 h-4 mr-2" /> Atualizar via Sistema (PDF)
-                </Button>
-                <Button onClick={() => setShowImportMedicineModal(true)}>
-                  <BrainCircuit className="w-4 h-4 mr-2" /> Assistente IA
-                </Button>
-              </div>
-            </div>
-            
-            {/* Search Bar for Admin Catalog */}
-            <div className="bg-[#161622] border border-[#262636] p-4 rounded-2xl flex items-center gap-3">
-              <Search className="w-5 h-5 text-mecura-neon shrink-0" />
-              <input
-                type="text"
-                placeholder="Pesquisar produto por nome, fabricante, concentração ou patologia..."
-                value={medicineSearchTerm}
-                onChange={(e) => setMedicineSearchTerm(e.target.value)}
-                className="bg-transparent border-none text-white text-sm focus:outline-none w-full"
-              />
-              {medicineSearchTerm && (
-                <button 
-                  type="button" 
-                  onClick={() => setMedicineSearchTerm('')} 
-                  className="text-xs text-[#8A8A9E] hover:text-white bg-[#262636] px-2.5 py-1 rounded-lg"
+
+              <div className="flex flex-wrap items-center gap-2 bg-[#0A0A0F] p-1.5 rounded-xl border border-[#262636] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCatalogSubView('order_builder')}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
+                    catalogSubView === 'order_builder'
+                      ? 'bg-mecura-neon text-[#0A0A0F] shadow-[0_0_15px_rgba(166,255,0,0.25)]'
+                      : 'text-[#8A8A9E] hover:text-white hover:bg-white/5'
+                  }`}
                 >
-                  Limpar Busca
+                  <CheckCircle className="w-4 h-4" />
+                  📦 Montador de Pedidos (Farmácia)
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setCatalogSubView('catalog_products')}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
+                    catalogSubView === 'catalog_products'
+                      ? 'bg-mecura-neon text-[#0A0A0F] shadow-[0_0_15px_rgba(166,255,0,0.25)]'
+                      : 'text-[#8A8A9E] hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Pill className="w-4 h-4" />
+                  💊 Catálogo de Medicamentos
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-8">
-              {productCategories
-                .map(cat => {
-                  const q = (medicineSearchTerm || '').toLowerCase().trim();
-                  const filteredProds = cat.products.filter(prod => {
-                    if (!q) return true;
-                    return (
-                      (prod.name || '').toLowerCase().includes(q) ||
-                      (prod.manufacturer || '').toLowerCase().includes(q) ||
-                      (prod.type || '').toLowerCase().includes(q) ||
-                      (prod.description || '').toLowerCase().includes(q) ||
-                      (prod.indications || '').toLowerCase().includes(q) ||
-                      (prod.concentration || '').toLowerCase().includes(q)
-                    );
-                  });
-                  return { ...cat, products: filteredProds };
-                })
-                .filter(cat => cat.products.length > 0 || !medicineSearchTerm)
-                .map(cat => (
-                <div key={cat.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-mecura-neon">{cat.title} ({cat.products.length})</h3>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => handleOpenAddMedicine(cat.id)}
-                      className="text-xs border-mecura-neon/30 text-mecura-neon hover:bg-mecura-neon/10"
-                    >
-                      <Plus className="w-3.5 h-3.5 mr-1" /> Novo nesta categoria
+            {catalogSubView === 'order_builder' ? (
+              <AdminOrderBuilderView patients={patients} onShowToast={showToast} />
+            ) : (
+              <>
+                <div className="flex flex-wrap justify-between items-center gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => handleOpenAddMedicine()} className="bg-mecura-neon text-black font-bold hover:bg-[#b5ff33] shadow-[0_0_15px_rgba(166,255,0,0.15)]">
+                      <Plus className="w-4 h-4 mr-2" /> + Adicionar Medicamento
+                    </Button>
+                    <Button variant="outline" onClick={handleManualSyncCatalog} className="border-mecura-neon/40 text-mecura-neon hover:bg-mecura-neon/10">
+                      <RefreshCw className="w-4 h-4 mr-2" /> Sincronizar na Nuvem
+                    </Button>
+                    <Button variant="outline" onClick={() => {
+                      if(window.confirm('Tem certeza? Isso irá restaurar o catálogo do banco de dados oficial (PDF atualizado).')) {
+                        setProductCategories(cbdGuideData);
+                        showToast('Catálogo restaurado com as bases oficiais!');
+                      }
+                    }}>
+                      <RefreshCw className="w-4 h-4 mr-2" /> Atualizar via Sistema (PDF)
+                    </Button>
+                    <Button onClick={() => setShowImportMedicineModal(true)}>
+                      <BrainCircuit className="w-4 h-4 mr-2" /> Assistente IA (PDF)
                     </Button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {cat.products.map(prod => (
-                      <div key={prod.name} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex flex-col justify-between hover:border-white/20 transition-all">
-                        <div>
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <h4 className="font-bold text-white text-base leading-snug">{prod.name}</h4>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider shrink-0 ${
-                              (prod.origin || '').toLowerCase().includes('importado')
-                                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
-                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            }`}>
-                              {prod.origin || 'Nacional'}
-                            </span>
-                          </div>
-                          
-                          <div className="text-xs text-[#8A8A9E] mb-2 flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-white/90">{prod.manufacturer}</span>
-                            <span>•</span>
-                            <span>{prod.type}</span>
-                          </div>
-
-                          {prod.concentration && (
-                            <div className="text-xs text-mecura-neon font-mono mb-1">{prod.concentration}</div>
-                          )}
-
-                          {prod.pharmaceuticalForm && (
-                            <div className="text-[11px] text-[#8A8A9E]">
-                              {prod.pharmaceuticalForm} {prod.quantity ? `• ${prod.quantity}` : ''}
-                            </div>
-                          )}
-
-                          {prod.priceBRL ? (
-                            <div className="text-emerald-400 text-sm font-bold mt-2">R$ {prod.priceBRL.toFixed(2)}</div>
-                          ) : prod.priceUSD ? (
-                            <div className="text-cyan-400 text-sm font-bold mt-2">US$ {prod.priceUSD.toFixed(2)} (R$ {(prod.priceUSD * exchangeRate).toFixed(2)})</div>
-                          ) : null}
-
-                          {prod.usageInstructions && (
-                            <div className="mt-3 p-3 rounded-xl bg-[#12121A] border border-white/5 text-xs">
-                              <span className="text-[10px] text-mecura-neon uppercase font-bold tracking-wider block mb-1">
-                                Posologia Padrão:
-                              </span>
-                              <p className="text-white/80 whitespace-pre-wrap leading-relaxed">{prod.usageInstructions}</p>
-                            </div>
-                          )}
-
-                          {prod.indications && (
-                            <div className="mt-2 text-[11px] text-[#8A8A9E] line-clamp-2">
-                              <strong className="text-white/70">Indicações:</strong> {prod.indications}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#262636]">
-                          <button 
-                            onClick={() => handleOpenEditMedicine(cat.id, prod)} 
-                            className="p-1.5 text-xs font-semibold text-white/70 hover:text-mecura-neon flex items-center gap-1 bg-[#161622] border border-white/5 rounded-lg px-2.5 transition-colors"
-                          >
-                            <Edit2 className="w-3.5 h-3.5"/> Editar
-                          </button>
-                          <button 
-                            onClick={() => {
-                              if (window.confirm(`Tem certeza que deseja remover ${prod.name}?`)) {
-                                deleteProduct(cat.id, prod.name);
-                              }
-                            }} 
-                            className="p-1.5 text-xs font-semibold text-[#8A8A9E] hover:text-red-400 flex items-center gap-1 bg-[#161622] border border-white/5 rounded-lg px-2.5 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5"/> Excluir
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
-              ))}
-            </div>
+                
+                {/* Search Bar for Admin Catalog */}
+                <div className="bg-[#161622] border border-[#262636] p-4 rounded-2xl flex items-center gap-3">
+                  <Search className="w-5 h-5 text-mecura-neon shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar produto por nome, fabricante, concentração ou patologia..."
+                    value={medicineSearchTerm}
+                    onChange={(e) => setMedicineSearchTerm(e.target.value)}
+                    className="bg-transparent border-none text-white text-sm focus:outline-none w-full"
+                  />
+                  {medicineSearchTerm && (
+                    <button 
+                      type="button" 
+                      onClick={() => setMedicineSearchTerm('')} 
+                      className="text-xs text-[#8A8A9E] hover:text-white bg-[#262636] px-2.5 py-1 rounded-lg"
+                    >
+                      Limpar Busca
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-8">
+                  {productCategories
+                    .map(cat => {
+                      const q = (medicineSearchTerm || '').toLowerCase().trim();
+                      const filteredProds = cat.products.filter(prod => {
+                        if (!q) return true;
+                        return (
+                          (prod.name || '').toLowerCase().includes(q) ||
+                          (prod.manufacturer || '').toLowerCase().includes(q) ||
+                          (prod.type || '').toLowerCase().includes(q) ||
+                          (prod.description || '').toLowerCase().includes(q) ||
+                          (prod.indications || '').toLowerCase().includes(q) ||
+                          (prod.concentration || '').toLowerCase().includes(q)
+                        );
+                      });
+                      return { ...cat, products: filteredProds };
+                    })
+                    .filter(cat => cat.products.length > 0 || !medicineSearchTerm)
+                    .map(cat => (
+                    <div key={cat.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold text-mecura-neon">{cat.title} ({cat.products.length})</h3>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleOpenAddMedicine(cat.id)}
+                          className="text-xs border-mecura-neon/30 text-mecura-neon hover:bg-mecura-neon/10"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Novo nesta categoria
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {cat.products.map(prod => (
+                          <div key={prod.name} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex flex-col justify-between hover:border-white/20 transition-all">
+                            <div>
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <h4 className="font-bold text-white text-base leading-snug">{prod.name}</h4>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider shrink-0 ${
+                                  (prod.origin || '').toLowerCase().includes('importado')
+                                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                }`}>
+                                  {prod.origin || 'Nacional'}
+                                </span>
+                              </div>
+                              
+                              <div className="text-xs text-[#8A8A9E] mb-2 flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-white/90">{prod.manufacturer}</span>
+                                <span>•</span>
+                                <span>{prod.type}</span>
+                              </div>
+
+                              {prod.concentration && (
+                                <div className="text-xs text-mecura-neon font-mono mb-1">{prod.concentration}</div>
+                              )}
+
+                              {prod.pharmaceuticalForm && (
+                                <div className="text-[11px] text-[#8A8A9E]">
+                                  {prod.pharmaceuticalForm} {prod.quantity ? `• ${prod.quantity}` : ''}
+                                </div>
+                              )}
+
+                              {prod.priceBRL ? (
+                                <div className="text-emerald-400 text-sm font-bold mt-2">R$ {prod.priceBRL.toFixed(2)}</div>
+                              ) : prod.priceUSD ? (
+                                <div className="text-cyan-400 text-sm font-bold mt-2">US$ {prod.priceUSD.toFixed(2)} (R$ {(prod.priceUSD * exchangeRate).toFixed(2)})</div>
+                              ) : null}
+
+                              {prod.usageInstructions && (
+                                <div className="mt-3 p-3 rounded-xl bg-[#12121A] border border-white/5 text-xs">
+                                  <span className="text-[10px] text-mecura-neon uppercase font-bold tracking-wider block mb-1">
+                                    Posologia Padrão:
+                                  </span>
+                                  <p className="text-white/80 whitespace-pre-wrap leading-relaxed">{prod.usageInstructions}</p>
+                                </div>
+                              )}
+
+                              {prod.indications && (
+                                <div className="mt-2 text-[11px] text-[#8A8A9E] line-clamp-2">
+                                  <strong className="text-white/70">Indicações:</strong> {prod.indications}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#262636]">
+                              <button 
+                                onClick={() => handleOpenEditMedicine(cat.id, prod)} 
+                                className="p-1.5 text-xs font-semibold text-white/70 hover:text-mecura-neon flex items-center gap-1 bg-[#161622] border border-white/5 rounded-lg px-2.5 transition-colors"
+                              >
+                                <Edit2 className="w-3.5 h-3.5"/> Editar
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  if (window.confirm(`Tem certeza que deseja remover ${prod.name}?`)) {
+                                    deleteProduct(cat.id, prod.name);
+                                  }
+                                }} 
+                                className="p-1.5 text-xs font-semibold text-[#8A8A9E] hover:text-red-400 flex items-center gap-1 bg-[#161622] border border-white/5 rounded-lg px-2.5 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5"/> Excluir
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 

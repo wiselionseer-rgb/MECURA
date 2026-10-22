@@ -51,6 +51,58 @@ export interface Notification {
   date: string;
 }
 
+export interface PharmacyOrderItem {
+  id: string;
+  name: string;
+  brand: string;
+  origin: 'Nacional' | 'Importado' | string;
+  type?: string;
+  activeIngredients?: string;
+  concentration?: string;
+  pharmaceuticalForm?: string;
+  quantitySpec?: string;
+  administrationRoute?: string;
+  dosage: string[];
+  unitQuantity: number;
+  unitPriceBRL: number;
+  priceUSD?: number;
+  image?: string;
+  prescribedByDoctor?: boolean;
+}
+
+export interface PharmacyPreparedOrder {
+  id: string;
+  patientId: string;
+  patientName: string;
+  patientEmail?: string;
+  patientCpf?: string;
+  patientPhone?: string;
+  doctorName?: string;
+  doctorCrm?: string;
+  items: PharmacyOrderItem[];
+  subtotalBRL: number;
+  shippingBRL: number;
+  discountBRL: number;
+  totalBRL: number;
+  showPricesToPatient?: boolean;
+  notes?: string;
+  whatsappNumber?: string;
+  status: 'draft' | 'approved' | 'requested' | 'completed';
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string;
+  requestedAt?: string;
+  deliveryAddress?: {
+    cep?: string;
+    street?: string;
+    number?: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+  };
+}
+
 interface AdminState {
   doctors: Doctor[];
   addDoctor: (doctor: Doctor) => void;
@@ -71,6 +123,11 @@ interface AdminState {
   notifications: Notification[];
   addNotification: (notification: Notification) => void;
   deleteNotification: (id: string) => void;
+
+  pharmacyOrders: PharmacyPreparedOrder[];
+  savePharmacyOrder: (order: PharmacyPreparedOrder) => Promise<void>;
+  updatePharmacyOrderStatus: (orderId: string, status: PharmacyPreparedOrder['status'], extra?: Partial<PharmacyPreparedOrder>) => Promise<void>;
+  deletePharmacyOrder: (orderId: string) => Promise<void>;
 
   promotionsText: string;
   setPromotionsText: (text: string) => void;
@@ -190,6 +247,109 @@ export const useAdminStore = create<AdminState>()(
       deleteNotification: (id) => set((state) => ({
         notifications: state.notifications.filter((n) => n.id !== id)
       })),
+
+      pharmacyOrders: [],
+      savePharmacyOrder: async (order) => {
+        const cleanOrder: PharmacyPreparedOrder = {
+          ...order,
+          updatedAt: new Date().toISOString()
+        };
+        set((state) => {
+          const filtered = (state.pharmacyOrders || []).filter(
+            o => o.id !== cleanOrder.id && o.patientId !== cleanOrder.patientId
+          );
+          return { pharmacyOrders: [cleanOrder, ...filtered] };
+        });
+
+        try {
+          await setDoc(doc(db, 'pharmacy_orders', cleanOrder.id), cleanOrder, { merge: true });
+          if (cleanOrder.patientId) {
+            await setDoc(doc(db, 'users', cleanOrder.patientId), {
+              approvedPharmacyOrder: cleanOrder,
+              hasApprovedPharmacyOrder: cleanOrder.status === 'approved' || cleanOrder.status === 'requested',
+              lastUpdated: new Date().toISOString()
+            }, { merge: true }).catch(() => {});
+
+            await setDoc(doc(db, 'queue', cleanOrder.patientId), {
+              approvedPharmacyOrder: cleanOrder,
+              lastUpdated: new Date().toISOString()
+            }, { merge: true }).catch(() => {});
+
+            await setDoc(doc(db, 'active_consultations', cleanOrder.patientId), {
+              approvedPharmacyOrder: cleanOrder,
+              lastUpdated: new Date().toISOString()
+            }, { merge: true }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("Erro ao salvar pedido de farmácia no Firestore:", e);
+        }
+      },
+      updatePharmacyOrderStatus: async (orderId, status, extra) => {
+        const nowIso = new Date().toISOString();
+        let targetOrder: PharmacyPreparedOrder | null = null;
+
+        set((state) => {
+          const updated = (state.pharmacyOrders || []).map((o) => {
+            if (o.id === orderId || o.patientId === orderId) {
+              const merged: PharmacyPreparedOrder = {
+                ...o,
+                ...(extra || {}),
+                status,
+                updatedAt: nowIso,
+                ...(status === 'approved' ? { approvedAt: nowIso } : {}),
+                ...(status === 'requested' ? { requestedAt: nowIso } : {})
+              };
+              targetOrder = merged;
+              return merged;
+            }
+            return o;
+          });
+          return { pharmacyOrders: updated };
+        });
+
+        try {
+          const resolvedId = targetOrder ? (targetOrder as PharmacyPreparedOrder).id : orderId;
+          const payload = {
+            ...(extra || {}),
+            status,
+            updatedAt: nowIso,
+            ...(status === 'approved' ? { approvedAt: nowIso } : {}),
+            ...(status === 'requested' ? { requestedAt: nowIso } : {})
+          };
+          await setDoc(doc(db, 'pharmacy_orders', resolvedId), payload, { merge: true });
+          const pId = (targetOrder as PharmacyPreparedOrder | null)?.patientId || extra?.patientId;
+          if (pId && targetOrder) {
+            await setDoc(doc(db, 'users', pId), {
+              approvedPharmacyOrder: targetOrder,
+              hasApprovedPharmacyOrder: status === 'approved' || status === 'requested',
+              lastUpdated: nowIso
+            }, { merge: true }).catch(() => {});
+            await setDoc(doc(db, 'active_consultations', pId), {
+              approvedPharmacyOrder: targetOrder,
+              lastUpdated: nowIso
+            }, { merge: true }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("Erro ao atualizar status do pedido de farmácia no Firestore:", e);
+        }
+      },
+      deletePharmacyOrder: async (orderId) => {
+        const existing = (useAdminStore.getState().pharmacyOrders || []).find(o => o.id === orderId || o.patientId === orderId);
+        set((state) => ({
+          pharmacyOrders: (state.pharmacyOrders || []).filter(o => o.id !== orderId && o.patientId !== orderId)
+        }));
+        try {
+          await deleteDoc(doc(db, 'pharmacy_orders', orderId)).catch(() => {});
+          if (existing?.patientId) {
+            await setDoc(doc(db, 'users', existing.patientId), {
+              approvedPharmacyOrder: null,
+              hasApprovedPharmacyOrder: false
+            }, { merge: true }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("Erro ao excluir pedido de farmácia:", e);
+        }
+      },
 
       promotionsText: '🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.',
       setPromotionsText: (text) => {
@@ -345,6 +505,64 @@ export const useAdminStore = create<AdminState>()(
     }
   )
 );
+
+// Realtime Firestore synchronization for Pharmacy Orders across all users and devices
+if (typeof window !== 'undefined') {
+  try {
+    onSnapshot(collection(db, 'pharmacy_orders'), (snapshot) => {
+      const cloudOrders: PharmacyPreparedOrder[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data && data.patientId && Array.isArray(data.items)) {
+          cloudOrders.push({
+            id: docSnap.id,
+            patientId: data.patientId,
+            patientName: data.patientName || 'Paciente',
+            patientEmail: data.patientEmail || '',
+            patientCpf: data.patientCpf || '',
+            patientPhone: data.patientPhone || '',
+            doctorName: data.doctorName || 'Dr. Guilherme Taveira Dias',
+            doctorCrm: data.doctorCrm || 'CRM/MT 17259',
+            items: data.items,
+            subtotalBRL: Number(data.subtotalBRL) || 0,
+            shippingBRL: Number(data.shippingBRL) || 0,
+            discountBRL: Number(data.discountBRL) || 0,
+            totalBRL: Number(data.totalBRL) || 0,
+            showPricesToPatient: data.showPricesToPatient !== undefined ? Boolean(data.showPricesToPatient) : true,
+            notes: data.notes || '',
+            whatsappNumber: data.whatsappNumber || '5566996280883',
+            status: data.status || 'approved',
+            createdAt: data.createdAt || new Date().toISOString(),
+            updatedAt: data.updatedAt || new Date().toISOString(),
+            approvedAt: data.approvedAt || undefined,
+            requestedAt: data.requestedAt || undefined,
+            deliveryAddress: data.deliveryAddress || undefined,
+          });
+        }
+      });
+
+      if (cloudOrders.length > 0) {
+        const currentLocal = useAdminStore.getState().pharmacyOrders || [];
+        const map = new Map<string, PharmacyPreparedOrder>();
+        currentLocal.forEach(o => map.set(o.id, o));
+        cloudOrders.forEach(o => {
+          const existing = map.get(o.id);
+          if (!existing || new Date(o.updatedAt || 0).getTime() >= new Date(existing.updatedAt || 0).getTime()) {
+            map.set(o.id, o);
+          }
+        });
+        const merged = Array.from(map.values()).sort(
+          (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+        );
+        useAdminStore.setState({ pharmacyOrders: merged });
+      }
+    }, (err) => {
+      console.warn("Pharmacy orders listener warning:", err);
+    });
+  } catch (err) {
+    console.warn("Failed to attach pharmacy orders listener:", err);
+  }
+}
 
 // Realtime Firestore synchronization for Product Catalog across all users and devices
 if (typeof window !== 'undefined') {

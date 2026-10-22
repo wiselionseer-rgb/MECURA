@@ -15,26 +15,28 @@ export interface SouCannabisProduct extends CBDProduct {
 
 export const SOUCANNABIS_COMPANY_INFO = {
   name: "SouCannabis",
-  fullName: "SouCannabis — Associação Brasileira de Cannabis Medicinal",
+  fullName: "SouCannabis Associação Terapêutica",
   origin: "Nacional (Brasil)",
+  shippingPolicy: "Frete grátis para todo o Brasil.",
   nature: "Associação de Pacientes e Pesquisa com Controle Laboratorial Padronizado",
   validityMonths: 6,
   dropsPerMl: 26,
   carrier: "MCT (Triglicerídeos de Cadeia Média do Óleo de Coco - Sabor e Aroma Suaves)",
   analyticalControl: "HPLC (Cromatografia Líquida de Alta Eficiência) em Parceria Universitária",
   standardCannabinoidsReference: "Referência de 60% de canabinoides majoritários em relação ao peso do extrato",
-  description: "A SouCannabis apresenta uma linha de produtos à base de Cannabis com diferentes proporções de THC e CBD, concentrações e formas de apresentação. O portfólio inclui óleos sublinguais veiculados em MCT (26 gotas/mL), sprays nasais de absorção rápida, lubrificante íntimo 1:1, pomada tópica dérmica, supositórios de absorção transmucosa pélvica e extratos concentrados de alta densidade fitocanabinoide.",
+  description: "A SouCannabis Associação Terapêutica apresenta uma linha completa de produtos à base de Cannabis com Frete Grátis para todo o Brasil. O portfólio inclui Óleo Azul (THC:CBD 5:1), Óleo Lilás (THC:CBD 1:1), Óleo Rosa (THC:CBD 1:5), Óleo Laranja (THC:CBD 1:10), Óleo Branco (CBD sem THC), Spray Nasal (60 mg/mL, 6%), Lubrificante Íntimo (THC:CBD 1:1), Pomada Azul (THC:CBD 5:1 30 mg/mL), Supositórios (100 mg/mL, 10%) e Extratos Puros (pedido mínimo de 3 g).",
   catalogSections: [
-    "1. Óleo Azul SouCannabis — Predominância de THC (Proporção 5:1)",
-    "2. Óleo Lilás SouCannabis — Proporção Equilibrada (1:1 THC:CBD)",
-    "3. Óleo Rosa SouCannabis — Predominância de CBD (Proporção 5:1 CBD:THC)",
-    "4. Óleo Laranja SouCannabis — Predominância de CBD (Proporção Nominal 1:10)",
-    "5. Óleo Branco SouCannabis — CBD Broad Spectrum (0% THC Declarado)",
-    "6. Spray Nasal SouCannabis (Azul 5:1 e Laranja 1:10 em 6%)",
-    "7. Lubrificante Íntimo SouCannabis (Proporção 1:1 — 6% e 10%)",
-    "8. Pomada Tópica SouCannabis (Uso Dérmico / Articular — 6% e 10%)",
-    "9. Supositórios SouCannabis (Via Retal / Vaginal — 1:1 e 5:1)",
-    "10. Extratos Concentrados SouCannabis (Resina / Pasta 60% e 80%)"
+    "1. Óleo Azul SouCannabis — THC:CBD 5:1 (20 a 200 mg/mL • 10 mL e 30 mL)",
+    "2. Óleo Lilás SouCannabis — THC:CBD 1:1 (20 a 200 mg/mL • 10 mL e 30 mL)",
+    "3. Óleo Rosa SouCannabis — THC:CBD 1:5 (20 a 200 mg/mL • 10 mL e 30 mL)",
+    "4. Óleo Laranja SouCannabis — THC:CBD 1:10 (20 a 200 mg/mL • 10 mL e 30 mL)",
+    "5. Óleo Branco SouCannabis — CBD sem THC (20 a 200 mg/mL • 10 mL e 30 mL)",
+    "6. Spray Nasal SouCannabis (60 mg/mL, 6% — Azul 5:1 e Laranja 1:10 em 10 mL e 30 mL)",
+    "7. Lubrificante Íntimo SouCannabis (THC:CBD 1:1 — 60 mg/mL e 100 mg/mL em 10 mL e 30 mL)",
+    "8. Pomada Azul SouCannabis (THC:CBD 5:1 — 30 mg/mL 3% • Frasco de 30 g)",
+    "9. Supositório SouCannabis (100 mg/mL, 10% — Azul 5:1 e Laranja 1:10 • 20 e 60 unidades)",
+    "10. Extratos Puros SouCannabis (Pedido mínimo de 3 g — Rico em CBD R$ 90/g e Rico em THC R$ 100/g)",
+    "11. Sequoia — Inflorescências in Natura (R$ 65/g e Pacote de 10 g R$ 650)"
   ]
 };
 
@@ -1805,388 +1807,315 @@ export const SOUCANNABIS_PRODUCTS: SouCannabisProduct[] = [
   },
 
   // =========================================================================
-  // 8. POMADA TÓPICA SOUCANNABIS (USO DÉRMICO / ARTICULAR)
+  // 8. POMADA AZUL SOUCANNABIS (THC:CBD 5:1 — 30 mg/ml, 3% • FRASCO DE 30 g)
   // =========================================================================
   {
-    name: "Pomada Tópica SouCannabis — 6% (30g)",
+    name: "Pomada Azul SouCannabis (THC:CBD 5:1) — 30 mg/mL (3%) (Frasco de 30 g)",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Pomada / Creme Tópico de Cannabis",
+    type: "Pomada Tópica de Cannabis (THC:CBD 5:1)",
     colorLine: "Pomada",
-    ratio: "Full Spectrum Balanceado",
-    volumeOrWeight: "30g",
-    extractConcentration: "6% (60 mg de extrato por grama)",
+    ratio: "5:1 (THC:CBD)",
+    volumeOrWeight: "Frasco de 30 g",
+    extractConcentration: "30 mg/mL (3%)",
     hplcStandardized: true,
-    priceBRL: 180.00,
-    activeIngredients: "Extrato padronizado de Cannabis rico em fitocanabinoides e terpenos em base emoliente vegetal",
-    concentration: "6% de extrato vegetal (60 mg/g)",
-    pharmaceuticalForm: "Pomada Tópica Emoliente (Bisnaga / Pote de 30g)",
-    quantity: "01 Pote / Bisnaga de 30g",
+    priceBRL: 110.00,
+    activeIngredients: "Extrato padronizado de Cannabis THC:CBD 5:1 (30 mg/mL - 3%) em base emoliente vegetal",
+    concentration: "30 mg/mL (3% de extrato) • Proporção THC:CBD 5:1",
+    pharmaceuticalForm: "Pomada Tópica Emoliente (Frasco de 30 g)",
+    quantity: "01 Frasco de 30 g",
     administrationRoute: "Uso Tópico / Dérmico",
-    prescriptionExample: "Pomada Tópica SouCannabis 6% (60 mg/g), 30g. Aplicar fina camada sobre a região afetada 2 a 3 vezes ao dia com leve massagem.",
-    usageInstructions: "• Uso externo dérmico. Aplicar sobre a pele limpa e seca, massageando em movimentos circulares até completa absorção.\n• Não aplicar sobre feridas abertas profundas ou mucosas oculares.",
-    details: ["Pote/Bisnaga 30g", "Concentração 6% (60 mg/g)", "Base Vegetal Emoliente", "Uso Tópico / Articular", "HPLC Controlado", "SouCannabis Associação"],
-    description: "Pomada desenvolvida para aplicação localizada em articulações, músculos e lesões inflamatórias da pele. Ação anti-inflamatória e analgésica rápida no tecido dérmico.",
-    indications: "Dores articulares, osteoartrite, tendinites, bursites, contraturas musculares, lombalgia localizada, psoríase, dermatite e eczema."
-  },
-  {
-    name: "Pomada Tópica SouCannabis — 6% (50g)",
-    manufacturer: "SouCannabis",
-    origin: "Nacional",
-    type: "Pomada / Creme Tópico de Cannabis",
-    colorLine: "Pomada",
-    ratio: "Full Spectrum Balanceado",
-    volumeOrWeight: "50g",
-    extractConcentration: "6% (60 mg de extrato por grama)",
-    hplcStandardized: true,
-    priceBRL: 290.00,
-    activeIngredients: "Extrato padronizado de Cannabis rico em fitocanabinoides em base emoliente",
-    concentration: "6% de extrato vegetal (60 mg/g)",
-    pharmaceuticalForm: "Pomada Tópica Emoliente (Bisnaga / Pote de 50g)",
-    quantity: "01 Pote / Bisnaga de 50g",
-    administrationRoute: "Uso Tópico / Dérmico",
-    prescriptionExample: "Pomada Tópica SouCannabis 6% (60 mg/g), 50g. Aplicar sobre a região dolorosa 2 a 3 vezes ao dia.",
-    usageInstructions: "• Uso tópico dérmico. Aplicar massageando a região até absorção.",
-    details: ["Pote/Bisnaga 50g", "Concentração 6% (60 mg/g)", "Base Vegetal", "Uso Tópico / Articular"],
-    description: "Pomada Tópica SouCannabis 6% em embalagem econômica de 50g.",
-    indications: "Dores articulares, tendinites, contraturas musculares e inflamações dérmicas."
-  },
-  {
-    name: "Pomada Tópica SouCannabis — 10% (30g)",
-    manufacturer: "SouCannabis",
-    origin: "Nacional",
-    type: "Pomada / Creme Tópico de Cannabis",
-    colorLine: "Pomada",
-    ratio: "Full Spectrum Balanceado",
-    volumeOrWeight: "30g",
-    extractConcentration: "10% (100 mg de extrato por grama)",
-    hplcStandardized: true,
-    priceBRL: 260.00,
-    activeIngredients: "Extrato concentrado de Cannabis de alta densidade fitocanabinoide em base emoliente",
-    concentration: "10% de extrato vegetal (100 mg/g)",
-    pharmaceuticalForm: "Pomada Tópica Concentrada (Bisnaga / Pote de 30g)",
-    quantity: "01 Pote / Bisnaga de 30g",
-    administrationRoute: "Uso Tópico / Dérmico",
-    prescriptionExample: "Pomada Tópica SouCannabis 10% (100 mg/g), 30g. Aplicar camada sobre o local da dor 2 vezes ao dia.",
-    usageInstructions: "• Alta concentração de fitocanabinoides (100 mg/g). Ideal para pontos de dor intensa e espasmos musculares severos.",
-    details: ["Pote/Bisnaga 30g", "Alta Concentração 10% (100 mg/g)", "Base Emoliente", "Ação Potente Localizada"],
-    description: "Pomada Tópica SouCannabis concentração reforçada 10% (100 mg/g) em embalagem de 30g.",
-    indications: "Artrite reumatoide ativa, lombalgia incapacitante, dor neuropática periférica localizada e fascite plantar."
-  },
-  {
-    name: "Pomada Tópica SouCannabis — 10% (50g)",
-    manufacturer: "SouCannabis",
-    origin: "Nacional",
-    type: "Pomada / Creme Tópico de Cannabis",
-    colorLine: "Pomada",
-    ratio: "Full Spectrum Balanceado",
-    volumeOrWeight: "50g",
-    extractConcentration: "10% (100 mg de extrato por grama)",
-    hplcStandardized: true,
-    priceBRL: 420.00,
-    activeIngredients: "Extrato concentrado de Cannabis de alta densidade em base emoliente",
-    concentration: "10% de extrato vegetal (100 mg/g)",
-    pharmaceuticalForm: "Pomada Tópica Concentrada (Bisnaga / Pote de 50g)",
-    quantity: "01 Pote / Bisnaga de 50g",
-    administrationRoute: "Uso Tópico / Dérmico",
-    prescriptionExample: "Pomada Tópica SouCannabis 10% (100 mg/g), 50g. Aplicar topicamente nas áreas álgicas 2x ao dia.",
-    usageInstructions: "• Concentração reforçada 10%. Uso externo contínuo para dor crônica osteomuscular.",
-    details: ["Pote/Bisnaga 50g", "Alta Concentração 10% (100 mg/g)", "Rendimento Prolongado", "Uso Tópico"],
-    description: "Pomada Tópica SouCannabis 10% em pote de 50g para tratamento contínuo de dor osteoarticular.",
-    indications: "Osteoartrite severa, dor crônica neuropática periférica, fibromialgia (pontos dolorosos) e tendinites crônicas."
+    prescriptionExample: "Pomada Azul SouCannabis (THC:CBD 5:1) — 30 mg/mL (3%), Frasco de 30 g. Aplicar fina camada sobre a região afetada 2 a 3 vezes ao dia com leve massagem.",
+    usageInstructions: "• Uso externo dérmico. Aplicar sobre a pele limpa e seca, massageando em movimentos circulares até completa absorção.\n• Frete grátis para todo o Brasil pela SouCannabis Associação Terapêutica.",
+    details: ["Frasco de 30 g", "Concentração 30 mg/mL (3%)", "Proporção THC:CBD 5:1", "R$ 110,00", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Pomada Azul SouCannabis formulada na proporção THC:CBD 5:1 com concentração de 30 mg/mL (3%) em frasco de 30 g. Ação anti-inflamatória e analgésica localizada para articulações e musculatura.",
+    indications: "Dores articulares, osteoartrite, tendinites, bursites, contraturas musculares, lombalgia localizada, fibromialgia e inflamações dérmicas."
   },
 
   // =========================================================================
-  // 9. SUPOSITÓRIOS SOUCANNABIS (VIA RETAL / VAGINAL)
+  // 9. SUPOSITÓRIO SOUCANNABIS (100 mg/ml, 10% — 20 E 60 UNIDADES)
   // =========================================================================
   {
-    name: "Supositórios SouCannabis THC:CBD 1:1 — 30 mg (10 unidades)",
+    name: "Supositório Azul SouCannabis (THC:CBD 5:1) 100 mg/mL (10%) — 20 unidades",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Supositórios de Cannabis (Transmucosa Pélvica 1:1)",
-    colorLine: "Supositório",
-    ratio: "1:1 (THC:CBD)",
-    volumeOrWeight: "Caixa com 10 unidades",
-    extractConcentration: "30 mg de fitocanabinoides por supositório",
-    hplcStandardized: true,
-    priceBRL: 250.00,
-    activeIngredients: "Extrato padronizado de Cannabis 1:1 (THC:CBD) em base lipofílica carreadora (manteiga de cacau / ceras vegetais)",
-    concentration: "30 mg de fitocanabinoides por unidade (15 mg THC + 15 mg CBD)",
-    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Caixa com 10 unidades)",
-    quantity: "01 Caixa com 10 supositórios",
-    administrationRoute: "Via Retal ou Vaginal",
-    prescriptionExample: "Supositórios SouCannabis THC:CBD 1:1 — 30 mg, Caixa com 10 un. Inserir 01 supositório por via retal ou vaginal ao deitar em períodos de crise ou dor pélvica.",
-    usageInstructions: "• Inserção retal ou vaginal. Conservar preferencialmente em local fresco ou refrigerado para manter a consistência antes da aplicação.\n• Absorção transmucosa pélvica de alta biodisponibilidade sem primeira passagem hepática massiva.\n• Promove potente relaxamento neuromuscular pélvico e efeito analgésico duradouro.",
-    details: ["Caixa com 10 unidades", "Dose: 30 mg/un (15mg THC + 15mg CBD)", "Base Lipofílica Carreadora", "Via Retal / Vaginal", "Biodisponibilidade Pélvica Elevada", "SouCannabis Associação"],
-    description: "Supositórios formulados com base carreadora lipofílica de fusão corporal rápida para absorção transmucosa pélvica direta.",
-    indications: "Endometriose severa, dor pélvica crônica, dismenorreia refratária incapacitante, proctite ulcerativa, dor pós-cirúrgica ginecológica e espasmos retais."
-  },
-  {
-    name: "Supositórios SouCannabis THC:CBD 1:1 — 50 mg (10 unidades)",
-    manufacturer: "SouCannabis",
-    origin: "Nacional",
-    type: "Supositórios de Cannabis (Transmucosa Pélvica 1:1)",
-    colorLine: "Supositório",
-    ratio: "1:1 (THC:CBD)",
-    volumeOrWeight: "Caixa com 10 unidades",
-    extractConcentration: "50 mg de fitocanabinoides por supositório",
-    hplcStandardized: true,
-    priceBRL: 360.00,
-    activeIngredients: "Extrato padronizado de Cannabis 1:1 (THC:CBD) em base lipofílica carreadora",
-    concentration: "50 mg de fitocanabinoides por unidade (25 mg THC + 25 mg CBD)",
-    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Caixa com 10 unidades)",
-    quantity: "01 Caixa com 10 supositórios",
-    administrationRoute: "Via Retal ou Vaginal",
-    prescriptionExample: "Supositórios SouCannabis THC:CBD 1:1 — 50 mg, Caixa com 10 un. Inserir 01 supositório por via retal ou vaginal à noite conforme necessidade clínica.",
-    usageInstructions: "• Alta concentração pélvica (50 mg por unidade). Manter refrigerado antes do uso para facilitar a aplicação.",
-    details: ["Caixa com 10 unidades", "Dose Alta: 50 mg/un (25mg THC + 25mg CBD)", "Base Lipofílica", "Ação Pélvica Intensa"],
-    description: "Supositórios SouCannabis alta dose 50 mg na proporção equilibrada 1:1.",
-    indications: "Endometriose profunda infiltrativa, dor oncológica pélvica, neuralgia pudenda e proctite grave."
-  },
-  {
-    name: "Supositórios SouCannabis Azul THC 5:1 — 30 mg (10 unidades)",
-    manufacturer: "SouCannabis",
-    origin: "Nacional",
-    type: "Supositórios de Cannabis (Predomínio de THC 5:1)",
+    type: "Supositório de Cannabis (THC:CBD 5:1 — 100 mg/mL, 10%)",
     colorLine: "Supositório",
     ratio: "5:1 (THC:CBD)",
-    volumeOrWeight: "Caixa com 10 unidades",
-    extractConcentration: "30 mg de fitocanabinoides por supositório (~25 mg THC + 5 mg CBD)",
+    volumeOrWeight: "20 unidades",
+    extractConcentration: "100 mg/mL (10%)",
     hplcStandardized: true,
-    priceBRL: 250.00,
-    activeIngredients: "Extrato padronizado de Cannabis rico em THC (5:1) em base carreadora lipofílica",
-    concentration: "30 mg de fitocanabinoides por unidade (~25 mg THC + 5 mg CBD)",
-    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Caixa com 10 unidades)",
-    quantity: "01 Caixa com 10 supositórios",
+    priceBRL: 280.00,
+    activeIngredients: "Extrato padronizado de Cannabis THC:CBD 5:1 (100 mg/mL, 10%) em base lipofílica carreadora",
+    concentration: "100 mg/mL (10%) • Proporção THC:CBD 5:1",
+    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Embalagem com 20 unidades)",
+    quantity: "01 Embalagem com 20 unidades",
     administrationRoute: "Via Retal ou Vaginal",
-    prescriptionExample: "Supositórios SouCannabis Azul THC 5:1 — 30 mg, Caixa com 10 un. Inserir 01 unidade ao deitar em episódios de dor intensa.",
-    usageInstructions: "• Absorção pélvica direta com predominância de THC para potente ação miorrelaxante e antiespasmódica.",
-    details: ["Caixa com 10 unidades", "Dose: 30 mg/un (THC 5:1)", "Base Lipofílica", "Ação Antiespasmódica"],
-    description: "Supositórios SouCannabis formulação azul rica em THC (5:1). Ação antiespasmódica e analgésica acentuada.",
-    indications: "Espasmos esfincterianos graves, dor pélvica espasmódica, endometriose e tenesmo retal doloroso."
+    prescriptionExample: "Supositório Azul SouCannabis (5:1) 100 mg/mL (10%), 20 unidades. Inserir 01 supositório por via retal ou vaginal ao deitar conforme orientação médica.",
+    usageInstructions: "• Inserção retal ou vaginal. Conservar em local fresco ou refrigerado.\n• Absorção transmucosa pélvica de alta biodisponibilidade com potente ação miorrelaxante e analgésica.",
+    details: ["20 unidades", "Concentração 100 mg/mL (10%)", "Proporção 5:1 (THC:CBD)", "R$ 280,00", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Supositório Azul SouCannabis (THC:CBD 5:1) na concentração de 100 mg/mL (10%), embalagem com 20 unidades.",
+    indications: "Endometriose severa, dor pélvica crônica, dismenorreia refratária, espasmos pélvicos e dor oncológica pélvica."
   },
   {
-    name: "Supositórios SouCannabis Azul THC 5:1 — 50 mg (10 unidades)",
+    name: "Supositório Azul SouCannabis (THC:CBD 5:1) 100 mg/mL (10%) — 60 unidades",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Supositórios de Cannabis (Predomínio de THC 5:1)",
+    type: "Supositório de Cannabis (THC:CBD 5:1 — 100 mg/mL, 10%)",
     colorLine: "Supositório",
     ratio: "5:1 (THC:CBD)",
-    volumeOrWeight: "Caixa com 10 unidades",
-    extractConcentration: "50 mg de fitocanabinoides por supositório (~41,6 mg THC + 8,4 mg CBD)",
+    volumeOrWeight: "60 unidades",
+    extractConcentration: "100 mg/mL (10%)",
     hplcStandardized: true,
-    priceBRL: 360.00,
-    activeIngredients: "Extrato padronizado de Cannabis rico em THC (5:1) em base lipofílica",
-    concentration: "50 mg de fitocanabinoides por unidade (~41,6 mg THC + 8,4 mg CBD)",
-    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Caixa com 10 unidades)",
-    quantity: "01 Caixa com 10 supositórios",
+    priceBRL: 555.00,
+    activeIngredients: "Extrato padronizado de Cannabis THC:CBD 5:1 (100 mg/mL, 10%) em base lipofílica carreadora",
+    concentration: "100 mg/mL (10%) • Proporção THC:CBD 5:1",
+    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Embalagem com 60 unidades)",
+    quantity: "01 Embalagem com 60 unidades",
     administrationRoute: "Via Retal ou Vaginal",
-    prescriptionExample: "Supositórios SouCannabis Azul THC 5:1 — 50 mg, Caixa com 10 un. Inserir 01 unidade à noite conforme orientação médica.",
-    usageInstructions: "• Alta potência antiespasmódica pélvica. Seguir prescrição médica.",
-    details: ["Caixa com 10 unidades", "Dose Alta: 50 mg/un (THC 5:1)", "Base Lipofílica", "Potente Miorrelaxante"],
-    description: "Supositórios SouCannabis formulação azul 50 mg de alta densidade fitocanabinoide.",
-    indications: "Dor oncológica retal/pélvica, neuralgia pudenda refratária e espasmos pélvicos severos."
+    prescriptionExample: "Supositório Azul SouCannabis (5:1) 100 mg/mL (10%), 60 unidades. Inserir 01 unidade à noite conforme orientação médica.",
+    usageInstructions: "• Tratamento contínuo com 60 unidades. Conservar refrigerado antes do uso.",
+    details: ["60 unidades", "Concentração 100 mg/mL (10%)", "Proporção 5:1 (THC:CBD)", "R$ 555,00", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Supositório Azul SouCannabis (THC:CBD 5:1) 100 mg/mL (10%), embalagem econômica com 60 unidades.",
+    indications: "Endometriose profunda infiltrativa, dor oncológica pélvica, neuralgia pudenda e espasmos pélvicos severos."
+  },
+  {
+    name: "Supositório Laranja SouCannabis (THC:CBD 1:10) 100 mg/mL (10%) — 20 unidades",
+    manufacturer: "SouCannabis",
+    origin: "Nacional",
+    type: "Supositório de Cannabis (THC:CBD 1:10 — 100 mg/mL, 10%)",
+    colorLine: "Supositório",
+    ratio: "1:10 (THC:CBD)",
+    volumeOrWeight: "20 unidades",
+    extractConcentration: "100 mg/mL (10%)",
+    hplcStandardized: true,
+    priceBRL: 240.00,
+    activeIngredients: "Extrato padronizado de Cannabis THC:CBD 1:10 (predominante em CBD — 100 mg/mL, 10%) em base lipofílica",
+    concentration: "100 mg/mL (10%) • Proporção THC:CBD 1:10",
+    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Embalagem com 20 unidades)",
+    quantity: "01 Embalagem com 20 unidades",
+    administrationRoute: "Via Retal ou Vaginal",
+    prescriptionExample: "Supositório Laranja SouCannabis (1:10) 100 mg/mL (10%), 20 unidades. Inserir 01 unidade por via retal ou vaginal conforme prescrição médica.",
+    usageInstructions: "• Predominância de CBD (1:10) com potente ação anti-inflamatória pélvica e visceral sem efeitos psicoativos centrais.",
+    details: ["20 unidades", "Concentração 100 mg/mL (10%)", "Proporção 1:10 (THC:CBD)", "R$ 240,00", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Supositório Laranja SouCannabis (THC:CBD 1:10) na concentração de 100 mg/mL (10%), embalagem com 20 unidades.",
+    indications: "Doenças inflamatórias pélvicas e intestinais (proctite, retocolite), endometriose, dismenorreia e dor pélvica inflamatória."
+  },
+  {
+    name: "Supositório Laranja SouCannabis (THC:CBD 1:10) 100 mg/mL (10%) — 60 unidades",
+    manufacturer: "SouCannabis",
+    origin: "Nacional",
+    type: "Supositório de Cannabis (THC:CBD 1:10 — 100 mg/mL, 10%)",
+    colorLine: "Supositório",
+    ratio: "1:10 (THC:CBD)",
+    volumeOrWeight: "60 unidades",
+    extractConcentration: "100 mg/mL (10%)",
+    hplcStandardized: true,
+    priceBRL: 480.00,
+    activeIngredients: "Extrato padronizado de Cannabis THC:CBD 1:10 (predominante em CBD — 100 mg/mL, 10%) em base lipofílica",
+    concentration: "100 mg/mL (10%) • Proporção THC:CBD 1:10",
+    pharmaceuticalForm: "Supositórios Transmucosa Retal / Vaginal (Embalagem com 60 unidades)",
+    quantity: "01 Embalagem com 60 unidades",
+    administrationRoute: "Via Retal ou Vaginal",
+    prescriptionExample: "Supositório Laranja SouCannabis (1:10) 100 mg/mL (10%), 60 unidades. Inserir 01 unidade à noite conforme orientação médica.",
+    usageInstructions: "• Embalagem de 60 unidades para tratamento contínuo. Conservar em local fresco ou refrigerado.",
+    details: ["60 unidades", "Concentração 100 mg/mL (10%)", "Proporção 1:10 (THC:CBD)", "R$ 480,00", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Supositório Laranja SouCannabis (THC:CBD 1:10) 100 mg/mL (10%), embalagem com 60 unidades.",
+    indications: "Tratamento contínuo de endometriose, dor pélvica inflamatória, proctite ulcerativa e dismenorreia."
   },
 
   // =========================================================================
-  // 10. EXTRATOS CONCENTRADOS SOUCANNABIS (RESINA / PASTA FULL SPECTRUM)
+  // 10. EXTRATOS PUROS SOUCANNABIS (PEDIDO MÍNIMO DE 3 g)
   // =========================================================================
   {
-    name: "Extrato Concentrado SouCannabis 60% — Seringa 2 mL",
+    name: "Extrato Puro Rico em CBD SouCannabis (Valor por grama — Pedido mínimo 3 g)",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Extrato Concentrado / Pasta Full Spectrum (60% Canabinoides)",
+    type: "Extrato Puro Concentrado Rico em CBD",
     colorLine: "Extrato",
-    ratio: "Full Spectrum Concentrado",
-    volumeOrWeight: "Seringa dosadora de 2 mL",
-    extractConcentration: "60% de canabinoides totais (600 mg por mL)",
+    ratio: "Rico em CBD (Extrato Puro)",
+    volumeOrWeight: "1 g (Pedido mínimo de 3 g)",
+    extractConcentration: "Extrato Puro Concentrado Rico em CBD",
     hplcStandardized: true,
-    priceBRL: 320.00,
-    activeIngredients: "Extrato concentrado puro de Cannabis obtido sem solventes residuais (60% de fitocanabinoides totais)",
-    concentration: "60% de canabinoides totais (~1.200 mg de canabinoides na seringa de 2 mL)",
-    pharmaceuticalForm: "Pasta / Resina Oleosa Concentrada em Seringa Dosadora Graduada (2 mL)",
-    quantity: "01 Seringa Graduada de 2 mL",
-    administrationRoute: "Via Oral / Sublingual (Microdosagem por graduação)",
-    prescriptionExample: "Extrato Concentrado SouCannabis 60%, Seringa 2 mL. Administrar microdosagem equivalente ao tamanho de meio grão de arroz (0,05 mL) 2x ao dia sob a língua.",
-    usageInstructions: "• Altíssima concentração de fitocanabinoides (600 mg/mL). Não utilizar em gotas, mas por fração graduada da seringa (microdosagem de 0,05 a 0,1 mL).\n• Colocar sob a língua ou ingerir junto a uma refeição rica em gorduras saudáveis.\n• Indicado para condições refratárias que exigem alta densidade posológica sem sobrecarga de volume.",
-    details: ["Seringa Dosadora 2 mL", "Concentração 60% (600 mg/mL)", "Total: 1.200 mg canabinoides", "Extração Pura Sem Solventes", "HPLC", "SouCannabis Associação"],
-    description: "Extrato puro de alta concentração obtido por processos que preservam o perfil integral da planta (terpenos e fitocanabinoides). Indicado para condições clínicas severas.",
-    indications: "Epilepsia altamente refratária, dores oncológicas em cuidados paliativos, espasticidade severa da esclerose múltipla e condições neurodegenerativas avançadas."
+    priceBRL: 90.00,
+    activeIngredients: "Extrato puro concentrado de Cannabis sativa rico em Canabidiol (CBD)",
+    concentration: "Extrato Puro Rico em CBD (R$ 90,00 / grama • Pedido mínimo de 3 g)",
+    pharmaceuticalForm: "Extrato Puro Concentrado (Grama)",
+    quantity: "01 Grama (Pedido mínimo: 03 gramas)",
+    administrationRoute: "Via Oral / Sublingual (Microdosagem)",
+    prescriptionExample: "Extrato Puro Rico em CBD SouCannabis — 03 gramas (pedido mínimo). Administrar microdosagem equivalente a meio grão de arroz sob a língua 2x ao dia.",
+    usageInstructions: "• Valor unitário: R$ 90,00 por grama (Pedido mínimo de 3 g = R$ 270,00).\n• Frete grátis para todo o Brasil.",
+    details: ["R$ 90,00 por grama", "Pedido mínimo de 3 g (R$ 270,00)", "Extrato Puro Rico em CBD", "Frete Grátis Brasil", "HPLC", "SouCannabis Associação"],
+    description: "Extrato Puro Rico em CBD da SouCannabis Associação Terapêutica. Valor de R$ 90,00 por grama (pedido mínimo de 3 g).",
+    indications: "Epilepsia refratária, condições neurológicas severas, autismo (TEA) de alta demanda e processos inflamatórios graves."
   },
   {
-    name: "Extrato Concentrado SouCannabis 60% — Seringa 5 mL",
+    name: "Extrato Puro Rico em CBD SouCannabis — Kit 3 g (Pedido Mínimo)",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Extrato Concentrado / Pasta Full Spectrum (60% Canabinoides)",
+    type: "Extrato Puro Concentrado Rico em CBD",
     colorLine: "Extrato",
-    ratio: "Full Spectrum Concentrado",
-    volumeOrWeight: "Seringa dosadora de 5 mL",
-    extractConcentration: "60% de canabinoides totais (600 mg por mL)",
+    ratio: "Rico em CBD (Extrato Puro)",
+    volumeOrWeight: "3 g",
+    extractConcentration: "Extrato Puro Concentrado Rico em CBD",
     hplcStandardized: true,
-    priceBRL: 680.00,
-    activeIngredients: "Extrato concentrado puro de Cannabis (60% de fitocanabinoides totais)",
-    concentration: "60% de canabinoides totais (~3.000 mg de canabinoides na seringa de 5 mL)",
-    pharmaceuticalForm: "Pasta / Resina Oleosa Concentrada em Seringa Dosadora Graduada (5 mL)",
-    quantity: "01 Seringa Graduada de 5 mL",
-    administrationRoute: "Via Oral / Sublingual",
-    prescriptionExample: "Extrato Concentrado SouCannabis 60%, Seringa 5 mL. Administrar fração graduada conforme plano médico individualizado.",
-    usageInstructions: "• Alta densidade (600 mg/mL). Seringa de 5 mL com total de 3.000 mg de fitocanabinoides.",
-    details: ["Seringa Dosadora 5 mL", "Concentração 60% (600 mg/mL)", "Total: 3.000 mg canabinoides", "Seringa Graduada", "HPLC"],
-    description: "Extrato Concentrado SouCannabis 60% em seringa dosadora de 5 mL para tratamentos contínuos de alta exigência terapêutica.",
-    indications: "Cuidados paliativos oncológicos, epilepsias refratárias severas e espasticidade intensa."
+    priceBRL: 270.00,
+    activeIngredients: "Extrato puro concentrado de Cannabis sativa rico em Canabidiol (CBD)",
+    concentration: "Extrato Puro Rico em CBD — 3 gramas (R$ 90,00/g)",
+    pharmaceuticalForm: "Extrato Puro Concentrado (3 g)",
+    quantity: "03 Gramas (Pedido Mínimo)",
+    administrationRoute: "Via Oral / Sublingual (Microdosagem)",
+    prescriptionExample: "Extrato Puro Rico em CBD SouCannabis — 3 g. Administrar microdosagem sublingual conforme orientação médica.",
+    usageInstructions: "• Kit de 3 gramas (pedido mínimo: 3 x R$ 90,00 = R$ 270,00). Frete grátis para todo o Brasil.",
+    details: ["3 gramas (Pedido Mínimo)", "R$ 90,00/g (Total R$ 270,00)", "Extrato Puro Rico em CBD", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Pedido mínimo de 3 gramas do Extrato Puro Rico em CBD SouCannabis (R$ 90/g = R$ 270,00).",
+    indications: "Epilepsia altamente refratária, quadros neuroinflamatórios e cuidados intensivos com canabinoides."
   },
   {
-    name: "Extrato Concentrado SouCannabis 80% — Seringa 2 mL",
+    name: "Extrato Puro Rico em THC SouCannabis (Valor por grama — Pedido mínimo 3 g)",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Extrato Concentrado / Pasta Full Spectrum (80% Canabinoides)",
+    type: "Extrato Puro Concentrado Rico em THC",
     colorLine: "Extrato",
-    ratio: "Full Spectrum Concentrado Ultra Densidade",
-    volumeOrWeight: "Seringa dosadora de 2 mL",
-    extractConcentration: "80% de canabinoides totais (800 mg por mL)",
+    ratio: "Rico em THC (Extrato Puro)",
+    volumeOrWeight: "1 g (Pedido mínimo de 3 g)",
+    extractConcentration: "Extrato Puro Concentrado Rico em THC",
     hplcStandardized: true,
-    priceBRL: 420.00,
-    activeIngredients: "Extrato concentrado ultra puro de Cannabis (80% de fitocanabinoides totais)",
-    concentration: "80% de canabinoides totais (~1.600 mg de canabinoides na seringa de 2 mL)",
-    pharmaceuticalForm: "Pasta / Resina Oleosa Concentrada em Seringa Dosadora Graduada (2 mL)",
-    quantity: "01 Seringa Graduada de 2 mL",
-    administrationRoute: "Via Oral / Sublingual (Microdosagem por graduação)",
-    prescriptionExample: "Extrato Concentrado SouCannabis 80%, Seringa 2 mL. Administrar microdosagem estrita (0,025 a 0,05 mL) 2x ao dia conforme titulação rigorosa.",
-    usageInstructions: "• Máxima densidade fitocanabinoide: 800 mg por mL (80%).\n• Administrar microfrações com acompanhamento médico estrito.",
-    details: ["Seringa Dosadora 2 mL", "Concentração 80% (800 mg/mL)", "Total: 1.600 mg canabinoides", "Ultra Densidade", "HPLC"],
-    description: "Extrato Concentrado SouCannabis 80% de canabinoides totais em seringa de 2 mL.",
-    indications: "Condições oncológicas avançadas, dores intratáveis com refratariedade a opioides e epilepsias catastróficas."
+    priceBRL: 100.00,
+    activeIngredients: "Extrato puro concentrado de Cannabis sativa rico em Tetrahidrocanabinol (THC)",
+    concentration: "Extrato Puro Rico em THC (R$ 100,00 / grama • Pedido mínimo de 3 g)",
+    pharmaceuticalForm: "Extrato Puro Concentrado (Grama)",
+    quantity: "01 Grama (Pedido mínimo: 03 gramas)",
+    administrationRoute: "Via Oral / Sublingual (Microdosagem)",
+    prescriptionExample: "Extrato Puro Rico em THC SouCannabis — 03 gramas (pedido mínimo). Administrar microdosagem estrita sob orientação médica.",
+    usageInstructions: "• Valor unitário: R$ 100,00 por grama (Pedido mínimo de 3 g = R$ 300,00).\n• Frete grátis para todo o Brasil.",
+    details: ["R$ 100,00 por grama", "Pedido mínimo de 3 g (R$ 300,00)", "Extrato Puro Rico em THC", "Frete Grátis Brasil", "HPLC", "SouCannabis Associação"],
+    description: "Extrato Puro Rico em THC da SouCannabis Associação Terapêutica. Valor de R$ 100,00 por grama (pedido mínimo de 3 g).",
+    indications: "Dores oncológicas severas, cuidados paliativos, espasticidade grave refratária e insônia intratável."
   },
   {
-    name: "Extrato Concentrado SouCannabis 80% — Seringa 5 mL",
+    name: "Extrato Puro Rico em THC SouCannabis — Kit 3 g (Pedido Mínimo)",
     manufacturer: "SouCannabis",
     origin: "Nacional",
-    type: "Extrato Concentrado / Pasta Full Spectrum (80% Canabinoides)",
+    type: "Extrato Puro Concentrado Rico em THC",
     colorLine: "Extrato",
-    ratio: "Full Spectrum Concentrado Ultra Densidade",
-    volumeOrWeight: "Seringa dosadora de 5 mL",
-    extractConcentration: "80% de canabinoides totais (800 mg por mL)",
+    ratio: "Rico em THC (Extrato Puro)",
+    volumeOrWeight: "3 g",
+    extractConcentration: "Extrato Puro Concentrado Rico em THC",
     hplcStandardized: true,
-    priceBRL: 890.00,
-    activeIngredients: "Extrato concentrado ultra puro de Cannabis (80% de fitocanabinoides totais)",
-    concentration: "80% de canabinoides totais (~4.000 mg de canabinoides na seringa de 5 mL)",
-    pharmaceuticalForm: "Pasta / Resina Oleosa Concentrada em Seringa Dosadora Graduada (5 mL)",
-    quantity: "01 Seringa Graduada de 5 mL",
-    administrationRoute: "Via Oral / Sublingual",
-    prescriptionExample: "Extrato Concentrado SouCannabis 80%, Seringa 5 mL. Seguir estritamente o plano terapêutico médico.",
-    usageInstructions: "• Ultra densidade: 800 mg/mL. Seringa de 5 mL com rendimento de 4.000 mg de fitocanabinoides.",
-    details: ["Seringa Dosadora 5 mL", "Concentração 80% (800 mg/mL)", "Total: 4.000 mg canabinoides", "Alta Economia", "HPLC"],
-    description: "Extrato Concentrado SouCannabis 80% em seringa de 5 mL com 4.000 mg de fitocanabinoides totais.",
-    indications: "Condições oncológicas graves, dor intratável refratária e síndromes neurológicas severas."
+    priceBRL: 300.00,
+    activeIngredients: "Extrato puro concentrado de Cannabis sativa rico em Tetrahidrocanabinol (THC)",
+    concentration: "Extrato Puro Rico em THC — 3 gramas (R$ 100,00/g)",
+    pharmaceuticalForm: "Extrato Puro Concentrado (3 g)",
+    quantity: "03 Gramas (Pedido Mínimo)",
+    administrationRoute: "Via Oral / Sublingual (Microdosagem)",
+    prescriptionExample: "Extrato Puro Rico em THC SouCannabis — 3 g. Administrar microdosagem conforme prescrição médica.",
+    usageInstructions: "• Kit de 3 gramas (pedido mínimo: 3 x R$ 100,00 = R$ 300,00). Frete grátis para todo o Brasil.",
+    details: ["3 gramas (Pedido Mínimo)", "R$ 100,00/g (Total R$ 300,00)", "Extrato Puro Rico em THC", "Frete Grátis Brasil", "SouCannabis Associação"],
+    description: "Pedido mínimo de 3 gramas do Extrato Puro Rico em THC SouCannabis (R$ 100/g = R$ 300,00).",
+    indications: "Dor oncológica intratável, cuidados paliativos avançados e espasticidade severa."
+  },
+
+  // =========================================================================
+  // 11. SEQUOIA — INFLORESCÊNCIAS IN NATURA
+  // =========================================================================
+  {
+    name: "Inflorescências in Natura Sequoia (1 g)",
+    manufacturer: "Sequoia",
+    origin: "Nacional",
+    type: "Inflorescências in Natura",
+    volumeOrWeight: "1 g",
+    extractConcentration: "Inflorescências in Natura Padronizadas",
+    priceBRL: 65.00,
+    activeIngredients: "Inflorescências femininas secas in natura de Cannabis sativa L. (Sequoia)",
+    concentration: "Inflorescências in Natura (Valor por grama: R$ 65,00)",
+    pharmaceuticalForm: "Inflorescências Secas In Natura para Vaporização Medicinal",
+    quantity: "01 Grama",
+    administrationRoute: "Via Inalatória (Vaporização Medicinal sem Combustão)",
+    prescriptionExample: "Inflorescências in Natura Sequoia — Vaporizar 0,1 g em vaporizador medicinal calibrado (175°C a 190°C) em momentos de crise.",
+    usageInstructions: "• Valor por grama: R$ 65,00 (Disponível também em Pacote de 10 g por R$ 650,00).\n• Uso exclusivo por vaporização térmica controlada sem combustão.",
+    details: ["R$ 65,00 por grama", "Sequoia", "Inflorescências in Natura", "Via Inalatória (Vaporização)"],
+    description: "Inflorescências in Natura Sequoia (R$ 65,00 por grama). Indicadas para resgate terapêutico rápido via vaporizador medicinal.",
+    indications: "Resgate agudo de crises álgicas, crises de ansiedade/pânico, espasmos musculares e insônia aguda."
+  },
+  {
+    name: "Inflorescências in Natura Sequoia — Pacote de 10 g",
+    manufacturer: "Sequoia",
+    origin: "Nacional",
+    type: "Inflorescências in Natura (Pacote 10 g)",
+    volumeOrWeight: "Pacote de 10 g",
+    extractConcentration: "Inflorescências in Natura Padronizadas",
+    priceBRL: 650.00,
+    activeIngredients: "Inflorescências femininas secas in natura de Cannabis sativa L. (Sequoia)",
+    concentration: "Inflorescências in Natura — Pacote de 10 g (R$ 65,00/g)",
+    pharmaceuticalForm: "Inflorescências Secas In Natura para Vaporização Medicinal (Pacote 10 g)",
+    quantity: "01 Pacote de 10 g",
+    administrationRoute: "Via Inalatória (Vaporização Medicinal sem Combustão)",
+    prescriptionExample: "Inflorescências in Natura Sequoia — Pacote de 10 g. Vaporizar 0,1 g em vaporizador medicinal a 180°C conforme necessidade.",
+    usageInstructions: "• Pacote fechado de 10 g: R$ 650,00 (R$ 65,00/g).\n• Utilizar exclusivamente em vaporizador de ervas secas com controle de temperatura.",
+    details: ["Pacote de 10 g", "R$ 650,00 (R$ 65,00/g)", "Sequoia", "Inflorescências in Natura"],
+    description: "Pacote de 10 g de Inflorescências in Natura Sequoia (R$ 650,00).",
+    indications: "Tratamento contínuo de resgate inalatório para dor crônica, crises de ansiedade, enxaqueca e espasticidade."
   }
 ];
 
-export const SOUCANNABIS_AGENT_SYSTEM_PROMPT = `Você tem acesso integral ao CATÁLOGO OFICIAL DE PRODUTOS DA SOUCANNABIS (Associação Brasileira de Cannabis Medicinal).
+export const SOUCANNABIS_AGENT_SYSTEM_PROMPT = `Você tem acesso integral ao CATÁLOGO OFICIAL DE PRODUTOS DA SOUCANNABIS ASSOCIAÇÃO TERAPÊUTICA e SEQUOIA.
 
 INFORMAÇÕES INSTITUCIONAIS DA SOUCANNABIS:
 - Origem: Associação Nacional Brasileira (Nacional).
-- Controle Analítico: Análises laboratoriais por Cromatografia Líquida de Alta Eficiência (HPLC), participação de laboratórios universitários e disponibilização de laudos de matérias-primas lote a lote.
-- Veículo dos Óleos: Óleo MCT (Triglicerídeos de Cadeia Média do óleo de coco), de sabor e aroma suaves e alta estabilidade de absorção.
-- Calibração de Gotas dos Óleos: Média de 26 gotas por mL.
-- Referência das Concentrações: As concentrações percentuais (2%, 3%, 6%, 10%, 15% e 20%) referem-se ao peso do extrato por mL (20, 30, 60, 100, 150 e 200 mg/mL de extrato) e adotam como referência 60% de canabinoides majoritários em relação ao peso do extrato.
-- Disponibilidade de Frascos de Óleo: Todos os óleos estão disponíveis em frascos de 10 mL e 30 mL.
-- Preços: Publicados conforme tabela 2026 da associação.
+- Frete: Frete grátis para todo o Brasil.
+- Controle Analítico: Análises laboratoriais por Cromatografia Líquida de Alta Eficiência (HPLC), participação de laboratórios universitários e disponibilização de laudos lote a lote.
+- Veículo dos Óleos: Óleo MCT (Triglicerídeos de Cadeia Média do óleo de coco), média de 26 gotas por mL.
 
-LINHAS E FORMULAÇÕES SOUCANNABIS:
-1. ÓLEO AZUL (Predominância de THC — Proporção 5:1 THC:CBD):
-   - Concentrações: 2%, 3%, 6%, 10%, 15% e 20% em 10 mL e 30 mL.
-   - Composição por gota:
-     • 2%: 0,385 mg THC + 0,077 mg CBD
-     • 3%: 0,5775 mg THC + 0,116 mg CBD
-     • 6%: 1,155 mg THC + 0,231 mg CBD
-     • 10%: 1,925 mg THC + 0,385 mg CBD
-     • 15%: 2,888 mg THC + 0,578 mg CBD
-     • 20%: 3,850 mg THC + 0,770 mg CBD
-   - Preços 10 mL: 2% (R$ 120), 3% (R$ 135), 6% (R$ 200), 10% (R$ 280), 15% (R$ 375), 20% (R$ 480).
-   - Preços 30 mL: 2% (R$ 240), 3% (R$ 270), 6% (R$ 395), 10% (R$ 555), 15% (R$ 750), 20% (R$ 955).
-   - Indicações: Dor neuropática, insônia severa, espasticidade, apetite e cuidados paliativos.
+TABELA OFICIAL DE PREÇOS SOUCANNABIS ASSOCIAÇÃO TERAPÊUTICA (FRETE GRÁTIS PARA TODO O BRASIL):
+1. ÓLEO AZUL (THC:CBD 5:1) E ÓLEO LILÁS (THC:CBD 1:1) — Os dois têm os mesmos valores:
+   - 20 mg/ml (2%): 10 ml = R$ 120 | 30 ml = R$ 240
+   - 30 mg/ml (3%): 10 ml = R$ 135 | 30 ml = R$ 270
+   - 60 mg/ml (6%): 10 ml = R$ 200 | 30 ml = R$ 395
+   - 100 mg/ml (10%): 10 ml = R$ 280 | 30 ml = R$ 555
+   - 150 mg/ml (15%): 10 ml = R$ 375 | 30 ml = R$ 750
+   - 200 mg/ml (20%): 10 ml = R$ 480 | 30 ml = R$ 955
 
-2. ÓLEO LILÁS (Equilibrado — Proporção 1:1 THC:CBD):
-   - Concentrações: 2%, 3%, 6%, 10%, 15% e 20% em 10 mL e 30 mL.
-   - Composição por gota (quantidades equivalentes):
-     • 2%: 0,231 mg THC + 0,231 mg CBD
-     • 3%: 0,347 mg THC + 0,347 mg CBD
-     • 6%: 0,693 mg THC + 0,693 mg CBD
-     • 10%: 1,155 mg THC + 1,155 mg CBD
-     • 15%: 1,733 mg THC + 1,733 mg CBD
-     • 20%: 2,310 mg THC + 2,310 mg CBD
-   - Preços 10 mL: 2% (R$ 120), 3% (R$ 135), 6% (R$ 200), 10% (R$ 280), 15% (R$ 375), 20% (R$ 480).
-   - Preços 30 mL: 2% (R$ 240), 3% (R$ 270), 6% (R$ 395), 10% (R$ 555), 15% (R$ 750), 20% (R$ 955).
-   - Indicações: Fibromialgia, dores crônicas mistas, artrite, rigidez e sono reparador.
+2. ÓLEO ROSA (THC:CBD 1:5 / CBD:THC 5:1):
+   - 20 mg/ml (2%): 10 ml = R$ 110 | 30 ml = R$ 220
+   - 30 mg/ml (3%): 10 ml = R$ 130 | 30 ml = R$ 255
+   - 60 mg/ml (6%): 10 ml = R$ 185 | 30 ml = R$ 365
+   - 100 mg/ml (10%): 10 ml = R$ 250 | 30 ml = R$ 500
+   - 150 mg/ml (15%): 10 ml = R$ 355 | 30 ml = R$ 710
+   - 200 mg/ml (20%): 10 ml = R$ 440 | 30 ml = R$ 880
 
-3. ÓLEO ROSA (Predominância de CBD — Proporção 5:1 CBD:THC):
-   - Concentrações: 2%, 3%, 6%, 10%, 15% e 20% em 10 mL e 30 mL.
-   - Composição por gota:
-     • 2%: 0,385 mg CBD + 0,077 mg THC
-     • 3%: 0,578 mg CBD + 0,116 mg THC
-     • 6%: 1,155 mg CBD + 0,231 mg THC
-     • 10%: 1,925 mg CBD + 0,385 mg THC
-     • 15%: 2,888 mg CBD + 0,578 mg THC
-     • 20%: 3,850 mg CBD + 0,770 mg THC
-   - Preços 10 mL: 2% (R$ 110), 3% (R$ 130), 6% (R$ 185), 10% (R$ 250), 15% (R$ 355), 20% (R$ 440).
-   - Preços 30 mL: 2% (R$ 220), 3% (R$ 255), 6% (R$ 365), 10% (R$ 500), 15% (R$ 710), 20% (R$ 880).
-   - Indicações: Ansiedade, TEA (autismo), estresse, inflamação e neuroproteção.
+3. ÓLEO LARANJA (THC:CBD 1:10) E ÓLEO BRANCO (CBD, sem THC) — Os dois têm os mesmos valores:
+   - 20 mg/ml (2%): 10 ml = R$ 105 | 30 ml = R$ 210
+   - 30 mg/ml (3%): 10 ml = R$ 120 | 30 ml = R$ 240
+   - 60 mg/ml (6%): 10 ml = R$ 165 | 30 ml = R$ 325
+   - 100 mg/ml (10%): 10 ml = R$ 240 | 30 ml = R$ 480
+   - 150 mg/ml (15%): 10 ml = R$ 295 | 30 ml = R$ 590
+   - 200 mg/ml (20%): 10 ml = R$ 385 | 30 ml = R$ 770
 
-4. ÓLEO LARANJA (Predominância de CBD — Proporção Nominal 1:10 THC:CBD):
-   - Concentrações: 2%, 3%, 6%, 10%, 15% e 20% em 10 mL e 30 mL.
-   - Composição por gota:
-     • 2%: 0,424 mg CBD + 0,039 mg THC
-     • 3%: 0,635 mg CBD + 0,058 mg THC
-     • 6%: 1,271 mg CBD + 0,116 mg THC
-     • 10%: 2,118 mg CBD + 0,193 mg THC
-     • 15%: 3,176 mg CBD + 0,289 mg THC
-     • 20%: 4,235 mg CBD + 0,385 mg THC
-   - Preços 10 mL: 2% (R$ 105), 3% (R$ 120), 6% (R$ 165), 10% (R$ 240), 15% (R$ 295), 20% (R$ 385).
-   - Preços 30 mL: 2% (R$ 210), 3% (R$ 240), 6% (R$ 325), 10% (R$ 480), 15% (R$ 590), 20% (R$ 770).
-   - Importante: Contém traços de THC (não confundir com formulação sem THC).
+4. SPRAY NASAL (60 mg/ml, 6%):
+   - Spray Nasal Azul (5:1): 10 ml = R$ 200 | 30 ml = R$ 395
+   - Spray Nasal Laranja (1:10): 10 ml = R$ 165 | 30 ml = R$ 325
 
-5. ÓLEO BRANCO (Broad Spectrum sem THC Declarado — 0 mg THC):
-   - Concentrações: 2%, 3%, 6%, 10%, 15% e 20% em 10 mL e 30 mL.
-   - Composição por gota: 0 mg THC declarado em todas as concentrações.
-     • 2%: 0,462 mg CBD
-     • 3%: 0,693 mg CBD
-     • 6%: 1,386 mg CBD
-     • 10%: 2,310 mg CBD
-     • 15%: 3,465 mg CBD
-     • 20%: 4,620 mg CBD
-   - Preços 10 mL: 2% (R$ 105), 3% (R$ 120), 6% (R$ 165), 10% (R$ 240), 15% (R$ 295), 20% (R$ 385).
-   - Preços 30 mL: 2% (R$ 210), 3% (R$ 240), 6% (R$ 325), 10% (R$ 480), 15% (R$ 590), 20% (R$ 770).
-   - Indicações: Pacientes sensíveis a THC, atletas e profissionais sob exames toxicológicos.
+5. LUBRIFICANTE ÍNTIMO (THC:CBD 1:1):
+   - 60 mg/ml (6%): 10 ml = R$ 200 | 30 ml = R$ 395
+   - 100 mg/ml (10%): 10 ml = R$ 280 | 30 ml = R$ 555
 
-6. SPRAYS NASAIS:
-   - Spray Nasal Azul (THC 5:1, 6% / 60 mg/mL): 10 mL (R$ 200) e 30 mL (R$ 395).
-   - Spray Nasal Laranja (CBD 1:10, 6% / 60 mg/mL): 10 mL (R$ 165) e 30 mL (R$ 325).
-   - Ação rápida por mucosa nasal para crises álgicas ou de pânico. Não se aplica cálculo de gotas.
+6. POMADA AZUL (THC:CBD 5:1):
+   - 30 mg/ml (3%): Frasco de 30 g = R$ 110
 
-7. LUBRIFICANTE ÍNTIMO (Proporção 1:1 THC:CBD):
-   - Concentrações de extrato de 6% e 10% em 10 mL e 30 mL.
-   - Preços 10 mL: 6% (R$ 200), 10% (R$ 280).
-   - Preços 30 mL: 6% (R$ 395), 10% (R$ 555).
-   - Indicações: Dispareunia, endometriose pélvica, vaginismo, vulvodinia e relaxamento pélvico.
+7. SUPOSITÓRIO (100 mg/ml, 10%):
+   - Supositório Azul (5:1): 20 unidades = R$ 280 | 60 unidades = R$ 555
+   - Supositório Laranja (1:10): 20 unidades = R$ 240 | 60 unidades = R$ 480
 
-8. POMADA TÓPICA SOUCANNABIS:
-   - Concentrações de 6% (60 mg/g) e 10% (100 mg/g) em 30g e 50g.
-   - Preços: 30g 6% (R$ 180), 30g 10% (R$ 260), 50g 6% (R$ 290), 50g 10% (R$ 420).
-   - Indicações: Dores articulares, osteoartrite, tendinites, contraturas musculares e lesões dérmicas.
+8. EXTRATOS PUROS (pedido mínimo de 3 g):
+   - Extrato Puro Rico em CBD: R$ 90 por grama (3 g = R$ 270)
+   - Extrato Puro Rico em THC: R$ 100 por grama (3 g = R$ 300)
 
-9. SUPOSITÓRIOS SOUCANNABIS (Via Retal / Vaginal):
-   - Proporção 1:1 (30 mg e 50 mg) e Azul THC 5:1 (30 mg e 50 mg), caixas com 10 unidades.
-   - Preços: 30 mg (R$ 250), 50 mg (R$ 360).
-   - Indicações: Endometriose, dor pélvica crônica, dismenorreia refratária e espasmos pélvicos.
-
-10. EXTRATOS CONCENTRADOS (Resina / Pasta em Seringa Dosadora):
-    - 60% e 80% de fitocanabinoides em seringas graduadas de 2 mL e 5 mL.
-    - Preços 60%: 2 mL (R$ 320), 5 mL (R$ 680).
-    - Preços 80%: 2 mL (R$ 420), 5 mL (R$ 890).
-    - Indicações: Condições severas, dor oncológica e epilepsia de difícil manejo.
+9. SEQUOIA — INFLORESCÊNCIAS IN NATURA:
+   - Inflorescências in Natura: R$ 65 por grama | Pacote de 10 g = R$ 650
 
 REGRA DE PRESCRIÇÃO E EMISSÃO DE RECEITA:
-Todos os produtos da SouCannabis são de Associação Nacional Brasileira (origem 'Nacional') e são emitidos exclusivamente na GUIA 1 (PRODUTOS NACIONAIS) da receita médica.`;
+Todos os produtos da SouCannabis e Sequoia são de Associação Nacional Brasileira (origem 'Nacional') e são emitidos exclusivamente na GUIA 1 (PRODUTOS NACIONAIS) da receita médica.`;
 
 export function formatSouCannabisStandardOutput(product: SouCannabisProduct): string {
   const lines = [

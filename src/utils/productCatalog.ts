@@ -96,7 +96,14 @@ export function mergeProductCatalogs(
     if (existingIdx === -1) {
       target.products.unshift({ ...prod });
     } else {
-      target.products[existingIdx] = { ...target.products[existingIdx], ...prod };
+      const existingProd = target.products[existingIdx];
+      const isBase = baseProductNames.has(cleanName);
+      target.products[existingIdx] = {
+        ...existingProd,
+        ...prod,
+        priceBRL: isBase && existingProd.priceBRL ? existingProd.priceBRL : (prod.priceBRL ?? existingProd.priceBRL),
+        priceUSD: isBase && existingProd.priceUSD ? existingProd.priceUSD : (prod.priceUSD ?? existingProd.priceUSD),
+      };
     }
   };
 
@@ -172,7 +179,7 @@ export function mergeProductCatalogs(
   // 3. Merge cloud Firestore categories
   mergeList(cloudCategories);
 
-  // 4. Guarantee all 20 Pangaia products and all SouCannabis products are fully present and enriched with all clinical properties
+  // 4. Guarantee all Pangaia products and all SouCannabis products are fully present and enriched with all clinical properties & official prices
   const pangaiaCat = categoryMap.get('pangaia_oficial');
   if (pangaiaCat) {
     const existingNames = new Set(pangaiaCat.products.map(p => (p.name || '').trim().toLowerCase()));
@@ -184,7 +191,12 @@ export function mergeProductCatalogs(
       } else {
         const pIdx = pangaiaCat.products.findIndex(p => (p.name || '').trim().toLowerCase() === bName);
         if (pIdx !== -1) {
-          pangaiaCat.products[pIdx] = { ...baseProd, ...pangaiaCat.products[pIdx] };
+          pangaiaCat.products[pIdx] = {
+            ...pangaiaCat.products[pIdx],
+            ...baseProd,
+            priceBRL: baseProd.priceBRL,
+            priceUSD: baseProd.priceUSD
+          };
         }
       }
     });
@@ -201,7 +213,12 @@ export function mergeProductCatalogs(
       } else {
         const pIdx = souCat.products.findIndex(p => (p.name || '').trim().toLowerCase() === bName);
         if (pIdx !== -1) {
-          souCat.products[pIdx] = { ...baseProd, ...souCat.products[pIdx] };
+          souCat.products[pIdx] = {
+            ...souCat.products[pIdx],
+            ...baseProd,
+            priceBRL: baseProd.priceBRL,
+            priceUSD: baseProd.priceUSD
+          };
         }
       }
     });

@@ -71,6 +71,7 @@ export function DashboardScreen() {
     inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue, 
     messages, subscribeToMessages, patientId, userPhone, userEmail, userCpf, userBirthDate, queue, subscribeToQueue 
   } = useStore();
+  const { pharmacyOrders } = useAdminStore();
   
   // Find current user's queue entry in Firestore
   const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
@@ -80,6 +81,21 @@ export function DashboardScreen() {
     (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase()) ||
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
+
+  // Check if admin approved a post-consultation pharmacy order for this patient
+  const myApprovedPharmacyOrder = pharmacyOrders.find(o => {
+    if (o.status !== 'approved' && o.status !== 'requested') return false;
+    if (currentUserId && o.patientId === currentUserId) return true;
+    const cleanEmail = (auth.currentUser?.email || userEmail || '').trim().toLowerCase();
+    if (cleanEmail && o.patientEmail && o.patientEmail.trim().toLowerCase() === cleanEmail) return true;
+    const cleanCpf = (userCpf || '').replace(/\D/g, '');
+    if (cleanCpf.length >= 11 && o.patientCpf && o.patientCpf.replace(/\D/g, '') === cleanCpf) return true;
+    const cleanPhone = (userPhone || '').replace(/\D/g, '');
+    if (cleanPhone.length >= 8 && o.patientPhone && o.patientPhone.replace(/\D/g, '') === cleanPhone) return true;
+    const cleanName = (userName || '').trim().toLowerCase();
+    if (cleanName && cleanName !== 'paciente' && o.patientName && o.patientName.trim().toLowerCase() === cleanName) return true;
+    return false;
+  });
 
   const hasPaidConsultation = !!(
     pagamento_consulta ||
@@ -182,8 +198,8 @@ export function DashboardScreen() {
     }
   }, [isWaitingInQueue, myQueueEntry?.status, isConsultationFinished]);
 
-  // Patient has actual prescription ONLY when consultation is finished and not actively waiting or in consultation
-  const hasActualPrescription = (hasPaidConsultation || isFinishedConsultation) && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
+  // Patient has actual prescription ONLY when consultation is finished and not actively waiting or in consultation, OR has an approved pharmacy order
+  const hasActualPrescription = !!myApprovedPharmacyOrder || ((hasPaidConsultation || isFinishedConsultation) && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
     isFinishedConsultation ||
     (myQueueEntry?.status === 'finished' && messages.some(m => 
       m.type === 'prescription' || 
@@ -191,7 +207,7 @@ export function DashboardScreen() {
       (m.type === 'product' && m.productData) ||
       (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
     ))
-  );
+  ));
 
   // Sync messages and user payment status if user is logged in
   useEffect(() => {
@@ -806,20 +822,25 @@ export function DashboardScreen() {
             {/* Pharmacy */}
             <button 
               onClick={() => {
-                if (!hasPaidConsultation && !hasActualPrescription) {
+                if (!hasPaidConsultation && !hasActualPrescription && !myApprovedPharmacyOrder) {
                   setSelectedOffer('basic');
                   navigate('/checkout');
                   return;
                 }
                 navigate('/pharmacy');
               }} 
-              className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer"
+              className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer relative"
             >
-              <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
-                <ShoppingCart className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
+              <div className={`w-full aspect-square rounded-[22px] bg-[#12121A] border flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden ${myApprovedPharmacyOrder?.status === 'approved' ? 'border-mecura-neon/60 shadow-[0_0_20px_rgba(166,255,0,0.2)]' : 'border-white/5'}`}>
+                <ShoppingCart className={`w-6 h-6 transition-colors relative z-10 ${myApprovedPharmacyOrder?.status === 'approved' ? 'text-mecura-neon' : 'text-[#8A8A9E] group-hover:text-mecura-neon'}`} />
                 <div className="absolute inset-0 bg-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                {myApprovedPharmacyOrder?.status === 'approved' && (
+                  <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-mecura-neon animate-ping" />
+                )}
               </div>
-              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Farmácia</span>
+              <span className={`text-[11px] font-medium transition-colors ${myApprovedPharmacyOrder?.status === 'approved' ? 'text-mecura-neon font-bold' : 'text-[#8A8A9E] group-hover:text-white'}`}>
+                Farmácia
+              </span>
             </button>
 
             {/* Protocol */}
@@ -855,6 +876,42 @@ export function DashboardScreen() {
               </button>
             )}
           </div>
+
+          {/* Card de Pedido Aprovado na Farmácia */}
+          {myApprovedPharmacyOrder && (
+            <motion.div
+              variants={itemVariants}
+              onClick={() => navigate('/pharmacy')}
+              className="mt-4 flex items-center justify-between rounded-2xl p-4 cursor-pointer transition-all bg-gradient-to-r from-[#142214] to-[#12161F] border border-mecura-neon/40 hover:border-mecura-neon shadow-[0_8px_25px_rgba(166,255,0,0.12)]"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-mecura-neon/20 border border-mecura-neon/40 flex items-center justify-center shrink-0">
+                  <Package className="w-5 h-5 text-mecura-neon" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-mecura-neon text-black text-[9px] font-black uppercase tracking-wider">
+                      {myApprovedPharmacyOrder.status === 'requested' ? 'Pedido Solicitado' : 'Pedido Liberado'}
+                    </span>
+                    <span className="text-[11px] text-gray-400 font-semibold">
+                      {myApprovedPharmacyOrder.items?.length || 0} {(myApprovedPharmacyOrder.items?.length || 0) === 1 ? 'medicamento' : 'medicamentos'}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-white mt-1">
+                    {myApprovedPharmacyOrder.status === 'requested'
+                      ? 'Ver meu pedido na Farmácia Mecura'
+                      : 'Seu pedido pós-consulta está pronto na Farmácia!'}
+                  </h4>
+                  <p className="text-[11px] text-gray-400">
+                    Toque para revisar seus medicamentos e solicitar pelo WhatsApp
+                  </p>
+                </div>
+              </div>
+              <div className="w-8 h-8 rounded-full bg-mecura-neon text-black flex items-center justify-center shrink-0">
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </motion.div>
+          )}
           
           {/* Botão de Nova Triagem ou Voltar para a Fila (bloqueia nova triagem enquanto houver atendimento aberto) */}
           <motion.div
