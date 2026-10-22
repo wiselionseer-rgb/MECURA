@@ -48,14 +48,15 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 export function PharmacyScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { messages, userName, userEmail, userBirthDate, userCpf, userPhone, patientId, exchangeRate, pagamento_consulta, isConsultationFinished } = useStore();
+  const { messages, userName, userEmail, userBirthDate, userCpf, userPhone, patientId, activeConsultationId, queue, exchangeRate, pagamento_consulta, isConsultationFinished, subscribeToMessages } = useStore();
   const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText, pharmacyOrders, updatePharmacyOrderStatus } = useAdminStore();
   
-  const currentUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
+  const currentUid = auth.currentUser?.uid || (patientId && patientId !== 'doctor' ? patientId : '') || activeConsultationId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
   const [directCloudOrder, setDirectCloudOrder] = useState<PharmacyPreparedOrder | null>(null);
 
   useEffect(() => {
     if (!currentUid) return;
+    const unsubMsgs = subscribeToMessages(currentUid);
     const unsubOrder = onSnapshot(doc(db, 'pharmacy_orders', `order_${currentUid}`), (snap) => {
       if (snap.exists()) {
         const data = snap.data() as PharmacyPreparedOrder;
@@ -75,10 +76,11 @@ export function PharmacyScreen() {
     }, () => {});
 
     return () => {
+      unsubMsgs();
       unsubOrder();
       unsubUser();
     };
-  }, [currentUid]);
+  }, [currentUid, subscribeToMessages]);
 
   // Match approved order for this patient by ID, email, CPF, phone, or name
   const approvedOrder = useMemo(() => {
@@ -105,11 +107,20 @@ export function PharmacyScreen() {
   }, [pharmacyOrders, directCloudOrder, currentUid, userEmail, userCpf, userPhone, userName]);
 
   const hasApprovedOrder = !!(approvedOrder && approvedOrder.items && approvedOrder.items.length > 0);
+  const myQueueEntry = useMemo(() => queue.find(p => currentUid && p.id === currentUid), [queue, currentUid]);
 
   const hasPaidConsultation = !!(
     pagamento_consulta || 
+    isConsultationFinished ||
     hasApprovedOrder ||
-    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
+    myQueueEntry?.status === 'finished' ||
+    myQueueEntry?.status === 'in-consultation' ||
+    myQueueEntry?.status === 'waiting' ||
+    messages.some(m => m.type === 'product' || m.type === 'prescription' || m.type === 'receita_previa') ||
+    (typeof window !== 'undefined' && (
+      localStorage.getItem('mecura_pagamento') === 'true' ||
+      localStorage.getItem('mecura_consultation_finished') === 'true'
+    ))
   );
 
   useEffect(() => {
@@ -154,9 +165,9 @@ export function PharmacyScreen() {
       });
     });
 
-    // 2. Check receita_previa messages
+    // 2. Check receita_previa or prescription messages with receitaPreviaData
     if (collectedProds.length === 0) {
-      const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
+      const previaMsg = messages.find(m => (m.type === 'receita_previa' || m.type === 'prescription') && m.receitaPreviaData?.items?.length);
       if (previaMsg?.receitaPreviaData?.items) {
         previaMsg.receitaPreviaData.items.forEach((it, idx) => {
           collectedProds.push({

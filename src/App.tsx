@@ -43,12 +43,22 @@ export default function App() {
 
   useEffect(() => {
     let unsubscribeUserDoc: (() => void) | null = null;
+    let unsubscribeQueueDoc: (() => void) | null = null;
+    let unsubscribeMessagesDoc: (() => void) | null = null;
 
     // Auto-subscribe to background notifications and real-time user doc updates
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (unsubscribeUserDoc) {
         unsubscribeUserDoc();
         unsubscribeUserDoc = null;
+      }
+      if (unsubscribeQueueDoc) {
+        unsubscribeQueueDoc();
+        unsubscribeQueueDoc = null;
+      }
+      if (unsubscribeMessagesDoc) {
+        unsubscribeMessagesDoc();
+        unsubscribeMessagesDoc = null;
       }
 
       if (user) {
@@ -82,6 +92,104 @@ export default function App() {
           }
         }
 
+        // Subscribe to this patient's consultation messages so documents/prescriptions are always available
+        try {
+          unsubscribeMessagesDoc = useStore.getState().subscribeToMessages(user.uid);
+        } catch (e) {
+          // ignore
+        }
+
+        // Verify payment status with backend (catches Pix/Card payments approved while app was closed)
+        try {
+          fetch('/api/verify-patient-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: user.uid, email: user.email || '' })
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(vData => {
+              if (vData && vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+                const isCalling = vData.status === 'in-consultation';
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_patientId', user.uid);
+                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.removeItem('mecura_consultation_finished');
+                  if (isCalling) localStorage.setItem('mecura_consultation_active', 'true');
+                }
+                useStore.setState({
+                  patientId: user.uid,
+                  activeConsultationId: user.uid,
+                  pagamento_consulta: true,
+                  inQueue: !isCalling,
+                  consultationActive: isCalling,
+                  isConsultationFinished: false
+                });
+              } else if (vData && vData.status === 'finished') {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_consultation_finished', 'true');
+                }
+                useStore.setState({
+                  patientId: user.uid,
+                  activeConsultationId: user.uid,
+                  isConsultationFinished: true
+                });
+              }
+            })
+            .catch(() => {});
+        } catch (e) {
+          // ignore
+        }
+
+        let currentQueueDocStatus: string | null = null;
+        try {
+          unsubscribeQueueDoc = onSnapshot(doc(db, 'queue', user.uid), (qSnap) => {
+            if (qSnap.exists()) {
+              const qData = qSnap.data();
+              currentQueueDocStatus = qData.status || null;
+              if (qData.status === 'in-consultation') {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.setItem('mecura_consultation_active', 'true');
+                  localStorage.removeItem('mecura_consultation_finished');
+                }
+                useStore.setState({
+                  consultationActive: true,
+                  inQueue: false,
+                  isConsultationFinished: false,
+                  activeConsultationId: user.uid,
+                  pagamento_consulta: true
+                });
+              } else if (qData.status === 'waiting') {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_pagamento', 'true');
+                  localStorage.removeItem('mecura_consultation_active');
+                  localStorage.removeItem('mecura_consultation_finished');
+                }
+                useStore.setState({
+                  inQueue: true,
+                  consultationActive: false,
+                  isConsultationFinished: false,
+                  activeConsultationId: user.uid,
+                  pagamento_consulta: true
+                });
+              } else if (qData.status === 'finished') {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_consultation_finished', 'true');
+                  localStorage.removeItem('mecura_consultation_active');
+                }
+                useStore.setState({
+                  isConsultationFinished: true,
+                  consultationActive: false,
+                  inQueue: false,
+                  activeConsultationId: user.uid
+                });
+              }
+            }
+          });
+        } catch (err) {
+          console.warn("Could not subscribe to queue document:", err);
+        }
+
         // Real-time synchronization of user doc to detect payment status & consultation release
         try {
           unsubscribeUserDoc = onSnapshot(doc(db, 'users', user.uid), (snap) => {
@@ -105,9 +213,10 @@ export default function App() {
 
               const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
               const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+              const isQueueActive = currentQueueDocStatus === 'waiting' || currentQueueDocStatus === 'in-consultation';
 
-              const isAwaitingNewPayment = !isRecentlyApproved && (uData.consultationStatus === 'awaiting_payment' || uData.consultationStatus === 'not_started');
-              const hasActualPayment = isRecentlyApproved || (!isAwaitingNewPayment && !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true));
+              const isAwaitingNewPayment = !isRecentlyApproved && !isQueueActive && (uData.consultationStatus === 'awaiting_payment' || uData.consultationStatus === 'not_started');
+              const hasActualPayment = isRecentlyApproved || isQueueActive || (!isAwaitingNewPayment && !!(uData.pagamento_consulta === true || uData.bypassedPayment === true || uData.hasPaid === true || uData.isPaid === true));
 
               if (hasActualPayment) {
                 useStore.getState().setPagamentoConsulta(true);
@@ -128,7 +237,7 @@ export default function App() {
                 if (typeof window !== 'undefined') localStorage.removeItem('mecura_premium');
               }
 
-              if (hasActualPayment && (uData.consultationStatus === 'in-consultation' || uData.doctorActive === true)) {
+              if (hasActualPayment && (uData.consultationStatus === 'in-consultation' || uData.doctorActive === true || currentQueueDocStatus === 'in-consultation')) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.setItem('mecura_consultation_active', 'true');
@@ -140,7 +249,7 @@ export default function App() {
                   activeConsultationId: user.uid, 
                   pagamento_consulta: true 
                 });
-              } else if (hasActualPayment && (uData.consultationStatus === 'waiting' || uData.inQueue || isRecentlyApproved)) {
+              } else if (hasActualPayment && (uData.consultationStatus === 'waiting' || uData.inQueue || isRecentlyApproved || currentQueueDocStatus === 'waiting')) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                   localStorage.removeItem('mecura_consultation_active');
@@ -153,7 +262,7 @@ export default function App() {
                   activeConsultationId: user.uid,
                   pagamento_consulta: true 
                 });
-              } else if (!isAwaitingNewPayment && !isRecentlyApproved && (uData.consultationStatus === 'finished' || uData.isConsultationFinished === true)) {
+              } else if (!isAwaitingNewPayment && !isRecentlyApproved && (uData.consultationStatus === 'finished' || uData.isConsultationFinished === true || currentQueueDocStatus === 'finished')) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_consultation_finished', 'true');
                   localStorage.removeItem('mecura_consultation_active');
@@ -168,12 +277,10 @@ export default function App() {
                 if (typeof window !== 'undefined') {
                   localStorage.removeItem('mecura_pagamento');
                   localStorage.removeItem('mecura_consultation_active');
-                  localStorage.removeItem('mecura_consultation_finished');
                 }
                 useStore.setState({
                   inQueue: false,
                   consultationActive: false,
-                  isConsultationFinished: false,
                   pagamento_consulta: false
                 });
               }
@@ -191,6 +298,8 @@ export default function App() {
     const unsubscribeBlockedDates = subscribeToBlockedDates();
     return () => {
       if (unsubscribeUserDoc) unsubscribeUserDoc();
+      if (unsubscribeQueueDoc) unsubscribeQueueDoc();
+      if (unsubscribeMessagesDoc) unsubscribeMessagesDoc();
       unsubscribeQueue();
       unsubscribeExchange();
       unsubscribeAppointments();

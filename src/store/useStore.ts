@@ -475,30 +475,45 @@ export const useStore = create<AppState>((set, get) => ({
   queue: [],
   joinQueue: async (patient) => {
     const state = get();
-    const currentUserId = auth.currentUser?.uid || state.patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || `anon_${Date.now()}`;
+    const patientObj: Record<string, any> = typeof patient === 'string' ? { id: patient } : ((patient as any) || {});
+    const currentUserId = patientObj.id || auth.currentUser?.uid || state.patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || `anon_${Date.now()}`;
     const targetUid = auth.currentUser?.uid || currentUserId;
 
-    // Strictly verify payment: must have payment confirmed in user document or verified payment payload
+    // Strictly verify payment: must have payment confirmed in user document, queue document, or verified payment payload
     let isDocPaid = false;
+    let isAlreadyInActiveQueue = false;
+    let existingQueueStatus: string | null = null;
     let uData: any = null;
-    let resolvedPatientName = (patient?.patientName || state.userName || '').trim();
+    let resolvedPatientName = (patientObj.patientName || patientObj.name || state.userName || '').trim();
     if (resolvedPatientName.toLowerCase() === 'paciente') resolvedPatientName = '';
     
-    let resolvedEmail = patient?.email || state.userEmail || auth.currentUser?.email || '';
+    let resolvedEmail = patientObj.email || state.userEmail || auth.currentUser?.email || '';
     if (resolvedEmail.includes('sem-email')) resolvedEmail = '';
     
-    let resolvedPhone = (patient as any)?.phone || state.userPhone || state.answers?.phone || '';
-    let resolvedCpf = (patient as any)?.cpf || state.userCpf || state.answers?.cpf || '';
-    let resolvedBirthDate = (patient as any)?.birthDate || state.userBirthDate || state.answers?.birthDate || '';
+    let resolvedPhone = patientObj.phone || state.userPhone || state.answers?.phone || '';
+    let resolvedCpf = patientObj.cpf || state.userCpf || state.answers?.cpf || '';
+    let resolvedBirthDate = patientObj.birthDate || state.userBirthDate || state.answers?.birthDate || '';
     let resolvedAnswers = {
       ...state.answers,
-      ...((patient as any)?.answers || {})
+      ...(patientObj.answers || {})
     };
 
     try {
       if (targetUid) {
-        const userDoc = await getDoc(doc(db, 'users', targetUid));
-        if (userDoc.exists()) {
+        const [userDoc, queueDoc] = await Promise.all([
+          getDoc(doc(db, 'users', targetUid)).catch(() => null),
+          getDoc(doc(db, 'queue', targetUid)).catch(() => null)
+        ]);
+
+        if (queueDoc && queueDoc.exists()) {
+          const qData = queueDoc.data();
+          if (qData.status === 'waiting' || qData.status === 'in-consultation') {
+            isAlreadyInActiveQueue = true;
+            existingQueueStatus = qData.status;
+          }
+        }
+
+        if (userDoc && userDoc.exists()) {
           uData = userDoc.data();
           const isAwaitingOrFinished = (
             uData.consultationStatus === 'awaiting_payment' ||
@@ -507,12 +522,13 @@ export const useStore = create<AppState>((set, get) => ({
             uData.isConsultationFinished === true
           );
           isDocPaid = !!(
-            !isAwaitingOrFinished && (
+            isAlreadyInActiveQueue ||
+            (!isAwaitingOrFinished && (
               uData.pagamento_consulta === true || 
               uData.hasPaid === true || 
               uData.isPaid === true || 
               uData.bypassedPayment === true
-            )
+            ))
           );
 
           if (uData.name && typeof uData.name === 'string' && uData.name.trim().toLowerCase() !== 'paciente') {
@@ -547,18 +563,18 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
-    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 300000;
 
     const isExplicitFreshPayment = !!(
       isRecentlyApproved ||
-      (patient as any)?.freshPayment === true ||
-      (patient as any)?.pagamento_consulta === true ||
-      (patient as any)?.hasPaid === true ||
-      (patient as any)?.isPaid === true
+      patientObj.freshPayment === true ||
+      patientObj.pagamento_consulta === true ||
+      patientObj.hasPaid === true ||
+      patientObj.isPaid === true
     );
 
     const isAwaitingNewPaymentInDoc = !!(
-      !isExplicitFreshPayment && uData && (
+      !isExplicitFreshPayment && !isAlreadyInActiveQueue && uData && (
         uData.consultationStatus === 'awaiting_payment' ||
         uData.consultationStatus === 'not_started' ||
         uData.consultationStatus === 'finished' ||
@@ -568,6 +584,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     const hasVerifiedPayment = !!(
       isExplicitFreshPayment ||
+      isAlreadyInActiveQueue ||
       isDocPaid ||
       (!isAwaitingNewPaymentInDoc && (
         state.pagamento_consulta === true ||
@@ -606,15 +623,15 @@ export const useStore = create<AppState>((set, get) => ({
     
     // Resolve the paid plan strictly in priority order (explicit patient plan > store selectedOffer > localStorage last_offer > active Firestore doc)
     const validPlans = ['basic', 'premium', 'complete', 'psychologist'];
-    const explicitPatientPlan = (patient as any)?.plan || (patient as any)?.selectedOffer;
+    const explicitPatientPlan = patientObj.plan || patientObj.selectedOffer;
     const localOffer = typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null;
     const docPlan = !isAwaitingNewPaymentInDoc ? (uData?.plan || uData?.selectedOffer) : null;
 
     let resolvedPlan: 'basic' | 'premium' | 'complete' | 'psychologist' = 'basic';
     if (explicitPatientPlan && validPlans.includes(explicitPatientPlan)) {
       resolvedPlan = explicitPatientPlan as any;
-    } else if ((patient as any)?.isPremium !== undefined) {
-      resolvedPlan = (patient as any).isPremium ? 'premium' : 'basic';
+    } else if (patientObj.isPremium !== undefined) {
+      resolvedPlan = patientObj.isPremium ? 'premium' : 'basic';
     } else if (state.selectedOffer && validPlans.includes(state.selectedOffer)) {
       resolvedPlan = state.selectedOffer;
     } else if (localOffer && validPlans.includes(localOffer)) {
@@ -648,11 +665,12 @@ export const useStore = create<AppState>((set, get) => ({
     const finalPatientName = resolvedPatientName;
 
     const isPsychologistConsultation = !!(
-      (patient as any)?.queueType === 'psychologist' ||
+      patientObj.queueType === 'psychologist' ||
       resolvedPlan === 'psychologist'
     );
 
-    const resolvedQueueType = (patient as any)?.queueType || (isPsychologistConsultation ? 'psychologist' : 'doctor');
+    const resolvedQueueType = patientObj.queueType || (isPsychologistConsultation ? 'psychologist' : 'doctor');
+    const resolvedStatus = existingQueueStatus === 'in-consultation' ? 'in-consultation' : 'waiting';
 
     let newPatient = { 
       id: currentUserId, 
@@ -673,7 +691,7 @@ export const useStore = create<AppState>((set, get) => ({
         cpf: resolvedCpf,
         phone: resolvedPhone
       },
-      ...(patient || {}),
+      ...patientObj,
       // Ensure real name and resolved plan are never overwritten by stale values
       ...(finalPatientName !== 'Paciente' ? { patientName: finalPatientName, name: finalPatientName } : {}),
       pagamento_premium: isPremium
@@ -689,8 +707,11 @@ export const useStore = create<AppState>((set, get) => ({
       tier: isPremium ? 'Premium' : 'basic',
       queueType: resolvedQueueType,
       joinedAt: new Date().toISOString(),
-      status: 'waiting',
+      status: resolvedStatus,
+      freshPayment: isExplicitFreshPayment,
       pagamento_consulta: true,
+      hasPaid: true,
+      isPaid: true,
       pagamento_premium: isPremium,
       hasUnread: true,
       lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Aguardando atendimento médico',
@@ -702,34 +723,36 @@ export const useStore = create<AppState>((set, get) => ({
     const existsIdx = currentQueue.findIndex(q => q.id === currentUserId);
     let updatedQueue: any[];
     if (existsIdx >= 0) {
-      updatedQueue = currentQueue.map((item, idx) => idx === existsIdx ? { ...item, ...queuePayload, joinedAt: new Date() } : item);
+      updatedQueue = currentQueue.map((item, idx) => idx === existsIdx ? { ...item, ...queuePayload, joinedAt: item.joinedAt || new Date() } : item);
     } else {
       updatedQueue = [{ ...queuePayload, joinedAt: new Date() }, ...currentQueue];
     }
 
     set({ 
       patientId: currentUserId,
-      inQueue: true,
+      inQueue: resolvedStatus === 'waiting',
       isConsultationFinished: false,
-      consultationActive: false,
+      consultationActive: resolvedStatus === 'in-consultation',
       pagamento_consulta: true,
       pagamento_premium: isPremium,
       queue: updatedQueue,
       queuePosition: existsIdx >= 0 ? existsIdx + 1 : 1,
       estimatedWaitTime: isPremium ? 5 : 10,
-      messages: []
+      ...(patientObj.freshPayment === true && !isAlreadyInActiveQueue ? { messages: [] } : {})
     });
     
     try {
-      // Clear previous messages from active_consultations to prevent leaking previous session
-      try {
-        const msgsRef = collection(db, 'active_consultations', currentUserId, 'messages');
-        const msgsSnap = await getDocs(msgsRef);
-        msgsSnap.forEach((docSnap) => {
-           deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {});
-        });
-      } catch (err) {
-        console.warn("Could not delete old messages:", err);
+      // Clear previous messages from active_consultations ONLY on a brand new payment (never when re-joining an open queue!)
+      if (patientObj.freshPayment === true && !isAlreadyInActiveQueue) {
+        try {
+          const msgsRef = collection(db, 'active_consultations', currentUserId, 'messages');
+          const msgsSnap = await getDocs(msgsRef);
+          msgsSnap.forEach((docSnap) => {
+             deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {});
+          });
+        } catch (err) {
+          console.warn("Could not delete old messages:", err);
+        }
       }
 
       // Write to Firestore queue with merge
@@ -1637,13 +1660,15 @@ export const useStore = create<AppState>((set, get) => ({
         await addDoc(historyRef, sanitizedPayload);
         console.log('Consultation history saved to Firestore');
         
+        const nowFinishedIso = new Date().toISOString();
         // Clean up active consultation - change status to finished and consume active consultation credit
         await updateDoc(doc(db, 'queue', consultationId), {
           status: 'finished',
           hasUnread: false,
-          pagamento_consulta: false
+          pagamento_consulta: false,
+          finishedAt: nowFinishedIso
         }).catch(async () => {
-          await setDoc(doc(db, 'queue', consultationId), { status: 'finished', hasUnread: false, pagamento_consulta: false }, { merge: true });
+          await setDoc(doc(db, 'queue', consultationId), { status: 'finished', hasUnread: false, pagamento_consulta: false, finishedAt: nowFinishedIso }, { merge: true });
         });
 
         await setDoc(doc(db, 'users', consultationId), {
@@ -1656,7 +1681,8 @@ export const useStore = create<AppState>((set, get) => ({
           isPaid: false,
           bypassedPayment: false,
           hadPreviousConsultation: true,
-          lastUpdated: new Date().toISOString()
+          finishedAt: nowFinishedIso,
+          lastUpdated: nowFinishedIso
         }, { merge: true }).catch(() => {});
 
         fetch('/api/queue/update-status', {

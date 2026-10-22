@@ -225,32 +225,61 @@ const STEPS = [
         try {
           const res = await fetch('/api/queue');
           if (res.ok) {
-            const serverQueue = await res.json();
-            if (Array.isArray(serverQueue)) {
-              storeQueueItem = serverQueue.find(
-                (p: any) =>
-                  p.id === uid ||
-                  (userData?.email && p.email && p.email.toLowerCase().trim() === userData.email.toLowerCase().trim())
-              );
-            }
+            const rawQueue = await res.json();
+            const serverQueue = Array.isArray(rawQueue) ? rawQueue : (Array.isArray(rawQueue?.queue) ? rawQueue.queue : []);
+            storeQueueItem = serverQueue.find(
+              (p: any) =>
+                p.id === uid ||
+                (userData?.email && p.email && p.email.toLowerCase().trim() === userData.email.toLowerCase().trim())
+            );
           }
         } catch (e) {
           // ignore
         }
       }
 
-      const qStatus = queueData?.status || storeQueueItem?.status;
-      const isQueueWaitingOrActive = qStatus === 'waiting' || qStatus === 'in-consultation';
+      // Verify on backend if patient has an approved payment or active queue (e.g., paid Pix and closed app)
+      let backendPaid = false;
+      let backendStatus: string | null = null;
+      try {
+        const vRes = await fetch('/api/verify-patient-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            patientId: uid,
+            email: userData?.email || auth.currentUser?.email || ''
+          })
+        });
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          if (vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+            backendPaid = true;
+            backendStatus = vData.status;
+            if (vData.queueEntry) {
+              queueData = vData.queueEntry;
+            }
+          } else if (vData.status === 'finished') {
+            backendStatus = 'finished';
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      const qStatus = backendStatus || queueData?.status || storeQueueItem?.status;
+      const isQueueWaitingOrActive = backendPaid || qStatus === 'waiting' || qStatus === 'in-consultation';
       const isExplicitlyFinished =
-        qStatus === 'finished' ||
-        (!isQueueWaitingOrActive &&
-          (userData?.consultationStatus === 'finished' || userData?.isConsultationFinished === true));
+        !isQueueWaitingOrActive &&
+        (qStatus === 'finished' ||
+          userData?.consultationStatus === 'finished' ||
+          userData?.isConsultationFinished === true);
 
       const isAwaitingOrNotStarted =
         !isQueueWaitingOrActive &&
         (userData?.consultationStatus === 'awaiting_payment' || userData?.consultationStatus === 'not_started');
 
       const hasPaidInDoc =
+        backendPaid ||
         userData?.pagamento_consulta === true ||
         userData?.hasPaid === true ||
         userData?.isPaid === true ||
@@ -279,6 +308,7 @@ const STEPS = [
       return {
         isOpen,
         isCalling,
+        isExplicitlyFinished,
         queueData: queueData || storeQueueItem || null
       };
     };
@@ -302,7 +332,7 @@ const STEPS = [
           try {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             const data = userDoc.exists() ? userDoc.data() : {};
-            const { isOpen, isCalling, queueData } = await checkPatientOpenQueueStatus(user.uid, data);
+            const { isOpen, isCalling, isExplicitlyFinished, queueData } = await checkPatientOpenQueueStatus(user.uid, data);
 
             const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
             if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente' && !userName) {
@@ -350,7 +380,23 @@ const STEPS = [
               setHasCompletedOnboarding(true);
               setHasOpenQueueConsultation(true);
               setIsDoctorCallingNow(isCalling);
-              setShowExistingAccountPrompt(true);
+              if (!isCalling) {
+                await useStore.getState().joinQueue({
+                  id: user.uid,
+                  patientName: resolvedName || userName || 'Paciente',
+                  email: data.email || queueData?.email || user.email || '',
+                  phone: data.phone || queueData?.phone || userPhone || '',
+                  cpf: data.cpf || queueData?.cpf || userCpf || '',
+                  birthDate: data.birthDate || queueData?.birthDate || userBirthDate || '',
+                  isPremium: isPrem,
+                  plan: data.plan || queueData?.plan || (isPrem ? 'premium' : 'basic'),
+                  queueType: data.queueType || queueData?.queueType || 'doctor',
+                  pagamento_consulta: true,
+                  hasPaid: true,
+                  isPaid: true
+                } as any);
+              }
+              navigate(isCalling ? '/chat' : '/queue');
               return;
             } else {
               setHasOpenQueueConsultation(false);
@@ -360,6 +406,17 @@ const STEPS = [
               if (typeof window !== 'undefined') {
                 localStorage.removeItem('mecura_pagamento');
                 localStorage.removeItem('mecura_premium');
+                if (isExplicitlyFinished) {
+                  localStorage.setItem('mecura_consultation_finished', 'true');
+                }
+              }
+              if (isExplicitlyFinished) {
+                useStore.setState({
+                  isConsultationFinished: true,
+                  inQueue: false,
+                  consultationActive: false,
+                  activeConsultationId: user.uid
+                });
               }
             }
           } catch (err) {
@@ -370,7 +427,7 @@ const STEPS = [
         }
       });
       return () => unsubscribe();
-    }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium, setHasCompletedOnboarding]);
+    }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium, setHasCompletedOnboarding, navigate]);
 
   const handleNext = async () => {
       if (step.id === 'auth') {
@@ -388,7 +445,7 @@ const STEPS = [
 
           const handleExistingUserLogin = async (resolvedUid: string, resolvedUserData: any) => {
             const data = resolvedUserData || {};
-            const { isOpen, isCalling, queueData } = await checkPatientOpenQueueStatus(resolvedUid, data);
+            const { isOpen, isCalling, isExplicitlyFinished, queueData } = await checkPatientOpenQueueStatus(resolvedUid, data);
 
             const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
             if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente') {
@@ -436,8 +493,24 @@ const STEPS = [
               setHasCompletedOnboarding(true);
               setHasOpenQueueConsultation(true);
               setIsDoctorCallingNow(isCalling);
-              setShowExistingAccountPrompt(true);
+              if (!isCalling) {
+                await useStore.getState().joinQueue({
+                  id: resolvedUid,
+                  patientName: resolvedName || userName || 'Paciente',
+                  email: data.email || queueData?.email || trimmedEmail || '',
+                  phone: data.phone || queueData?.phone || userPhone || '',
+                  cpf: data.cpf || queueData?.cpf || userCpf || '',
+                  birthDate: data.birthDate || queueData?.birthDate || userBirthDate || '',
+                  isPremium: isPrem,
+                  plan: data.plan || queueData?.plan || (isPrem ? 'premium' : 'basic'),
+                  queueType: data.queueType || queueData?.queueType || 'doctor',
+                  pagamento_consulta: true,
+                  hasPaid: true,
+                  isPaid: true
+                } as any);
+              }
               setIsLoading(false);
+              navigate(isCalling ? '/chat' : '/queue');
               return true;
             } else {
               setHasOpenQueueConsultation(false);
@@ -447,8 +520,19 @@ const STEPS = [
               if (typeof window !== 'undefined') {
                 localStorage.removeItem('mecura_pagamento');
                 localStorage.removeItem('mecura_premium');
+                if (isExplicitlyFinished) {
+                  localStorage.setItem('mecura_consultation_finished', 'true');
+                }
               }
-              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid || data.isConsultationFinished || data.consultationStatus === 'finished' || data.hadPreviousConsultation || queueData) {
+              if (isExplicitlyFinished) {
+                useStore.setState({
+                  isConsultationFinished: true,
+                  inQueue: false,
+                  consultationActive: false,
+                  activeConsultationId: resolvedUid
+                });
+              }
+              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid || data.isConsultationFinished || data.consultationStatus === 'finished' || data.hadPreviousConsultation || isExplicitlyFinished || queueData) {
                 setHasCompletedOnboarding(true);
                 setShowExistingAccountPrompt(true);
                 setIsLoading(false);

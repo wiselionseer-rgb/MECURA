@@ -1,14 +1,30 @@
+import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Download, FileText, CheckCircle2, QrCode, User, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
+import { auth } from '../firebase';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
 import { deliverPdfBlob } from '../utils/downloadHelper';
 
 export function PrescriptionViewScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userName, userCpf, userBirthDate, answers, messages } = useStore();
+  const { userName, userCpf, userBirthDate, answers, messages, patientId, activeConsultationId, subscribeToMessages } = useStore();
+
+  const effectivePatientId =
+    auth.currentUser?.uid ||
+    (patientId && patientId !== 'doctor' ? patientId : null) ||
+    activeConsultationId ||
+    (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null) ||
+    undefined;
+
+  useEffect(() => {
+    if (effectivePatientId) {
+      const unsub = subscribeToMessages(effectivePatientId);
+      return () => unsub();
+    }
+  }, [effectivePatientId, subscribeToMessages]);
 
   const hasPrescriptionAttached = messages.some(m => 
     m.type === 'prescription' || 
@@ -18,9 +34,18 @@ export function PrescriptionViewScreen() {
     (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
   );
 
-  const prescriptionItems = messages
+  const productItems = messages
     .filter(msg => msg.type === 'product' && msg.productData)
     .map(msg => msg.productData!);
+
+  const previaMsg = messages.find(m => (m.type === 'receita_previa' || m.type === 'prescription') && m.receitaPreviaData?.items?.length);
+  const prescriptionItems = productItems.length > 0
+    ? productItems
+    : (previaMsg?.receitaPreviaData?.items || []).map(it => ({
+        name: it.name,
+        details: it.details && it.details.length > 0 ? it.details : (Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || 'Uso conforme recomendação médica.')]),
+        dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')]
+      }));
 
   const displayBirthDate = userBirthDate || answers?.birthDate || 'Não informada';
   const displayCpf = userCpf || answers?.cpf || 'Não informado';

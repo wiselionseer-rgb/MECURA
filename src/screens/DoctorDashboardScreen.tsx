@@ -2601,12 +2601,14 @@ export function DoctorDashboardScreen() {
 
     if (targetPatientId) {
       try {
+        const finishedNowIso = new Date().toISOString();
         await updateDoc(doc(db, 'queue', targetPatientId), {
           status: 'finished',
           hasUnread: false,
-          pagamento_consulta: false
+          pagamento_consulta: false,
+          finishedAt: finishedNowIso
         }).catch(async () => {
-          await setDoc(doc(db, 'queue', targetPatientId), { status: 'finished', hasUnread: false, pagamento_consulta: false }, { merge: true });
+          await setDoc(doc(db, 'queue', targetPatientId), { status: 'finished', hasUnread: false, pagamento_consulta: false, finishedAt: finishedNowIso }, { merge: true });
         });
 
         await setDoc(doc(db, 'users', targetPatientId), {
@@ -2619,7 +2621,8 @@ export function DoctorDashboardScreen() {
           isPaid: false,
           bypassedPayment: false,
           hadPreviousConsultation: true,
-          lastUpdated: new Date().toISOString()
+          finishedAt: finishedNowIso,
+          lastUpdated: finishedNowIso
         }, { merge: true }).catch(() => {});
 
         fetch('/api/queue/update-status', {
@@ -3127,13 +3130,23 @@ export function DoctorDashboardScreen() {
         console.warn("Erro ao gerar/enviar blob da receita:", pdfErr);
       }
 
-      // 3. Adicionar o anexo oficial da receita no chat do paciente
-      const fileName = `Receita_Digital_${(prescPatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
+      // 3. Adicionar o anexo oficial da receita no chat do paciente (incluindo os itens prescritos para que Protocolo, Receita e Farmácia exibam sempre)
+      const fileName = `Receita_Digital_${(activePatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
       await addMessage({
         sender: 'doctor',
         type: 'prescription',
         docType: 'receita',
-        text: `📋 **Receita Médica Digital Emitida**\n\nPrescrição oficial emitida pelo ${prescDoctorName} (${prescDoctorCrm}). O documento em PDF assinado digitalmente foi disponibilizado para download.`,
+        text: `📋 **Receita Médica Digital Emitida**\n\nPrescrição oficial emitida pelo ${activeDoctorName} (${activeDoctorCrm}). O documento em PDF assinado digitalmente foi disponibilizado para download.`,
+        receitaPreviaData: activeItems.length > 0 ? {
+          patientName: activePatientName,
+          emissionDate: activeEmissionDate,
+          doctorName: activeDoctorName,
+          doctorCrm: activeDoctorCrm,
+          doctorSpecialty: activeDoctorSpecialty,
+          items: activeItems,
+          notes: activeNotes,
+          status: 'confirmed'
+        } : undefined,
         attachment: {
           name: fileName,
           url: fileUrl || '',

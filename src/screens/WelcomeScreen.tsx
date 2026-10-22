@@ -32,8 +32,8 @@ export function WelcomeScreen() {
   };
 
   useEffect(() => {
-    // Auto redirect to dashboard only if user is logged in and did not explicitly log out
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    // Auto redirect to queue, chat, or dashboard if user is logged in and did not explicitly log out
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (typeof window !== 'undefined' && localStorage.getItem('mecura_logged_out') === 'true') {
         if (!user) {
           localStorage.removeItem('mecura_logged_out');
@@ -41,6 +41,53 @@ export function WelcomeScreen() {
         return;
       }
       if (user) {
+        try {
+          const vRes = await fetch('/api/verify-patient-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: user.uid, email: user.email || '' })
+          });
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            if (vData.paid && vData.status === 'in-consultation') {
+              useStore.setState({
+                patientId: user.uid,
+                activeConsultationId: user.uid,
+                pagamento_consulta: true,
+                consultationActive: true,
+                inQueue: false,
+                isConsultationFinished: false
+              });
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_patientId', user.uid);
+                localStorage.setItem('mecura_pagamento', 'true');
+                localStorage.setItem('mecura_consultation_active', 'true');
+                localStorage.removeItem('mecura_consultation_finished');
+              }
+              navigate('/chat');
+              return;
+            }
+            if (vData.paid && vData.status === 'waiting') {
+              useStore.setState({
+                patientId: user.uid,
+                activeConsultationId: user.uid,
+                pagamento_consulta: true,
+                inQueue: true,
+                consultationActive: false,
+                isConsultationFinished: false
+              });
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_patientId', user.uid);
+                localStorage.setItem('mecura_pagamento', 'true');
+                localStorage.removeItem('mecura_consultation_finished');
+              }
+              navigate('/queue');
+              return;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
         navigate('/dashboard');
       }
     });
@@ -51,7 +98,13 @@ export function WelcomeScreen() {
     if (step === 1) {
       setStep(2);
     } else {
-      reset();
+      const st = useStore.getState();
+      const hasActiveQueue = (st.pagamento_consulta || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')) && !st.isConsultationFinished;
+      if (hasActiveQueue && auth.currentUser && typeof window !== 'undefined' && localStorage.getItem('mecura_logged_out') !== 'true') {
+        navigate(st.consultationActive ? '/chat' : '/queue');
+        return;
+      }
+      st.clearTriage();
       navigate('/onboarding');
     }
   };

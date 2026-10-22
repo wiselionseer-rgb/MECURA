@@ -125,18 +125,6 @@ export function ChatScreen() {
     }
   }, [effectiveConsultationId, subscribeToMessages]);
 
-  const hasPaidConsultation = !!(
-    pagamento_consulta || 
-    (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
-  );
-
-  useEffect(() => {
-    // If patient has not paid, redirect to checkout immediately
-    if (!hasPaidConsultation) {
-      navigate('/checkout');
-    }
-  }, [hasPaidConsultation, navigate]);
-
   // Find if current patient has an active entry in the queue
   const myQueueEntry = queue.find(p => 
     (effectiveConsultationId && p.id === effectiveConsultationId) ||
@@ -144,6 +132,25 @@ export function ChatScreen() {
     (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase()) ||
     (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
   );
+
+  const hasPaidConsultation = !!(
+    pagamento_consulta || 
+    isConsultationFinished ||
+    myQueueEntry?.status === 'waiting' ||
+    myQueueEntry?.status === 'in-consultation' ||
+    myQueueEntry?.status === 'finished' ||
+    (typeof window !== 'undefined' && (
+      localStorage.getItem('mecura_pagamento') === 'true' ||
+      localStorage.getItem('mecura_consultation_finished') === 'true'
+    ))
+  );
+
+  useEffect(() => {
+    // If patient has not paid and has no finished consultation, redirect to checkout
+    if (!hasPaidConsultation) {
+      navigate('/checkout');
+    }
+  }, [hasPaidConsultation, navigate]);
 
   // Track active professional tab in patient chat ('doctor' | 'psychologist')
   const [activeProfessional, setActiveProfessional] = useState<'doctor' | 'psychologist'>(() => {

@@ -21,19 +21,44 @@ import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+import { auth } from '../firebase';
+
 export function ProtocolScreen() {
   const navigate = useNavigate();
   const { 
     userName, userCpf, userBirthDate, answers, messages, 
-    consultationHistory, isConsultationFinished, pagamento_consulta 
+    consultationHistory, isConsultationFinished, pagamento_consulta,
+    patientId, activeConsultationId, queue, subscribeToMessages
   } = useStore();
 
   const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
   const [downloadAllProgress, setDownloadAllProgress] = useState(false);
 
+  const effectivePatientId =
+    auth.currentUser?.uid ||
+    (patientId && patientId !== 'doctor' ? patientId : null) ||
+    activeConsultationId ||
+    (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null) ||
+    undefined;
+
+  useEffect(() => {
+    if (effectivePatientId) {
+      const unsub = subscribeToMessages(effectivePatientId);
+      return () => unsub();
+    }
+  }, [effectivePatientId, subscribeToMessages]);
+
+  const myQueueEntry = useMemo(() => {
+    return queue.find(p => effectivePatientId && p.id === effectivePatientId);
+  }, [queue, effectivePatientId]);
+
   const hasPaidConsultation = !!(
     pagamento_consulta || 
     isConsultationFinished ||
+    myQueueEntry?.status === 'finished' ||
+    myQueueEntry?.status === 'in-consultation' ||
+    myQueueEntry?.status === 'waiting' ||
+    messages.some(m => m.sender === 'doctor' || m.type === 'prescription' || m.type === 'product') ||
     (typeof window !== 'undefined' && (
       localStorage.getItem('mecura_pagamento') === 'true' ||
       localStorage.getItem('mecura_consultation_finished') === 'true'
@@ -49,8 +74,8 @@ export function ProtocolScreen() {
       m.type === 'receita_previa' || 
       (m.type === 'product' && m.productData) ||
       (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
-    ) || (isConsultationFinished && messages.some(m => m.sender === 'doctor'));
-  }, [messages, isConsultationFinished, hasPaidConsultation]);
+    ) || ((isConsultationFinished || myQueueEntry?.status === 'finished') && messages.some(m => m.sender === 'doctor'));
+  }, [messages, isConsultationFinished, myQueueEntry?.status, hasPaidConsultation]);
 
   useEffect(() => {
     if (!hasPaidConsultation) {
@@ -64,8 +89,8 @@ export function ProtocolScreen() {
       return [];
     }
 
-    // Check for receita_previa messages first
-    const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
+    // Check for receita_previa or prescription with receitaPreviaData first
+    const previaMsg = messages.find(m => (m.type === 'receita_previa' || m.type === 'prescription') && m.receitaPreviaData?.items?.length);
     if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
       return previaMsg.receitaPreviaData.items.map(item => {
         const enriched = enrichMedicationDetails(

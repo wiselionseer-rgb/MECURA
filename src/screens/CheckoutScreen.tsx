@@ -200,6 +200,9 @@ export function CheckoutScreen() {
         if (response.ok) {
           const data = await response.json();
           if (data.id && data.qr_code && data.qr_code_base64) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_pending_payment_id', data.id.toString());
+            }
             setPixData({
               id: data.id.toString(),
               qr_code: data.qr_code,
@@ -297,6 +300,7 @@ export function CheckoutScreen() {
       localStorage.removeItem('mecura_queue_display_pos');
       localStorage.removeItem('mecura_queue_entered_at');
       localStorage.removeItem('mecura_queue_notified_10m');
+      localStorage.removeItem('mecura_pending_payment_id');
     }
     useStore.setState({
       patientId: patientUid,
@@ -406,28 +410,75 @@ export function CheckoutScreen() {
 
     setTimeout(() => {
       navigate('/queue');
-    }, 900);
+    }, 600);
   };
 
   React.useEffect(() => {
-    if (pixData?.id) {
-      pollingInterval.current = setInterval(async () => {
+    const activePaymentId = pixData?.id || (typeof window !== 'undefined' ? localStorage.getItem('mecura_pending_payment_id') : null);
+    let isHandled = false;
+
+    const checkPaymentNow = async () => {
+      if (isHandled) return;
+      const payId = pixData?.id || (typeof window !== 'undefined' ? localStorage.getItem('mecura_pending_payment_id') : null);
+      if (payId) {
         try {
-          const res = await fetch(`/api/payment-status/${pixData.id}`);
+          const res = await fetch(`/api/payment-status/${payId}`);
           if (res.ok) {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
+              isHandled = true;
               if (pollingInterval.current) clearInterval(pollingInterval.current);
-              handleSuccess(pixData.id);
+              handleSuccess(payId);
+              return;
             }
           }
         } catch (e) {
           console.error(e);
         }
-      }, 3000);
+      }
+
+      const currentUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
+      if (currentUid) {
+        try {
+          const vRes = await fetch('/api/verify-patient-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              patientId: currentUid,
+              email: auth.currentUser?.email || useStore.getState().userEmail || ''
+            })
+          });
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            if (vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+              isHandled = true;
+              if (pollingInterval.current) clearInterval(pollingInterval.current);
+              handleSuccess(payId || undefined);
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+
+    if (activePaymentId) {
+      checkPaymentNow();
+      pollingInterval.current = setInterval(checkPaymentNow, 3000);
     }
+
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkPaymentNow();
+      }
+    };
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
     return () => {
       if (pollingInterval.current) clearInterval(pollingInterval.current);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
     };
   }, [pixData]);
 

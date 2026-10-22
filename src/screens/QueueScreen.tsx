@@ -202,20 +202,16 @@ export function QueueScreen() {
   useEffect(() => {
     const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
     const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+    const isEntryActiveOrWaiting = !!(myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation'));
 
-    if (!isRecentlyApproved && (isConsultationFinished || myQueueEntry?.status === 'finished')) {
-      if (!pagamento_consulta) {
-        navigate('/checkout');
-      } else {
-        navigate('/dashboard');
-      }
+    if (!isRecentlyApproved && !isEntryActiveOrWaiting && (isConsultationFinished || myQueueEntry?.status === 'finished')) {
+      navigate('/dashboard');
       return;
     }
 
     const hasLocalPayment = typeof window !== 'undefined' && (
       localStorage.getItem('mecura_pagamento') === 'true' || isRecentlyApproved
     );
-    const isEntryActiveOrWaiting = myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation');
     const hasQueuePayment = !!(
       isEntryActiveOrWaiting && (myQueueEntry as any)?.pagamento_consulta !== false
     );
@@ -227,15 +223,42 @@ export function QueueScreen() {
           inQueue: true,
           isConsultationFinished: false 
         });
+      } else if (currentUserId) {
+        fetch('/api/verify-patient-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patientId: currentUserId, email: auth.currentUser?.email || '' })
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(vData => {
+            if (vData && vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mecura_pagamento', 'true');
+                localStorage.removeItem('mecura_consultation_finished');
+              }
+              useStore.setState({
+                pagamento_consulta: true,
+                inQueue: vData.status === 'waiting',
+                consultationActive: vData.status === 'in-consultation',
+                isConsultationFinished: false
+              });
+              if (vData.status === 'in-consultation') navigate('/chat');
+            } else {
+              navigate('/checkout');
+            }
+          })
+          .catch(() => navigate('/checkout'));
       } else {
         navigate('/checkout');
       }
     }
-  }, [pagamento_consulta, isConsultationFinished, myQueueEntry?.status, (myQueueEntry as any)?.pagamento_consulta, navigate]);
+  }, [pagamento_consulta, isConsultationFinished, myQueueEntry?.status, (myQueueEntry as any)?.pagamento_consulta, currentUserId, navigate]);
 
   // Direct listener to the user's specific queue & user document for instant real-time response
   useEffect(() => {
     if (!currentUserId) return;
+
+    let queueDocStatus: string | null = myQueueEntry?.status || null;
 
     const handleDoctorCall = () => {
       useStore.setState({
@@ -256,8 +279,17 @@ export function QueueScreen() {
     const unsubQueueDoc = onSnapshot(doc(db, 'queue', currentUserId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        queueDocStatus = data.status || null;
         if (data.status === 'in-consultation' || (data.isAlerted && data.status !== 'finished')) {
           handleDoctorCall();
+        } else if (data.status === 'finished') {
+          useStore.setState({ inQueue: false, isConsultationFinished: true, consultationActive: false, pagamento_consulta: false });
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('mecura_pagamento');
+            localStorage.removeItem('mecura_consultation_active');
+            localStorage.setItem('mecura_consultation_finished', 'true');
+          }
+          navigate('/dashboard');
         }
       }
     });
@@ -267,10 +299,11 @@ export function QueueScreen() {
         const data = snap.data();
         const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
         const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+        const isQueueActive = queueDocStatus === 'waiting' || queueDocStatus === 'in-consultation';
 
-        const isAwaitingPayment = !isRecentlyApproved && (data.consultationStatus === 'awaiting_payment' || data.consultationStatus === 'not_started');
-        const isFinished = !isRecentlyApproved && !isAwaitingPayment && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
-        const hasValidPayment = isRecentlyApproved || (!isAwaitingPayment && !isFinished && !!(
+        const isAwaitingPayment = !isRecentlyApproved && !isQueueActive && (data.consultationStatus === 'awaiting_payment' || data.consultationStatus === 'not_started');
+        const isFinished = !isRecentlyApproved && !isQueueActive && !isAwaitingPayment && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
+        const hasValidPayment = isRecentlyApproved || isQueueActive || (!isAwaitingPayment && !isFinished && !!(
           data.pagamento_consulta === true || 
           data.hasPaid === true || 
           data.isPaid === true || 
@@ -291,14 +324,32 @@ export function QueueScreen() {
         }
 
         if (!hasValidPayment) {
-          console.warn('[QUEUE] Paciente sem pagamento confirmado para nova consulta. Redirecionando para checkout...');
-          useStore.getState().setPagamentoConsulta(false);
-          useStore.setState({ inQueue: false });
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('mecura_pagamento');
-            localStorage.removeItem('mecura_consultation_active');
-          }
-          navigate('/checkout');
+          fetch('/api/verify-patient-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: currentUserId, email: data.email || auth.currentUser?.email || '' })
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(vData => {
+              if (vData && vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mecura_pagamento', 'true');
+                }
+                useStore.setState({ pagamento_consulta: true, inQueue: vData.status === 'waiting', isConsultationFinished: false });
+              } else {
+                console.warn('[QUEUE] Paciente sem pagamento confirmado para nova consulta. Redirecionando para checkout...');
+                useStore.getState().setPagamentoConsulta(false);
+                useStore.setState({ inQueue: false });
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('mecura_pagamento');
+                  localStorage.removeItem('mecura_consultation_active');
+                }
+                navigate('/checkout');
+              }
+            })
+            .catch(() => {
+              navigate('/checkout');
+            });
           return;
         }
 
@@ -312,7 +363,7 @@ export function QueueScreen() {
       unsubQueueDoc();
       unsubUserDoc();
     };
-  }, [currentUserId, navigate]);
+  }, [currentUserId, myQueueEntry?.status, navigate]);
 
   // Ensure patient is formally registered in queue if they paid and are not yet waiting
   useEffect(() => {
@@ -349,6 +400,8 @@ export function QueueScreen() {
       ) as 'basic' | 'premium' | 'complete' | 'psychologist';
       const isPrem = resolvedOffer === 'premium' || resolvedOffer === 'complete';
       const isPsico = resolvedOffer === 'psychologist';
+      const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+      const isFreshPayment = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
 
       joinQueue({
         id: pUid,
@@ -359,8 +412,11 @@ export function QueueScreen() {
         plan: resolvedOffer,
         selectedOffer: resolvedOffer,
         queueType: isPsico ? 'psychologist' : 'doctor',
-        freshPayment: true
-      });
+        freshPayment: isFreshPayment,
+        pagamento_consulta: true,
+        hasPaid: true,
+        isPaid: true
+      } as any);
     }
   }, [myQueueEntry?.status, myQueueEntry?.plan, consultationActive, isConsultationFinished, pagamento_consulta, pagamento_premium, selectedOffer, userName, userPhone, patientId, joinQueue]);
 
