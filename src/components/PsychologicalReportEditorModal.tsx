@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -17,13 +17,33 @@ import {
   Save,
   Check,
   RefreshCw,
-  Clock
+  Clock,
+  Activity,
+  CheckCircle2,
+  ListFilter,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  TrendingUp,
+  FileText
 } from 'lucide-react';
 import { generatePsychologicalReportPDF, PsychologicalReportData } from '../utils/pdfGenerator';
+import { 
+  PHQ9_TEST, 
+  GAD7_TEST, 
+  ASRS18_TEST, 
+  AQ10_TEST, 
+  buildDefaultSelectedTests, 
+  SelectedPsychologicalTest,
+  PsychologicalTestDefinition
+} from '../data/psychologicalTests';
 
 interface PsychologicalReportEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
+  reportType?: 'inicial' | 'evolutivo';
+  setReportType?: (val: 'inicial' | 'evolutivo') => void;
   patientName: string;
   setPatientName: (val: string) => void;
   birthDate: string;
@@ -48,29 +68,25 @@ interface PsychologicalReportEditorModalProps {
   setDiagnosticHypothesis: (val: string) => void;
   conclusion: string;
   setConclusion: (val: string) => void;
+  selectedTests?: SelectedPsychologicalTest[];
+  setSelectedTests?: (tests: SelectedPsychologicalTest[]) => void;
   patientAnswers?: any;
-  onDownloadPDF: () => void;
-  onSendToChat?: () => Promise<void> | void;
+  onDownloadPDF: (overrideData?: any) => void;
+  onSendToChat?: (overrideData?: any) => Promise<void> | void;
   onResetFromTriage?: () => void;
-  onSave?: (savedData: {
-    purpose: string;
-    demandDescription: string;
-    technicalProcedures: string;
-    clinicalAnalysis: string;
-    diagnosticHypothesis: string;
-    conclusion: string;
-    patientName: string;
-    birthDate: string;
-    cpf: string;
-    emissionDate: string;
-    psychologistName: string;
-    psychologistCrp: string;
-  }) => void;
+  onSave?: (savedData: any) => void;
 }
 
-export function buildPsychologicalReportFromTriage(patientName: string, rawAnswers?: any) {
+export function buildPsychologicalReportFromTriage(
+  patientName: string, 
+  rawAnswers?: any, 
+  reportType: 'inicial' | 'evolutivo' = 'inicial',
+  activeTests?: SelectedPsychologicalTest[]
+) {
   const ans = rawAnswers || {};
   const pName = patientName || 'Paciente';
+  const isEvolutivo = reportType === 'evolutivo';
+
   const objectivesList: string[] = Array.isArray(ans.objectives)
     ? ans.objectives.filter(Boolean)
     : ans.objective
@@ -88,24 +104,38 @@ export function buildPsychologicalReportFromTriage(patientName: string, rawAnswe
 
   // Build exact demand description from patient's triage
   const demandParts: string[] = [];
-  if (objectivesList.length > 0) {
+  if (isEvolutivo) {
     demandParts.push(
-      `O(A) paciente ${pName} buscou acolhimento e avaliação psicológica relatando como queixa(s) principal(is) na triagem: ${objectivesList.join(', ')}` +
-      (ans.intensity ? ` (intensidade referida: ${ans.intensity}/10` : '') +
-      (ans.duration ? `${ans.intensity ? `, tempo de evolução: ${ans.duration})` : ` (tempo de evolução: ${ans.duration})`}` : ans.intensity ? ')' : '') +
-      '.'
+      `O(A) paciente ${pName} encontra-se em processo contínuo de acompanhamento psicológico clínico na modalidade de cuidado continuado.`
+    );
+    if (objectivesList.length > 0) {
+      demandParts.push(
+        `O plano de acompanhamento tem como foco terapêutico primordial a evolução dos sintomas de ${objectivesList.join(', ')} e a consolidação de recursos adaptativos de autorregulação emocional.`
+      );
+    }
+    demandParts.push(
+      `No decorrer das sessões psicoterápicas, observou-se engajamento ativo, com desenvolvimento progressivo de estratégias cognitivo-comportamentais frente aos estressores do cotidiano.`
     );
   } else {
-    demandParts.push(
-      `O(A) paciente ${pName} buscou acolhimento e avaliação psicológica clínica para investigação e manejo de sofrimento emocional e sobrecarga psíquica.`
-    );
-  }
+    if (objectivesList.length > 0) {
+      demandParts.push(
+        `O(A) paciente ${pName} buscou acolhimento e acompanhamento psicológico clínico relatando como queixa(s) principal(is) na triagem: ${objectivesList.join(', ')}` +
+        (ans.intensity ? ` (intensidade referida: ${ans.intensity}/10` : '') +
+        (ans.duration ? `${ans.intensity ? `, tempo de evolução: ${ans.duration})` : ` (tempo de evolução: ${ans.duration})`}` : ans.intensity ? ')' : '') +
+        '.'
+      );
+    } else {
+      demandParts.push(
+        `O(A) paciente ${pName} comparece para acolhimento inicial e acompanhamento psicológico clínico para investigação e manejo de sobrecarga emocional e sofrimento psíquico.`
+      );
+    }
 
-  if (ans.diseaseOrigin && String(ans.diseaseOrigin).trim()) {
-    demandParts.push(`Histórico e origem do quadro relatados pelo(a) paciente na triagem: "${String(ans.diseaseOrigin).trim()}".`);
-  }
-  if (ans.description && String(ans.description).trim()) {
-    demandParts.push(`Relato complementar do(a) paciente sobre os sintomas: "${String(ans.description).trim()}".`);
+    if (ans.diseaseOrigin && String(ans.diseaseOrigin).trim()) {
+      demandParts.push(`Histórico e origem do quadro relatados pelo(a) paciente na triagem: "${String(ans.diseaseOrigin).trim()}".`);
+    }
+    if (ans.description && String(ans.description).trim()) {
+      demandParts.push(`Relato complementar do(a) paciente sobre os sintomas: "${String(ans.description).trim()}".`);
+    }
   }
 
   const emotionalFlags: string[] = [];
@@ -120,36 +150,32 @@ export function buildPsychologicalReportFromTriage(patientName: string, rawAnswe
   if (ans.ansiedade_diag) {
     emotionalFlags.push(ans.ansiedade_diag_details ? `histórico prévio de ansiedade/depressão (${String(ans.ansiedade_diag_details).trim()})` : 'diagnóstico prévio de ansiedade/depressão');
   }
-  if (emotionalFlags.length > 0) {
-    demandParts.push(`No rastreio emocional da triagem, assinalou: ${emotionalFlags.join('; ')}.`);
+  if (emotionalFlags.length > 0 && !isEvolutivo) {
+    demandParts.push(`No rastreio emocional da triagem inicial, assinalou: ${emotionalFlags.join('; ')}.`);
   }
 
-  const treatmentDetails: string[] = [];
-  if (ans.tratamento_atual && ans.tratamento_atual_details) {
-    treatmentDetails.push(`tratamentos atuais: ${String(ans.tratamento_atual_details).trim()}`);
-  }
-  if (ans.remedios && ans.remedios_details) {
-    treatmentDetails.push(`medicações em uso: ${String(ans.remedios_details).trim()}`);
-  }
-  if (ans.cannabis && ans.cannabis_details) {
-    treatmentDetails.push(`experiência prévia com derivados canabinoides: ${String(ans.cannabis_details).trim()}`);
-  }
-  if (treatmentDetails.length > 0) {
-    demandParts.push(`Contexto terapêutico informado na triagem: ${treatmentDetails.join(' | ')}.`);
+  // Active tests description
+  const appliedList = (activeTests || []).filter(t => t.applied);
+  const testNames: string[] = [];
+  if (appliedList.length > 0) {
+    appliedList.forEach(t => {
+      testNames.push(`${t.name} (Escore: ${t.score}/${t.maxScore} pts - ${t.classification})`);
+    });
+    demandParts.push(`Instrumentos psicométricos padronizados avaliados neste relatório: ${testNames.join('; ')}.`);
   }
 
-  const neuroTests: string[] = [];
-  if (ans.adhdTestResult && typeof ans.adhdTestResult === 'object') {
-    neuroTests.push(`Escala ASRS-18 (TDAH): ${ans.adhdTestResult.classification || 'Realizado'} (${ans.adhdTestResult.scorePercent ?? 0}% — ${ans.adhdTestResult.totalPoints ?? 0}/${ans.adhdTestResult.maxPoints ?? 36} pts)`);
-  }
-  if (ans.autismTestResult && typeof ans.autismTestResult === 'object') {
-    neuroTests.push(`Rastreio TEA (${ans.autismTestResult.targetProfile || 'Adulto'}): ${ans.autismTestResult.classification || 'Realizado'} (${ans.autismTestResult.scorePercent ?? 0}% — ${ans.autismTestResult.totalPoints ?? 0}/${ans.autismTestResult.maxPoints ?? 36} pts)`);
-  }
-  if (neuroTests.length > 0) {
-    demandParts.push(`Instrumentos psicométricos de rastreio respondidos pelo(a) paciente: ${neuroTests.join('; ')}.`);
-  }
+  // Build procedures with citations
+  const appliedCitations: string[] = [];
+  if (appliedList.some(t => t.id === 'phq9')) appliedCitations.push('Questionário sobre a Saúde do Paciente (PHQ-9 - Kroenke et al.)');
+  if (appliedList.some(t => t.id === 'gad7')) appliedCitations.push('Escala de Ansiedade Generalizada (GAD-7 - Spitzer et al.)');
+  if (appliedList.some(t => t.id === 'asrs18')) appliedCitations.push('Escala de Auto-relato de TDAH em Adultos (ASRS-18 OMS / Kessler et al.)');
+  if (appliedList.some(t => t.id === 'aq10')) appliedCitations.push('Teste de Rastreio de Autismo Adulto (AQ-10 Cambridge Validado - Allison et al.)');
 
-  // Build CID-10 / CID-11 hypothesis from patient's actual triage
+  const procString = isEvolutivo
+    ? `Foram realizadas sessões clínicas de acompanhamento psicológico continuado, intervenções psicoterapêuticas focadas na história clínica e no exame das funções psíquicas superiores, bem como reavaliação sistemática por meio de instrumentos psicométricos padronizados (${appliedCitations.length > 0 ? appliedCitations.join(', ') : 'anamnese psicológica e escalas clínicas'}), em estrita consonância com a Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.`
+    : `Foram realizadas entrevistas clínicas psicológicas semiestruturadas com foco em anamnese biopsicossocial, escuta qualificada da demanda trazida na triagem, exame do estado mental atual e aplicação de instrumentos psicométricos padronizados de rastreio (${appliedCitations.length > 0 ? appliedCitations.join(', ') : 'escalas de humor, ansiedade e foco cognitivo'}), em estrita consonância com a Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.`;
+
+  // Build CID hypothesis
   const cids: string[] = [];
   if (isAnxiety) cids.push('F41.1 (Transtorno de Ansiedade Generalizada)');
   if (ans.panico) cids.push('F41.0 (Transtorno de Pânico)');
@@ -162,24 +188,35 @@ export function buildPsychologicalReportFromTriage(patientName: string, rawAnswe
     cids.push('F41.1 (Transtorno de Ansiedade Generalizada)', 'F43.2 (Transtorno de Adaptação / Estresse)');
   }
 
-  return {
-    purpose: "Avaliação Psicológica Clínica para Fins de Tratamento em Saúde Mental, Documentação Clínica e Acompanhamento Psicoterápico.",
-    demandDescription: demandParts.join(' '),
-    technicalProcedures:
-      "Foram realizadas entrevistas clínicas psicológicas semiestruturadas com foco em anamnese biopsicossocial, escuta qualificada da história clínica informada pelo(a) paciente na triagem e exame detalhado das funções psíquicas superiores, em estrita consonância com a Resolução CFP nº 06/2019.",
-    clinicalAnalysis:
-      `Ao exame psíquico atual, o(a) paciente ${pName} apresenta-se lúcido(a) e orientado(a) alo e autopsiquicamente. Discurso coerente e estruturado, com tonalidade afetiva congruente às queixas relatadas na triagem (${objectivesList.length > 0 ? objectivesList.join(', ') : 'sobrecarga emocional'}). ` +
+  const purposeString = isEvolutivo
+    ? "Relatório de Acompanhamento Psicológico Evolutivo para Registro da Evolução Clínica, Resposta Psicoterapêutica e Manejo Continuado em Saúde Mental."
+    : "Relatório de Acompanhamento Psicológico Inicial para Acolhimento, Investigação Clínica, Rastreio Psicométrico e Planejamento Psicoterapêutico.";
+
+  const analysisString = isEvolutivo
+    ? `Ao exame do estado mental na etapa evolutiva atual, o(a) paciente ${pName} apresenta-se lúcido(a) e orientado(a) alo e autopsiquicamente. Demonstra discurso coerente e articulado, com evolução favorável no reconhecimento de gatilhos ansiogênicos e no manejo das oscilações de humor. A reaplicação dos instrumentos psicométricos evidencia modulação gradual dos sintomas basais, com preservação do juízo crítico e melhora da adesão às práticas de autocuidado e higiene mental.`
+    : `Ao exame psíquico inicial, o(a) paciente ${pName} apresenta-se lúcido(a) e orientado(a) alo e autopsiquicamente. Discurso coerente e estruturado, com tonalidade afetiva congruente às queixas relatadas na triagem (${objectivesList.length > 0 ? objectivesList.join(', ') : 'sobrecarga emocional'}). ` +
       (emotionalFlags.length > 0 ? `Observa-se repercussão clínica de ${emotionalFlags.join(', ')}, ` : 'Nota-se reatividade emocional frente aos estressores cotidianos, ') +
-      "sem alterações de sensopercepção ou juízo crítico da realidade. Evidencia-se impacto funcional na qualidade de vida e necessidade de suporte psicoterápico e regulação biopsicossocial.",
+      "sem alterações de sensopercepção ou juízo crítico da realidade. Evidencia-se impacto funcional na qualidade de vida e necessidade de suporte psicoterápico continuado.";
+
+  const conclusionString = isEvolutivo
+    ? `Com base na evolução do acompanhamento psicológico, atesta-se que o(a) paciente ${pName} apresenta resposta clínica positiva ao processo psicoterápico. Recomenda-se a continuidade das sessões regulares de acompanhamento psicológico com frequência quinzenal ou mensal para consolidação dos ganhos terapêuticos e prevenção de recaídas em articulação multidisciplinar.`
+    : `Com base nos dados colhidos na triagem e na avaliação inicial, atesta-se que o(a) paciente ${pName} apresenta quadro compatível com ${cids.join(', ')}, demandando acompanhamento psicológico contínuo e abordagem multidisciplinar para estabilização emocional, fortalecimento de recursos adaptativos e promoção de sua qualidade de vida.`;
+
+  return {
+    purpose: purposeString,
+    demandDescription: demandParts.join(' '),
+    technicalProcedures: procString,
+    clinicalAnalysis: analysisString,
     diagnosticHypothesis: cids.join(' / '),
-    conclusion:
-      `Com base nos dados colhidos na triagem e na avaliação clínica psicológica, atesta-se que o(a) paciente ${pName} apresenta quadro compatível com ${cids.join(', ')}, demandando acompanhamento multidisciplinar e psicoterápico contínuo para estabilização emocional, redução de danos psíquicos e promoção de sua qualidade de vida.`
+    conclusion: conclusionString
   };
 }
 
 export function PsychologicalReportEditorModal({
   isOpen,
   onClose,
+  reportType = 'inicial',
+  setReportType,
   patientName,
   setPatientName,
   birthDate,
@@ -204,17 +241,108 @@ export function PsychologicalReportEditorModal({
   setDiagnosticHypothesis,
   conclusion,
   setConclusion,
+  selectedTests: propSelectedTests,
+  setSelectedTests: propSetSelectedTests,
   patientAnswers,
   onDownloadPDF,
   onSendToChat,
   onResetFromTriage,
   onSave
 }: PsychologicalReportEditorModalProps) {
+  const [internalReportType, setInternalReportType] = useState<'inicial' | 'evolutivo'>(reportType);
+  const currentReportType = reportType || internalReportType;
+
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [isSavingFeedback, setIsSavingFeedback] = useState(false);
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Selected tests state
+  const [tests, setTests] = useState<SelectedPsychologicalTest[]>(() => {
+    return propSelectedTests && propSelectedTests.length > 0 
+      ? propSelectedTests 
+      : buildDefaultSelectedTests(patientAnswers);
+  });
+
+  // Test quiz runner modal
+  const [activeQuizTestId, setActiveQuizTestId] = useState<'phq9' | 'gad7' | 'asrs18' | 'aq10' | null>(null);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (propSelectedTests && propSelectedTests.length > 0) {
+      setTests(propSelectedTests);
+    }
+  }, [propSelectedTests]);
+
+  const updateTestsState = (newTests: SelectedPsychologicalTest[]) => {
+    setTests(newTests);
+    if (propSetSelectedTests) {
+      propSetSelectedTests(newTests);
+    }
+  };
+
+  const handleToggleTest = (testId: string) => {
+    const updated = tests.map(t => {
+      if (t.id === testId) {
+        return { ...t, applied: !t.applied };
+      }
+      return t;
+    });
+    updateTestsState(updated);
+    showToast(updated.find(t => t.id === testId)?.applied 
+      ? `✓ ${testId.toUpperCase()} ativado no relatório!` 
+      : `✕ ${testId.toUpperCase()} desativado do relatório.`
+    );
+  };
+
+  const handleUpdateTestScore = (testId: string, newScore: number) => {
+    const updated = tests.map(t => {
+      if (t.id === testId) {
+        let interp = { classification: t.classification, interpretation: t.clinicalInterpretation };
+        if (testId === 'phq9') interp = PHQ9_TEST.interpret(newScore);
+        if (testId === 'gad7') interp = GAD7_TEST.interpret(newScore);
+        if (testId === 'asrs18') interp = ASRS18_TEST.interpret(newScore);
+        if (testId === 'aq10') interp = AQ10_TEST.interpret(newScore);
+        return {
+          ...t,
+          score: newScore,
+          classification: interp.classification,
+          clinicalInterpretation: interp.interpretation
+        };
+      }
+      return t;
+    });
+    updateTestsState(updated);
+  };
+
+  const handleUpdateTestField = (testId: string, field: 'classification' | 'clinicalInterpretation', value: string) => {
+    const updated = tests.map(t => {
+      if (t.id === testId) {
+        return { ...t, [field]: value };
+      }
+      return t;
+    });
+    updateTestsState(updated);
+  };
+
+  const handleSwitchReportType = (type: 'inicial' | 'evolutivo') => {
+    if (setReportType) {
+      setReportType(type);
+    }
+    setInternalReportType(type);
+    const built = buildPsychologicalReportFromTriage(patientName, patientAnswers, type, tests);
+    setPurpose(built.purpose);
+    setDemandDescription(built.demandDescription);
+    setTechnicalProcedures(built.technicalProcedures);
+    setClinicalAnalysis(built.clinicalAnalysis);
+    setDiagnosticHypothesis(built.diagnosticHypothesis);
+    setConclusion(built.conclusion);
+    showToast(type === 'evolutivo' 
+      ? "📈 Modelo alterado para Relatório de Acompanhamento Evolutivo!" 
+      : "📋 Modelo alterado para Relatório de Acompanhamento Inicial!"
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -226,56 +354,72 @@ export function PsychologicalReportEditorModal({
   const handlePullFromTriage = () => {
     if (onResetFromTriage) {
       onResetFromTriage();
-      showToast("✓ Dados recarregados exatamente da triagem do paciente!");
-      return;
     }
-    const built = buildPsychologicalReportFromTriage(patientName, patientAnswers);
+    const freshTests = buildDefaultSelectedTests(patientAnswers);
+    updateTestsState(freshTests);
+    const built = buildPsychologicalReportFromTriage(patientName, patientAnswers, currentReportType, freshTests);
     setPurpose(built.purpose);
     setDemandDescription(built.demandDescription);
     setTechnicalProcedures(built.technicalProcedures);
     setClinicalAnalysis(built.clinicalAnalysis);
     setDiagnosticHypothesis(built.diagnosticHypothesis);
     setConclusion(built.conclusion);
-    showToast("✓ Dados recarregados exatamente da triagem do paciente!");
+    showToast("✓ Dados recarregados exatamente da triagem e testes do paciente!");
+  };
+
+  const handleSyncTestsIntoProcedures = () => {
+    const appliedList = tests.filter(t => t.applied);
+    if (appliedList.length === 0) {
+      showToast("Nenhum teste selecionado no momento.");
+      return;
+    }
+    const built = buildPsychologicalReportFromTriage(patientName, patientAnswers, currentReportType, tests);
+    setTechnicalProcedures(built.technicalProcedures);
+    showToast(`✓ Procedimentos técnicos atualizados com ${appliedList.length} escala(s) selecionada(s)!`);
   };
 
   const handleSave = () => {
+    const payload = {
+      reportType: currentReportType,
+      purpose,
+      demandDescription,
+      technicalProcedures,
+      clinicalAnalysis,
+      diagnosticHypothesis,
+      conclusion,
+      patientName,
+      birthDate,
+      cpf,
+      emissionDate,
+      psychologistName,
+      psychologistCrp,
+      selectedTests: tests
+    };
+
     if (onSave) {
-      onSave({
-        purpose,
-        demandDescription,
-        technicalProcedures,
-        clinicalAnalysis,
-        diagnosticHypothesis,
-        conclusion,
-        patientName,
-        birthDate,
-        cpf,
-        emissionDate,
-        psychologistName,
-        psychologistCrp
-      });
+      onSave(payload);
     }
     setIsSavingFeedback(true);
-    showToast("✓ Laudo psicológico salvo e sincronizado com sucesso!");
+    showToast("✓ Relatório de Acompanhamento Psicológico salvo com sucesso!");
     setTimeout(() => setIsSavingFeedback(false), 2000);
   };
 
   const handleAiGenerate = async () => {
     setIsGeneratingAi(true);
-    showToast("🤖 IA analisando queixas clínicas da triagem do paciente...");
+    showToast("🤖 IA analisando queixas e escalas do paciente...");
 
     try {
+      const activeTestSummaries = tests.filter(t => t.applied).map(t => `${t.name}: ${t.score}/${t.maxScore} pts (${t.classification})`).join(', ');
       const prompt = `Você é o psicólogo clínico Marco Antônio Boastik (CRP 08/49215).
-Com base EXCLUSIVAMENTE nas queixas e histórico informados pelo paciente atual (${patientName}, CPF: ${cpf}, respostas da triagem: ${JSON.stringify(patientAnswers || {})}), elabore o conteúdo técnico de um Laudo Psicológico em conformidade com a Resolução CFP nº 06/2019. Não invente dados de outros pacientes.
+Com base EXCLUSIVAMENTE nas queixas e histórico informados pelo paciente atual (${patientName}, CPF: ${cpf}, respostas da triagem: ${JSON.stringify(patientAnswers || {})}) e os testes psicológicos selecionados (${activeTestSummaries || 'nenhum teste pontuado'}), elabore o conteúdo técnico de um Relatório de Acompanhamento Psicológico (${currentReportType === 'evolutivo' ? 'Evolutivo' : 'Inicial'}) em conformidade com a Resolução CFP nº 06/2019. Lembre-se: psicólogos NÃO emitem receitas médicas ou laudos psiquiátricos, este é um Relatório Técnico de Acompanhamento Psicológico.
 Responda em formato JSON estruturado com os seguintes campos:
 {
-  "purpose": "Identificação e finalidade formal do documento",
-  "demandDescription": "Descrição fiel da demanda, queixas emocionais, origem do quadro e histórico clínico relatados pelo paciente na triagem",
-  "technicalProcedures": "Procedimentos técnico-científicos adotados (entrevistas, anamnese, exames de estado mental)",
-  "clinicalAnalysis": "Exame pormenorizado das funções psíquicas congruente com a triagem do paciente",
-  "diagnosticHypothesis": "CID-10 / CID-11 correspondentes com código e descrição",
-  "conclusion": "Parecer conclusivo do psicólogo para este paciente"
+  "purpose": "Identificação formal do documento e finalidade de acompanhamento",
+  "demandDescription": "Descrição fiel da demanda, histórico clínico e queixas emocionais",
+  "technicalProcedures": "Procedimentos técnico-científicos adotados citando entrevistas, exame mental e escalas selecionadas",
+  "clinicalAnalysis": "Exame psíquico das funções mentais superiores coerente com as respostas do paciente",
+  "diagnosticHypothesis": "Hipótese diagnóstica CID-10 / CID-11",
+  "conclusion": "Parecer conclusivo com orientações e encaminhamentos para psicoterapia continuada"
 }`;
 
       let aiResult: any = null;
@@ -293,7 +437,7 @@ Responda em formato JSON estruturado com os seguintes campos:
           }
         }
       } catch (apiErr) {
-        console.warn("Gemini direct call warning, using triage psychology generator:", apiErr);
+        console.warn("Gemini call warning, using psychological report generator:", apiErr);
       }
 
       if (aiResult && aiResult.demandDescription) {
@@ -304,7 +448,7 @@ Responda em formato JSON estruturado com os seguintes campos:
         if (aiResult.diagnosticHypothesis) setDiagnosticHypothesis(aiResult.diagnosticHypothesis);
         if (aiResult.conclusion) setConclusion(aiResult.conclusion);
       } else {
-        const built = buildPsychologicalReportFromTriage(patientName, patientAnswers);
+        const built = buildPsychologicalReportFromTriage(patientName, patientAnswers, currentReportType, tests);
         setPurpose(built.purpose);
         setDemandDescription(built.demandDescription);
         setTechnicalProcedures(built.technicalProcedures);
@@ -313,17 +457,17 @@ Responda em formato JSON estruturado com os seguintes campos:
         setConclusion(built.conclusion);
       }
 
-      showToast("✨ Laudo psicológico gerado com base na triagem do paciente!");
+      showToast(`✨ Relatório de Acompanhamento (${currentReportType === 'evolutivo' ? 'Evolutivo' : 'Inicial'}) gerado com IA!`);
     } catch (e: any) {
       console.error("Falha ao gerar com IA:", e);
-      const built = buildPsychologicalReportFromTriage(patientName, patientAnswers);
+      const built = buildPsychologicalReportFromTriage(patientName, patientAnswers, currentReportType, tests);
       setPurpose(built.purpose);
       setDemandDescription(built.demandDescription);
       setTechnicalProcedures(built.technicalProcedures);
       setClinicalAnalysis(built.clinicalAnalysis);
       setDiagnosticHypothesis(built.diagnosticHypothesis);
       setConclusion(built.conclusion);
-      showToast("✓ Laudo preenchido diretamente com os dados da triagem do paciente.");
+      showToast("✓ Relatório preenchido diretamente com os dados da triagem do paciente.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -333,19 +477,76 @@ Responda em formato JSON estruturado com os seguintes campos:
     if (!onSendToChat) return;
     setIsSendingFeedback(true);
     try {
-      await onSendToChat();
-      showToast("✓ Laudo psicológico anexado e enviado no chat do paciente!");
+      await onSendToChat({
+        reportType: currentReportType,
+        purpose,
+        demandDescription,
+        technicalProcedures,
+        clinicalAnalysis,
+        diagnosticHypothesis,
+        conclusion,
+        patientName,
+        birthDate,
+        cpf,
+        emissionDate,
+        psychologistName,
+        psychologistCrp,
+        selectedTests: tests
+      });
+      showToast(`✓ Relatório de Acompanhamento (${currentReportType === 'evolutivo' ? 'Evolutivo' : 'Inicial'}) enviado no chat!`);
     } catch (e) {
       console.error(e);
-      showToast("Erro ao enviar laudo para o chat.");
+      showToast("Erro ao enviar relatório para o chat.");
     } finally {
       setIsSendingFeedback(false);
     }
   };
 
+  const handleDownloadPDFWithTests = () => {
+    onDownloadPDF({
+      reportType: currentReportType,
+      purpose,
+      demandDescription,
+      technicalProcedures,
+      clinicalAnalysis,
+      diagnosticHypothesis,
+      conclusion,
+      patientName,
+      birthDate,
+      cpf,
+      emissionDate,
+      psychologistName,
+      psychologistCrp,
+      selectedTests: tests
+    });
+  };
+
   const handleQuickCid = (cidText: string) => {
     setDiagnosticHypothesis(cidText);
     showToast(`CID selecionado: ${cidText}`);
+  };
+
+  // Helper for live test modal
+  const activeQuizDef = activeQuizTestId === 'phq9' 
+    ? PHQ9_TEST 
+    : activeQuizTestId === 'gad7' 
+    ? GAD7_TEST 
+    : activeQuizTestId === 'asrs18' 
+    ? ASRS18_TEST 
+    : activeQuizTestId === 'aq10' 
+    ? AQ10_TEST 
+    : null;
+
+  const handleFinishQuiz = () => {
+    if (!activeQuizTestId || !activeQuizDef) return;
+    const total = Object.values(quizAnswers).reduce((a, b) => a + b, 0);
+    handleUpdateTestScore(activeQuizTestId, total);
+    // Mark as applied
+    const updated = tests.map(t => t.id === activeQuizTestId ? { ...t, applied: true } : t);
+    updateTestsState(updated);
+    setActiveQuizTestId(null);
+    setQuizAnswers({});
+    showToast(`✓ ${activeQuizDef.shortName} pontuado com sucesso: ${total} pts!`);
   };
 
   return (
@@ -366,20 +567,20 @@ Responda em formato JSON estruturado com os seguintes campos:
           )}
 
           {/* Modal Header */}
-          <div className="p-4 sm:p-5 border-b border-white/10 bg-[#12121F] flex items-center justify-between gap-3 shrink-0">
+          <div className="p-4 sm:p-5 border-b border-white/10 bg-[#12121F] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white shadow-md">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white shadow-md flex-shrink-0">
                 <Brain className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="font-bold text-base text-white tracking-tight flex items-center gap-2">
-                  <span>Gerador de Laudo Psicológico</span>
+                  <span>Relatório de Acompanhamento Psicológico</span>
                   <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">
-                    CFP Resolução 06/2019
+                    Resolução CFP nº 06/2019
                   </span>
                 </h3>
                 <p className="text-xs text-mecura-silver">
-                  Elabore e edite pareceres técnicos com auxílio de IA (Sem Medicamentos)
+                  Documento técnico de acompanhamento psicológico (Inicial ou Evolutivo) com seleção de testes psicométricos
                 </p>
               </div>
             </div>
@@ -397,7 +598,7 @@ Responda em formato JSON estruturado com os seguintes campos:
                   }`}
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Editar Laudo</span>
+                  <span>Editar Relatório</span>
                 </button>
                 <button
                   type="button"
@@ -427,14 +628,202 @@ Responda em formato JSON estruturado com os seguintes campos:
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar space-y-5">
             {activeTab === 'edit' ? (
               <>
-                {/* Top Action Ribbon */}
+                {/* 1. SELETOR DE ESTILO DO LAUDO / ACOMPANHAMENTO: INICIAL vs EVOLUTIVO */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/50 via-[#18182B] to-indigo-950/40 border border-purple-500/40 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                      {currentReportType === 'evolutivo' ? <TrendingUp className="w-5 h-5 text-emerald-400" /> : <FileText className="w-5 h-5 text-purple-300" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-bold text-mecura-silver tracking-wider">Estilo do Documento:</span>
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                          currentReportType === 'evolutivo'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                        }`}>
+                          {currentReportType === 'evolutivo' ? 'Acompanhamento Evolutivo' : 'Acompanhamento Inicial'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-white font-medium mt-0.5">
+                        {currentReportType === 'evolutivo' 
+                          ? 'Registro de sessões continuadas, resposta terapêutica e evolução de sintomas'
+                          : 'Acolhimento de entrada, anamnese clínica e rastreio psicométrico basal'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Buttons */}
+                  <div className="flex items-center bg-[#0D0D17] p-1 rounded-xl border border-white/10 w-full md:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchReportType('inicial')}
+                      className={`flex-1 md:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        currentReportType === 'inicial'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'text-mecura-silver hover:text-white'
+                      }`}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5" />
+                      <span>Acompanhamento Inicial</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchReportType('evolutivo')}
+                      className={`flex-1 md:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        currentReportType === 'evolutivo'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-mecura-silver hover:text-white'
+                      }`}
+                    >
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Acompanhamento Evolutivo</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. SELETOR DE TESTES PSICOLÓGICOS UTILIZADOS */}
+                <div className="bg-[#12121A] p-4 rounded-2xl border border-white/10 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-purple-400" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-purple-200">
+                        Testes & Escalas Psicológicas Aplicadas neste Paciente
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-mecura-silver">
+                        {tests.filter(t => t.applied).length} de {tests.length} aplicados
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSyncTestsIntoProcedures}
+                        className="text-[10px] bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-2 py-0.5 rounded-md font-bold transition-colors cursor-pointer"
+                        title="Incorporar citações formais dos testes marcados na seção de procedimentos"
+                      >
+                        + Injetar nos Procedimentos
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-mecura-silver leading-relaxed">
+                    Selecione quais testes foram aplicados neste paciente. Os testes marcados com <span className="text-emerald-400 font-bold">✓ Utilizado</span> serão inseridos automaticamente na tabela técnica oficial do documento em PDF.
+                  </p>
+
+                  {/* Cards dos 4 Testes */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {tests.map((test) => {
+                      const isApplied = test.applied;
+                      return (
+                        <div
+                          key={test.id}
+                          className={`p-3.5 rounded-xl border transition-all text-left relative ${
+                            isApplied
+                              ? 'bg-purple-950/30 border-purple-500/60 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
+                              : 'bg-[#0A0A10] border-white/5 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <label className="flex items-center gap-2.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isApplied}
+                                onChange={() => handleToggleTest(test.id)}
+                                className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 bg-[#161622] border-white/20 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`text-xs font-bold block ${isApplied ? 'text-purple-200' : 'text-mecura-silver'}`}>
+                                  {test.name}
+                                </span>
+                                <span className="text-[10px] text-mecura-silver/70 block">
+                                  {test.id === 'phq9' && 'Rastreio e Gravidade de Sintomas Depressivos'}
+                                  {test.id === 'gad7' && 'Rastreio de Ansiedade Generalizada'}
+                                  {test.id === 'asrs18' && 'Auto-relato de TDAH em Adultos (18 itens)'}
+                                  {test.id === 'aq10' && 'Rastreio de Autismo TEA Adulto (Cambridge)'}
+                                </span>
+                              </div>
+                            </label>
+
+                            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex-shrink-0 ${
+                              isApplied
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-white/5 text-mecura-silver border border-white/10'
+                            }`}>
+                              {isApplied ? '✓ Utilizado' : 'Não Aplicado'}
+                            </span>
+                          </div>
+
+                          {/* Seletor e inputs quando aplicado */}
+                          {isApplied && (
+                            <div className="mt-3 pt-2.5 border-t border-purple-500/20 space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-purple-300 mb-0.5">
+                                    Escore ({test.maxScore ? `0-${test.maxScore}` : 'pontos'}):
+                                  </label>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={test.maxScore || 100}
+                                      value={test.score}
+                                      onChange={(e) => handleUpdateTestScore(test.id, Number(e.target.value))}
+                                      className="w-full bg-[#0E0E17] border border-purple-500/30 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:border-purple-400 focus:outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveQuizTestId(test.id as any);
+                                        setQuizAnswers({});
+                                      }}
+                                      className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-200 text-[10px] font-bold rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                                      title="Abrir perguntas do teste para pontuar ao vivo"
+                                    >
+                                      Pontuar
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[9px] uppercase font-bold text-purple-300 mb-0.5">
+                                    Classificação Clínica:
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={test.classification}
+                                    onChange={(e) => handleUpdateTestField(test.id, 'classification', e.target.value)}
+                                    className="w-full bg-[#0E0E17] border border-purple-500/30 rounded-lg px-2.5 py-1 text-[11px] text-white focus:border-purple-400 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[9px] uppercase font-bold text-purple-300 mb-0.5">
+                                  Interpretação Clínica / Ponto de Corte:
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={test.clinicalInterpretation}
+                                  onChange={(e) => handleUpdateTestField(test.id, 'clinicalInterpretation', e.target.value)}
+                                  className="w-full bg-[#0E0E17] border border-purple-500/30 rounded-lg p-2 text-[10px] text-purple-100 focus:border-purple-400 focus:outline-none custom-scrollbar"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. ASSISTENTE DE REDAÇÃO & PUXAR TRIAGEM */}
                 <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-[#161626] to-purple-950/20 border border-purple-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
                     <Sparkles className="w-5 h-5 text-purple-300 fill-current shrink-0" />
                     <div>
                       <h4 className="text-xs font-bold text-white">Assistente de Redação Clínica & Triagem</h4>
                       <p className="text-[11px] text-mecura-silver">
-                        Puxa automaticamente todas as respostas da triagem do paciente selecionado para ajustes finais.
+                        Puxa as queixas clínicas da triagem e formata o relatório conforme a Resolução CFP nº 06/2019.
                       </p>
                     </div>
                   </div>
@@ -444,7 +833,7 @@ Responda em formato JSON estruturado com os seguintes campos:
                       type="button"
                       onClick={handlePullFromTriage}
                       className="flex-1 sm:flex-none px-3.5 py-2 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/40 text-purple-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                      title="Recarregar laudo exatamente com o que o paciente preencheu na triagem"
+                      title="Recarregar relatório com dados da triagem do paciente"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Puxar Dados da Triagem</span>
@@ -457,12 +846,12 @@ Responda em formato JSON estruturado com os seguintes campos:
                       className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       <Sparkles className="w-4 h-4 fill-current" />
-                      <span>{isGeneratingAi ? 'Redigindo Laudo...' : 'Gerar Texto com IA'}</span>
+                      <span>{isGeneratingAi ? 'Redigindo Relatório...' : 'Gerar Texto com IA'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Grid Identificação do Paciente e Profissional */}
+                {/* 4. IDENTIFICAÇÃO DO PACIENTE E PROFISSIONAL */}
                 <div className="bg-[#12121A] p-4 rounded-2xl border border-white/5 space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
                     <User className="w-4 h-4 text-purple-400" />
@@ -546,12 +935,12 @@ Responda em formato JSON estruturado com os seguintes campos:
                   </div>
                 </div>
 
-                {/* Campos Estruturados do Laudo */}
+                {/* 5. SEÇÕES DO DOCUMENTO CONFORME CFP 06/2019 */}
                 <div className="space-y-4">
                   {/* 1. Finalidade */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-purple-300">
-                      1. Identificação do Solicitante e Finalidade do Laudo
+                      1. Identificação do Solicitante e Finalidade do Acompanhamento
                     </label>
                     <textarea
                       rows={2}
@@ -564,7 +953,9 @@ Responda em formato JSON estruturado com os seguintes campos:
                   {/* 2. Descrição da Demanda */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-purple-300">
-                      2. Descrição da Demanda e Histórico Clínico Emocional
+                      {currentReportType === 'evolutivo' 
+                        ? '2. Histórico do Atendimento & Demanda Terapêutica'
+                        : '2. Descrição da Demanda e Histórico Clínico-Psicológico'}
                     </label>
                     <textarea
                       rows={4}
@@ -576,9 +967,12 @@ Responda em formato JSON estruturado com os seguintes campos:
 
                   {/* 3. Procedimentos Técnico-Científicos */}
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-purple-300">
-                      3. Procedimentos Técnico-Científicos Adotados
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-purple-300">
+                        3. Procedimentos e Instrumentos Técnico-Científicos Adotados
+                      </label>
+                      <span className="text-[10px] text-mecura-silver">Resolução CFP nº 06/2019</span>
+                    </div>
                     <textarea
                       rows={3}
                       value={technicalProcedures}
@@ -587,10 +981,12 @@ Responda em formato JSON estruturado com os seguintes campos:
                     />
                   </div>
 
-                  {/* 4. Análise Psicológica */}
+                  {/* 4. Análise Psicológica e Exame do Estado Mental */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-purple-300">
-                      4. Análise Psicológica e Exame do Estado Mental
+                      {currentReportType === 'evolutivo'
+                        ? '4. Evolução Clínica, Resposta Psicoterapêutica e Exame Psíquico'
+                        : '4. Análise Psicológica e Exame do Estado Mental'}
                     </label>
                     <textarea
                       rows={4}
@@ -604,9 +1000,9 @@ Responda em formato JSON estruturado com os seguintes campos:
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-bold text-purple-300">
-                        5. Hipótese Diagnóstica (CID-10 / CID-11)
+                        5. Hipótese Diagnóstica Nosológica (CID-10 / CID-11)
                       </label>
-                      <span className="text-[10px] text-mecura-silver">CIDs Frequentes:</span>
+                      <span className="text-[10px] text-mecura-silver">CIDs Frequentes em Saúde Mental:</span>
                     </div>
 
                     {/* Quick CIDs Pill Bar */}
@@ -615,10 +1011,12 @@ Responda em formato JSON estruturado com os seguintes campos:
                         'F41.1 - Transtorno de Ansiedade Generalizada (TAG)',
                         'F32.1 - Episódio Depressivo Moderado',
                         'F51.0 - Insônia Não-Orgânica Reativa',
+                        'F90.0 - Transtorno de Déficit de Atenção e Hiperatividade (TDAH)',
+                        'F84.0 - Transtorno do Espectro Autista (TEA)',
                         'F43.2 - Transtorno de Adaptação / Estresse'
-                      ].map((cidItem) => (
+                      ].map((cidItem, cidIdx) => (
                         <button
-                          key={cidItem}
+                          key={`cid-quick-${cidItem.split(' ')[0]}-${cidIdx}`}
                           type="button"
                           onClick={() => handleQuickCid(cidItem)}
                           className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-purple-500/15 hover:bg-purple-500/30 text-purple-200 border border-purple-500/30 transition-all cursor-pointer"
@@ -636,10 +1034,12 @@ Responda em formato JSON estruturado com os seguintes campos:
                     />
                   </div>
 
-                  {/* 6. Conclusão */}
+                  {/* 6. Conclusão e Parecer Psicológico */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-purple-300">
-                      6. Conclusão e Parecer Psicológico
+                      {currentReportType === 'evolutivo'
+                        ? '6. Parecer Conclusivo e Diretrizes de Evolução Terapêutica'
+                        : '6. Conclusão Técnica e Encaminhamento Terapêutico'}
                     </label>
                     <textarea
                       rows={4}
@@ -656,7 +1056,7 @@ Responda em formato JSON estruturado com os seguintes campos:
                 <div className="p-3 bg-purple-950/30 border border-purple-500/30 rounded-2xl text-xs text-purple-200 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Eye className="w-4 h-4 text-purple-300" />
-                    <span>Pré-visualização do Laudo Psicológico Oficial (CFP)</span>
+                    <span>Pré-visualização do Relatório de Acompanhamento Psicológico Oficial (CFP)</span>
                   </div>
                   <span className="text-[10px] font-bold bg-purple-500/20 px-2 py-0.5 rounded-full">
                     A4 Pronto para Impressão
@@ -669,7 +1069,7 @@ Responda em formato JSON estruturado com os seguintes campos:
                     <div>
                       <h2 className="text-xl font-black text-purple-950 tracking-tight m-0">MECURA</h2>
                       <p className="text-[9px] font-bold text-purple-700 uppercase">
-                        DEPARTAMENTO DE PSICOLOGIA CLÍNICA
+                        DEPARTAMENTO DE PSICOLOGIA CLÍNICA & SAÚDE MENTAL
                       </p>
                     </div>
                     <div className="text-right">
@@ -679,8 +1079,14 @@ Responda em formato JSON estruturado com os seguintes campos:
                   </div>
 
                   <div className="text-center my-3">
-                    <h3 className="font-black text-sm text-purple-950 tracking-widest uppercase">LAUDO PSICOLÓGICO</h3>
-                    <p className="text-[9px] text-gray-500">RESOLUÇÃO CFP Nº 06/2019</p>
+                    <h3 className="font-black text-sm text-purple-950 tracking-widest uppercase">
+                      {currentReportType === 'evolutivo' 
+                        ? 'RELATÓRIO DE ACOMPANHAMENTO PSICOLÓGICO (EVOLUTIVO)' 
+                        : 'RELATÓRIO DE ACOMPANHAMENTO PSICOLÓGICO (INICIAL)'}
+                    </h3>
+                    <p className="text-[9px] font-bold text-purple-700 uppercase tracking-wider">
+                      DOCUMENTO TÉCNICO DE ACOMPANHAMENTO • RESOLUÇÃO CFP Nº 06/2019
+                    </p>
                   </div>
 
                   {/* Patient Info Box */}
@@ -691,30 +1097,68 @@ Responda em formato JSON estruturado com os seguintes campos:
                     <p><strong>Emissão:</strong> {emissionDate}</p>
                   </div>
 
-                  {/* Text Sections */}
+                  {/* Seções com Escalas Psicométricas */}
                   <div className="space-y-3 text-[11px] leading-relaxed text-gray-800">
                     <div>
-                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">1. Finalidade:</h5>
+                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">1. Identificação do Solicitante e Finalidade:</h5>
                       <p>{purpose}</p>
                     </div>
+
                     <div>
-                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">2. Descrição da Demanda:</h5>
+                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">
+                        {currentReportType === 'evolutivo' ? '2. Histórico do Atendimento & Demanda:' : '2. Descrição da Demanda:'}
+                      </h5>
                       <p>{demandDescription}</p>
                     </div>
+
                     <div>
-                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">3. Procedimentos:</h5>
+                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">3. Procedimentos Técnico-Científicos:</h5>
                       <p>{technicalProcedures}</p>
                     </div>
+
+                    {/* Tabela de Escalas Aplicadas */}
+                    {tests.filter(t => t.applied).length > 0 && (
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between border-b border-purple-200 pb-1">
+                          <span className="font-bold text-purple-950 text-[10px] uppercase">
+                            Instrumentos e Escalas Psicométricas Aplicadas
+                          </span>
+                          <span className="text-[9px] font-bold text-purple-700">
+                            {tests.filter(t => t.applied).length} escala(s)
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {tests.filter(t => t.applied).map((test) => (
+                            <div key={test.id} className="bg-white p-2 rounded border border-purple-100 text-[10px]">
+                              <div className="flex justify-between font-bold text-purple-900">
+                                <span>{test.name}</span>
+                                <span>{test.score}/{test.maxScore} pts ({test.classification})</span>
+                              </div>
+                              {test.clinicalInterpretation && (
+                                <p className="text-gray-600 text-[9px] mt-0.5">{test.clinicalInterpretation}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
-                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">4. Análise do Estado Mental:</h5>
+                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">
+                        {currentReportType === 'evolutivo' ? '4. Evolução Clínica e Exame Psíquico:' : '4. Análise Psicológica e Exame do Estado Mental:'}
+                      </h5>
                       <p>{clinicalAnalysis}</p>
                     </div>
+
                     <div>
-                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">5. Hipótese Diagnóstica:</h5>
+                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">5. Hipótese Diagnóstica (CID):</h5>
                       <p className="font-semibold text-purple-950">{diagnosticHypothesis}</p>
                     </div>
+
                     <div>
-                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">6. Conclusão:</h5>
+                      <h5 className="font-bold text-purple-900 uppercase text-[10px]">
+                        {currentReportType === 'evolutivo' ? '6. Parecer Conclusivo e Diretrizes de Evolução:' : '6. Conclusão Técnica:'}
+                      </h5>
                       <p>{conclusion}</p>
                     </div>
                   </div>
@@ -724,6 +1168,9 @@ Responda em formato JSON estruturado com os seguintes campos:
                     <div className="w-48 border-b border-purple-900 mx-auto mb-1" />
                     <p className="font-bold text-xs text-purple-950">{psychologistName}</p>
                     <p className="text-[10px] text-purple-700 font-semibold">{psychologistCrp}</p>
+                    <p className="text-[9px] text-gray-500 mt-1">
+                      Documento técnico de acompanhamento psicológico emitido sob sigilo ético (Resolução CFP nº 06/2019)
+                    </p>
                   </div>
                 </div>
               </div>
@@ -750,22 +1197,108 @@ Responda em formato JSON estruturado com os seguintes campos:
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{isSendingFeedback ? 'Enviando...' : 'Anexar Laudo no Chat'}</span>
+                  <span>{isSendingFeedback ? 'Enviando...' : `Anexar Relatório (${currentReportType === 'evolutivo' ? 'Evolutivo' : 'Inicial'}) no Chat`}</span>
                 </button>
               )}
 
               <button
                 type="button"
-                onClick={onDownloadPDF}
+                onClick={handleDownloadPDFWithTests}
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                <span>Baixar PDF Laudo</span>
+                <span>Baixar PDF ({currentReportType === 'evolutivo' ? 'Evolutivo' : 'Inicial'})</span>
               </button>
             </div>
           </div>
         </motion.div>
       </div>
+
+      {/* MODAL INTERATIVO PARA PONTUAR TESTE AO VIVO */}
+      {activeQuizDef && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#12121E] border border-purple-500/40 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-white">
+            <div className="p-4 border-b border-white/10 bg-[#161625] flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm text-purple-200">{activeQuizDef.name}</h4>
+                <p className="text-[10px] text-mecura-silver">{activeQuizDef.cutoffText}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveQuizTestId(null)}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+              <p className="text-xs text-purple-300 font-medium">
+                Selecione as respostas do paciente para calcular automaticamente o escore:
+              </p>
+
+              {activeQuizDef.questions.map((q, qIdx) => (
+                <div key={q.id} className="bg-[#0A0A10] p-3 rounded-xl border border-white/5 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-bold text-purple-400 shrink-0">{qIdx + 1}.</span>
+                    <div>
+                      <p className="text-xs text-white leading-snug">{q.question}</p>
+                      <span className="text-[9px] text-mecura-silver/70">{q.domain}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1">
+                    {activeQuizDef.frequencyOptions.map((opt) => {
+                      const isSelected = quizAnswers[q.id] === opt.points;
+                      return (
+                        <button
+                          key={`${q.id}-opt-${opt.points}`}
+                          type="button"
+                          onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt.points }))}
+                          className={`p-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-purple-600 border-purple-400 text-white shadow-sm'
+                              : 'bg-white/5 border-white/10 text-mecura-silver hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          {opt.label} ({opt.points})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 border-t border-white/10 bg-[#161625] flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-purple-200">
+                  Pontuação Atual: {Object.values(quizAnswers).reduce((a, b) => a + b, 0)} pts
+                </span>
+                <span className="text-[10px] text-mecura-silver block">
+                  {Object.keys(quizAnswers).length} de {activeQuizDef.questions.length} respondidas
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveQuizTestId(null)}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white text-xs font-bold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFinishQuiz}
+                  className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-md"
+                >
+                  Salvar Escore
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AnimatePresence>
   );
 }

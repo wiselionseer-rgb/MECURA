@@ -146,7 +146,9 @@ export function PrescriptionViewScreen() {
             <div className="flex justify-between items-end pt-6 border-t border-[#E4E4E7]">
               <div>
                 <p className="font-bold text-[#18181B]">Dr. Guilherme Taveira Dias</p>
-                <p className="text-[#71717A] text-sm">CRM: 12345/SP</p>
+                <p className="text-[#52525B] text-xs font-semibold">CRM/MT 17259 • Estado MT • Clínico Geral</p>
+                <p className="text-[#71717A] text-xs mt-0.5">Tel: +55 65 3190-0629 • Wiselionseer@gmail.com</p>
+                <p className="text-[#71717A] text-xs">Primavera do Leste - MT • CEP 78850-000</p>
               </div>
               <div className="flex flex-col items-center">
                 <CheckCircle2 className="w-8 h-8 text-mecura-green mb-1" />
@@ -165,6 +167,8 @@ export function PrescriptionViewScreen() {
               const blob = await generatePrescriptionPDF(userName || 'Paciente', messages, {
                 birthDate: userBirthDate || answers?.birthDate,
                 cpf: userCpf || answers?.cpf,
+                customItems: previaMsg?.receitaPreviaData?.items,
+                customNotes: previaMsg?.receitaPreviaData?.notes,
                 returnBlob: true
               });
               if (blob instanceof Blob) {

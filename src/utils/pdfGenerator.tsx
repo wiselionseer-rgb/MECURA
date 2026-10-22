@@ -26,6 +26,7 @@ export interface PrescriptionItemData {
   priceBRL?: number;
   image?: string;
   details?: string[];
+  sourceMedName?: string;
 }
 
 export interface PatientPrescriptionData {
@@ -428,6 +429,16 @@ export const safeHtml2Canvas = async (element: HTMLElement): Promise<HTMLCanvasE
             // ignore
           }
         });
+
+        // 4. Ensure cloned target and all ancestor nodes have opacity: 1 and visibility: visible
+        let curr: HTMLElement | null = clonedElement;
+        while (curr) {
+          if (curr.style) {
+            curr.style.opacity = '1';
+            curr.style.visibility = 'visible';
+          }
+          curr = curr.parentElement;
+        }
       }
     });
   });
@@ -452,19 +463,62 @@ export const generatePrescriptionPDF = async (
   const cpfText = sanitize(patientData?.cpf || storeState.userCpf || storeState.answers?.cpf || 'Não informado');
   const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
 
+  const rawDocSpec = patientData?.customDoctorSpecialty || "Clínico Geral • Medicina Canabinoide";
   const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
   const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
-  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
+  const docSpec = rawDocSpec.toLowerCase().includes('clínico geral') || rawDocSpec.toLowerCase().includes('clinico geral')
+    ? rawDocSpec
+    : `Clínico Geral • ${rawDocSpec}`;
+  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com";
+  const docAddressLine = "Primavera do Leste - MT • CEP 78850-000";
 
-  // Gather items
+  // Check localStorage for saved prescription matching this patient if customItems are not directly provided
+  let savedStoragePrescription: any = null;
+  try {
+    const rawSavedPresc = localStorage.getItem('mecura_saved_prescriptions_v2');
+    if (rawSavedPresc) {
+      const parsedPresc = JSON.parse(rawSavedPresc);
+      const targetName = (sanitizedUserName || '').trim().toLowerCase();
+      const candidateKeys = [
+        (patientData as any)?.patientId ? `id:${String((patientData as any).patientId).toLowerCase().trim()}` : '',
+        ((patientData as any)?.patientId || '').toLowerCase().trim(),
+        targetName && targetName !== 'paciente' ? `name:${targetName}` : '',
+        targetName && targetName !== 'paciente' ? targetName : ''
+      ].filter(Boolean);
+
+      for (const k of candidateKeys) {
+        const cand = parsedPresc?.[k];
+        if (cand && Array.isArray(cand.items) && cand.items.length > 0) {
+          const cachedName = (cand.patientName || '').trim().toLowerCase();
+          if (!cachedName || !targetName || targetName === 'paciente' || cachedName === targetName) {
+            savedStoragePrescription = cand;
+            break;
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  // Gather items from customItems, savedStoragePrescription, prescription/receita_previa messages, or product messages
   let itemsToRender: PrescriptionItemData[] = [];
   if (patientData?.customItems && patientData.customItems.length > 0) {
     itemsToRender = patientData.customItems;
+  } else if (savedStoragePrescription?.items && savedStoragePrescription.items.length > 0) {
+    itemsToRender = savedStoragePrescription.items;
   } else {
-    // Check if there are receita_previa messages
-    const previaMsg = messages.find(m => m.type === 'receita_previa' && m.receitaPreviaData?.items?.length);
-    if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
-      previaMsg.receitaPreviaData.items.forEach(it => {
+    // Check if there are prescription or receita_previa messages (use the latest one)
+    const msgList = Array.isArray(messages) ? messages : [];
+    const previaOrPrescMsgs = msgList.filter(
+      m => (m.type === 'prescription' || m.type === 'receita_previa' || (m as any).prescriptionData?.items?.length) &&
+           ((m.receitaPreviaData?.items && m.receitaPreviaData.items.length > 0) || ((m as any).prescriptionData?.items && (m as any).prescriptionData.items.length > 0))
+    );
+    const latestPrescMsg = previaOrPrescMsgs.length > 0 ? previaOrPrescMsgs[previaOrPrescMsgs.length - 1] : null;
+    const msgItems = latestPrescMsg?.receitaPreviaData?.items || (latestPrescMsg as any)?.prescriptionData?.items;
+
+    if (msgItems && Array.isArray(msgItems) && msgItems.length > 0) {
+      msgItems.forEach((it: any) => {
         const itemOrigin = it.origin || (isNationalProduct(it as any) ? 'Nacional' : 'Importado');
         itemsToRender.push({
           name: it.name,
@@ -476,11 +530,12 @@ export const generatePrescriptionPDF = async (
           concentration: it.concentration,
           pharmaceuticalForm: it.pharmaceuticalForm,
           quantity: it.quantity,
-          administrationRoute: it.administrationRoute
+          administrationRoute: it.administrationRoute,
+          posologyHeader: it.posologyHeader
         });
       });
     } else {
-      messages.forEach(m => {
+      msgList.forEach(m => {
         if (m.type === 'product' && m.productData) {
           const itemOrigin = m.productData.origin || (isNationalProduct(m.productData as any) ? 'Nacional' : 'Importado');
           itemsToRender.push({
@@ -505,9 +560,17 @@ export const generatePrescriptionPDF = async (
 • Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.
 • Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.`;
 
+  const msgListForNotes = Array.isArray(messages) ? messages : [];
+  const latestPrescNotesFromMsg = [...msgListForNotes]
+    .reverse()
+    .find(m => (m.type === 'prescription' || m.type === 'receita_previa') && m.receitaPreviaData?.notes)?.receitaPreviaData?.notes;
+
   const customNotesText = patientData?.customNotes !== undefined
     ? patientData.customNotes
-    : (messages.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n') || defaultClinicalNotes);
+    : (savedStoragePrescription?.notes ||
+       msgListForNotes.filter(m => m.type === 'prescription_notes' && m.text).map(m => m.text).join('\n\n') ||
+       latestPrescNotesFromMsg ||
+       defaultClinicalNotes);
 
   const nationalItems = itemsToRender.filter(isNationalProduct);
   const importedItems = itemsToRender.filter(item => !isNationalProduct(item));
@@ -644,10 +707,11 @@ export const generatePrescriptionPDF = async (
   );
 
   const renderPrescriptionSignatureBlock = () => (
-    <div className="pt-2.5 border-t border-[#E2E8F0] flex justify-between items-end shrink-0 w-full">
-      <div className="text-[8.5px] text-[#64748B] space-y-0.5">
-        <p className="m-0 font-bold text-[#1E1B4B]">Validade Legal em Todo o Território Nacional</p>
-        <p className="m-0">Data de Emissão: <strong>{emissionDateStr}</strong></p>
+    <div className="pt-2 border-t border-[#E2E8F0] flex justify-between items-end shrink-0 w-full">
+      <div className="text-[8px] text-[#64748B] space-y-0.5">
+        <p className="m-0 font-bold text-[#1E1B4B] text-[8.5px]">Validade Legal em Todo o Território Nacional</p>
+        <p className="m-0">Data de Emissão: <strong>{emissionDateStr}</strong> • Local: <strong>{docAddressLine}</strong></p>
+        <p className="m-0 text-[#475569] font-medium">{docContactLine}</p>
         <p className="text-[7.5px] text-[#94A3B8] m-0">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022 • CFM</p>
       </div>
 
@@ -664,11 +728,11 @@ export const generatePrescriptionPDF = async (
           </div>
         </div>
 
-        <div className="text-center w-52">
-          <div className="border-b border-[#94A3B8] mb-1.5" style={{ height: '0px' }} />
-          <p className="text-[10.5px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.25' }}>{docName}</p>
-          <p className="text-[9px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm}</p>
-          <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>Assinatura Digital / Prescritor</p>
+        <div className="text-center w-56">
+          <div className="border-b border-[#94A3B8] mb-1" style={{ height: '0px' }} />
+          <p className="text-[10.5px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.2' }}>{docName}</p>
+          <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • Clínico Geral</p>
+          <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
         </div>
       </div>
     </div>
@@ -680,7 +744,7 @@ export const generatePrescriptionPDF = async (
   container.style.top = '0';
   container.style.width = '794px';
   container.style.zIndex = '-9999';
-  container.style.opacity = '0';
+  container.style.opacity = '1';
   container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
@@ -755,8 +819,9 @@ export const generatePrescriptionPDF = async (
             </div>
             <div className="text-right">
               <h3 className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</h3>
-              <p className="text-[10px] text-[#475569] font-semibold m-0">{docCrm}</p>
-              <p className="text-[9px] text-[#64748B] m-0">{docSpec}</p>
+              <p className="text-[9.5px] text-[#475569] font-semibold m-0">{docCrm} • Estado MT • {docSpec}</p>
+              <p className="text-[8px] text-[#64748B] m-0">{docContactLine}</p>
+              <p className="text-[8px] text-[#64748B] m-0">{docAddressLine}</p>
             </div>
           </div>
           <div className="text-center my-1">
@@ -777,6 +842,7 @@ export const generatePrescriptionPDF = async (
         </div>
 
         <div id="rx-measure-sig">{renderPrescriptionSignatureBlock()}</div>
+        <div id="rx-measure-dispensacao">{renderDispensacaoBlock(true, false)}</div>
         <div id="rx-measure-notes-dense">{hasNotes ? renderNotesBlock(customNotesText, true, true) : null}</div>
         <div id="rx-measure-notes-normal">{hasNotes ? renderNotesBlock(customNotesText, false, false) : null}</div>
 
@@ -800,14 +866,15 @@ export const generatePrescriptionPDF = async (
     root.render(<MeasureRxComponent />);
     await new Promise(resolve => setTimeout(resolve, 140));
 
-    const chromeH = container.querySelector<HTMLElement>('#rx-measure-chrome')?.offsetHeight || 168;
-    const sigH = container.querySelector<HTMLElement>('#rx-measure-sig')?.offsetHeight || 62;
+    const chromeH = container.querySelector<HTMLElement>('#rx-measure-chrome')?.offsetHeight || 180;
+    const sigH = container.querySelector<HTMLElement>('#rx-measure-sig')?.offsetHeight || 70;
+    const dispensacaoH = container.querySelector<HTMLElement>('#rx-measure-dispensacao')?.offsetHeight || 65;
     const notesDenseH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-dense')?.offsetHeight || 68) : 0;
     const notesNormalH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-normal')?.offsetHeight || 78) : 0;
 
-    // A4 inner height = 1123 - 30 (top/bottom padding) - 20 (bottom rodapé bar) = 1073px
-    const RX_PAGE_INNER_H = 1070;
-    const availWithoutNotes = RX_PAGE_INNER_H - chromeH - sigH - 10;
+    // A4 inner height = 1123 - 32 (top/bottom padding) - 22 (bottom rodapé bar) = 1069px
+    const RX_PAGE_INNER_H = 1065;
+    const availWithoutNotes = RX_PAGE_INNER_H - chromeH - sigH - 12;
 
     const allPagesToRender: PrescriptionPageData[] = [];
 
@@ -952,9 +1019,10 @@ export const generatePrescriptionPDF = async (
                       </p>
                     </div>
                     <div className="text-right">
-                      <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
-                      <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
-                      <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
+                      <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
+                      <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • {docSpec}</p>
+                      <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docContactLine}</p>
+                      <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docAddressLine}</p>
                     </div>
                   </div>
 
@@ -999,18 +1067,18 @@ export const generatePrescriptionPDF = async (
                   {/* Clinical Notes block */}
                   {page.notesText && renderNotesBlock(page.notesText, isDense, isCompact)}
 
-                  {/* Dispensação & Regulatory box when <= 3 items so the page feels complete and never has an empty void */}
-                  {page.items.length <= 3 && renderDispensacaoBlock(isNationalGuide, isCompact)}
+                  {/* Dispensação & Regulatory box when <= 2 items (or <= 3 without notes) so the signature is never clipped */}
+                  {(page.items.length <= 2 || (page.items.length === 3 && !page.notesText && dispensacaoH < 80)) && renderDispensacaoBlock(isNationalGuide, isCompact)}
 
-                  {/* Place Doctor Signature & ICP-Brasil Badge directly below content when <= 4 items, or anchored above rodapé when dense */}
-                  <div className={page.items.length <= 4 ? "mt-4" : "mt-auto pt-1.5"}>
+                  {/* Place Doctor Signature & ICP-Brasil Badge */}
+                  <div className={page.items.length <= 3 ? "mt-3" : "mt-auto pt-1.5"}>
                     {renderPrescriptionSignatureBlock()}
                   </div>
                 </div>
 
                 {/* Slim Institutional Rodapé anchored at the very bottom */}
                 <div className="shrink-0 mt-auto pt-1 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
-                  <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+                  <span>MECURA • Primavera do Leste - MT (CEP 78850-000)</span>
                   <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
                   <span>Receituário Oficial • Folha {page.pageNumber} de {page.totalPages}</span>
                 </div>
@@ -1067,9 +1135,14 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const cpfText = sanitize(patientData?.cpf || 'Não informado');
   const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
   
+  const rawDocSpec = patientData?.customDoctorSpecialty || "Clínico Geral • Medicina Canabinoide";
   const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
   const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
-  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
+  const docSpec = rawDocSpec.toLowerCase().includes('clínico geral') || rawDocSpec.toLowerCase().includes('clinico geral')
+    ? rawDocSpec
+    : `Clínico Geral • ${rawDocSpec}`;
+  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com";
+  const docAddressLine = "Primavera do Leste - MT • CEP 78850-000";
 
   const isEvolutivo = Boolean(
     (patientData?.reportType === 'evolutivo' ||
@@ -1412,9 +1485,10 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
           </p>
         </div>
         <div className="text-right">
-          <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.3' }}>{docName}</h3>
-          <p className="text-[10px] text-[#475569] font-semibold m-0" style={{ marginTop: '2px', lineHeight: '1.2' }}>{docCrm}</p>
-          <p className="text-[9px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
+          <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
+          <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • {docSpec}</p>
+          <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docContactLine}</p>
+          <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docAddressLine}</p>
         </div>
       </div>
 
@@ -1465,13 +1539,13 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const renderContinuationFooter = (pageNum: number, totalPagesCount: number) => (
     <div className="shrink-0 mt-auto pt-1.5 border-t border-[#E2E8F0]">
       <div className="flex items-center justify-between text-[8px] text-[#64748B] font-semibold">
-        <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+        <span>MECURA • Primavera do Leste - MT (CEP 78850-000)</span>
         <span className="text-[#1E1B4B] font-bold">Documento Médico Oficial — Continua na folha {pageNum + 1}...</span>
         <span>Folha {pageNum} de {totalPagesCount}</span>
       </div>
       <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-medium mt-0.5">
         <span>Paciente: {sanitizedUserName}</span>
-        <span>Médico Assistente: {docName} ({docCrm})</span>
+        <span>Médico: {docName} ({docCrm} • Clínico Geral • +55 65 3190-0629)</span>
         <span>Emissão: {emissionDateStr}</span>
       </div>
     </div>
@@ -1483,12 +1557,14 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         <div className="text-[8px] text-[#64748B] space-y-0.5">
           <p className="m-0 font-bold text-[#1E1B4B] text-[8.5px]">Validade Assistencial e Pericial</p>
           <p className="m-0">Laudo médico emitido em conformidade com as diretrizes do CFM e RDC Anvisa nº 327/2019 e nº 660/2022.</p>
+          <p className="m-0 text-[#475569] font-medium">{docContactLine} • {docAddressLine}</p>
           <p className="m-0 text-[#94A3B8]">Data de Emissão: {emissionDateStr} • Folha {pageNum} de {totalPagesCount}</p>
         </div>
-        <div className="flex flex-col items-center shrink-0 w-56">
-          <div className="w-48 border-b border-[#94A3B8] mb-1.5" style={{ height: '0px' }}></div>
-          <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</p>
-          <p className="text-[8.5px] text-[#64748B] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Assinatura Digital / Prescritor</p>
+        <div className="flex flex-col items-center shrink-0 w-60">
+          <div className="w-52 border-b border-[#94A3B8] mb-1" style={{ height: '0px' }}></div>
+          <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.2' }}>{docName}</p>
+          <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • Clínico Geral</p>
+          <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
         </div>
       </div>
     </div>
@@ -1500,7 +1576,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   container.style.top = '0';
   container.style.width = '794px';
   container.style.zIndex = '-9999';
-  container.style.opacity = '0';
+  container.style.opacity = '1';
   container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
@@ -1535,7 +1611,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
           )}
         </div>
         <div id="measure-blocks" className="flex flex-col" style={{ gap: '4px' }}>
-          {flowBlocks.map((b, idx) => renderBlockElement(b, b.id, idx))}
+          {flowBlocks.map((b, idx) => renderBlockElement(b, `flow-${b.id}-${idx}`, idx))}
         </div>
       </div>
     );
@@ -1788,9 +1864,14 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const cpfText = sanitize(patientData?.cpf || 'Não informado');
   const emissionDateStr = patientData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
   
+  const rawDocSpec = patientData?.customDoctorSpecialty || "Clínico Geral • Medicina Canabinoide";
   const docName = patientData?.customDoctorName || "Dr. Guilherme Taveira Dias";
   const docCrm = patientData?.customDoctorCrm || "CRM/MT 17259";
-  const docSpec = patientData?.customDoctorSpecialty || "Especialista em Medicina Canabinoide";
+  const docSpec = rawDocSpec.toLowerCase().includes('clínico geral') || rawDocSpec.toLowerCase().includes('clinico geral')
+    ? rawDocSpec
+    : `Clínico Geral • ${rawDocSpec}`;
+  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com";
+  const docAddressLine = "Primavera do Leste - MT • CEP 78850-000";
 
   const defaultParagraphs = [
     `Declaro, para os devidos fins de direito, salvaguarda clínica e comprovação perante autoridades de trânsito e órgãos públicos, que o(a) paciente <strong>${sanitizedUserName}</strong>, inscrito(a) no CPF sob o nº <strong>${cpfText}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide.`,
@@ -1955,8 +2036,9 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
         </div>
         <div className="text-right">
           <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
-          <p className="text-[10.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm}</p>
-          <p className="text-[9.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docSpec}</p>
+          <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • {docSpec}</p>
+          <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docContactLine}</p>
+          <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docAddressLine}</p>
         </div>
       </div>
 
@@ -1976,16 +2058,16 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const renderSignature = () => (
     <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #CBD5E1' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div style={{ fontSize: '9px', color: '#64748B', lineHeight: '1.4' }}>
+        <div style={{ fontSize: '8.5px', color: '#64748B', lineHeight: '1.4' }}>
           <p style={{ margin: 0, fontWeight: 700, color: '#1E1B4B' }}>Mecura • Centro Integrado de Medicina Canabinoide</p>
-          <p style={{ margin: 0 }}>Documento médico emitido com fé pública e validade em todo o território nacional.</p>
-          <p style={{ margin: 0 }}>Data de Emissão: <strong>{emissionDateStr}</strong> • Prescritor Responsável: <strong>{docCrm}</strong></p>
+          <p style={{ margin: 0 }}>{docContactLine} • {docAddressLine}</p>
+          <p style={{ margin: 0 }}>Data de Emissão: <strong>{emissionDateStr}</strong> • Prescritor Responsável: <strong>{docCrm} (MT)</strong></p>
         </div>
-        <div style={{ textAlign: 'center', minWidth: '230px' }}>
+        <div style={{ textAlign: 'center', minWidth: '240px' }}>
           <div style={{ borderBottom: '1.5px solid #1E1B4B', marginBottom: '5px', height: '14px' }}></div>
           <p style={{ margin: 0, fontSize: '11px', fontWeight: 800, color: '#1E1B4B' }}>{docName}</p>
-          <p style={{ margin: '1px 0 0 0', fontSize: '9.5px', fontWeight: 600, color: '#475569' }}>{docCrm} • {docSpec}</p>
-          <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#059669', fontWeight: 700 }}>Assinatura Digital Qualificada ICP-Brasil</p>
+          <p style={{ margin: '1px 0 0 0', fontSize: '9px', fontWeight: 600, color: '#475569' }}>{docCrm} • Estado MT • Clínico Geral</p>
+          <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
         </div>
       </div>
     </div>
@@ -1997,7 +2079,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   container.style.top = '0';
   container.style.width = '794px';
   container.style.zIndex = '-9999';
-  container.style.opacity = '0';
+  container.style.opacity = '1';
   container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
@@ -2012,7 +2094,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
         <div id="psy-measure-sig">{renderSignature()}</div>
         <div id="psy-measure-blocks" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {allBlocks.map((b, idx) => (
-            <div key={b.id} data-psy-idx={idx}>
+            <div key={`psy-measure-${b.id || idx}-${idx}`} data-psy-idx={idx}>
               {renderPsychomotorBlock(b)}
             </div>
           ))}
@@ -2063,7 +2145,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
           const isLastPage = pIdx === pages.length - 1;
           return (
             <div
-              key={pIdx}
+              key={`psy-page-${pIdx}`}
               className="psychomotor-pdf-page relative border border-[#E2E8F0] box-border flex flex-col justify-between"
               style={{
                 width: '794px',
@@ -2080,8 +2162,8 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
               <div>
                 {renderHeader(pIdx > 0)}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
-                  {pageBlocks.map(b => (
-                    <div key={b.id}>{renderPsychomotorBlock(b)}</div>
+                  {pageBlocks.map((b, bIdx) => (
+                    <div key={`psy-p${pIdx}-${b.id || bIdx}-${bIdx}`}>{renderPsychomotorBlock(b)}</div>
                   ))}
                 </div>
                 {isLastPage && renderSignature()}
@@ -2130,7 +2212,20 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   }
 };
 
+export interface PsychologicalTestResultItem {
+  id: string;
+  name: string;
+  shortName?: string;
+  applied: boolean;
+  score: number | string;
+  maxScore?: number;
+  classification: string;
+  clinicalInterpretation?: string;
+  cutoffText?: string;
+}
+
 export interface PsychologicalReportData {
+  reportType?: 'inicial' | 'evolutivo';
   customPatientName?: string;
   cpf?: string;
   birthDate?: string;
@@ -2144,6 +2239,8 @@ export interface PsychologicalReportData {
   diagnosticHypothesis?: string;
   conclusion?: string;
   observations?: string;
+  evolutionSummary?: string;
+  selectedTests?: PsychologicalTestResultItem[];
   returnBlob?: boolean;
 }
 
@@ -2152,6 +2249,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
     return (text || '').replace(/[–—]/g, '-').replace(/[^\x0A\x0D\x20-\x7E\xA0-\xFF\u0152\u0153\u0178]/g, '');
   };
 
+  const isEvolutivo = reportData?.reportType === 'evolutivo';
   const rawUserName = reportData?.customPatientName || userName || 'Paciente';
   const sanitizedUserName = sanitize(rawUserName);
   
@@ -2162,33 +2260,49 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
   const psicoName = reportData?.psychologistName || "Marco Antônio Boastik";
   const psicoCrp = reportData?.psychologistCrp || "CRP 08/49215";
 
-  const rawPurpose = reportData?.purpose || "Avaliação Psicológica Clínica para Fins de Tratamento Multidisciplinar, Acompanhamento Emocional e Salvaguarda Terapêutica";
+  const defaultPurpose = isEvolutivo
+    ? "Relatório de Acompanhamento Psicológico Evolutivo para Registro da Evolução Clínica, Resposta Psicoterapêutica e Manejo em Saúde Mental"
+    : "Relatório de Acompanhamento Psicológico Inicial para Acolhimento, Investigação Clínica, Rastreio Psicométrico e Planejamento Psicoterapêutico";
+  const rawPurpose = reportData?.purpose || defaultPurpose;
   const purposeText = sanitize(rawPurpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
-  const demandText = sanitize(reportData?.demandDescription || "Paciente comparece para avaliação psicológica especializada, relatando quadro clínico marcado por sintomas persistentes de ansiedade, sobrecarga emocional, tensão psicofísica crônica e episódios de insônia fragmentada com prejuízo na qualidade de vida, regulação emocional e desempenho laboral.");
-  const procText = sanitize(reportData?.technicalProcedures || "Realizada entrevista psicológica clínica semiestruturada, anamnese direcionada, exame pormenorizado das funções psíquicas superiores e rastreio psicométrico de sintomas ansiosos, depressivos e qualidade do sono conforme as diretrizes técnico-científicas da Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.");
-  const analysisText = sanitize(reportData?.clinicalAnalysis || "Ao exame psíquico, o(a) paciente apresenta-se lúcido(a) e orientado(a) autopsiquicamente e alopsiquicamente, com discurso coerente, curso de pensamento preservado e atitude colaborativa. Observa-se afeto congruente com humor predominantemente ansioso e hiper-reativo ao estresse, queixas cognitivas secundárias à fadiga mental e hipervigilância noturna. Não há evidência de desagregação do pensamento, alterações sensoperceptivas, delírios ou alucinações. Constata-se sofrimento psicológico clinicamente significativo com impacto direto na arquitetura do sono e homeostase emocional.");
-  const diagText = sanitize(reportData?.diagnosticHypothesis || "F41.1 - Transtorno de Ansiedade Generalizada / F43.2 - Transtorno de Adaptação com Sintomas Ansiosos e Depressivos Reativos");
-  const conclusionText = sanitize(reportData?.conclusion || "Conclui-se que o(a) paciente preenche critérios clínicos compatíveis com sofrimento emocional crônico que justificam acompanhamento psicológico continuado em conjunto com suporte médico e farmacológico integrativo. Recomenda-se a manutenção de estratégias de regulação emocional, higiene do sono e terapêutica multidisciplinar para promoção de sua estabilidade biopsicossocial.");
-  const observationsText = sanitize(reportData?.observations || "De acordo com a Resolução CFP nº 06/2019, este documento psicológico possui caráter sigiloso e técnico-científico, refletindo o estado psíquico atual do(a) avaliado(a) no contexto da avaliação clínica. Recomenda-se reavaliação periódica e acompanhamento psicoterápico regular.");
+  const demandText = sanitize(reportData?.demandDescription || (isEvolutivo 
+    ? "Paciente em acompanhamento psicológico continuado. Apresenta evolução do quadro emocional prévio, com foco no monitoramento de estressores, regulação afetiva, qualidade do sono e sustentação das metas terapêuticas estabelecidas."
+    : "Paciente comparece para acolhimento e avaliação psicológica inicial, relatando queixas emocionais marcadas por sobrecarga psicofísica, tensão ansiosa, oscilações do humor e impactos no desempenho e qualidade de vida."));
+  const procText = sanitize(reportData?.technicalProcedures || "Realizadas sessões clínicas psicológicas semiestruturadas, escuta qualificada da história de vida, exame detalhado das funções psíquicas superiores e aplicação de instrumentos psicométricos de rastreio clínico padronizados, em estrita consonância com a Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.");
+  const analysisText = sanitize(reportData?.clinicalAnalysis || "Ao exame psíquico atual, o(a) paciente apresenta-se lúcido(a) e orientado(a) autopsiquicamente e alopsiquicamente, com discurso coerente e atitude colaborativa. Observa-se afeto congruente com as demandas relatadas, com mobilização para a psicoterapia e preservação do juízo crítico da realidade. Evidencia-se necessidade de suporte psicológico contínuo para consolidação da regulação emocional.");
+  const diagText = sanitize(reportData?.diagnosticHypothesis || "F41.1 - Transtorno de Ansiedade Generalizada / F43.2 - Transtorno de Adaptação com Sintomas Emocionais");
+  const conclusionText = sanitize(reportData?.conclusion || (isEvolutivo
+    ? "Com base no acompanhamento psicológico evolutivo, constata-se engajamento no processo psicoterapêutico. Recomenda-se a continuidade das sessões regulares para fortalecimento das estratégias de autorregulação e acompanhamento multidisciplinar integrativo."
+    : "Conclui-se que o(a) paciente apresenta demandas que justificam acompanhamento psicológico regular para estabilização emocional, fortalecimento de recursos adaptativos e promoção de saúde mental em conjunto com a equipe multidisciplinar."));
+  const observationsText = sanitize(reportData?.observations || "De acordo com a Resolução CFP nº 06/2019, este documento de acompanhamento psicológico possui caráter sigiloso e técnico-científico, refletindo a avaliação clínica do(a) paciente. Não constitui laudo pericial ou prescrição médica farmacológica.");
+
+  const appliedTests = (reportData?.selectedTests || []).filter(t => t.applied);
 
   interface PsychBlock {
     id: string;
-    kind: 'patient-card' | 'section' | 'mental-exam-grid' | 'diag-box' | 'normative-note';
+    kind: 'patient-card' | 'section' | 'mental-exam-grid' | 'diag-box' | 'normative-note' | 'psychometric-scales';
     title?: string;
     content?: string;
   }
 
   const allBlocks: PsychBlock[] = [
     { id: 'patient-card', kind: 'patient-card' },
-    { id: 'sec-1', kind: 'section', title: '1. IDENTIFICAÇÃO DO SOLICITANTE E FINALIDADE CLÍNICA', content: purposeText },
-    { id: 'sec-2', kind: 'section', title: '2. DESCRIÇÃO DA DEMANDA E HISTÓRICO CLÍNICO-PSICOLÓGICO', content: demandText },
+    { id: 'sec-1', kind: 'section', title: '1. IDENTIFICAÇÃO DO SOLICITANTE E FINALIDADE DO ACOMPANHAMENTO', content: purposeText },
+    { id: 'sec-2', kind: 'section', title: isEvolutivo ? '2. HISTÓRICO DO ATENDIMENTO & DEMANDA CLÍNICA' : '2. DESCRIÇÃO DA DEMANDA E HISTÓRICO CLÍNICO-PSICOLÓGICO', content: demandText },
     { id: 'sec-3', kind: 'section', title: '3. PROCEDIMENTOS E INSTRUMENTOS TÉCNICO-CIENTÍFICOS (RES. CFP Nº 06/2019)', content: procText },
-    { id: 'sec-4', kind: 'section', title: '4. ANÁLISE PSICOLÓGICA E EXAME DO ESTADO MENTAL', content: analysisText },
+  ];
+
+  if (appliedTests.length > 0) {
+    allBlocks.push({ id: 'scales-table', kind: 'psychometric-scales' });
+  }
+
+  allBlocks.push(
+    { id: 'sec-4', kind: 'section', title: isEvolutivo ? '4. EVOLUÇÃO CLÍNICA, RESPOSTA PSICOTERAPÊUTICA E EXAME PSÍQUICO' : '4. ANÁLISE PSICOLÓGICA E EXAME DO ESTADO MENTAL', content: analysisText },
     { id: 'mental-grid', kind: 'mental-exam-grid' },
     { id: 'sec-5', kind: 'diag-box', title: '5. HIPÓTESE DIAGNÓSTICA NOSOLÓGICA (CID-10 / CID-11)', content: diagText },
-    { id: 'sec-6', kind: 'section', title: '6. CONCLUSÃO TÉCNICA E ENCAMINHAMENTO TERAPÊUTICO', content: conclusionText },
-    { id: 'sec-7', kind: 'normative-note', title: '7. RECOMENDAÇÕES CLÍNICAS, SIGILO E VALIDADE TÉCNICA', content: observationsText }
-  ];
+    { id: 'sec-6', kind: 'section', title: isEvolutivo ? '6. PARECER CONCLUSIVO E DIRETRIZES DE EVOLUÇÃO' : '6. CONCLUSÃO TÉCNICA E ENCAMINHAMENTO TERAPÊUTICO', content: conclusionText },
+    { id: 'sec-7', kind: 'normative-note', title: '7. RECOMENDAÇÕES CLÍNICAS, SIGILO E VALIDADE DO DOCUMENTO', content: observationsText }
+  );
 
   const renderPsychBlock = (block: PsychBlock) => {
     switch (block.kind) {
@@ -2232,6 +2346,54 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
           </div>
         );
 
+      case 'psychometric-scales':
+        return (
+          <div style={{ backgroundColor: '#FAF5FF', border: '1.5px solid #D8B4FE', borderRadius: '8px', padding: '10px 12px', marginTop: '4px', marginBottom: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #E9D5FF', paddingBottom: '4px' }}>
+              <span style={{ fontSize: '9.5px', fontWeight: 800, color: '#3B0764', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                Instrumentos e Escalas Psicométricas Padronizadas Aplicadas
+              </span>
+              <span style={{ fontSize: '8.5px', fontWeight: 700, backgroundColor: '#E9D5FF', color: '#581C87', padding: '1px 6px', borderRadius: '4px' }}>
+                {appliedTests.length} {appliedTests.length === 1 ? 'escala utilizada' : 'escalas utilizadas'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {appliedTests.map((test, idx) => (
+                <div key={test.id || idx} style={{ backgroundColor: '#FFFFFF', border: '1px solid #E9D5FF', borderRadius: '6px', padding: '7px 10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#3B0764' }}>
+                      {sanitize(test.name)}
+                    </span>
+                    <span style={{ fontSize: '9.5px', fontWeight: 800, backgroundColor: '#F3E8FF', color: '#6B21A8', padding: '2px 8px', borderRadius: '4px', border: '1px solid #D8B4FE' }}>
+                      Escore: {test.score}{test.maxScore ? ` / ${test.maxScore}` : ''} pts
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px', fontSize: '9.5px', alignItems: 'baseline' }}>
+                    <div>
+                      <span style={{ fontWeight: 800, color: '#581C87' }}>Classificação: </span>
+                      <span style={{ fontWeight: 700, color: '#1E293B' }}>{sanitize(test.classification)}</span>
+                    </div>
+                  </div>
+
+                  {test.clinicalInterpretation && (
+                    <p style={{ margin: '3px 0 0 0', fontSize: '9px', lineHeight: '1.4', color: '#475569', textAlign: 'justify' }}>
+                      {sanitize(test.clinicalInterpretation)}
+                    </p>
+                  )}
+
+                  {test.cutoffText && (
+                    <p style={{ margin: '2px 0 0 0', fontSize: '8px', color: '#7E22CE', fontStyle: 'italic' }}>
+                      Referência: {sanitize(test.cutoffText)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
       case 'mental-exam-grid':
         return (
           <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}>
@@ -2249,7 +2411,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
               </div>
               <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '4px 7px' }}>
                 <span style={{ fontWeight: 800, color: '#581C87', display: 'block', fontSize: '8.8px' }}>HUMOR, AFETO & SONO</span>
-                <span>Ansiedade reativa, hipervigilância / insônia</span>
+                <span>{isEvolutivo ? 'Evolução estável, foco em regulação' : 'Ansiedade reativa, hipervigilância'}</span>
               </div>
             </div>
           </div>
@@ -2288,7 +2450,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h2 className="text-2xl font-black tracking-tight m-0 leading-none" style={{ color: '#3B0764' }}>MECURA</h2>
             <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#FAF5FF', color: '#6B21A8', padding: '2px 7px', borderRadius: '4px', border: '1px solid #D8B4FE', textTransform: 'uppercase' }}>
-              AVALIAÇÃO PSICOLÓGICA
+              ACOMPANHAMENTO PSICOLÓGICO
             </span>
           </div>
           <p className="text-[9.5px] font-bold tracking-wider uppercase m-0 leading-none mt-1" style={{ color: '#6B21A8' }}>
@@ -2305,10 +2467,12 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
       {!isContinuation && (
         <div className="text-center mb-1">
           <h1 className="text-base font-black tracking-widest uppercase mb-0.5 m-0" style={{ color: '#3B0764' }}>
-            LAUDO PSICOLÓGICO CLÍNICO
+            {isEvolutivo
+              ? 'RELATÓRIO DE ACOMPANHAMENTO PSICOLÓGICO (EVOLUTIVO)'
+              : 'RELATÓRIO DE ACOMPANHAMENTO PSICOLÓGICO (INICIAL)'}
           </h1>
           <p className="text-[9px] font-bold uppercase tracking-wider m-0" style={{ color: '#6B21A8' }}>
-            ELABORADO EM CONFORMIDADE COM A RESOLUÇÃO CFP Nº 06/2019
+            DOCUMENTO TÉCNICO DE ACOMPANHAMENTO • RESOLUÇÃO CFP Nº 06/2019
           </p>
         </div>
       )}
@@ -2354,7 +2518,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
         <div id="psico-measure-sig">{renderSignature()}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
           {allBlocks.map((b, idx) => (
-            <div key={b.id} data-psico-idx={idx}>
+            <div key={`psico-measure-${b.id || idx}-${idx}`} data-psico-idx={idx}>
               {renderPsychBlock(b)}
             </div>
           ))}
@@ -2405,7 +2569,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
           const isLastPage = pIdx === pages.length - 1;
           return (
             <div
-              key={pIdx}
+              key={`psico-page-${pIdx}`}
               className="psychological-pdf-page relative box-border flex flex-col justify-between"
               style={{
                 width: '794px',
@@ -2423,8 +2587,8 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
               <div>
                 {renderHeader(pIdx > 0)}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
-                  {pageBlocks.map(b => (
-                    <div key={b.id}>{renderPsychBlock(b)}</div>
+                  {pageBlocks.map((b, bIdx) => (
+                    <div key={`psico-p${pIdx}-${b.id || bIdx}-${bIdx}`}>{renderPsychBlock(b)}</div>
                   ))}
                 </div>
                 {isLastPage && renderSignature()}
@@ -2474,6 +2638,7 @@ export const generatePsychologicalReportPDF = async (userName: string, reportDat
 };
 
 export interface AgronomicReportData {
+  patientId?: string;
   customPatientName?: string;
   cpf?: string;
   birthDate?: string;
@@ -2491,6 +2656,7 @@ export interface AgronomicReportData {
   wetFlowerKg?: string;
   htmlContent?: string;
   customText?: string;
+  answers?: Record<string, any>;
   returnBlob?: boolean;
 }
 
@@ -2505,13 +2671,72 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   container.style.pointerEvents = 'none';
   document.body.appendChild(container);
 
-  const sanitizedUserName = (agronomicData?.customPatientName || userName || 'LUCAS DANIEL NERES').toUpperCase();
-  const patientCpf = agronomicData?.cpf || '057.436.591-50';
+  const storeState = useStore.getState();
+  const patientAnswers = agronomicData?.answers || storeState.answers || {};
+  const rawPatientName = (agronomicData?.customPatientName || userName || storeState.userName || 'Paciente').trim();
+  const sanitizedUserName = rawPatientName.toUpperCase();
+  const patientCpf = agronomicData?.cpf || patientAnswers?.cpf || storeState.userCpf || 'Não informado';
+  const patientBirthDate = agronomicData?.birthDate || patientAnswers?.birthDate || storeState.userBirthDate || 'Não informada';
   const emissionDate = agronomicData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
   const agronomistName = agronomicData?.agronomistName || 'Wilian Dalenogare Pereira';
   const agronomistCrea = agronomicData?.agronomistCrea || 'CREA-PR 172.458/D';
-  const diagnosis = agronomicData?.diagnosis || 'Transtorno de Distúrbios no Sono (CID 10 G47) e Lombalgia (CID 10 R54.5 / M54.5)';
-  const dailyMg = agronomicData?.dailyDoseMg || 5900;
+
+  const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+    ? patientAnswers.objectives
+    : (patientAnswers?.objective ? [String(patientAnswers.objective)] : []);
+
+  const personalized = generatePersonalizedClinicalReport({
+    patientName: rawPatientName,
+    birthDate: patientBirthDate,
+    cpf: patientCpf,
+    sex: patientAnswers?.sex,
+    height: patientAnswers?.height,
+    weight: patientAnswers?.weight,
+    objectives: objectivesArray,
+    intensity: patientAnswers?.intensity,
+    duration: patientAnswers?.duration,
+    description: patientAnswers?.description,
+    diseaseOrigin: patientAnswers?.diseaseOrigin,
+    remedios: patientAnswers?.remedios,
+    remedios_details: patientAnswers?.remedios_details,
+    doenca_cronica: patientAnswers?.doenca_cronica,
+    doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+    tratamento_atual: patientAnswers?.tratamento_atual,
+    tratamento_atual_details: patientAnswers?.tratamento_atual_details,
+    cirurgia: patientAnswers?.cirurgia,
+    cirurgia_details: patientAnswers?.cirurgia_details,
+    alergia: patientAnswers?.alergia,
+    alergia_details: patientAnswers?.alergia_details,
+    digestivo: patientAnswers?.digestivo,
+    digestivo_details: patientAnswers?.digestivo_details,
+    dor_cabeca: patientAnswers?.dor_cabeca,
+    dor_cabeca_details: patientAnswers?.dor_cabeca_details,
+    cansado: patientAnswers?.cansado,
+    cannabis: patientAnswers?.cannabis,
+    cannabis_details: patientAnswers?.cannabis_details,
+    arritmia: patientAnswers?.arritmia,
+    arritmia_details: patientAnswers?.arritmia_details,
+    tristeza: patientAnswers?.tristeza,
+    foco: patientAnswers?.foco,
+    memoria: patientAnswers?.memoria,
+    irritado: patientAnswers?.irritado,
+    estresse: patientAnswers?.estresse,
+    panico: patientAnswers?.panico,
+    panico_details: patientAnswers?.panico_details,
+    ansiedade_diag: patientAnswers?.ansiedade_diag,
+    ansiedade_diag_details: patientAnswers?.ansiedade_diag_details,
+    adhdTestResult: patientAnswers?.adhdTestResult,
+    autismTestResult: patientAnswers?.autismTestResult,
+    hcPlantCalculator: patientAnswers?.hcPlantCalculator,
+    mainSymptoms: patientAnswers?.mainSymptoms,
+    pathology: patientAnswers?.pathology,
+    answers: patientAnswers
+  }, 'inicial');
+
+  const diagnosis = agronomicData?.diagnosis || personalized.agronomic.diagnosis;
+  const dailyMg = agronomicData?.dailyDoseMg || personalized.agronomic.dailyDoseMg || 5000;
+  const customAgroText = (agronomicData?.customText || personalized.agronomic.text || '').trim();
+  const prescribedProductsText = (agronomicData?.prescribedProducts || '').trim();
 
   // Technical calculations based on agronomic standards
   const monthlyMg = Math.round(dailyMg * 31);
@@ -2534,7 +2759,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
 
   // Rendimento médio por planta no cultivo indoor (paciente): 100g a 150g de flores secas por ciclo de 120 dias
   const calculatedPlants = Math.round((dryFlowerMarginKgBase * 1000) / 150);
-  const targetPlants = agronomicData?.targetPlants || calculatedPlants || 158;
+  const targetPlants = agronomicData?.targetPlants || personalized.agronomic.targetPlants || calculatedPlants || 158;
 
   // Divisão em 3 momentos de colheita ao longo do ano
   const plantsPerCycle = agronomicData?.plantsPerCycle || Math.round(targetPlants / 4) || 40;
@@ -2620,10 +2845,29 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
             <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
             <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              3. Prescrição Médica e Demanda Terapêutica Individual
+              3. Anamnese da Triagem, Prescrição Médica e Demanda Terapêutica Individual
             </h2>
           </div>
           <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
+            {customAgroText ? (
+              <div style={{ backgroundColor: '#F8FAFC', borderLeft: '3px solid #059669', borderTop: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0', borderRadius: '4px', padding: '7px 10px', marginBottom: '6px' }}>
+                {customAgroText.split('\n').filter(Boolean).map((para, pIdx) => (
+                  <p key={pIdx} style={{ margin: pIdx === 0 ? 0 : '4px 0 0 0', fontSize: '9.8px', lineHeight: '1.45', color: '#1E293B' }}>
+                    {para}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            {prescribedProductsText ? (
+              <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', padding: '6px 10px', marginBottom: '6px' }}>
+                <p style={{ margin: '0 0 2px 0', fontSize: '8.8px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase' }}>
+                  Protocolo Prescrito Vinculado ao Dimensionamento:
+                </p>
+                <p style={{ margin: 0, fontSize: '9.5px', color: '#064E3B', whiteSpace: 'pre-line' }}>
+                  {prescribedProductsText}
+                </p>
+              </div>
+            ) : null}
             <p style={{ margin: 0, textIndent: '18px' }}>
               Estes medicamentos contêm, em média, entre 5-6g de fitocanabinoides em sua composição por frasco de 30 ml (200 mg/ml), com teores modulados de CBD, THC e CBG. No caso do(a) paciente <strong>{sanitizedUserName}</strong>, conforme recomendações médicas oficiais que balizam este parecer técnico, o quadro clínico de <strong>{diagnosis}</strong> visa ser tratado com o uso concomitante de extratos integrais (Full Spectrum) com predominância de CBD/THC, CBD, THC e CBG, além de inflorescências secas padronizadas para vaporização terapêutica em crises álgicas ou insônia aguda, instruindo a memória de cálculo fitoquímico e de biomassa a seguir demonstrada.
             </p>
@@ -2911,7 +3155,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           <div id="agro-measure-sig">{renderAgroSignature()}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
             {agroBlocks.map((b, idx) => (
-              <div key={b.id} data-agro-idx={idx}>{b.render()}</div>
+              <div key={`agro-measure-${b.id || idx}-${idx}`} data-agro-idx={idx}>{b.render()}</div>
             ))}
           </div>
         </div>
@@ -2960,7 +3204,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
             const isLastPage = pIdx === pages.length - 1;
             return (
               <div
-                key={pIdx}
+                key={`agro-page-${pIdx}`}
                 className="agronomic-pdf-page"
                 style={{
                   width: '794px',
@@ -2979,8 +3223,8 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
                 <div>
                   {renderAgroHeader(pIdx > 0)}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
-                    {pageBlocks.map(b => (
-                      <div key={b.id}>{b.render()}</div>
+                    {pageBlocks.map((b, bIdx) => (
+                      <div key={`agro-p${pIdx}-${b.id || bIdx}-${bIdx}`}>{b.render()}</div>
                     ))}
                   </div>
                   {isLastPage && renderAgroSignature()}

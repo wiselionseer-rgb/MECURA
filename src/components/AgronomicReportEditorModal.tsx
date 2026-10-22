@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Eye, Edit3, User, Sprout, Send, Copy, Check, Save } from 'lucide-react';
+import { X, Download, Eye, Edit3, User, Sprout, Send, Copy, Check, Save, RefreshCw } from 'lucide-react';
 
 interface AgronomicReportEditorModalProps {
   isOpen: boolean;
@@ -23,8 +23,30 @@ interface AgronomicReportEditorModalProps {
   setTargetPlants: (val: number) => void;
   agronomicText: string;
   setAgronomicText: (val: string) => void;
-  onDownloadPDF: () => void;
-  onSendToChat?: () => void;
+  prescribedProducts?: string;
+  onResetFromTriage?: () => any;
+  onDownloadPDF: (overrideData?: {
+    patientName: string;
+    cpf: string;
+    emissionDate: string;
+    agronomistName: string;
+    agronomistCrea: string;
+    diagnosis: string;
+    dailyDoseMg: number;
+    targetPlants: number;
+    agronomicText: string;
+  }) => void;
+  onSendToChat?: (overrideData?: {
+    patientName: string;
+    cpf: string;
+    emissionDate: string;
+    agronomistName: string;
+    agronomistCrea: string;
+    diagnosis: string;
+    dailyDoseMg: number;
+    targetPlants: number;
+    agronomicText: string;
+  }) => void;
   onSave?: (savedData: any) => void;
   isSendingToChat?: boolean;
 }
@@ -50,6 +72,8 @@ export function AgronomicReportEditorModal({
   setTargetPlants: propSetTargetPlants,
   agronomicText: propAgronomicText,
   setAgronomicText: propSetAgronomicText,
+  prescribedProducts = '',
+  onResetFromTriage,
   onDownloadPDF,
   onSendToChat,
   onSave,
@@ -72,7 +96,7 @@ export function AgronomicReportEditorModal({
   const [targetPlants, setTargetPlants] = useState(propTargetPlants);
   const [agronomicText, setAgronomicText] = useState(propAgronomicText);
 
-  // Sync from props on open
+  // Sync from props on open or when parent resets from triage
   useEffect(() => {
     if (isOpen) {
       setPatientName(propPatientName);
@@ -85,7 +109,7 @@ export function AgronomicReportEditorModal({
       setTargetPlants(propTargetPlants);
       setAgronomicText(propAgronomicText);
     }
-  }, [isOpen]);
+  }, [isOpen, propPatientName, propCpf, propDiagnosis, propDailyDoseMg, propTargetPlants, propAgronomicText]);
 
   const syncToParent = () => {
     propSetPatientName(patientName);
@@ -133,7 +157,17 @@ export function AgronomicReportEditorModal({
   const handleSendToChatAction = async () => {
     if (!onSendToChat) return;
     syncToParent();
-    await onSendToChat();
+    await onSendToChat({
+      patientName,
+      cpf,
+      emissionDate,
+      agronomistName,
+      agronomistCrea,
+      diagnosis,
+      dailyDoseMg,
+      targetPlants,
+      agronomicText
+    });
   };
 
   // Math metrics based on pericial agronomic standards
@@ -163,7 +197,17 @@ export function AgronomicReportEditorModal({
   const handleDownload = () => {
     setIsGenerating(true);
     try {
-      onDownloadPDF();
+      onDownloadPDF({
+        patientName,
+        cpf,
+        emissionDate,
+        agronomistName,
+        agronomistCrea,
+        diagnosis,
+        dailyDoseMg,
+        targetPlants,
+        agronomicText
+      });
     } finally {
       setTimeout(() => setIsGenerating(false), 800);
     }
@@ -182,6 +226,9 @@ Resumo:
 A ANVISA definiu, por meio da Resolução da Diretoria Colegiada (RDC) nº 335/2020, alterada pela RDC n° 570/2021, os critérios e os procedimentos para a importação de Produto derivado de Cannabis, por pessoa física, para uso próprio, mediante prescrição de profissional legalmente habilitado, para tratamento de saúde. Dessa forma, ainda que o produto não tenha registro para comercialização no Brasil, a importação poderá ser autorizada se os critérios e procedimentos definidos na mencionada RDC forem cumpridos. E, dessa forma, a ANVISA publicou a Nota Técnica nº 37/2021/SEI/COCIC/GPCON/GGMON/DIRE5/ANVISA com a lista de produtos derivados de Cannabis de que trata o §3º do Art. 5° da RDC n° 335/2020, alterada pela RDC n° 570/2021.
 A fim de proporcionar uma orientação adequada para um cultivo em escala pequena, conhecido como “cultivo caseiro”, para paciente que necessita utilizar as moléculas produzidas pela espécie, nomeadamente o Δ9 – Tetrahidrocanabinol (THC) e o Cannabidiol (CBD) reconhecidas por suas propriedades terapêuticas, foi elaborado este parecer com indicações técnicas para o cultivo com boas práticas comercialmente conhecido por GACP (Good Agriculture and Collection Practices), em português, boas práticas de agricultura e coleta, aplicadas para garantir o sucesso em termos de produtividade e a sanidade adequada dos cultivos.
 
+Síntese da Triagem Clínica e Diretriz Quimiotípica do Caso:
+${agronomicText}
+${prescribedProducts ? `\nProtocolo Prescrito:\n${prescribedProducts}\n` : ''}
 Dimensionamento do Cultivo:
 O cultivo caseiro é a maneira indicada de garantir o acesso aos medicamentos para pacientes que não têm condições de arcar com os altos custos dos medicamentos atualmente disponíveis, que normalmente ultrapassa a barreira dos R$ 2.000,00 a R$ 5.000,00 mensais, para produtos disponíveis nacionalmente, podendo atingir até valores muito mais elevados quando é feita a importação. Porém não somente pacientes que não têm condições de pagar os preços de mercado dos produtos de sua medicina e ter a capacidade de se tornarem autossustentáveis em produção e manipulação da mesma buscam o cultivo da Cannabis e os benefícios que este pode trazer.
 No caso do paciente, conforme recomendações médicas que balizam este parecer técnico, a condição de ${diagnosis} visa ser tratada com o uso de extratos integrais de CBD/THC/CBG em concentração de 3000mg/30ml e flores secas, totalizando o consumo diário de ${dailyDoseMg}mg/dia (equivalente a 48 frascos anuais).
@@ -286,6 +333,28 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                   <Eye className="w-3.5 h-3.5" /> Prévia Oficial A4
                 </button>
               </div>
+
+              {onResetFromTriage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const refreshed = onResetFromTriage();
+                    if (refreshed) {
+                      if (refreshed.patientName) setPatientName(refreshed.patientName);
+                      if (refreshed.cpf) setCpf(refreshed.cpf);
+                      if (refreshed.diagnosis) setDiagnosis(refreshed.diagnosis);
+                      if (refreshed.dailyDoseMg) setDailyDoseMg(refreshed.dailyDoseMg);
+                      if (refreshed.targetPlants) setTargetPlants(refreshed.targetPlants);
+                      if (refreshed.agronomicText) setAgronomicText(refreshed.agronomicText);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-mecura-surface hover:bg-mecura-surface-light border border-emerald-500/40 text-emerald-300 transition-all cursor-pointer"
+                  title="Recarregar dados e síntese da triagem deste paciente"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Recarregar da Triagem</span>
+                </button>
+              )}
 
               {/* Botão de Salvar Alterações Header */}
               <button
@@ -523,7 +592,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                 {/* Justificativa Técnica Editável */}
                 <div className="bg-[#0A0A0F]/50 rounded-xl border border-mecura-elevated p-4 sm:p-5">
                   <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-2 flex items-center justify-between">
-                    <span>Texto Conclusivo do Parecer Técnico</span>
+                    <span>Síntese da Triagem Clínica, Quimiotipo & Texto Técnico do Caso</span>
                     <button
                       onClick={handleCopy}
                       className="text-emerald-400 hover:text-emerald-300 text-xs font-semibold flex items-center gap-1"
@@ -533,7 +602,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                     </button>
                   </h4>
                   <textarea
-                    rows={6}
+                    rows={8}
                     value={agronomicText}
                     onChange={(e) => setAgronomicText(e.target.value)}
                     className="w-full bg-[#0D0D12] text-xs text-mecura-silver border border-mecura-elevated rounded-lg p-3 focus:outline-none focus:border-emerald-500/50 leading-relaxed font-mono"
@@ -627,11 +696,30 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
 
                   {/* Section 3 */}
                   <div className="text-[10.5px] leading-relaxed text-justify">
-                    <h4 className="text-[11px] font-bold text-emerald-900 uppercase tracking-wide mb-1 border-l-2 border-emerald-600 pl-2">
-                      3. Prescrição Médica e Demanda Farmacológica
+                    <h4 className="text-[11px] font-bold text-emerald-900 uppercase tracking-wide mb-1.5 border-l-2 border-emerald-600 pl-2">
+                      3. Anamnese da Triagem, Prescrição Médica e Demanda Terapêutica Individual
                     </h4>
+                    {agronomicText && (
+                      <div className="bg-slate-50 border-l-4 border-emerald-600 border border-slate-200 rounded p-2.5 mb-2 space-y-1.5">
+                        {agronomicText.split('\n').filter(Boolean).map((para, idx) => (
+                          <p key={idx} className="text-[10px] text-slate-800 leading-relaxed">
+                            {para}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {prescribedProducts && (
+                      <div className="bg-emerald-50/70 border border-emerald-200 rounded p-2 mb-2">
+                        <p className="text-[9px] font-extrabold text-emerald-800 uppercase mb-0.5">
+                          Protocolo Prescrito Vinculado ao Dimensionamento:
+                        </p>
+                        <p className="text-[10px] text-emerald-950 whitespace-pre-line">
+                          {prescribedProducts}
+                        </p>
+                      </div>
+                    )}
                     <p className="text-indent-4 text-slate-700">
-                      No caso do paciente {patientName}, conforme recomendações médicas oficiais que balizam este parecer técnico, a condição clínica visa ser tratada com o uso de extratos integrais (3.000mg/30ml) e flores secas, totalizando a necessidade anual de aproximadamente <strong>48 frascos anuais dos produtos</strong> e um consumo diário de <strong>{dailyDoseMg} mg/dia</strong> de fitocanabinoides brutos integrais.
+                      No caso do(a) paciente <strong>{patientName}</strong>, conforme recomendações médicas oficiais que balizam este parecer técnico, a condição clínica de <strong>{diagnosis}</strong> visa ser tratada com o uso de extratos integrais e flores secas, totalizando um consumo diário estimado de <strong>{dailyDoseMg} mg/dia</strong> de fitocanabinoides brutos integrais.
                     </p>
                   </div>
                 </div>
@@ -860,7 +948,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
               {onSendToChat && (
                 <button
                   type="button"
-                  onClick={onSendToChat}
+                  onClick={handleSendToChatAction}
                   disabled={isGenerating || isSendingToChat}
                   className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] disabled:opacity-50 cursor-pointer"
                 >
@@ -904,7 +992,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
 
               <button
                 type="button"
-                onClick={handleDownload}
+                onClick={handleDownloadAction}
                 disabled={isGenerating}
                 className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] disabled:opacity-50"
               >

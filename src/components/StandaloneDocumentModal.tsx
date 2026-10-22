@@ -83,7 +83,7 @@ export function StandaloneDocumentModal({
   const [emissionDate, setEmissionDate] = useState(format(new Date(), 'dd/MM/yyyy'));
   const [doctorName, setDoctorName] = useState('Dr. Guilherme Taveira Dias');
   const [doctorCrm, setDoctorCrm] = useState('CRM/MT 17259');
-  const [doctorSpecialty, setDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
+  const [doctorSpecialty, setDoctorSpecialty] = useState('Clínico Geral • Medicina Canabinoide');
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState('');
   const [autoAttachToChat, setAutoAttachToChat] = useState(true);
 

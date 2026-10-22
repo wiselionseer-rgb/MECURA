@@ -358,7 +358,7 @@ export function SchedulingScreen() {
 
               {/* Grid of 24h Slots */}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
-                {displayedSlots.map((time) => {
+                {displayedSlots.map((time, tIdx) => {
                   const isSelected = selectedTime === time;
                   const isOccupied = getOccupiedTimes(selectedDate).includes(time);
                   const isTimeBlocked = getBlockedTimes(selectedDate).includes(time);
@@ -375,7 +375,7 @@ export function SchedulingScreen() {
                   
                   return (
                     <button
-                      key={time}
+                      key={`sched-slot-${time}-${tIdx}`}
                       type="button"
                       onClick={() => !isDisabled && setSelectedTime(time)}
                       disabled={isDisabled}

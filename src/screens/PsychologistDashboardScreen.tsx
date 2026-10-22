@@ -35,7 +35,9 @@ import {
   Pause,
   Stethoscope,
   ClipboardList,
-  Lock
+  Lock,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { auth, db } from '../firebase';
@@ -44,6 +46,14 @@ import { PsychologicalReportEditorModal, buildPsychologicalReportFromTriage } fr
 import { AreaPasswordModal } from '../components/AreaPasswordModal';
 import { generatePsychologicalReportPDF } from '../utils/pdfGenerator';
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
+import { 
+  PHQ9_TEST, 
+  GAD7_TEST, 
+  ASRS18_TEST, 
+  AQ10_TEST, 
+  buildDefaultSelectedTests, 
+  SelectedPsychologicalTest 
+} from '../data/psychologicalTests';
 import { format } from 'date-fns';
 
 const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -81,17 +91,19 @@ export function PsychologistDashboardScreen() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Psychological Report Modal States
+  // Psychological Report Modal States (Inicial vs Evolutivo & 4 Testes)
   const [showReportModal, setShowReportModal] = useState(false);
+  const [reportType, setReportType] = useState<'inicial' | 'evolutivo'>('inicial');
+  const [selectedTests, setSelectedTests] = useState<SelectedPsychologicalTest[]>(() => buildDefaultSelectedTests());
   const [reportPatientName, setReportPatientName] = useState('');
   const [reportBirthDate, setReportBirthDate] = useState('');
   const [reportCpf, setReportCpf] = useState('');
   const [reportEmissionDate, setReportEmissionDate] = useState(format(new Date(), 'dd/MM/yyyy'));
   const [psychologistName, setPsychologistName] = useState('Marco Antônio Boastik');
   const [psychologistCrp, setPsychologistCrp] = useState('CRP 08/49215');
-  const [reportPurpose, setReportPurpose] = useState('Avaliação Psicológica Clínica para Fins de Tratamento em Saúde Mental e Salvaguarda Terapêutica.');
+  const [reportPurpose, setReportPurpose] = useState('Relatório de Acompanhamento Psicológico Inicial para Acolhimento, Investigação Clínica, Rastreio Psicométrico e Planejamento Psicoterapêutico.');
   const [reportDemand, setReportDemand] = useState('');
-  const [reportProcedures, setReportProcedures] = useState('Realizada entrevista psicológica clínica semiestruturada, anamnese direcionada, exame pormenorizado das funções psíquicas superiores e rastreio de sintomas conforme as diretrizes da Resolução CFP nº 06/2019 do Conselho Federal de Psicologia.');
+  const [reportProcedures, setReportProcedures] = useState('Foram realizadas entrevistas clínicas psicológicas semiestruturadas com foco em anamnese biopsicossocial, escuta qualificada da história clínica informada pelo(a) paciente na triagem e exame detalhado das funções psíquicas superiores, em estrita consonância com a Resolução CFP nº 06/2019.');
   const [reportAnalysis, setReportAnalysis] = useState('');
   const [reportDiagnosticHypothesis, setReportDiagnosticHypothesis] = useState('F41.1 - Transtorno de Ansiedade Generalizada');
   const [reportConclusion, setReportConclusion] = useState('');
@@ -226,8 +238,13 @@ export function PsychologistDashboardScreen() {
   }, [queue, queueFilter, queueSearchTerm]);
 
   // Reset or populate psychological report directly from current patient's triage
-  const applyPsicoTriageDefaults = (pName: string, mergedAnswers: any) => {
-    const built = buildPsychologicalReportFromTriage(pName, mergedAnswers);
+  const applyPsicoTriageDefaults = (
+    pName: string, 
+    mergedAnswers: any, 
+    style: 'inicial' | 'evolutivo' = reportType, 
+    currentTests: SelectedPsychologicalTest[] = selectedTests
+  ) => {
+    const built = buildPsychologicalReportFromTriage(pName, mergedAnswers, style, currentTests);
     setReportPurpose(built.purpose);
     setReportDemand(built.demandDescription);
     setReportProcedures(built.technicalProcedures);
@@ -239,7 +256,9 @@ export function PsychologistDashboardScreen() {
   const handleResetPsicoReportFromTriage = () => {
     const pName = currentPatient?.patientName || (currentPatient as any)?.name || reportPatientName || 'Paciente';
     const pAns = currentPatient?.answers || {};
-    applyPsicoTriageDefaults(pName, pAns);
+    const freshTests = buildDefaultSelectedTests(pAns);
+    setSelectedTests(freshTests);
+    applyPsicoTriageDefaults(pName, pAns, reportType, freshTests);
     if (currentPatient?.id) {
       try {
         localStorage.removeItem(`mecura_psico_report_${currentPatient.id}`);
@@ -334,6 +353,8 @@ export function PsychologistDashboardScreen() {
         const currNameNorm = String(pName).trim().toLowerCase();
         const isSamePatient = !savedNameNorm || savedNameNorm === currNameNorm;
         if (isSamePatient && parsed.demandDescription) {
+          if (parsed.reportType) setReportType(parsed.reportType);
+          if (parsed.selectedTests && Array.isArray(parsed.selectedTests)) setSelectedTests(parsed.selectedTests);
           if (parsed.purpose) setReportPurpose(parsed.purpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
           if (parsed.demandDescription) setReportDemand(parsed.demandDescription);
           if (parsed.technicalProcedures) setReportProcedures(parsed.technicalProcedures);
@@ -346,7 +367,10 @@ export function PsychologistDashboardScreen() {
     } catch {}
 
     if (!loadedFromCache) {
-      applyPsicoTriageDefaults(pName, enrichedPatient.answers);
+      const freshTests = buildDefaultSelectedTests(enrichedPatient.answers);
+      setSelectedTests(freshTests);
+      setReportType('inicial');
+      applyPsicoTriageDefaults(pName, enrichedPatient.answers, 'inicial', freshTests);
     }
 
     // Update status to in-consultation if currently waiting
@@ -430,9 +454,13 @@ export function PsychologistDashboardScreen() {
     }
   };
 
-  // AI Generation trigger
-  const handleGenerateReportAi = async () => {
-    if (!currentPatient) return;
+  // AI Generation trigger (Inicial vs Evolutivo)
+  const handleGenerateReportAi = async (style: 'inicial' | 'evolutivo' = 'inicial') => {
+    if (!currentPatient) {
+      showToast("Por favor, selecione um paciente na fila para emitir o acompanhamento.");
+      return;
+    }
+    setReportType(style);
     const pName = currentPatient.patientName || (currentPatient as any).name || 'Paciente';
     const pCpf = (currentPatient as any).cpf || currentPatient.answers?.cpf || '';
     const pBirth = (currentPatient as any).birthDate || currentPatient.answers?.birthDate || '';
@@ -440,53 +468,64 @@ export function PsychologistDashboardScreen() {
     setReportCpf(pCpf);
     setReportBirthDate(pBirth);
     setReportEmissionDate(format(new Date(), 'dd/MM/yyyy'));
-    if (!reportDemand || !reportDemand.toLowerCase().includes(pName.split(' ')[0].toLowerCase())) {
-      applyPsicoTriageDefaults(pName, currentPatient.answers);
-    }
+    
+    const freshTests = selectedTests && selectedTests.length > 0 
+      ? selectedTests 
+      : buildDefaultSelectedTests(currentPatient.answers);
+    setSelectedTests(freshTests);
+    applyPsicoTriageDefaults(pName, currentPatient.answers, style, freshTests);
     setShowReportModal(true);
   };
 
   // Download PDF
-  const handleDownloadReportPdf = async () => {
+  const handleDownloadReportPdf = async (overrideData?: any) => {
     try {
+      const activeReportType = overrideData?.reportType || reportType;
+      const activeTests = overrideData?.selectedTests || selectedTests;
       await generatePsychologicalReportPDF(reportPatientName || currentPatient?.patientName || 'Paciente', {
-        customPatientName: reportPatientName,
-        cpf: reportCpf,
-        birthDate: reportBirthDate,
-        emissionDate: reportEmissionDate,
-        psychologistName,
-        psychologistCrp,
-        purpose: reportPurpose,
-        demandDescription: reportDemand,
-        technicalProcedures: reportProcedures,
-        clinicalAnalysis: reportAnalysis,
-        diagnosticHypothesis: reportDiagnosticHypothesis,
-        conclusion: reportConclusion
+        reportType: activeReportType,
+        customPatientName: overrideData?.patientName || reportPatientName,
+        cpf: overrideData?.cpf || reportCpf,
+        birthDate: overrideData?.birthDate || reportBirthDate,
+        emissionDate: overrideData?.emissionDate || reportEmissionDate,
+        psychologistName: overrideData?.psychologistName || psychologistName,
+        psychologistCrp: overrideData?.psychologistCrp || psychologistCrp,
+        purpose: overrideData?.purpose || reportPurpose,
+        demandDescription: overrideData?.demandDescription || reportDemand,
+        technicalProcedures: overrideData?.technicalProcedures || reportProcedures,
+        clinicalAnalysis: overrideData?.clinicalAnalysis || reportAnalysis,
+        diagnosticHypothesis: overrideData?.diagnosticHypothesis || reportDiagnosticHypothesis,
+        conclusion: overrideData?.conclusion || reportConclusion,
+        selectedTests: activeTests
       });
-      showToast("✓ Download do Laudo Psicológico iniciado!");
+      showToast(`✓ Download do Relatório de Acompanhamento (${activeReportType === 'evolutivo' ? 'Evolutivo' : 'Inicial'}) iniciado!`);
     } catch (e) {
       console.error(e);
-      showToast("Erro ao gerar o PDF do laudo.");
+      showToast("Erro ao gerar o PDF do relatório.");
     }
   };
 
   // Send report to chat
-  const handleSendReportToChat = async () => {
+  const handleSendReportToChat = async (overrideData?: any) => {
     if (!currentPatient) return;
     try {
+      const activeReportType = overrideData?.reportType || reportType;
+      const activeTests = overrideData?.selectedTests || selectedTests;
       const pdfBlob = await generatePsychologicalReportPDF(reportPatientName || currentPatient.patientName, {
-        customPatientName: reportPatientName,
-        cpf: reportCpf,
-        birthDate: reportBirthDate,
-        emissionDate: reportEmissionDate,
-        psychologistName,
-        psychologistCrp,
-        purpose: reportPurpose,
-        demandDescription: reportDemand,
-        technicalProcedures: reportProcedures,
-        clinicalAnalysis: reportAnalysis,
-        diagnosticHypothesis: reportDiagnosticHypothesis,
-        conclusion: reportConclusion,
+        reportType: activeReportType,
+        customPatientName: overrideData?.patientName || reportPatientName,
+        cpf: overrideData?.cpf || reportCpf,
+        birthDate: overrideData?.birthDate || reportBirthDate,
+        emissionDate: overrideData?.emissionDate || reportEmissionDate,
+        psychologistName: overrideData?.psychologistName || psychologistName,
+        psychologistCrp: overrideData?.psychologistCrp || psychologistCrp,
+        purpose: overrideData?.purpose || reportPurpose,
+        demandDescription: overrideData?.demandDescription || reportDemand,
+        technicalProcedures: overrideData?.technicalProcedures || reportProcedures,
+        clinicalAnalysis: overrideData?.clinicalAnalysis || reportAnalysis,
+        diagnosticHypothesis: overrideData?.diagnosticHypothesis || reportDiagnosticHypothesis,
+        conclusion: overrideData?.conclusion || reportConclusion,
+        selectedTests: activeTests,
         returnBlob: true
       });
 
@@ -494,18 +533,22 @@ export function PsychologistDashboardScreen() {
       reader.onloadend = async () => {
         const base64data = reader.result as string;
 
+        const isEvol = activeReportType === 'evolutivo';
+        const docTitle = `Relatório de Acompanhamento Psicológico (${isEvol ? 'Evolutivo' : 'Inicial'})`;
+        const fileName = `Acompanhamento_Psicologico_${isEvol ? 'Evolutivo' : 'Inicial'}_${(reportPatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`;
+
         await addMessage({
           sender: 'doctor',
           professionalRole: 'psychologist',
           type: 'psychological_report',
           docType: 'laudo_psicologico',
-          text: `📄 Laudo Psicológico Oficial emitido por Marco Antônio Boastik (CRP 08/49215) para ${reportPatientName}. Diagnóstico: ${reportDiagnosticHypothesis}`,
+          text: `📄 **${docTitle}** emitido por Marco Antônio Boastik (CRP 08/49215) para ${reportPatientName}. Documento técnico de acompanhamento em conformidade com a Resolução CFP nº 06/2019.`,
           attachment: {
             docType: 'laudo_psicologico',
-            name: `Laudo_Psicologico_${(reportPatientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
+            name: fileName,
             url: base64data,
             type: 'application/pdf',
-            title: `Laudo Psicológico • ${reportPatientName}`
+            title: `${docTitle} • ${reportPatientName}`
           }
         }, currentPatient.id);
 
@@ -513,7 +556,9 @@ export function PsychologistDashboardScreen() {
           const reportPayload = {
             hasPsychologicalReport: true,
             laudoPsicologico: true,
+            psychologicalReportType: activeReportType,
             laudoPsicologicoData: {
+              reportType: activeReportType,
               customPatientName: reportPatientName,
               cpf: reportCpf,
               birthDate: reportBirthDate,
@@ -525,7 +570,8 @@ export function PsychologistDashboardScreen() {
               technicalProcedures: reportProcedures,
               clinicalAnalysis: reportAnalysis,
               diagnosticHypothesis: reportDiagnosticHypothesis,
-              conclusion: reportConclusion
+              conclusion: reportConclusion,
+              selectedTests: activeTests
             }
           };
           await updateDoc(doc(db, 'queue', currentPatient.id), reportPayload).catch(() => {});
@@ -534,13 +580,13 @@ export function PsychologistDashboardScreen() {
           console.warn("Could not set laudoPsicologico flags:", fsErr);
         }
 
-        showToast("✓ Laudo Psicológico enviado no chat e liberado no painel do paciente!");
+        showToast(`✓ ${docTitle} enviado no chat e liberado no painel do paciente!`);
         setShowReportModal(false);
       };
       reader.readAsDataURL(pdfBlob as Blob);
     } catch (e) {
-      console.error("Erro ao enviar laudo para o chat:", e);
-      showToast("Erro ao anexar laudo no chat.");
+      console.error("Erro ao enviar relatório para o chat:", e);
+      showToast("Erro ao anexar relatório no chat.");
     }
   };
 
@@ -550,7 +596,7 @@ export function PsychologistDashboardScreen() {
     const savedKey = `mecura_psico_report_${currentPatient.id}`;
     try {
       localStorage.setItem(savedKey, JSON.stringify(savedData));
-      showToast("✓ Laudo psicológico salvo localmente.");
+      showToast("✓ Relatório de Acompanhamento salvo localmente.");
     } catch (e) {
       console.warn("Could not save to localStorage:", e);
     }
@@ -871,9 +917,9 @@ export function PsychologistDashboardScreen() {
               { id: 'in-consultation', label: 'Em Atend.' },
               { id: 'finished', label: 'Finalizados' },
               { id: 'all', label: 'Todos' }
-            ].map(tab => (
+            ].map((tab, tIdx) => (
               <button
-                key={tab.id}
+                key={`psy-queue-tab-${tab.id}-${tIdx}`}
                 type="button"
                 onClick={() => setQueueFilter(tab.id as any)}
                 className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
@@ -1156,16 +1202,30 @@ export function PsychologistDashboardScreen() {
                   <span className="hidden lg:inline">{showTriageInfo ? 'Ocultar Triagem' : 'Anamnese / Triagem'}</span>
                 </button>
 
-                {/* Botão de Laudo com IA */}
-                <button
-                  type="button"
-                  onClick={handleGenerateReportAi}
-                  className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  title="Gerar Laudo Psicológico com IA e editar campos"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-200 fill-current" />
-                  <span className="hidden sm:inline">Gerar Laudo com IA</span>
-                </button>
+                {/* Botões de Documento de Acompanhamento Inicial e Evolutivo */}
+                <div className="flex items-center gap-1.5 bg-[#0A0A10] p-1 rounded-xl border border-purple-500/35">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateReportAi('inicial')}
+                    className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Emitir Relatório de Acompanhamento Psicológico Inicial (Acolhimento & Rastreio Basal)"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-200 fill-current" />
+                    <span className="hidden sm:inline">Acomp. Inicial</span>
+                    <span className="sm:hidden">Inicial</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateReportAi('evolutivo')}
+                    className="px-2.5 sm:px-3 py-1.5 bg-emerald-600/25 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-200 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Emitir Relatório de Acompanhamento Psicológico Evolutivo (Evolução & Reavaliação)"
+                  >
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-300" />
+                    <span className="hidden sm:inline">Acomp. Evolutivo</span>
+                    <span className="sm:hidden">Evolutivo</span>
+                  </button>
+                </div>
 
                 {/* Finalizar Atendimento */}
                 <button
@@ -1316,20 +1376,18 @@ export function PsychologistDashboardScreen() {
               </div>
             )}
 
-            {/* Neurodivergent Tests Banner (TDAH & Autismo TEA) */}
+            {/* Banner de Testes Psicométricos e Neurodivergentes (PHQ-9, GAD-7, TDAH ASRS-18, TEA AQ-10) */}
             {showNeuroTestsBanner && (
-              <div className="p-3 sm:p-4 bg-[#0D0D16] border-b border-purple-500/25 shrink-0 max-h-[45vh] overflow-y-auto custom-scrollbar">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-3 sm:p-4 bg-[#0D0D16] border-b border-purple-500/25 shrink-0 max-h-[48vh] overflow-y-auto custom-scrollbar space-y-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Brain className="w-4 h-4 text-purple-400" />
                     <span className="text-xs font-extrabold text-white tracking-wide uppercase">
-                      Resultados dos Testes Neurodivergentes (TDAH & Autismo TEA)
+                      Escalas & Instrumentos de Acompanhamento Psicológico (PHQ-9 • GAD-7 • ASRS-18 • AQ-10)
                     </span>
-                    {((currentPatient?.answers?.adhdTestResult) || (currentPatient?.answers?.autismTestResult)) && (
-                      <span className="text-[10px] bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 px-2 py-0.5 rounded-full font-bold">
-                        Dados Clínicos Disponíveis
-                      </span>
-                    )}
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">
+                      {selectedTests.filter(t => t.applied).length} selecionados no relatório
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -1340,6 +1398,62 @@ export function PsychologistDashboardScreen() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
+
+                {/* Quick Cards para PHQ-9 e GAD-7 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {selectedTests.filter(t => t.id === 'phq9' || t.id === 'gad7').map((testItem) => (
+                    <div
+                      key={testItem.id}
+                      className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                        testItem.applied
+                          ? 'bg-purple-950/25 border-purple-500/40'
+                          : 'bg-[#12121D] border-white/10'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">{testItem.name}</span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                            testItem.applied
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-white/5 text-mecura-silver'
+                          }`}>
+                            {testItem.applied ? `${testItem.score}/${testItem.maxScore} pts • ${testItem.classification}` : 'Não Selecionado'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-mecura-silver truncate mt-0.5">
+                          {testItem.cutoffText}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = selectedTests.map(t => t.id === testItem.id ? { ...t, applied: !t.applied } : t);
+                            setSelectedTests(updated);
+                            showToast(testItem.applied ? `${testItem.shortName} desmarcado do relatório.` : `✓ ${testItem.shortName} incluído no relatório!`);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                            testItem.applied
+                              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                              : 'bg-purple-500/20 border-purple-500/40 text-purple-200 hover:bg-purple-500/30'
+                          }`}
+                        >
+                          {testItem.applied ? '✓ No Relatório' : '+ Usar no Relatório'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateReportAi(reportType)}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-purple-200 cursor-pointer"
+                        >
+                          Pontuar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
                 <NeurodivergentTestsCard
                   patient={currentPatient}
                   fallbackAnswers={answers}
@@ -1657,6 +1771,7 @@ export function PsychologistDashboardScreen() {
                 type="button"
                 onClick={() => {
                   setReportPatientName('Paciente Avulso');
+                  setReportType('inicial');
                   setShowReportModal(true);
                 }}
                 className="p-4 rounded-2xl bg-[#12121A] border border-purple-500/30 hover:border-purple-400/60 hover:bg-purple-500/5 transition-all text-left flex flex-col gap-1.5 group cursor-pointer"
@@ -1665,8 +1780,8 @@ export function PsychologistDashboardScreen() {
                   <FileText className="w-5 h-5 text-purple-300" />
                   <Sparkles className="w-4 h-4 text-purple-400 fill-current opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <h4 className="text-white font-bold text-xs">Novo Laudo Psicológico</h4>
-                <p className="text-[11px] text-mecura-silver">Redija e baixe laudos com apoio de IA e resolução CFP.</p>
+                <h4 className="text-white font-bold text-xs">Novo Relatório de Acompanhamento</h4>
+                <p className="text-[11px] text-mecura-silver">Emita documentos de acompanhamento Inicial ou Evolutivo (CFP 06/2019).</p>
               </button>
 
               <div className="p-4 rounded-2xl bg-[#12121A] border border-white/5 text-left flex flex-col gap-1.5">
@@ -1686,6 +1801,8 @@ export function PsychologistDashboardScreen() {
       <PsychologicalReportEditorModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
+        reportType={reportType}
+        setReportType={setReportType}
         patientName={reportPatientName}
         setPatientName={setReportPatientName}
         birthDate={reportBirthDate}
@@ -1710,6 +1827,8 @@ export function PsychologistDashboardScreen() {
         setDiagnosticHypothesis={setReportDiagnosticHypothesis}
         conclusion={reportConclusion}
         setConclusion={setReportConclusion}
+        selectedTests={selectedTests}
+        setSelectedTests={setSelectedTests}
         patientAnswers={currentPatient?.answers}
         onDownloadPDF={handleDownloadReportPdf}
         onSendToChat={currentPatient ? handleSendReportToChat : undefined}

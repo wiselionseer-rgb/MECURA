@@ -225,9 +225,9 @@ export const LegalInfoModal: React.FC<LegalInfoModalProps> = ({
 
               {/* Pillars list */}
               <div className="space-y-3">
-                {filteredPillars.map((pillar) => (
+                {filteredPillars.map((pillar, pIdx) => (
                   <div 
-                    key={pillar.id}
+                    key={`legal-pillar-${pillar.id || pIdx}-${pIdx}`}
                     className="p-3.5 rounded-2xl bg-[#161622] border border-white/5 hover:border-mecura-neon/20 transition-all space-y-2"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -287,9 +287,9 @@ export const LegalInfoModal: React.FC<LegalInfoModalProps> = ({
               </div>
 
               <div className="space-y-3">
-                {filteredPrivacySections.map((section) => (
+                {filteredPrivacySections.map((section, sIdx) => (
                   <div 
-                    key={section.id}
+                    key={`privacy-sec-${section.id || sIdx}-${sIdx}`}
                     className="p-3.5 rounded-2xl bg-[#161622] border border-white/5 hover:border-white/10 transition-all space-y-2"
                   >
                     <h5 className="text-[12px] font-bold text-white tracking-tight">
@@ -339,9 +339,9 @@ export const LegalInfoModal: React.FC<LegalInfoModalProps> = ({
               </div>
 
               <div className="space-y-3">
-                {filteredTermsSections.map((section) => (
+                {filteredTermsSections.map((section, sIdx) => (
                   <div 
-                    key={section.id}
+                    key={`terms-sec-${section.id || sIdx}-${sIdx}`}
                     className="p-3.5 rounded-2xl bg-[#161622] border border-white/5 hover:border-white/10 transition-all space-y-2"
                   >
                     <h5 className="text-[12px] font-bold text-white tracking-tight">

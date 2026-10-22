@@ -716,7 +716,7 @@ export const RemotionBannerPlayer: React.FC<{
           <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar">
             {adhdNodeLabels.map((lbl, idx) => (
               <button
-                key={lbl}
+                key={`adhd-node-${lbl}-${idx}`}
                 type="button"
                 onClick={() => setFocusedNode(focusedNode === idx ? null : idx)}
                 className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
@@ -754,7 +754,7 @@ export const RemotionBannerPlayer: React.FC<{
           <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar">
             {autismNodeLabels.map((lbl, idx) => (
               <button
-                key={lbl}
+                key={`autism-node-${lbl}-${idx}`}
                 type="button"
                 onClick={() => setFocusedNode(focusedNode === idx ? null : idx)}
                 className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
@@ -780,9 +780,9 @@ export const RemotionBannerPlayer: React.FC<{
               { id: 'vegetativo', label: '1. Mudas' },
               { id: 'floracao', label: '2. Floração' },
               { id: 'extracao', label: '3. Extração' },
-            ].map((st) => (
+            ].map((st, sIdx) => (
               <button
-                key={st.id}
+                key={`hc-stage-${st.id}-${sIdx}`}
                 type="button"
                 onClick={() => setHcStage(st.id as any)}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap ${

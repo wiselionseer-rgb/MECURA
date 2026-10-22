@@ -820,10 +820,10 @@ const STEPS = [
 
   const renderBooleanList = (questions: {id: string, label: string, hasDetails?: boolean}[]) => (
     <div className="flex flex-col gap-3">
-      {questions.map((q) => {
+      {questions.map((q, qIdx) => {
         const isChecked = !!answers[q.id];
         return (
-          <div key={q.id} className="flex flex-col gap-3 p-4 rounded-xl bg-mecura-surface border border-mecura-elevated transition-all duration-300">
+          <div key={`onboard-q-${q.id || qIdx}-${qIdx}`} className="flex flex-col gap-3 p-4 rounded-xl bg-mecura-surface border border-mecura-elevated transition-all duration-300">
             <div className="flex items-center justify-between">
               <span className="text-mecura-pearl text-sm pr-4 font-medium">{q.label}</span>
               <Switch 
@@ -1039,11 +1039,11 @@ const STEPS = [
               <div>
                 <h3 className="text-mecura-neon font-bold mb-4 text-lg">Outros Motivos</h3>
                 <div className="flex flex-wrap gap-2">
-                  {OBJECTIVES_OTHER.map(opt => {
+                  {OBJECTIVES_OTHER.map((opt, optIdx) => {
                     const isSelected = (answers.objectives || []).includes(opt);
                     return (
                       <button
-                        key={opt}
+                        key={`objective-opt-${opt}-${optIdx}`}
                         onClick={() => toggleObjective(opt)}
                         className={`px-4 py-2 rounded-full border text-sm transition-all duration-300 ${
                           isSelected 
@@ -1444,11 +1444,11 @@ const STEPS = [
                               { id: 'all', label: 'Todas (6)' },
                               { id: 'nacional', label: 'Nacional (3)' },
                               { id: 'importado', label: 'Importado (3)' }
-                            ].map(tab => {
+                            ].map((tab, tIdx) => {
                               const isActive = manufacturerFilterTab === tab.id;
                               return (
                                 <motion.button
-                                  key={tab.id}
+                                  key={`manuf-tab-${tab.id}-${tIdx}`}
                                   whileTap={{ scale: 0.96 }}
                                   type="button"
                                   onClick={() => setManufacturerFilterTab(tab.id as 'all' | 'nacional' | 'importado')}
@@ -1492,7 +1492,7 @@ const STEPS = [
                                 );
                                 return (
                                   <motion.button
-                                    key={item.id}
+                                    key={`nat-manuf-${item.id || idx}-${idx}`}
                                     initial={{ opacity: 0, y: 12 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.3, delay: idx * 0.06 }}
@@ -1599,7 +1599,7 @@ const STEPS = [
                                 );
                                 return (
                                   <motion.button
-                                    key={item.id}
+                                    key={`imp-manuf-${item.id || idx}-${idx}`}
                                     initial={{ opacity: 0, y: 12 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.3, delay: idx * 0.06 }}

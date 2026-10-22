@@ -169,8 +169,8 @@ export function DiagnosisScreen() {
                   </div>
                   {(answers?.preferredBrands && answers.preferredBrands.length > 0) ? (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {answers.preferredBrands.map((brand: string) => (
-                        <span key={brand} className="text-[11px] font-bold bg-mecura-bg text-mecura-pearl border border-mecura-neon/40 px-2.5 py-1 rounded-lg">
+                      {answers.preferredBrands.map((brand: string, bIdx: number) => (
+                        <span key={`pref-brand-${brand}-${bIdx}`} className="text-[11px] font-bold bg-mecura-bg text-mecura-pearl border border-mecura-neon/40 px-2.5 py-1 rounded-lg">
                           {brand}
                         </span>
                       ))}

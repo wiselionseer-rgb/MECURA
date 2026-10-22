@@ -900,12 +900,12 @@ export function CBDGuideView() {
           </div>
         ) : (
           <div className="space-y-6">
-          {filteredData.map((category) => {
+          {filteredData.map((category, catIdx) => {
             const isExpanded = isSearching ? (expandedCategories[category.id] !== false) : (expandedCategories[category.id] ?? true);
 
             return (
               <div 
-                key={category.id} 
+                key={`cbd-cat-${category.id || catIdx}-${catIdx}`} 
                 id={`cbd-category-${category.id}`}
                 className="bg-mecura-surface border border-mecura-elevated rounded-2xl overflow-hidden shadow-lg transition-all"
               >
@@ -2473,8 +2473,8 @@ export function CBDGuideView() {
                     <option value="auto_brand">Somente na Aba da Marca ({newProdManufacturer || 'Marca'})</option>
                     {productCategories
                       .filter(cat => !cat.id.startsWith('brand_') && !['soucannabis_oficial', 'pangaia_oficial', 'abrace_oficial', 'abecmed_oficial', 'flowermed_oficial', 'greenbudz_oficial', 'flores_extracoes', 'associacoes_nacionais'].includes(cat.id))
-                      .map(cat => (
-                        <option key={cat.id} value={cat.id}>+ {cat.title}</option>
+                      .map((cat, catIdx) => (
+                        <option key={`cat-opt-${cat.id}-${catIdx}`} value={cat.id}>+ {cat.title}</option>
                       ))}
                   </select>
                 </div>

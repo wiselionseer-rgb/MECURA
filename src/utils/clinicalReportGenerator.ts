@@ -443,7 +443,62 @@ CIDs Associados: ${cidsSecundarios}`;
     : Math.round(calculatedPlants / 4);
   const seedsNeeded = Math.round(calculatedPlants * 1.3038);
 
-  const agronomicText = `O presente parecer técnico estabelece o dimensionamento agronômico exato, a dosimetria de fitomassa vegetal e o planejamento operacional para o cultivo pessoal contínuo de Cannabis sativa L., estritamente destinado à extração de derivados artesanais de uso medicinal exclusivo do(a) paciente ${pName} (CPF: ${pCpf}), em atendimento ao tratamento de ${conditionName} (${cidPrincipal}), sob as Boas Práticas Agrícolas e de Coleta (GACP/OMS) e a prescrição médica.`;
+  // Build unique Chemotype & Terpene Profile based on the patient's triage pathology
+  const chemotypeParts: string[] = [];
+  if (isPain || isEndometriosis) {
+    chemotypeParts.push('quimiotipos Tipo II (proporção balanceada 1:1 de THC:CBD) e Tipo III (ricos em CBD e CBG), com perfil terpênico rico em β-Cariofileno e β-Mirceno para analgesia antinociceptiva e ação anti-inflamatória periférica');
+  }
+  if (isInsomnia) {
+    chemotypeParts.push('matrizes com maturação controlada de tricomas âmbar para conversão parcial em Canabinol (CBN) associada a Linalol e Mirceno para indução e manutenção da arquitetura do sono');
+  }
+  if (isAnxiety || isDepression) {
+    chemotypeParts.push('cultivares Tipo III (predominância de Canabidiol — CBD) ricas em Limoneno e Linalol para modulação ansiolítica serotoninérgica (5-HT1A) e estabilização do eixo HPA');
+  }
+  if (isAutism || isADHD || isEpilepsy || isParkinson || isAlzheimer || isNeuropathy) {
+    chemotypeParts.push('genéticas estabilizadas ricas em CBD e Canabigerol (CBG) com α-Pineno para suporte neuroprotetor, controle de hiperexcitabilidade neuronal e foco executivo');
+  }
+  const chemotypeRecommendation = chemotypeParts.length > 0
+    ? chemotypeParts.join('; combinadas a ')
+    : 'cultivares de espectro completo (Full Spectrum — Quimiotipos II e III) ricas em Canabidiol (CBD) e terpenos moduladores para efeito comitiva (Entourage Effect)';
+
+  const triageAgroSummary: string[] = [];
+  if (rawOrigin) {
+    triageAgroSummary.push(`Histórico / Origem relatada na triagem: "${rawOrigin}".`);
+  }
+  if (rawDesc && rawDesc.toLowerCase() !== rawOrigin.toLowerCase()) {
+    triageAgroSummary.push(`Quadro sintomático descrito pelo(a) paciente: "${rawDesc}".`);
+  }
+  triageAgroSummary.push(`Severidade clínica aferida na triagem: intensidade ${intensity}, com evolução de ${durationLabel}.`);
+  if (bioParts.length > 0) {
+    triageAgroSummary.push(`Parâmetros antropométricos para cálculo metabólico: ${bioParts.join(', ')}.`);
+  }
+  if (emotionalSymptoms.length > 0) {
+    triageAgroSummary.push(`Manifestações associadas mapeadas na anamnese: ${emotionalSymptoms.join(', ')}.`);
+  }
+  if (doencaCronica) {
+    triageAgroSummary.push(`Comorbidades crônicas declaradas: ${doencaCronicaDetails || 'presentes na triagem'}.`);
+  }
+  if (remedios || tratamentoAtual) {
+    const medInfo = [remediosDetails, tratamentoAtualDetails].filter(Boolean).join('; ');
+    triageAgroSummary.push(`Histórico farmacológico prévio e refratariedade: uso de terapias convencionais (${medInfo || 'relatadas na anamnese'}) com controle clínico insuficiente ou efeitos adversos limitantes, justificando plenamente a transição e manutenção com fitocanabinoides de cultivo próprio.`);
+  }
+  if (cannabis) {
+    triageAgroSummary.push(`Experiência prévia com Cannabis medicinal informada na triagem: ${cannabisDetails || 'uso prévio com resposta clínica positiva'}.`);
+  }
+  if (adhdRes && adhdRes.scorePercent !== undefined) {
+    triageAgroSummary.push(`Rastreio Neurocomportamental ASRS-18 (TDAH): ${adhdRes.scorePercent}% (${adhdRes.classification || 'avaliado'}).`);
+  }
+  if (autismRes && autismRes.scorePercent !== undefined) {
+    triageAgroSummary.push(`Mapeamento Neurocomportamental TEA: ${autismRes.scorePercent}% (${autismRes.classification || 'avaliado'}).`);
+  }
+
+  const fullDiagnosisLabel = `${conditionName} (${cidPrincipal}${matchedCids.length > 1 ? ` / ${cidsSecundarios}` : ''})`;
+
+  const agronomicText = `1. SÍNTESE DA TRIAGEM CLÍNICA E DEMANDA INDIVIDUAL DO(A) PACIENTE:
+O presente Parecer Técnico Agronômico foi elaborado de forma estritamente individualizada a partir dos dados da triagem médica do(a) paciente ${pName} (CPF: ${pCpf}), diagnosticado(a) com ${fullDiagnosisLabel}. ${triageAgroSummary.join(' ')}
+
+2. DIRETRIZ QUIMIOTÍPICA E AGRONÔMICA ESPECÍFICA PARA O CASO:
+Em consonância direta com as queixas principais da triagem (${conditionName}), o manejo agronômico deve priorizar o cultivo de ${chemotypeRecommendation}. Para suprir ininterruptamente a posologia diária de ${agronomicDoseMg} mg/dia (${annualGramsNum.toFixed(1)} g de extrato bruto/ano), dimensiona-se o cultivo anual de ${calculatedPlants} plantas fêmeas adultas (${plantsPerCycle} plantas por ciclo produtivo em regime de 4 ciclos/ano), partindo de ${seedsNeeded} sementes/propágulos anuais sob as Boas Práticas Agrícolas e de Coleta (GACP/OMS), garantindo autossuficiência terapêutica, rastreabilidade fitossanitária e segurança jurídica para fins de Salvo-Conduto / Habeas Corpus.`;
 
   const psychomotorText = `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${pName}</strong>, inscrito(a) no CPF <strong>${pCpf}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide em tratamento continuado para <strong>${conditionName} (${cidPrincipal})</strong>.
 
@@ -465,7 +520,7 @@ Ressalto que os fitocanabinoides têm finalidade estritamente terapêutica, sem 
     treatmentPlan,
     monitoringText,
     agronomic: {
-      diagnosis: `${conditionName} (${cidPrincipal}${matchedCids.length > 1 ? ` / ${cidsSecundarios}` : ''})`,
+      diagnosis: fullDiagnosisLabel,
       dailyDoseMg: agronomicDoseMg,
       targetPlants: calculatedPlants,
       plantsPerCycle,

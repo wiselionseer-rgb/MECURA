@@ -977,12 +977,12 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           { id: 'notifications', label: 'Notificações', icon: Bell },
           { id: 'password_requests', label: 'Trocas de Senha', icon: Key },
           { id: 'legal', label: 'Jurídico & LGPD', icon: Scale }
-        ].map((tab) => {
+        ].map((tab, idx) => {
           const Icon = tab.icon;
 
           return (
             <button
-              key={tab.id}
+              key={`admin-tab-${tab.id}-${idx}`}
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === tab.id ? 'bg-mecura-neon/10 text-mecura-neon' : 'text-[#8A8A9E] hover:bg-white/5 hover:text-white'}`}
             >
@@ -1601,8 +1601,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               </Button>
             </div>
             <div className="grid gap-4">
-              {doctors.map(doctor => (
-                <div key={doctor.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex items-center justify-between">
+              {doctors.map((doctor, idx) => (
+                <div key={`doctor-row-${doctor.id || idx}-${idx}`} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex items-center justify-between">
                   <div>
                     <h3 className="font-bold text-lg">{doctor.name}</h3>
                     <p className="text-[#8A8A9E] text-sm">CRM: {doctor.crm} | {doctor.email}</p>
@@ -1729,8 +1729,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                       return { ...cat, products: filteredProds };
                     })
                     .filter(cat => cat.products.length > 0 || !medicineSearchTerm)
-                    .map(cat => (
-                    <div key={cat.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl">
+                    .map((cat, idx) => (
+                    <div key={`admin-med-cat-${cat.id || idx}-${idx}`} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl">
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-bold text-mecura-neon">{cat.title} ({cat.products.length})</h3>
                         <Button 
@@ -1743,8 +1743,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                         </Button>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {cat.products.map(prod => (
-                          <div key={prod.name} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex flex-col justify-between hover:border-white/20 transition-all">
+                        {cat.products.map((prod, pIdx) => (
+                          <div key={`prod-${cat.id}-${prod.name}-${pIdx}`} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex flex-col justify-between hover:border-white/20 transition-all">
                             <div>
                               <div className="flex items-start justify-between gap-2 mb-1">
                                 <h4 className="font-bold text-white text-base leading-snug">{prod.name}</h4>
@@ -1971,7 +1971,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   <p className="text-xs mt-1">Clique em "+ Novo Cupom" para criar o primeiro cupom da plataforma.</p>
                 </div>
               ) : (
-                coupons.map(coupon => {
+                coupons.map((coupon, idx) => {
                   const resolvedUsers = resolveCouponUsers(coupon);
                   const realCount = resolvedUsers.length > 0 ? resolvedUsers.length : (coupon.usedCount || 0);
                   const isMaxReached = coupon.quantity && coupon.quantity > 0 && realCount >= coupon.quantity;
@@ -1979,7 +1979,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   const displayedUsers = isExpanded ? resolvedUsers : resolvedUsers.slice(0, 3);
 
                   return (
-                    <div key={coupon.id} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex flex-col gap-4 shadow-xl">
+                    <div key={`admin-coupon-${coupon.id || idx}-${idx}`} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex flex-col gap-4 shadow-xl">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-3">
@@ -2121,8 +2121,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               </Button>
             </div>
             <div className="space-y-4">
-              {notifications.map(notification => (
-                <div key={notification.id} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 relative group">
+              {notifications.map((notification, idx) => (
+                <div key={`admin-notif-${notification.id || idx}-${idx}`} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 relative group">
                   <button onClick={() => handleDeleteNotification(notification.id)} className="absolute top-4 right-4 text-[#8A8A9E] hover:text-red-400 opacity-0 group-hover:opacity-100">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -2145,8 +2145,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               <p className="text-[#8A8A9E] mb-6">Selecione um médico parceiro para iniciar uma conversa.</p>
               
               <div className="grid grid-cols-1 gap-4 text-left">
-                {doctors.map(doc => (
-                  <div key={doc.id} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex items-center justify-between">
+                {doctors.map((doc, idx) => (
+                  <div key={`admin-doc-${doc.id || idx}-${idx}`} className="bg-[#0A0A0F] border border-[#262636] p-4 rounded-xl flex items-center justify-between">
                     <div>
                       <div className="font-bold text-white">{doc.name}</div>
                       <div className="text-sm text-[#8A8A9E]">CRM: {doc.crm}</div>
@@ -2170,8 +2170,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               </div>
             ) : (
               <div className="space-y-4">
-                {passwordRequests.map(req => (
-                  <div key={req.id} className="bg-[#161622] border border-yellow-500/30 rounded-2xl p-6 flex flex-col md:flex-row gap-4 justify-between">
+                {passwordRequests.map((req, idx) => (
+                  <div key={`pwd-req-${req.id || idx}-${idx}`} className="bg-[#161622] border border-yellow-500/30 rounded-2xl p-6 flex flex-col md:flex-row gap-4 justify-between">
                     <div className="flex-1">
                       <div className="font-bold text-lg text-white">Esqueci a Senha</div>
                       <div className="text-sm text-[#8A8A9E] mb-2">{req.email || "Sem e-mail"}</div>
@@ -2359,8 +2359,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               <div className="bg-[#161622] border border-[#262636] rounded-2xl p-8 text-center text-[#8A8A9E]">Nenhuma solicitação pendente.</div>
             ) : (
               <div className="space-y-4">
-                {supportRequests.map(req => (
-                  <div key={req.id} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 flex justify-between">
+                {supportRequests.map((req, idx) => (
+                  <div key={`support-req-${req.id || idx}-${idx}`} className="bg-[#161622] border border-[#262636] rounded-2xl p-6 flex justify-between">
                     <div className="flex-1 mr-4">
                       <div className="font-bold text-lg">{req.userName}</div>
                       <div className="text-sm text-[#8A8A9E]">{req.email || "Sem e-mail"}</div>
@@ -2444,8 +2444,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                     onChange={(e) => setNewMedicine(prev => ({ ...prev, categoryId: e.target.value }))}
                     className="w-full bg-[#161622] border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-mecura-neon cursor-pointer"
                   >
-                    {productCategories.map(cat => (
-                      <option key={cat.id} value={cat.id} className="bg-[#12121A] text-white">
+                    {productCategories.map((cat, cIdx) => (
+                      <option key={`med-cat-opt-${cat.id}-${cIdx}`} value={cat.id} className="bg-[#12121A] text-white">
                         {cat.title}
                       </option>
                     ))}
@@ -3021,8 +3021,8 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
             </div>
             <div className="flex-1 overflow-y-auto space-y-4">
               {allAppointments.filter(app => (app as any).doctorId_temp_fix === showAgenda || (app as any).patientId_temp_fix === showAgenda).length > 0 ? (
-                allAppointments.filter(app => (app as any).doctorId_temp_fix === showAgenda || (app as any).patientId_temp_fix === showAgenda).map(app => (
-                  <div key={app.id} className="bg-[#0A0A0F] border border-[#262636] rounded-2xl p-4 flex justify-between">
+                allAppointments.filter(app => (app as any).doctorId_temp_fix === showAgenda || (app as any).patientId_temp_fix === showAgenda).map((app, idx) => (
+                  <div key={`admin-app-${app.id || idx}-${idx}`} className="bg-[#0A0A0F] border border-[#262636] rounded-2xl p-4 flex justify-between">
                     <div>
                       <div className="font-bold">{app.patientName}</div>
                       <div className="text-sm text-[#8A8A9E]">{new Date(app.date).toLocaleDateString('pt-BR')} {app.time}</div>

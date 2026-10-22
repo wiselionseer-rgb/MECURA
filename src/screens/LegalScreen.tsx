@@ -221,9 +221,9 @@ export const LegalScreen: React.FC = () => {
 
             {/* Pillars */}
             <div className="space-y-3">
-              {filteredPillars.map((pillar) => (
+              {filteredPillars.map((pillar, pIdx) => (
                 <div 
-                  key={pillar.id}
+                  key={`screen-pillar-${pillar.id || pIdx}-${pIdx}`}
                   className="p-4 rounded-2xl bg-[#0E1711] border border-white/10 hover:border-mecura-neon/30 transition-all space-y-2.5"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
@@ -279,9 +279,9 @@ export const LegalScreen: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {filteredPrivacySections.map((section) => (
+              {filteredPrivacySections.map((section, sIdx) => (
                 <div 
-                  key={section.id}
+                  key={`screen-priv-sec-${section.id || sIdx}-${sIdx}`}
                   className="p-4 rounded-2xl bg-[#12121A] border border-white/5 hover:border-white/10 transition-all space-y-2.5"
                 >
                   <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight">
@@ -327,9 +327,9 @@ export const LegalScreen: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {filteredTermsSections.map((section) => (
+              {filteredTermsSections.map((section, sIdx) => (
                 <div 
-                  key={section.id}
+                  key={`screen-terms-sec-${section.id || sIdx}-${sIdx}`}
                   className="p-4 rounded-2xl bg-[#12121A] border border-white/5 hover:border-white/10 transition-all space-y-2.5"
                 >
                   <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight">

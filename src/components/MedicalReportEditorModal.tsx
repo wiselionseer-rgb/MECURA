@@ -781,8 +781,11 @@ export function MedicalReportEditorModal({
                       </div>
                       <div className="text-right">
                         <h3 className="text-sm font-bold text-[#1E1B4B]">{localDoctorName}</h3>
-                        <p className="text-xs text-slate-600 font-semibold mt-0.5">{localDoctorCrm}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{localDoctorSpecialty}</p>
+                        <p className="text-xs text-slate-600 font-semibold mt-0.5">
+                          {localDoctorCrm} • Estado MT • {localDoctorSpecialty.toLowerCase().includes('clínico geral') || localDoctorSpecialty.toLowerCase().includes('clinico geral') ? localDoctorSpecialty : `Clínico Geral • ${localDoctorSpecialty}`}
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                        <p className="text-[10px] text-slate-500">Primavera do Leste - MT • CEP 78850-000</p>
                       </div>
                     </div>
 
@@ -858,17 +861,17 @@ export function MedicalReportEditorModal({
 
                   {/* Footer & Signature */}
                   <div className="pt-6 border-t border-slate-200 mt-6 flex justify-between items-end">
-                    <div className="text-[10px] text-slate-500">
-                      <p>Data de Emissão: {localEmissionDate}</p>
-                      <p>Documento com validade pericial e assistencial</p>
-                      <p className="text-[9px] text-slate-400 mt-1">Conforme Resoluções CFM e Diretrizes ANVISA</p>
+                    <div className="text-[10px] text-slate-500 space-y-0.5">
+                      <p>Data de Emissão: <strong>{localEmissionDate}</strong> • Local: <strong>Primavera do Leste - MT (CEP 78850-000)</strong></p>
+                      <p className="text-slate-600 font-medium">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                      <p className="text-[9px] text-slate-400">Conforme Resoluções CFM e Diretrizes ANVISA</p>
                     </div>
 
-                    <div className="text-center w-52">
+                    <div className="text-center w-60">
                       <div className="border-b border-slate-400 mb-2" />
                       <p className="text-xs font-bold text-slate-900">{localDoctorName}</p>
-                      <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{localDoctorCrm}</p>
-                      <p className="text-[9px] text-slate-500 mt-0.5">Assinatura Digital / Médico Prescritor</p>
+                      <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{localDoctorCrm} • Estado MT • Clínico Geral</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5">+55 65 3190-0629 • Wiselionseer@gmail.com</p>
                     </div>
                   </div>
                 </div>

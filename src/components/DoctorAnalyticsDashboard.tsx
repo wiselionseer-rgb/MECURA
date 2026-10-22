@@ -636,9 +636,9 @@ export function DoctorAnalyticsDashboard() {
                     Sugestões 24h por Turno
                   </label>
                   <div className="flex gap-1">
-                    {(['madrugada', 'manha', 'tarde', 'noite'] as TimePeriodId[]).map(pId => (
+                    {(['madrugada', 'manha', 'tarde', 'noite'] as TimePeriodId[]).map((pId, pIdx) => (
                       <button
-                        key={pId}
+                        key={`sched-period-${pId}-${pIdx}`}
                         type="button"
                         onClick={() => setScheduleTimePeriod(pId)}
                         className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
@@ -653,9 +653,9 @@ export function DoctorAnalyticsDashboard() {
                   </div>
                 </div>
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-32 overflow-y-auto custom-scrollbar p-2 bg-[#0A0A0F] rounded-xl border border-[#262636]">
-                  {(TIME_PERIODS.find(p => p.id === scheduleTimePeriod)?.slots || ALL_24H_TIME_SLOTS).map((slot) => (
+                  {(TIME_PERIODS.find(p => p.id === scheduleTimePeriod)?.slots || ALL_24H_TIME_SLOTS).map((slot, sIdx) => (
                     <button
-                      key={slot}
+                      key={`sched-slot-${slot}-${sIdx}`}
                       type="button"
                       onClick={() => setScheduleForm({...scheduleForm, time: slot})}
                       className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
@@ -993,9 +993,9 @@ export function DoctorAnalyticsDashboard() {
 
                     {/* Turno Tabs */}
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3 custom-scrollbar">
-                      {TIME_PERIODS.map(period => (
+                      {TIME_PERIODS.map((period, pIdx) => (
                         <button
-                          key={period.id}
+                          key={`block-period-${period.id}-${pIdx}`}
                           type="button"
                           onClick={() => setBlockPeriodFilter(period.id)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer ${
@@ -1019,11 +1019,11 @@ export function DoctorAnalyticsDashboard() {
                       {(blockPeriodFilter === 'all' 
                         ? ALL_24H_TIME_SLOTS 
                         : (TIME_PERIODS.find(p => p.id === blockPeriodFilter)?.slots || ALL_24H_TIME_SLOTS)
-                      ).map((slot) => {
+                      ).map((slot, sIdx) => {
                         const isSelected = blockForm.times.includes(slot);
                         return (
                           <button
-                            key={slot}
+                            key={`block-slot-${slot}-${sIdx}`}
                             type="button"
                             onClick={() => {
                               if (isSelected) {

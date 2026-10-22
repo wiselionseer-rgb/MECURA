@@ -1987,6 +1987,11 @@ function _enrichMedicationDetails(
     const pLower = p.name.toLowerCase().trim();
     if (pLower === nameLower || nameLower.includes(pLower) || pLower.includes(nameLower)) return true;
     if (nameLower.includes('soucannabis') || nameLower.includes('sou cannabis')) {
+      if ((nameLower.includes('nasal') || nameLower.includes('spray')) && (p.name.includes('Nasal') || p.name.includes('Spray'))) return true;
+      if (nameLower.includes('pomada') && p.name.includes('Pomada')) return true;
+      if ((nameLower.includes('íntimo') || nameLower.includes('intimo') || nameLower.includes('lubrificante')) && p.name.includes('Lubrificante')) return true;
+      if ((nameLower.includes('supositório') || nameLower.includes('supositorio')) && p.name.includes('Supositório')) return true;
+      if ((nameLower.includes('extrato') || nameLower.includes('resina') || nameLower.includes('pasta')) && p.name.includes('Extrato')) return true;
       if (nameLower.includes('azul') && p.name.includes('Azul')) {
         if (nameLower.includes('2%') && p.name.includes('2%')) return true;
         if (nameLower.includes('3%') && p.name.includes('3%')) return true;
@@ -2002,11 +2007,6 @@ function _enrichMedicationDetails(
       if (nameLower.includes('rosa') && p.name.includes('Rosa')) return true;
       if (nameLower.includes('laranja') && p.name.includes('Laranja')) return true;
       if (nameLower.includes('branco') && p.name.includes('Branco')) return true;
-      if (nameLower.includes('nasal') && p.name.includes('Nasal')) return true;
-      if ((nameLower.includes('íntimo') || nameLower.includes('intimo') || nameLower.includes('lubrificante')) && p.name.includes('Lubrificante')) return true;
-      if (nameLower.includes('pomada') && p.name.includes('Pomada')) return true;
-      if ((nameLower.includes('supositório') || nameLower.includes('supositorio')) && p.name.includes('Supositório')) return true;
-      if ((nameLower.includes('extrato') || nameLower.includes('resina') || nameLower.includes('pasta')) && p.name.includes('Extrato')) return true;
     }
     return false;
   });

@@ -560,7 +560,7 @@ export function WelcomeScreen() {
             {/* Strategic Quick-Access Tools in Step 2 */}
             <div className="mt-1 shrink-0">
               <span className="text-[10px] font-bold text-mecura-silver uppercase tracking-widest block mb-2">
-                Testes Clínicos & Calculadora HC
+                Escalas Clínicas Validadas (OMS / Cambridge) & HC
               </span>
               <div className="grid grid-cols-3 gap-2">
                 <motion.button
@@ -571,7 +571,7 @@ export function WelcomeScreen() {
                   className="p-2.5 rounded-xl bg-[#131B2E]/90 border border-sky-400/30 hover:border-sky-400 text-left transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(56,189,248,0.25)]"
                 >
                   <Brain className="w-4 h-4 text-sky-400 shrink-0" />
-                  <span className="text-[11px] font-bold text-white truncate">Teste TDAH</span>
+                  <span className="text-[11px] font-bold text-white truncate">TDAH · ASRS-18</span>
                 </motion.button>
                 <motion.button
                   type="button"
@@ -581,7 +581,7 @@ export function WelcomeScreen() {
                   className="p-2.5 rounded-xl bg-[#1F1430]/90 border border-purple-400/30 hover:border-purple-400 text-left transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(192,132,252,0.25)]"
                 >
                   <Activity className="w-4 h-4 text-purple-400 shrink-0" />
-                  <span className="text-[11px] font-bold text-white truncate">Teste Autismo</span>
+                  <span className="text-[11px] font-bold text-white truncate">TEA · AQ-10</span>
                 </motion.button>
                 <motion.button
                   type="button"

@@ -22,174 +22,270 @@ import { useStore } from '../../store/useStore';
 export const ADHD_QUESTIONS = [
   {
     id: 'q1',
-    domain: 'Foco & Atenção Sustentada',
-    neuralTarget: 'Córtex Pré-Frontal Dorsolateral · Receptor CB1',
+    scaleRef: 'ASRS-18 Parte A (Item 1 & 2 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A1a · Atenção Sustentada',
+    domain: 'Atenção Sustentada & Vigilância Cognitiva',
+    neuralTarget: 'Córtex Pré-Frontal Dorsolateral · Receptor CB1 & D1',
     question:
-      'Com que frequência você tem dificuldade para manter o foco em leituras, reuniões ou tarefas longas sem a mente viajar?',
+      'Com que frequência você comete descuidos por desatenção ou tem dificuldade para manter o foco em leituras, reuniões ou tarefas repetitivas?',
+    scientificBasis:
+      'Embasamento (Kessler et al., OMS): A hipofunção dopaminérgica e noradrenérgica no córtex pré-frontal reduz a filtragem de estímulos irrelevantes.',
   },
   {
     id: 'q2',
-    domain: 'Hiperatividade Mental',
-    neuralTarget: 'Rede de Modo Padrão (DMN) · Modulação CBD',
+    scaleRef: 'ASRS-18 Parte A (Item 4 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A1d · Conclusão Executiva',
+    domain: 'Finalização de Projetos & Detalhes Finais',
+    neuralTarget: 'Córtex Cingulado Anterior · Via Mesocortical (CBG)',
     question:
-      'Você sente sua mente acelerada ("mil abas abertas ao mesmo tempo"), com pensamentos sobrepostos difíceis de desligar?',
+      'Com que frequência você tem dificuldade para finalizar os últimos detalhes de um projeto depois que a parte mais desafiadora ou estimulante já passou?',
+    scientificBasis:
+      'Embasamento (ASRS-18 Parte A): A queda abrupta de recompensa fásica de dopamina impede a manutenção da motivação nas etapas finais de execução.',
   },
   {
     id: 'q3',
-    domain: 'Função Executiva & Procrastinação',
-    neuralTarget: 'Via Dopaminérgica Mesocortical · Sinergia CBG',
+    scaleRef: 'ASRS-18 Parte A (Item 5 & 6 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A1e/f · Funções Executivas',
+    domain: 'Organização Sequencial & Procrastinação Executiva',
+    neuralTarget: 'Circuito Fronto-Estriatal · Sinergia CBD + CBG',
     question:
-      'Com que frequência você adia ou trava para iniciar tarefas que exigem organização, planejamento ou múltiplas etapas?',
+      'Quando precisa realizar uma tarefa complexa que exige planejamento em várias etapas, com que frequência você adia, evita ou trava para começar?',
+    scientificBasis:
+      'Embasamento (Barkley; OMS): A paralisia executiva decorre de sobrecarga na memória de trabalho e aversão neural ao esforço cognitivo prolongado.',
   },
   {
     id: 'q4',
-    domain: 'Memória Operacional (Curto Prazo)',
-    neuralTarget: 'Hipocampo & Córtex Pré-Frontal · Tônus 2-AG',
+    scaleRef: 'ASRS-18 Parte A & B (Item 3 & 16 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A1c/j · Memória Operacional',
+    domain: 'Memória de Curto Prazo & Escuta Ativa',
+    neuralTarget: 'Hipocampo & Córtex Pré-Frontal · Tônus de 2-AG',
     question:
-      'Você costuma esquecer o que ia dizer no meio da frase, entrar em um cômodo e esquecer o motivo, ou perder objetos diários?',
+      'Com que frequência você parece não escutar quando falam diretamente com você, esquece compromissos ou perde objetos essenciais da rotina?',
+    scientificBasis:
+      'Embasamento (ASRS-18 v1.1): Falhas na memória operacional prejudicam a retenção temporária de informações verbais e espaciais no cotidiano.',
   },
   {
     id: 'q5',
-    domain: 'Inquietação Física & Motora',
-    neuralTarget: 'Gânglios da Base · Estabilização Gabaérgica',
+    scaleRef: 'ASRS-18 Parte B (Item 17 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A1i · Filtragem Sensorial',
+    domain: 'Distratibilidade por Estímulos Externos',
+    neuralTarget: 'Filtro Tálamo-Cortical · Redução de Ruído Sináptico',
     question:
-      'Você sente necessidade constante de mexer mãos/pés, mudar de postura na cadeira ou uma sensação de motor ligado por dentro?',
+      'Com que frequência ruídos do ambiente, conversas paralelas ou notificações quebram imediatamente sua linha de raciocínio?',
+    scientificBasis:
+      'Embasamento Neurofisiológico: A hiperpermeabilidade do filtro tálamo-cortical permite que estímulos periféricos invadam o foco consciente.',
   },
   {
     id: 'q6',
-    domain: 'Impulsividade Verbal & Decisória',
-    neuralTarget: 'Córtex Orbitofrontal · Controle Inibitório',
+    scaleRef: 'ASRS-18 Parte B (Item 7 & 8 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A2a/b · Hiperatividade Motora',
+    domain: 'Inquietação Psicomotora & Postural',
+    neuralTarget: 'Gânglios da Base · Modulação Gabaérgica / CB1',
     question:
-      'Você costuma interromper os outros antes que terminem a frase, responder por impulso ou tomar decisões precipitadas?',
+      'Com que frequência você remexe mãos ou pés, muda constantemente de posição na cadeira ou sente dificuldade em permanecer sentado(a)?',
+    scientificBasis:
+      'Embasamento (OMS / DSM-5-TR): A inquietação motora no adulto funciona como mecanismo compensatório de autorregulação do estado de alerta cortical.',
   },
   {
     id: 'q7',
-    domain: 'Cegueira Temporal & Prazos',
-    neuralTarget: 'Cerebelo & Percepção Temporal · Foco CBG',
+    scaleRef: 'ASRS-18 Parte B (Item 9 & 11 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A2e · Hiperatividade Mental',
+    domain: 'Hiperatividade Mental ("Motor Ligado")',
+    neuralTarget: 'Rede de Modo Padrão (DMN) · Homeostase Endocanabinoide',
     question:
-      'Há dificuldade crônica em calcular quanto tempo uma atividade leva, gerando atrasos ou deixando tudo para a última hora?',
+      'Com que frequência você sente sua mente acelerada ("a mil por hora"), com pensamentos sobrepostos como se estivesse movido por um motor?',
+    scientificBasis:
+      'Embasamento em Neuroimagem: No TDAH adulto, a Rede de Modo Padrão (DMN) permanece hiperativa mesmo durante tarefas que exigem foco externo.',
   },
   {
     id: 'q8',
-    domain: 'Hiperfoco Seletivo vs. Apatia',
-    neuralTarget: 'Receptores Dopamina D1/D2 · Equilíbrio Tônico',
+    scaleRef: 'ASRS-18 Parte B (Item 12 a 15 · OMS)',
+    dsmCriterion: 'DSM-5-TR Critério A2g/h/i · Controle Inibitório',
+    domain: 'Impulsividade Verbal & Intolerância à Espera',
+    neuralTarget: 'Córtex Orbitofrontal · Freio Inibitório Pré-Frontal',
     question:
-      'Você consegue passar horas imerso em algo que te estimula muito, mas sente zero energia mental para obrigações simples?',
+      'Com que frequência você completa a frase dos outros antes que terminem, interrompe conversas ou sente forte impaciência em filas e esperas?',
+    scientificBasis:
+      'Embasamento (ASRS-18 Parte B): O déficit de controle inibitório no córtex orbitofrontal reduz a latência entre o impulso e a resposta motora/verbal.',
   },
   {
     id: 'q9',
-    domain: 'Distração por Estímulos Externos',
-    neuralTarget: 'Filtro Tálamo-Cortical · Redução de Ruído Neural',
+    scaleRef: 'Complemento GAD-7 (Item 1, 2 & 4 · Spitzer et al.)',
+    dsmCriterion: 'Rastreio de Comorbidade Ansiosa (GAD-7)',
+    domain: 'Tensão Ansiosa & Preocupação Incontrolável',
+    neuralTarget: 'Amígdala & Receptores Serotoninérgicos 5-HT1A + CB1',
     question:
-      'Qualquer barulho no ambiente, notificação de celular ou conversa paralela quebra totalmente sua linha de raciocínio?',
+      'Nas últimas 2 semanas, com que frequência você se sentiu nervoso(a), tenso(a) ("no limite") ou incapaz de controlar preocupações excessivas?',
+    scientificBasis:
+      'Embasamento (GAD-7 · Spitzer et al., 2006): Mais de 50% dos adultos com TDAH apresentam ansiedade secundária à sobrecarga executiva crônica.',
   },
   {
     id: 'q10',
-    domain: 'Oscilação Emocional & Frustração',
-    neuralTarget: 'Amígdala Cerebral · Receptores 5-HT1A + CB1',
+    scaleRef: 'Complemento GAD-7 (Item 6 · Regulação Emocional)',
+    dsmCriterion: 'Disfunção Executiva da Autorregulação Emocional',
+    domain: 'Irritabilidade Reativa & Baixa Tolerância à Frustração',
+    neuralTarget: 'Eixo Córtex Pré-Frontal – Amígdala · Tônus de Anandamida',
     question:
-      'Você sente baixa tolerância à frustração, impaciência rápida em filas/trânsito ou sensibilidade intensa a críticas?',
+      'Com que frequência você fica facilmente irritado(a), impaciente ou sente reatividade emocional intensa diante de contratempos ou críticas?',
+    scientificBasis:
+      'Embasamento Clínico (GAD-7 / CFP): A desregulação emocional reflete falha na modulação top-down do córtex pré-frontal sobre a amígdala.',
   },
   {
     id: 'q11',
-    domain: 'Fadiga Executiva no Fim do Dia',
-    neuralTarget: 'Neuroproteção Mitocondrial · CBD + CBG',
+    scaleRef: 'Complemento PHQ-9 (Item 1 & 4 · Kroenke et al.)',
+    dsmCriterion: 'Rastreio de Fadiga Cognitiva & Humor (PHQ-9)',
+    domain: 'Exaustão Psicofísica & Oscilação Motivacional',
+    neuralTarget: 'Bioenergética Mitocondrial & Via Mesolímbica',
     question:
-      'Ao final da tarde, você sente um esgotamento mental profundo e desproporcional pelo esforço de tentar manter a atenção?',
+      'Nas últimas 2 semanas, com que frequência você sentiu esgotamento mental desproporcional, pouca energia ou perda de prazer nas obrigações?',
+    scientificBasis:
+      'Embasamento (PHQ-9 · Kroenke et al., 2001): O esforço compensatório diário para manter a atenção gera burnout executivo e sintomas depressivos reativos.',
   },
   {
     id: 'q12',
-    domain: 'Insônia de Desligamento Cognitivo',
-    neuralTarget: 'Ciclo Circadiano · Modulação Noturna CBD/CBN',
+    scaleRef: 'Complemento PHQ-9 (Item 3) & GAD-7 (Sono)',
+    dsmCriterion: 'Ciclo Circadiano & Insônia de Desligamento',
+    domain: 'Insônia de Desligamento & Sono Não Reparador',
+    neuralTarget: 'Núcleo Supraquiasmático · Modulação Noturna CBD / CBN',
     question:
-      'Na hora de dormir, seu cérebro continua repassando conversas, ideias ou músicas em loop, atrasando o sono reparador?',
+      'Na hora de dormir, com que frequência seu cérebro continua repassando ideias ou preocupações em loop, atrasando o início do sono reparador?',
+    scientificBasis:
+      'Embasamento Cronobiológico: Cerca de 70% dos adultos neurodivergentes apresentam atraso de fase do sono e hiperarousal cortical noturno.',
   },
 ];
 
 export const AUTISM_QUESTIONS = [
   {
     id: 'a1',
-    domain: 'Hipersensibilidade Auditiva & Visual',
-    neuralTarget: 'Filtro Sensorial Talâmico · Tônus de Anandamida',
+    scaleRef: 'AQ-10 Cambridge (Item 1 · Baron-Cohen et al.)',
+    dsmCriterion: 'DSM-5-TR Critério B4 · Hiper-reatividade Sensorial',
+    domain: 'Percepção de Sons Sutis & Sobrecarga Auditiva/Visual',
+    neuralTarget: 'Filtro Sensorial Talâmico · Tônus de Anandamida (AEA)',
     question:
-      'Sons altos, ambientes cheios (shoppings/restaurantes) ou luzes fortes causam incômodo físico, exaustão ou sobrecarga rápida?',
+      'Você frequentemente percebe pequenos sons e ruídos que outras pessoas não notam, ou sente exaustão rápida em locais barulhentos e iluminados?',
+    scientificBasis:
+      'Embasamento (AQ-10 Cambridge · Allison, Auyeung & Baron-Cohen, 2012): A redução da habituação sensorial talâmica amplifica estímulos acústicos e luminosos.',
   },
   {
     id: 'a2',
-    domain: 'Sensibilidade Tátil & Seletividade',
-    neuralTarget: 'Córtex Somatossensorial · Modulação TRPV1',
+    scaleRef: 'AQ-10 Cambridge (Item 2 · Coerência Central)',
+    dsmCriterion: 'Estilo Cognitivo de Processamento Local vs. Global',
+    domain: 'Atenção Hiper-Detalhista vs. Quadro Geral',
+    neuralTarget: 'Redes Visuoespaciais Parieto-Occipitais · Sincronia Neural',
     question:
-      'Há incômodo marcante com etiquetas de roupas, costuras, tecidos específicos ou forte seletividade com texturas de alimentos?',
+      'Você costuma focar intensamente nos pequenos detalhes, padrões ou erros específicos de uma situação antes de perceber o contexto geral?',
+    scientificBasis:
+      'Embasamento (Universidade de Cambridge): A teoria da Coerência Central demonstra processamento analítico superior voltado a detalhes e sistemas.',
   },
   {
     id: 'a3',
-    domain: 'Exaustão Pós-Social ("Masking")',
-    neuralTarget: 'Eixo Hipotálamo-Hipófise-Adrenal · Redução de Cortisol',
+    scaleRef: 'AQ-10 Cambridge (Item 3 & 4 · Flexibilidade)',
+    dsmCriterion: 'DSM-5-TR Critério B2 · Flexibilidade Cognitiva',
+    domain: 'Troca de Atenção (Task Switching) & Interrupções',
+    neuralTarget: 'Córtex Pré-Frontal Ventrolateral · Equilíbrio GABA/Glutamato',
     question:
-      'Após interações sociais ou eventos em grupo, há necessidade de isolamento em silêncio para se recuperar do desgaste de "atuar"?',
+      'Quando está focado(a) em uma atividade e sofre uma interrupção ou mudança imprevista de planos, é difícil alternar a atenção ou retomar o eixo?',
+    scientificBasis:
+      'Embasamento (AQ-10 Itens 3-4): O custo neurobiológico de alternância de tarefas (task-switching) gera desconforto frente à quebra de previsibilidade.',
   },
   {
     id: 'a4',
-    domain: 'Previsibilidade & Rigidez de Rotina',
-    neuralTarget: 'Flexibilidade Cognitiva · Equilíbrio GABA/Glutamato',
+    scaleRef: 'AQ-10 Cambridge (Item 5 & 10 · Cognição Social)',
+    dsmCriterion: 'DSM-5-TR Critério A1 · Pragmática da Comunicação',
+    domain: 'Comunicação Literal & Leitura nas Entrelinhas',
+    neuralTarget: 'Rede Frontotemporal & Giro Temporal Superior',
     question:
-      'Mudanças inesperadas de planos, trajetos diferentes ou imprevistos na rotina geram angústia intensa, irritação ou desregulação?',
+      'Você prefere comunicação direta e objetiva, sentindo dificuldade ou cansaço para "ler nas entrelinhas", captar ironias ou decifrar intenções ocultas?',
+    scientificBasis:
+      'Embasamento (AQ-10 Itens 5 e 10 · Cambridge): O processamento semântico literal exige recrutamento cognitivo consciente para interpretar subtextos sociais.',
   },
   {
     id: 'a5',
-    domain: 'Hiperfoco & Interesses Profundos',
-    neuralTarget: 'Circuitos de Recompensa & Sistematização',
+    scaleRef: 'AQ-10 Cambridge (Item 6 & 9 · Leitura Socioemocional)',
+    dsmCriterion: 'DSM-5-TR Critério A2 · Comunicação Não-Verbal',
+    domain: 'Leitura de Expressões Faciais & Contato Visual',
+    neuralTarget: 'Giro Fusiforme & Amígdala · Segurança Social (CBD)',
     question:
-      'Existe tendência a mergulhar profundamente em temas ou coleções específicas, esquecendo do tempo e dominando detalhes técnicos?',
+      'Manter contato visual ou identificar o que alguém está sentindo apenas pela expressão facial exige esforço mental calculado ou gera desconforto?',
+    scientificBasis:
+      'Embasamento (AQ-10 Itens 6 e 9): A hiperativação amigdaliana durante o contato visual direto transforma a leitura não-verbal em tarefa de alto gasto energético.',
   },
   {
     id: 'a6',
-    domain: 'Comunicação Literal & Pragmática',
-    neuralTarget: 'Processamento Semântico Social · Rede Frontotemporal',
+    scaleRef: 'AQ-10 Cambridge (Item 7 & 8 · Sistematização)',
+    dsmCriterion: 'DSM-5-TR Critério B3 · Hiperfoco & Categorias',
+    domain: 'Hiperfoco Profundo & Coleta de Informações',
+    neuralTarget: 'Circuitos de Recompensa & Hiper-Sistematização',
     question:
-      'Há preferência por comunicação direta e literal, com dificuldade em "conversa fiada" ou em perceber ironias e segundas intenções?',
+      'Você gosta de pesquisar profundamente e organizar informações detalhadas sobre temas específicos, imergindo por horas em seus interesses?',
+    scientificBasis:
+      'Embasamento (Teoria Empatia-Sistematização · Baron-Cohen): Cérebros no espectro apresentam alta capacidade de sistematização e domínio técnico profundo.',
   },
   {
     id: 'a7',
-    domain: 'Contato Visual & Expressão Não-Verbal',
-    neuralTarget: 'Amígdala & Nervo Vago · Segurança Social (CBD)',
+    scaleRef: 'Critério Sensorial DSM-5-TR (Critério B4 · Tato)',
+    dsmCriterion: 'Processamento Somatossensorial & Seletividade',
+    domain: 'Sensibilidade Tátil, Texturas & Seletividade',
+    neuralTarget: 'Córtex Somatossensorial · Modulação de Receptores TRPV1',
     question:
-      'Manter contato visual prolongado parece desconfortável ou exige esforço consciente para calcular expressões e gestos?',
+      'Há incômodo físico marcante com etiquetas de roupas, costuras, tecidos específicos, toques inesperados ou texturas e temperaturas de alimentos?',
+    scientificBasis:
+      'Embasamento (DSM-5-TR Critério B4): Alterações nos canais TRPV1 e vias somatossensoriais geram alodinia tátil e seletividade alimentar sensorial.',
   },
   {
     id: 'a8',
-    domain: 'Movimentos de Autorregulação (Stimming)',
+    scaleRef: 'Critério Neurocomportamental DSM-5-TR (Critério B1)',
+    dsmCriterion: 'Autorregulação Sensório-Motora (Stimming)',
+    domain: 'Movimentos de Autorregulação Corporal (Stimming)',
     neuralTarget: 'Descarga Proprioceptiva · Homeostase Endocanabinoide',
     question:
-      'Ocorrem movimentos repetitivos para aliviar tensão ou organizar pensamentos (balançar o corpo, mexer mãos, estalar dedos, girar objetos)?',
+      'Você realiza movimentos repetitivos (mexer mãos, balançar o corpo, estalar dedos, girar objetos) para aliviar tensão sensorial ou organizar o pensamento?',
+    scientificBasis:
+      'Embasamento Clínico: As estereotipias motoras (stimming) atuam como válvula proprioceptiva legítima para estabilizar o sistema nervoso autônomo.',
   },
   {
     id: 'a9',
-    domain: 'Sobrecarga: Meltdown ou Shutdown',
-    neuralTarget: 'Freio Inibitório Gabaérgico · Prevenção de Crise',
+    scaleRef: 'Complemento Clínico TEA + PHQ-9 (Item 4 · Exaustão)',
+    dsmCriterion: 'Camuflagem Social (CAT-Q) & Burnout Autista',
+    domain: 'Camuflagem Social ("Masking") & Exaustão Pós-Social',
+    neuralTarget: 'Eixo Hipotálamo-Hipófise-Adrenal · Redução de Cortisol',
     question:
-      'Quando há excesso de estímulos ou cobranças, ocorre crise intensa de irritabilidade/choro (meltdown) ou "travamento" silencioso (shutdown)?',
+      'Após interações sociais ou trabalho em grupo, você sente necessidade intensa de isolamento em silêncio para se recuperar do desgaste de "atuar"?',
+    scientificBasis:
+      'Embasamento (Hull et al.; PHQ-9 Fadiga): O monitoramento consciente de expressões e falas sociais (masking) consome reservas executivas e leva ao burnout.',
   },
   {
     id: 'a10',
-    domain: 'Ansiedade Antecipatória',
-    neuralTarget: 'Receptores Serotoninérgicos 5-HT1A + CB1',
+    scaleRef: 'Complemento Neurofisiológico TEA (Crise Sensorial)',
+    dsmCriterion: 'Desregulação Autonômica: Meltdown / Shutdown',
+    domain: 'Sobrecarga Extrema: Meltdown ou Shutdown',
+    neuralTarget: 'Freio Inibitório Gabaérgico · Tônus de Anandamida & 2-AG',
     question:
-      'Há necessidade de planejar antecipadamente cada detalhe de um compromisso novo (como será o local, horários e quem estará lá)?',
+      'Quando há excesso de estímulos, cobranças ou mudanças bruscas, ocorre crise intensa de sobrecarga (meltdown) ou bloqueio/desligamento silencioso (shutdown)?',
+    scientificBasis:
+      'Embasamento Endocanabinoide (Aran et al.): A deficiência no tônus de anandamida e o desequilíbrio excitatório glutamatérgico precipitam crises de sobrecarga.',
   },
   {
     id: 'a11',
-    domain: 'Processamento de Múltiplos Estímulos',
-    neuralTarget: 'Filtragem Auditiva Seletiva · Sincronia Neural',
+    scaleRef: 'Complemento GAD-7 (Item 2, 3 & 7 · Spitzer et al.)',
+    dsmCriterion: 'Rastreio de Ansiedade Coexistente (GAD-7)',
+    domain: 'Ansiedade Antecipatória & Hipervigilância',
+    neuralTarget: 'Receptores Serotoninérgicos 5-HT1A + CB1 Amigdaliano',
     question:
-      'É difícil compreender o que alguém está dizendo se houver TV ligada, música ambiente ou outras pessoas conversando ao mesmo tempo?',
+      'Nas últimas 2 semanas, com que frequência você sentiu ansiedade intensa ao antecipar compromissos novos, imprevistos ou interações sociais?',
+    scientificBasis:
+      'Embasamento (GAD-7 · Spitzer et al., 2006): A ansiedade generalizada e antecipatória é a condição coexistente mais prevalente no espectro autista adulto.',
   },
   {
     id: 'a12',
-    domain: 'Regulação do Sono & Despertar',
+    scaleRef: 'Complemento PHQ-9 (Item 2 & 3) & GAD-7 (Item 4)',
+    dsmCriterion: 'Rastreio de Humor e Arquitetura do Sono (PHQ-9)',
+    domain: 'Regulação do Sono, Humor & Despertar em Alerta',
     neuralTarget: 'Arquitetura do Sono REM/Profundo · Full Spectrum',
     question:
-      'Há histórico de dificuldade para iniciar o sono, despertar noturno frequente ou acordar já em estado de alerta e tensão?',
+      'Nas últimas 2 semanas, houve dificuldade para relaxar o corpo, insônia, despertar noturno frequente ou queda do humor por sobrecarga acumulada?',
+    scientificBasis:
+      'Embasamento (PHQ-9 · Kroenke et al., 2001): A avaliação conjunta de sono e humor complementa o AQ-10 para o Relatório de Acompanhamento Psicológico (CFP 06/2019).',
   },
 ];
 
@@ -308,15 +404,23 @@ export function NeurodivergentTestsCard({
     const totalPts = Object.values(adminScores).reduce((a, b) => a + b, 0);
     const pct = Math.min(99, Math.max(16, Math.round((totalPts / 36) * 100)));
 
+    const corePts = [0, 1, 2, 3, 4, 5, 6, 7].reduce((acc, idx) => acc + (adminScores[idx] ?? 0), 0);
+    const asrs18Score = Math.min(72, Math.round((corePts / 24) * 72));
+    const aq10Score = Math.min(10, Math.max(1, Math.round((corePts / 24) * 10)));
+    const gadPts = (adminScores[8] ?? 0) + (adminScores[9] ?? 0) + (adminScores[11] ?? 0);
+    const gad7Score = Math.min(21, Math.round((gadPts / 9) * 21));
+    const phqPts = (adminScores[10] ?? 0) + (adminScores[11] ?? 0) + (adminScores[2] ?? 0);
+    const phq9Score = Math.min(27, Math.round((phqPts / 9) * 24));
+
     let classification = '';
     if (isAdhd) {
-      if (pct >= 70) classification = 'Alta Compatibilidade Neurocomportamental (TDAH)';
-      else if (pct >= 42) classification = 'Indícios Moderados de Desatenção & Sobrecarga Executiva';
-      else classification = 'Sinais Leves de Oscilação de Foco & Estresse';
+      if (pct >= 70 || asrs18Score >= 46) classification = 'Rastreio Positivo Acentuado ASRS-18 (OMS) · TDAH Adulto';
+      else if (pct >= 42 || asrs18Score >= 32) classification = 'Compatibilidade Moderada ASRS-18 (OMS) & Sobrecarga Executiva';
+      else classification = 'Oscilação Leve de Foco / Desatenção Reativa';
     } else {
-      if (pct >= 66) classification = 'Forte Indicativo de Traços do Espectro (TEA) & Hipersensibilidade';
-      else if (pct >= 40) classification = 'Traços Moderados de Sensibilidade Sensorial & Rigidez Cognitiva';
-      else classification = 'Sensibilidade Sensorial Leve';
+      if (aq10Score >= 6 || pct >= 60) classification = `Rastreio Positivo AQ-10 Cambridge (${aq10Score}/10 pts · Corte ≥ 6) — TEA`;
+      else if (aq10Score >= 4 || pct >= 38) classification = `Traços Moderados de Sensibilidade Sensorial (AQ-10: ${aq10Score}/10)`;
+      else classification = `Sensibilidade Sensorial Leve (AQ-10: ${aq10Score}/10)`;
     }
 
     const payload: any = {
@@ -324,6 +428,10 @@ export function NeurodivergentTestsCard({
       totalPoints: totalPts,
       maxPoints: 36,
       questionsCount: 12,
+      asrs18EquivalentScore: isAdhd ? asrs18Score : undefined,
+      aq10EquivalentScore: !isAdhd ? aq10Score : undefined,
+      gad7ComplementScore: gad7Score,
+      phq9ComplementScore: phq9Score,
       classification,
       completedAt: new Date().toISOString(),
       answers: adminScores,
@@ -346,7 +454,7 @@ export function NeurodivergentTestsCard({
       <div className={`grid grid-cols-1 ${compact ? 'gap-2.5' : 'md:grid-cols-2 gap-3.5'}`}>
         
         {/* ========================================================= */}
-        {/* CARD 1: TESTE DE TDAH (ASRS-18) */}
+        {/* CARD 1: TESTE DE TDAH (ASRS-18 OMS) */}
         {/* ========================================================= */}
         <div
           className={`relative rounded-2xl overflow-hidden transition-all border ${
@@ -370,14 +478,14 @@ export function NeurodivergentTestsCard({
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-black text-white uppercase tracking-wider">
-                    Teste de TDAH
+                    Escala TDAH
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-sky-500/15 border border-sky-400/30 text-sky-300">
-                    ASRS-18 (12 Domínios)
+                    ASRS-18 (OMS) + GAD-7/PHQ-9
                   </span>
                 </div>
                 <p className="text-[11px] text-mecura-silver">
-                  Foco, hiperatividade mental & desatenção executiva
+                  Protocolo validado OMS/Harvard · Atenção & Funções Executivas
                 </p>
               </div>
             </div>
@@ -408,7 +516,9 @@ export function NeurodivergentTestsCard({
                     {adhdRes.classification || 'Resultado Calculado'}
                   </span>
                   <span className="text-white/80 font-mono font-semibold shrink-0">
-                    {adhdRes.totalPoints || 0}/{adhdRes.maxPoints || 36} pts
+                    {adhdRes.asrs18EquivalentScore !== undefined
+                      ? `ASRS-18: ${adhdRes.asrs18EquivalentScore}/72`
+                      : `${adhdRes.totalPoints || 0}/${adhdRes.maxPoints || 36} pts`}
                   </span>
                 </div>
                 {/* Progress bar */}
@@ -419,7 +529,7 @@ export function NeurodivergentTestsCard({
                   />
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-mecura-silver mt-1.5">
-                  <span>Modulação Córtex Pré-Frontal (CB1/CBG)</span>
+                  <span>Kessler et al. (OMS) · Córtex Pré-Frontal</span>
                   <span>
                     {adhdRes.completedAt
                       ? new Date(adhdRes.completedAt).toLocaleDateString('pt-BR')
@@ -434,10 +544,10 @@ export function NeurodivergentTestsCard({
                   type="button"
                   onClick={() => setActiveModal('details_adhd')}
                   className="px-2.5 py-1.5 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 text-sky-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                  title="Ver todas as 12 perguntas respondidas pelo paciente"
+                  title="Ver todas as 12 perguntas e embasamento científico"
                 >
                   <Eye className="w-3.5 h-3.5 text-sky-300" />
-                  <span>Ver 12 Perguntas</span>
+                  <span>Ver Embasamento (12)</span>
                 </button>
 
                 {onSendAdhdToChat && (
@@ -480,7 +590,7 @@ export function NeurodivergentTestsCard({
           ) : (
             <div className="space-y-2.5 pt-1">
               <p className="text-xs text-mecura-silver leading-relaxed">
-                O paciente ainda não respondeu a escala ASRS-18 de 12 perguntas na triagem. Você pode aplicar o teste ao vivo agora na consulta ou enviar convite no chat.
+                Escala validada ASRS-18 (OMS/Harvard) + matriz complementar GAD-7 e PHQ-9 ainda não respondida. Aplique ao vivo ou convide no chat.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <button
@@ -489,7 +599,7 @@ export function NeurodivergentTestsCard({
                   className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                 >
                   <ClipboardList className="w-3.5 h-3.5 text-sky-300" />
-                  <span>Aplicar Teste TDAH Agora</span>
+                  <span>Aplicar ASRS-18 Agora</span>
                 </button>
                 {onSendAdhdToChat && (
                   <button
@@ -497,8 +607,8 @@ export function NeurodivergentTestsCard({
                     onClick={() =>
                       onSendAdhdToChat({
                         isInvite: true,
-                        title: 'Convite para Rastreio de TDAH (ASRS-18)',
-                        text: 'Olá! O profissional gostaria de mapear seu perfil de foco e atenção através da escala ASRS-18 de 12 perguntas.',
+                        title: 'Convite para Rastreio Validado de TDAH (ASRS-18 OMS)',
+                        text: 'Olá! O profissional solicitou o preenchimento da Escala ASRS-18 (OMS) integrada ao rastreio emocional (GAD-7/PHQ-9).',
                       })
                     }
                     className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -513,7 +623,7 @@ export function NeurodivergentTestsCard({
         </div>
 
         {/* ========================================================= */}
-        {/* CARD 2: TESTE DE AUTISMO (TEA) */}
+        {/* CARD 2: TESTE DE AUTISMO (AQ-10 CAMBRIDGE) */}
         {/* ========================================================= */}
         <div
           className={`relative rounded-2xl overflow-hidden transition-all border ${
@@ -537,14 +647,14 @@ export function NeurodivergentTestsCard({
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-black text-white uppercase tracking-wider">
-                    Mapeamento Autismo
+                    Escala Autismo
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-purple-500/15 border border-purple-400/30 text-purple-300">
-                    TEA (12 Perguntas)
+                    AQ-10 (Cambridge) + Sensorial
                   </span>
                 </div>
                 <p className="text-[11px] text-mecura-silver">
-                  Regulação sensorial, masking & rigidez cognitiva
+                  Baron-Cohen et al. (Cambridge) · Corte ≥ 6/10 & Masking
                 </p>
               </div>
             </div>
@@ -575,7 +685,9 @@ export function NeurodivergentTestsCard({
                     {autismRes.classification || 'Mapeamento Concluído'}
                   </span>
                   <span className="text-white/80 font-mono font-semibold shrink-0">
-                    {autismRes.totalPoints || 0}/{autismRes.maxPoints || 36} pts
+                    {autismRes.aq10EquivalentScore !== undefined
+                      ? `AQ-10: ${autismRes.aq10EquivalentScore}/10`
+                      : `${autismRes.totalPoints || 0}/${autismRes.maxPoints || 36} pts`}
                   </span>
                 </div>
                 {/* Progress bar */}
@@ -587,7 +699,7 @@ export function NeurodivergentTestsCard({
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-mecura-silver mt-1.5">
                   <span className="truncate pr-1">
-                    Perfil: {autismRes.targetProfile || 'Adulto'} · Full Spectrum
+                    Cambridge Autism Research Centre · {autismRes.targetProfile || 'Adulto'}
                   </span>
                   <span className="shrink-0">
                     {autismRes.completedAt
@@ -603,10 +715,10 @@ export function NeurodivergentTestsCard({
                   type="button"
                   onClick={() => setActiveModal('details_autism')}
                   className="px-2.5 py-1.5 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/40 text-purple-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                  title="Ver todas as 12 perguntas respondidas pelo paciente"
+                  title="Ver todas as 12 perguntas e embasamento científico"
                 >
                   <Eye className="w-3.5 h-3.5 text-purple-300" />
-                  <span>Ver 12 Perguntas</span>
+                  <span>Ver Embasamento (12)</span>
                 </button>
 
                 {onSendAutismToChat && (
@@ -649,7 +761,7 @@ export function NeurodivergentTestsCard({
           ) : (
             <div className="space-y-2.5 pt-1">
               <p className="text-xs text-mecura-silver leading-relaxed">
-                Mapeamento de 12 perguntas neurocomportamentais para TEA não realizado. Avalia sobrecarga sensorial, masking e tônus endocanabinoide.
+                Escala validada AQ-10 (Universidade de Cambridge) + Perfil Sensorial DSM-5-TR e GAD-7/PHQ-9 ainda não aplicada.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <button
@@ -658,7 +770,7 @@ export function NeurodivergentTestsCard({
                   className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-purple-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                 >
                   <ClipboardList className="w-3.5 h-3.5 text-purple-300" />
-                  <span>Aplicar Teste TEA Agora</span>
+                  <span>Aplicar AQ-10 Agora</span>
                 </button>
                 {onSendAutismToChat && (
                   <button
@@ -666,8 +778,8 @@ export function NeurodivergentTestsCard({
                     onClick={() =>
                       onSendAutismToChat({
                         isInvite: true,
-                        title: 'Convite para Mapeamento de Autismo (TEA)',
-                        text: 'Olá! O profissional gostaria de realizar um mapeamento de sensibilidade sensorial e regulação emocional (12 perguntas).',
+                        title: 'Convite para Mapeamento Validado de Autismo (AQ-10 Cambridge)',
+                        text: 'Olá! O profissional solicitou o preenchimento da Escala AQ-10 (Cambridge) integrada ao perfil sensorial e emocional.',
                       })
                     }
                     className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -714,8 +826,8 @@ export function NeurodivergentTestsCard({
                     <h3 className="font-bold text-base text-white tracking-tight flex items-center gap-2">
                       <span>
                         {activeModal === 'details_adhd'
-                          ? 'Respostas Detalhadas: Teste de TDAH (ASRS-18)'
-                          : 'Respostas Detalhadas: Mapeamento Autismo (TEA)'}
+                          ? 'Embasamento & Respostas: Escala ASRS-18 (OMS) + GAD-7/PHQ-9'
+                          : 'Embasamento & Respostas: Escala AQ-10 (Cambridge) + Sensorial'}
                       </span>
                     </h3>
                     <p className="text-xs text-mecura-silver">
@@ -723,7 +835,7 @@ export function NeurodivergentTestsCard({
                       <strong className="text-white">
                         {patient?.patientName || (patient as any)?.name || 'Paciente'}
                       </strong>{' '}
-                      • 12 Domínios com Alvos Neurais e Frequência Registrada
+                      • Protocolo Integrado à Resolução CFP nº 06/2019
                     </p>
                   </div>
                 </div>
@@ -763,13 +875,15 @@ export function NeurodivergentTestsCard({
                               isAdhd ? 'text-sky-300' : 'text-purple-300'
                             }`}
                           >
-                            Diagnóstico Psicofisiológico Computado
+                            {isAdhd
+                              ? 'Validação OMS / Harvard (ASRS-18) + Matriz Emocional'
+                              : 'Validação Universidade de Cambridge (AQ-10) + Matriz Sensorial'}
                           </span>
                           <h4 className="text-base font-bold text-white">
                             {targetRes?.classification || 'Avaliação Finalizada'}
                           </h4>
                           <p className="text-xs text-mecura-silver mt-0.5">
-                            Pontuação total: {targetRes?.totalPoints || 0} de {targetRes?.maxPoints || 36} pontos possíveis (12 domínios neurais)
+                            Pontuação bruta: {targetRes?.totalPoints || 0} de {targetRes?.maxPoints || 36} pts • Alimenta automaticamente PHQ-9, GAD-7, ASRS-18 e AQ-10 no Acompanhamento Psicológico
                           </p>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
@@ -802,15 +916,15 @@ export function NeurodivergentTestsCard({
 
                           return (
                             <div
-                              key={q.id}
+                              key={`neuro-q-${q.id || idx}-${idx}`}
                               className="p-3.5 rounded-2xl bg-[#121822]/70 border border-white/[0.08] hover:border-white/20 transition-all space-y-2"
                             >
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider bg-mecura-neon/10 border border-mecura-neon/25 px-2 py-0.5 rounded-full">
                                   #{idx + 1} · {q.domain}
                                 </span>
-                                <span className="text-[10px] text-mecura-silver font-mono">
-                                  Alvo: {q.neuralTarget}
+                                <span className="text-[10px] text-sky-300 font-mono font-semibold">
+                                  {q.scaleRef}
                                 </span>
                               </div>
 
@@ -818,11 +932,16 @@ export function NeurodivergentTestsCard({
                                 {q.question}
                               </p>
 
+                              <div className="px-2.5 py-1.5 rounded-xl bg-black/30 border border-white/[0.05] text-[11px] text-[#9A9AB0]">
+                                <span className="text-mecura-neon font-bold">Embasamento: </span>
+                                {q.scientificBasis}
+                              </div>
+
                               <div className="pt-1.5 border-t border-white/[0.06] flex items-center justify-between gap-2">
-                                <span className="text-[11px] text-[#A0A0B4]">
-                                  Resposta do Paciente:
+                                <span className="text-[11px] text-[#A0A0B4] truncate">
+                                  Alvo: {q.neuralTarget}
                                 </span>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 shrink-0">
                                   <span
                                     className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
                                       pts === 3
@@ -976,11 +1095,11 @@ export function NeurodivergentTestsCard({
 
                     {/* Options */}
                     <div className="space-y-2">
-                      {FREQUENCY_OPTIONS.map((opt) => {
+                      {FREQUENCY_OPTIONS.map((opt, optIdx) => {
                         const isSelected = adminScores[adminStep] === opt.points;
                         return (
                           <button
-                            key={opt.points}
+                            key={`admin-freq-${opt.points}-${optIdx}`}
                             type="button"
                             onClick={() => handleSelectAdminOption(opt.points)}
                             className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${

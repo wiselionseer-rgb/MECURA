@@ -810,7 +810,7 @@ export function ChatScreen() {
               </span>
             </div>
             <p className="text-xs text-mecura-silver truncate">
-              {isPsicoChat ? 'CRP: 08/49215 • Saúde Mental & Acolhimento' : 'CRM: 12345/SP • Prescrição & Acompanhamento'}
+              {isPsicoChat ? 'CRP: 08/49215 • Saúde Mental & Acolhimento' : 'CRM/MT 17259 • Clínico Geral • Primavera do Leste - MT'}
             </p>
           </div>
 
@@ -1506,16 +1506,18 @@ export function ChatScreen() {
                       <Brain className="w-7 h-7" />
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] text-purple-400 uppercase tracking-widest font-mono">Saúde Mental</span>
+                      <span className="text-[10px] text-purple-400 uppercase tracking-widest font-mono">Psicologia Clínica • CFP 06/2019</span>
                       <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
-                        <CheckCheck className="w-3 h-3 text-purple-400" /> Parecer Oficial
+                        <CheckCheck className="w-3 h-3 text-purple-400" /> Acompanhamento Oficial
                       </p>
                     </div>
                   </div>
 
-                  <h3 className="text-white font-bold text-2xl mb-1">Laudo Psicológico</h3>
+                  <h3 className="text-white font-bold text-xl sm:text-2xl mb-1">
+                    {msg.attachment?.title?.split('•')[0]?.trim() || 'Relatório de Acompanhamento Psicológico'}
+                  </h3>
                   <p className="text-purple-300 text-xs mb-6">
-                    {msg.attachment?.name || 'Avaliação clínica para fins de tratamento e salvaguarda terapêutica.'}
+                    {msg.attachment?.name || 'Documento técnico de acompanhamento psicológico e avaliação de escalas clínicas.'}
                   </p>
                   
                   <Button 
@@ -1526,11 +1528,11 @@ export function ChatScreen() {
                     {downloadingMsgId === msg.id ? (
                       <span className="flex items-center gap-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Abrindo Laudo...
+                        Abrindo Relatório...
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
-                        <Download className="w-4 h-4 mr-2" /> Baixar Laudo Psicológico PDF
+                        <Download className="w-4 h-4 mr-2" /> Baixar Relatório de Acompanhamento PDF
                       </span>
                     )}
                   </Button>
@@ -2133,11 +2135,11 @@ export function ChatScreen() {
 
                       {/* 4 Frequency Options */}
                       <div className="space-y-2">
-                        {FREQUENCY_OPTIONS.map((opt) => {
+                        {FREQUENCY_OPTIONS.map((opt, optIdx) => {
                           const isSelected = patientTestScores[patientTestStep] === opt.points;
                           return (
                             <button
-                              key={opt.points}
+                              key={`patient-freq-${opt.points}-${optIdx}`}
                               type="button"
                               onClick={() => handleSelectPatientTestOption(opt.points)}
                               className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${

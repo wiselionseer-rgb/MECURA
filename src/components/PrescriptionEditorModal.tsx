@@ -137,7 +137,7 @@ export function PrescriptionEditorModal({
   const [items, setItems] = useState<PrescriptionItemData[]>(propItems);
   const [notes, setNotes] = useState(propNotes);
 
-  // Sync from parent props whenever modal opens
+  // Sync from parent props whenever modal opens or parent items change
   useEffect(() => {
     if (isOpen) {
       setPatientName(propPatientName);
@@ -150,7 +150,7 @@ export function PrescriptionEditorModal({
       setItems(propItems);
       setNotes(propNotes);
     }
-  }, [isOpen]);
+  }, [isOpen, propItems, propNotes]);
 
   // Synchronize all edited fields back to parent
   const syncToParent = () => {
@@ -2491,9 +2491,9 @@ export function PrescriptionEditorModal({
                                 </datalist>
                                 {/* Quick Brand Chips */}
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                  {['Pangaia (EUA)', 'Flowermed', 'SouCannabis', 'Abrace', 'ABECMED', 'Assoc. Brasileira'].map(b => (
+                                  {['Pangaia (EUA)', 'Flowermed', 'SouCannabis', 'Abrace', 'ABECMED', 'Assoc. Brasileira'].map((b, bIdx) => (
                                     <button
-                                      key={b}
+                                      key={`quick-brand-${itemIdx}-${b}-${bIdx}`}
                                       type="button"
                                       onClick={() => {
                                         const cleanBrand = b === 'Pangaia (EUA)' ? 'Pangaia Biopharma (EUA)' : b === 'Assoc. Brasileira' ? 'Associação Brasileira (Nacional)' : b;
@@ -2925,8 +2925,11 @@ export function PrescriptionEditorModal({
                           </div>
                           <div className="text-right">
                             <h3 className="text-sm font-bold text-[#1E1B4B]">{doctorName}</h3>
-                            <p className="text-xs text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">{doctorSpecialty}</p>
+                            <p className="text-xs text-slate-600 font-semibold mt-0.5">
+                              {doctorCrm} • Estado MT • {doctorSpecialty.toLowerCase().includes('clínico geral') || doctorSpecialty.toLowerCase().includes('clinico geral') ? doctorSpecialty : `Clínico Geral • ${doctorSpecialty}`}
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                            <p className="text-[10px] text-slate-500">Primavera do Leste - MT • CEP 78850-000</p>
                           </div>
                         </div>
 
@@ -3021,7 +3024,7 @@ export function PrescriptionEditorModal({
                                             {headerText}
                                           </span>
                                           {toRender.map((d, dIdx) => (
-                                            <p key={`guide-${gIdx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
+                                            <p key={`guide-${gIdx}-item-${idx}-dose-${dIdx}`} className="leading-relaxed">• {d}</p>
                                           ))}
                                         </>
                                       );
@@ -3044,16 +3047,17 @@ export function PrescriptionEditorModal({
 
                       {/* Independent Signature Block for this guide */}
                       <div className="pt-8 border-t border-slate-200 mt-8 flex justify-between items-end">
-                        <div className="text-[10px] text-slate-500">
-                          <p>Data de Emissão: {emissionDate}</p>
-                          <p className="text-[9px] text-slate-400 mt-1">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
+                        <div className="text-[10px] text-slate-500 space-y-0.5">
+                          <p>Data de Emissão: <strong>{emissionDate}</strong> • Local: <strong>Primavera do Leste - MT (CEP 78850-000)</strong></p>
+                          <p className="text-slate-600 font-medium">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                          <p className="text-[9px] text-slate-400">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
                         </div>
 
-                        <div className="text-center w-52">
+                        <div className="text-center w-60">
                           <div className="border-b border-slate-400 mb-2" />
                           <p className="text-xs font-bold text-slate-900">{doctorName}</p>
-                          <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm}</p>
-                          <p className="text-[9px] text-slate-500 mt-0.5">Assinatura Digital / Prescritor</p>
+                          <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm} • Estado MT • Clínico Geral</p>
+                          <p className="text-[9px] text-slate-500 mt-0.5">+55 65 3190-0629 • Wiselionseer@gmail.com</p>
                         </div>
                       </div>
                     </div>
@@ -3259,9 +3263,9 @@ export function PrescriptionEditorModal({
                         id: c.id,
                         label: `🏷️ ${(((c as any).name || c.title || '') as string).split('(')[0].trim()} (${(c.products || []).length})`
                       }))
-                  ].map(cat => (
+                  ].map((cat, cIdx) => (
                     <button
-                      key={cat.id}
+                      key={`cat-pill-${cat.id}-${cIdx}`}
                       type="button"
                       onClick={() => setLibrarySelectedCategory(cat.id)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -3277,9 +3281,9 @@ export function PrescriptionEditorModal({
 
                 {/* Origin Filter */}
                 <div className="flex items-center gap-1 bg-[#050508] p-0.5 rounded-lg border border-mecura-elevated">
-                  {(['all', 'Nacional', 'Importado'] as const).map(orig => (
+                  {(['all', 'Nacional', 'Importado'] as const).map((orig, origIdx) => (
                     <button
-                      key={orig}
+                      key={`orig-pill-${orig}-${origIdx}`}
                       type="button"
                       onClick={() => setLibraryOriginFilter(orig)}
                       className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${

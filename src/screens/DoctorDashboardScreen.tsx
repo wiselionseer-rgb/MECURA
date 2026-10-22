@@ -300,7 +300,13 @@ export function DoctorDashboardScreen() {
   const [nationalPreference, setNationalPreference] = useState<'soucannabis' | 'abrace' | 'abecmed' | 'all'>('soucannabis');
   const [importedPreference, setImportedPreference] = useState<'pangaia' | 'flowermed' | 'greenbudz' | 'all'>('pangaia');
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [addedMedications, setAddedMedications] = useState<string[]>([]);
+  const [addedMedications, _setAddedMedications] = useState<string[]>([]);
+  const addedMedicationsRef = useRef<string[]>([]);
+  const setAddedMedications = (val: string[] | ((prev: string[]) => string[])) => {
+    const next = typeof val === 'function' ? val(addedMedicationsRef.current) : val;
+    addedMedicationsRef.current = next;
+    _setAddedMedications(next);
+  };
   const [activeView, setActiveView] = useState<'chat' | 'guide' | 'analytics'>('chat');
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showProductSearchModal, setShowProductSearchModal] = useState(false);
@@ -611,7 +617,7 @@ export function DoctorDashboardScreen() {
   const [reportEmissionDate, setReportEmissionDate] = useState('');
   const [reportDoctorName, setReportDoctorName] = useState('Dr. Guilherme Taveira Dias');
   const [reportDoctorCrm, setReportDoctorCrm] = useState('CRM/MT 17259');
-  const [reportDoctorSpecialty, setReportDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
+  const [reportDoctorSpecialty, setReportDoctorSpecialty] = useState('Clínico Geral • Medicina Canabinoide');
   const [reportDiagnosis, setReportDiagnosis] = useState('');
   const [reportRationale, setReportRationale] = useState('');
   const [reportTreatmentPlan, setReportTreatmentPlan] = useState('');
@@ -630,7 +636,7 @@ export function DoctorDashboardScreen() {
     return 'avulso_temp';
   };
 
-  const loadSavedReport = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor', expectedPatientName?: string, expectedPatientId?: string | null) => {
+  const loadSavedReport = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor' | 'agronomico', expectedPatientName?: string, expectedPatientId?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_reports_v2');
       if (!raw) return null;
@@ -668,7 +674,7 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const saveReportToStorage = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor', data: any, explicitPatientId?: string | null) => {
+  const saveReportToStorage = (patientKey: string, type: 'inicial' | 'evolutivo' | 'psicomotor' | 'agronomico', data: any, explicitPatientId?: string | null) => {
     try {
       const raw = localStorage.getItem('mecura_saved_reports_v2');
       const parsed = raw ? JSON.parse(raw) : {};
@@ -701,6 +707,49 @@ export function DoctorDashboardScreen() {
     } catch (e) {
       console.warn("Could not save report to localStorage:", e);
     }
+  };
+
+  const handleSaveAgronomicReport = async (savedData: {
+    patientName: string;
+    cpf: string;
+    emissionDate: string;
+    agronomistName: string;
+    agronomistCrea: string;
+    diagnosis: string;
+    dailyDoseMg: number;
+    targetPlants: number;
+    agronomicText: string;
+  }) => {
+    const targetId = standaloneTargetPatientId || currentPatient?.id || null;
+    const key = getPatientReportKey(targetId, savedData.patientName || agronomicPatientName);
+    saveReportToStorage(key, 'agronomico', savedData, targetId);
+    setAgronomicPatientName(savedData.patientName);
+    setAgronomicCpf(savedData.cpf);
+    setAgronomicEmissionDate(savedData.emissionDate);
+    setAgronomicName(savedData.agronomistName);
+    setAgronomicCrea(savedData.agronomistCrea);
+    setAgronomicDiagnosis(savedData.diagnosis);
+    setAgronomicDailyDoseMg(savedData.dailyDoseMg);
+    setAgronomicTargetPlants(savedData.targetPlants);
+    setAgronomicText(savedData.agronomicText);
+
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
+    if (targetPatientId) {
+      try {
+        await setDoc(doc(db, 'queue', targetPatientId), {
+          agronomicReportData: savedData,
+          lastReportUpdated: new Date().toISOString()
+        }, { merge: true });
+        await setDoc(doc(db, 'active_consultations', targetPatientId), {
+          agronomicReportData: savedData,
+          lastReportUpdated: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Could not sync agronomic report to Firestore:", err);
+      }
+    }
+
+    showActionToast('Alterações do Parecer Agronômico salvas com sucesso!');
   };
 
   const handleSaveMedicalReport = async (savedData: {
@@ -840,7 +889,8 @@ export function DoctorDashboardScreen() {
       if (resolvedId) {
         keysToSave.add(`id:${String(resolvedId).toLowerCase().trim()}`);
         keysToSave.add(String(resolvedId).toLowerCase().trim());
-      } else if (data?.patientName && String(data.patientName).trim().toLowerCase() !== 'paciente') {
+      }
+      if (data?.patientName && String(data.patientName).trim().toLowerCase() !== 'paciente') {
         const cleanName = String(data.patientName).trim().toLowerCase();
         keysToSave.add(`name:${cleanName}`);
         keysToSave.add(cleanName);
@@ -866,6 +916,7 @@ export function DoctorDashboardScreen() {
     items: PrescriptionItemData[];
     notes: string;
   }) => {
+    prescItemsRef.current = savedData.items;
     const key = getPatientReportKey(standaloneTargetPatientId || currentPatient?.id, savedData.patientName || prescPatientName);
     savePrescriptionToStorage(key, savedData);
 
@@ -878,6 +929,12 @@ export function DoctorDashboardScreen() {
     setPrescDoctorSpecialty(savedData.doctorSpecialty);
     setPrescItems(savedData.items);
     setPrescNotes(savedData.notes);
+
+    setCurrentPatient((prev: any) =>
+      prev && (!standaloneTargetPatientId || prev.id === standaloneTargetPatientId)
+        ? { ...prev, prescriptionData: savedData }
+        : prev
+    );
 
     const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
     if (targetPatientId) {
@@ -945,8 +1002,17 @@ export function DoctorDashboardScreen() {
   const [prescEmissionDate, setPrescEmissionDate] = useState('');
   const [prescDoctorName, setPrescDoctorName] = useState('Dr. Guilherme Taveira Dias');
   const [prescDoctorCrm, setPrescDoctorCrm] = useState('CRM/MT 17259');
-  const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Especialista em Medicina Canabinoide');
-  const [prescItems, setPrescItems] = useState<PrescriptionItemData[]>([]);
+  const [prescDoctorSpecialty, setPrescDoctorSpecialty] = useState('Clínico Geral • Medicina Canabinoide');
+  const [prescItems, _setPrescItems] = useState<PrescriptionItemData[]>([]);
+  const prescItemsRef = useRef<PrescriptionItemData[]>([]);
+  const setPrescItems = (val: PrescriptionItemData[] | ((prev: PrescriptionItemData[]) => PrescriptionItemData[])) => {
+    const next = typeof val === 'function' ? val(prescItemsRef.current) : val;
+    prescItemsRef.current = next;
+    _setPrescItems(next);
+  };
+  useEffect(() => {
+    prescItemsRef.current = prescItems;
+  }, [prescItems]);
   const [prescNotes, setPrescNotes] = useState('');
   const [showProgrammedPrescriptionModal, setShowProgrammedPrescriptionModal] = useState(false);
   const [programmedTargetPatient, setProgrammedTargetPatient] = useState<any>(null);
@@ -1290,12 +1356,86 @@ export function DoctorDashboardScreen() {
 
   const handleLaunchStandaloneAgronomicReport = (patientData: StandalonePatientData) => {
     setStandaloneTargetPatientId(patientData.id || null);
-    setAgronomicPatientName(patientData.name);
-    setAgronomicCpf(patientData.cpf);
-    setAgronomicEmissionDate(patientData.emissionDate);
-    if (patientData.diagnosis) {
-      setAgronomicDiagnosis(patientData.diagnosis);
+    const qPatient = patientData.id
+      ? (queue.find(p => p.id === patientData.id) || consultationHistory.find(h => h.id === patientData.id))
+      : null;
+    const patientAnswers = {
+      ...(qPatient?.answers || {}),
+      ...(currentPatient && currentPatient.id === patientData.id ? (currentPatient.answers || {}) : {})
+    };
+    const pName = (patientData.name || qPatient?.patientName || 'Paciente').trim();
+    const pCpf = patientData.cpf || qPatient?.cpf || patientAnswers?.cpf || 'Não informado';
+    const pBirth = patientData.birthDate || qPatient?.birthDate || patientAnswers?.birthDate || 'Não informada';
+
+    const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+      ? patientAnswers.objectives
+      : (patientData.diagnosis ? [patientData.diagnosis] : []);
+
+    const personalized = generatePersonalizedClinicalReport({
+      patientName: pName,
+      birthDate: pBirth,
+      cpf: pCpf,
+      sex: patientAnswers?.sex,
+      height: patientAnswers?.height,
+      weight: patientAnswers?.weight,
+      objectives: objectivesArray,
+      intensity: patientAnswers?.intensity,
+      duration: patientAnswers?.duration,
+      description: patientAnswers?.description,
+      diseaseOrigin: patientAnswers?.diseaseOrigin,
+      remedios: patientAnswers?.remedios,
+      remedios_details: patientAnswers?.remedios_details,
+      doenca_cronica: patientAnswers?.doenca_cronica,
+      doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+      tratamento_atual: patientAnswers?.tratamento_atual,
+      tratamento_atual_details: patientAnswers?.tratamento_atual_details,
+      cirurgia: patientAnswers?.cirurgia,
+      cirurgia_details: patientAnswers?.cirurgia_details,
+      alergia: patientAnswers?.alergia,
+      alergia_details: patientAnswers?.alergia_details,
+      digestivo: patientAnswers?.digestivo,
+      digestivo_details: patientAnswers?.digestivo_details,
+      dor_cabeca: patientAnswers?.dor_cabeca,
+      dor_cabeca_details: patientAnswers?.dor_cabeca_details,
+      cansado: patientAnswers?.cansado,
+      cannabis: patientAnswers?.cannabis,
+      cannabis_details: patientAnswers?.cannabis_details,
+      arritmia: patientAnswers?.arritmia,
+      arritmia_details: patientAnswers?.arritmia_details,
+      tristeza: patientAnswers?.tristeza,
+      foco: patientAnswers?.foco,
+      memoria: patientAnswers?.memoria,
+      irritado: patientAnswers?.irritado,
+      estresse: patientAnswers?.estresse,
+      panico: patientAnswers?.panico,
+      panico_details: patientAnswers?.panico_details,
+      ansiedade_diag: patientAnswers?.ansiedade_diag,
+      ansiedade_diag_details: patientAnswers?.ansiedade_diag_details,
+      adhdTestResult: patientAnswers?.adhdTestResult,
+      autismTestResult: patientAnswers?.autismTestResult,
+      hcPlantCalculator: patientAnswers?.hcPlantCalculator,
+      mainSymptoms: patientAnswers?.mainSymptoms,
+      pathology: patientData.diagnosis || patientAnswers?.pathology,
+      answers: patientAnswers
+    }, 'inicial');
+
+    const patientKey = getPatientReportKey(patientData.id, pName);
+    const rawSaved = loadSavedReport(patientKey, 'agronomico', pName, patientData.id);
+    let validSaved = rawSaved;
+    if (rawSaved?.agronomicText && pName && pName.toLowerCase() !== 'paciente' && !rawSaved.agronomicText.toLowerCase().includes(pName.toLowerCase())) {
+      validSaved = null;
     }
+
+    const hcCalc = patientAnswers?.hcPlantCalculator;
+    setAgronomicPatientName(validSaved?.patientName || pName);
+    setAgronomicCpf(validSaved?.cpf || pCpf);
+    setAgronomicEmissionDate(validSaved?.emissionDate || patientData.emissionDate || new Date().toLocaleDateString('pt-BR'));
+    setAgronomicName(validSaved?.agronomistName || 'Wilian Dalenogare Pereira');
+    setAgronomicCrea(validSaved?.agronomistCrea || 'CREA-PR 172.458/D');
+    setAgronomicDiagnosis(validSaved?.diagnosis || patientData.diagnosis || personalized.agronomic.diagnosis);
+    setAgronomicDailyDoseMg(validSaved?.dailyDoseMg || (hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg));
+    setAgronomicTargetPlants(validSaved?.targetPlants || (hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants));
+    setAgronomicText(validSaved?.agronomicText || personalized.agronomic.text);
     setShowAgronomicReportEditorModal(true);
   };
 
@@ -2755,7 +2895,7 @@ export function DoctorDashboardScreen() {
     setPrescEmissionDate(format(new Date(), 'dd/MM/yyyy'));
     setPrescDoctorName('Dr. Guilherme Taveira Dias');
     setPrescDoctorCrm('CRM/MT 17259');
-    setPrescDoctorSpecialty('Especialista em Medicina Canabinoide');
+    setPrescDoctorSpecialty('Clínico Geral • Medicina Canabinoide');
 
     if (prefillItems && prefillItems.length > 0) {
       setPrescItems(prefillItems);
@@ -2768,7 +2908,7 @@ export function DoctorDashboardScreen() {
     }
 
     const patientKey = getPatientReportKey(targetPatient?.id, pName);
-    const saved = loadSavedPrescription(patientKey) || targetPatient?.prescriptionData;
+    const saved = loadSavedPrescription(patientKey, pName, targetPatient?.id) || targetPatient?.prescriptionData;
 
     if (saved && saved.items && saved.items.length > 0) {
       setPrescPatientName(saved.patientName || pName);
@@ -2777,11 +2917,12 @@ export function DoctorDashboardScreen() {
       setPrescEmissionDate(saved.emissionDate || format(new Date(), 'dd/MM/yyyy'));
       setPrescDoctorName(saved.doctorName || 'Dr. Guilherme Taveira Dias');
       setPrescDoctorCrm(saved.doctorCrm || 'CRM/MT 17259');
-      setPrescDoctorSpecialty(saved.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+      setPrescDoctorSpecialty(saved.doctorSpecialty || 'Clínico Geral • Medicina Canabinoide');
 
       // Build merged items list: prefer prescItems if an item with the same name was edited in current session
       const prescMap = new Map<string, PrescriptionItemData>();
-      prescItems.forEach(pi => prescMap.set(pi.name.toLowerCase().trim(), pi));
+      const currentList = prescItemsRef.current.length > 0 ? prescItemsRef.current : prescItems;
+      currentList.forEach(pi => prescMap.set(pi.name.toLowerCase().trim(), pi));
 
       const mergedItems: PrescriptionItemData[] = saved.items.map((si: PrescriptionItemData) => {
         const clean = si.name.toLowerCase().trim();
@@ -2797,6 +2938,7 @@ export function DoctorDashboardScreen() {
         mergedItems.push(newlyAdded);
       });
 
+      prescItemsRef.current = mergedItems;
       setPrescItems(mergedItems);
       setPrescNotes(saved.notes || prescNotes || '');
       setPrescriptionTab('edit');
@@ -2809,7 +2951,8 @@ export function DoctorDashboardScreen() {
     const seenNames = new Set<string>();
 
     // 1. Items already selected in current session
-    prescItems.forEach(it => {
+    const currentList = prescItemsRef.current.length > 0 ? prescItemsRef.current : prescItems;
+    currentList.forEach(it => {
       const clean = it.name.toLowerCase().trim();
       if (!seenNames.has(clean)) {
         seenNames.add(clean);
@@ -2915,11 +3058,15 @@ export function DoctorDashboardScreen() {
     setPrescEmissionDate(format(new Date(), 'dd/MM/yyyy'));
     setPrescDoctorName('Dr. Guilherme Taveira Dias');
     setPrescDoctorCrm('CRM/MT 17259');
-    setPrescDoctorSpecialty('Especialista em Medicina Canabinoide');
+    setPrescDoctorSpecialty('Clínico Geral • Medicina Canabinoide');
     
     if (items.length > 0) {
+      prescItemsRef.current = items;
       setPrescItems(items);
+    } else if (prescItemsRef.current.length > 0) {
+      setPrescItems(prescItemsRef.current);
     } else {
+      prescItemsRef.current = [];
       setPrescItems([]);
     }
     const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
@@ -3522,7 +3669,7 @@ export function DoctorDashboardScreen() {
     setReportEmissionDate(validSaved?.emissionDate || format(new Date(), 'dd/MM/yyyy'));
     setReportDoctorName(validSaved?.doctorName || 'Dr. Guilherme Taveira Dias');
     setReportDoctorCrm(validSaved?.doctorCrm || 'CRM/MT 17259');
-    setReportDoctorSpecialty(validSaved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setReportDoctorSpecialty(validSaved?.doctorSpecialty || 'Clínico Geral • Medicina Canabinoide');
     setReportDiagnosis(validSaved?.diagnosis || defaultClinicalSummary);
     setReportRationale(validSaved?.rationale || defaultTherapeuticRationale);
     setReportTreatmentPlan(validSaved?.treatmentPlan || defaultTreatmentPlan);
@@ -3555,7 +3702,7 @@ export function DoctorDashboardScreen() {
     setReportEmissionDate(validSaved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
     setReportDoctorName(validSaved?.doctorName || 'Dr. Guilherme Taveira Dias');
     setReportDoctorCrm(validSaved?.doctorCrm || 'CRM/MT 17259');
-    setReportDoctorSpecialty(validSaved?.doctorSpecialty || 'Especialista em Medicina Canabinoide');
+    setReportDoctorSpecialty(validSaved?.doctorSpecialty || 'Clínico Geral • Medicina Canabinoide');
 
     if (validSaved?.text) {
       setPsychomotorReportText(validSaved.text);
@@ -3690,28 +3837,50 @@ export function DoctorDashboardScreen() {
     }
   };
 
-  const handleOpenAgronomicReportEditor = () => {
-    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
-    const patientAnswers = currentPatient
+  const buildTriageAgronomicDefaults = (targetPatientIdOverride?: string | null) => {
+    const resolvedId = targetPatientIdOverride !== undefined
+      ? targetPatientIdOverride
+      : (standaloneTargetPatientId || currentPatient?.id || null);
+    const qPatient = resolvedId
+      ? (queue.find(p => p.id === resolvedId) || consultationHistory.find(h => h.id === resolvedId))
+      : null;
+    const patientAnswers = (currentPatient && (!resolvedId || currentPatient.id === resolvedId))
       ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
-      : (answers || {});
-    const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
-    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
-    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
-    
-    setAgronomicPatientName(pName);
-    setAgronomicCpf(pCpf);
-    setAgronomicEmissionDate(new Date().toLocaleDateString('pt-BR'));
-    setAgronomicName('Wilian Dalenogare Pereira');
-    setAgronomicCrea('CREA-PR 172.458/D');
+      : (qPatient?.answers || answers || {});
+    const pName = (
+      (currentPatient && (!resolvedId || currentPatient.id === resolvedId) ? (currentPatient.patientName || (currentPatient as any)?.name) : '') ||
+      qPatient?.patientName ||
+      (!currentPatient && !resolvedId ? userName : '') ||
+      agronomicPatientName ||
+      'Paciente'
+    ).trim();
+    const pCpf = (
+      (currentPatient && (!resolvedId || currentPatient.id === resolvedId) ? currentPatient.cpf : '') ||
+      patientAnswers?.cpf ||
+      qPatient?.cpf ||
+      (!currentPatient && !resolvedId ? userCpf : '') ||
+      agronomicCpf ||
+      'Não informado'
+    );
+    const pBirthDate = (
+      (currentPatient && (!resolvedId || currentPatient.id === resolvedId) ? currentPatient.birthDate : '') ||
+      patientAnswers?.birthDate ||
+      qPatient?.birthDate ||
+      (!currentPatient && !resolvedId ? userBirthDate : '') ||
+      'Não informada'
+    );
 
     const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
       ? patientAnswers.objectives
-      : [];
+      : (patientAnswers?.objective ? [String(patientAnswers.objective)] : []);
+
     const personalized = generatePersonalizedClinicalReport({
       patientName: pName,
       birthDate: pBirthDate,
       cpf: pCpf,
+      sex: patientAnswers?.sex,
+      height: patientAnswers?.height,
+      weight: patientAnswers?.weight,
       objectives: objectivesArray,
       intensity: patientAnswers?.intensity,
       duration: patientAnswers?.duration,
@@ -3721,37 +3890,183 @@ export function DoctorDashboardScreen() {
       remedios_details: patientAnswers?.remedios_details,
       doenca_cronica: patientAnswers?.doenca_cronica,
       doenca_cronica_details: patientAnswers?.doenca_cronica_details,
+      tratamento_atual: patientAnswers?.tratamento_atual,
+      tratamento_atual_details: patientAnswers?.tratamento_atual_details,
+      cirurgia: patientAnswers?.cirurgia,
+      cirurgia_details: patientAnswers?.cirurgia_details,
+      alergia: patientAnswers?.alergia,
+      alergia_details: patientAnswers?.alergia_details,
       digestivo: patientAnswers?.digestivo,
       digestivo_details: patientAnswers?.digestivo_details,
+      dor_cabeca: patientAnswers?.dor_cabeca,
+      dor_cabeca_details: patientAnswers?.dor_cabeca_details,
+      cansado: patientAnswers?.cansado,
+      cannabis: patientAnswers?.cannabis,
+      cannabis_details: patientAnswers?.cannabis_details,
+      arritmia: patientAnswers?.arritmia,
+      arritmia_details: patientAnswers?.arritmia_details,
+      tristeza: patientAnswers?.tristeza,
+      foco: patientAnswers?.foco,
+      memoria: patientAnswers?.memoria,
+      irritado: patientAnswers?.irritado,
+      estresse: patientAnswers?.estresse,
+      panico: patientAnswers?.panico,
+      panico_details: patientAnswers?.panico_details,
+      ansiedade_diag: patientAnswers?.ansiedade_diag,
+      ansiedade_diag_details: patientAnswers?.ansiedade_diag_details,
+      dirige: patientAnswers?.dirige,
+      dirige_details: patientAnswers?.dirige_details,
+      maquinario: patientAnswers?.maquinario,
+      maquinario_details: patientAnswers?.maquinario_details,
+      blitz: patientAnswers?.blitz,
+      laudo_psicomotor: patientAnswers?.laudo_psicomotor,
+      preferredTreatmentStatus: patientAnswers?.preferredTreatmentStatus,
+      preferredBrands: patientAnswers?.preferredBrands,
+      preferredBrandNotes: patientAnswers?.preferredBrandNotes,
+      adhdTestResult: patientAnswers?.adhdTestResult,
+      autismTestResult: patientAnswers?.autismTestResult,
+      hcPlantCalculator: patientAnswers?.hcPlantCalculator,
       mainSymptoms: patientAnswers?.mainSymptoms,
       pathology: patientAnswers?.pathology,
+      evolutionNotes,
       answers: patientAnswers
     }, 'evolutivo');
-    
+
+    const prescKey = getPatientReportKey(resolvedId, pName);
+    const savedPresc = loadSavedPrescription(prescKey, pName, resolvedId);
+    const activePrescItems = prescItems.length > 0 ? prescItems : (savedPresc?.items && Array.isArray(savedPresc.items) ? savedPresc.items : []);
+    const prescribedProductsStr = activePrescItems.length > 0
+      ? activePrescItems.map((it: PrescriptionItemData, idx: number) => `${idx + 1}. ${it.name} (${it.brand || 'Associação'} - ${it.origin || 'Nacional'}) • ${(it.dosage || []).join(' ')}`).join('\n')
+      : '';
+
     const hcCalc = patientAnswers?.hcPlantCalculator;
-    setAgronomicDiagnosis(personalized.agronomic.diagnosis);
-    setAgronomicDailyDoseMg(hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg);
-    setAgronomicTargetPlants(hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants);
-    setAgronomicText(personalized.agronomic.text);
+    const defaultDailyDoseMg = hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg;
+    const defaultTargetPlants = hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants;
+
+    return {
+      resolvedId,
+      pName,
+      pCpf,
+      pBirthDate,
+      patientAnswers,
+      prescribedProductsStr,
+      defaultDiagnosis: personalized.agronomic.diagnosis,
+      defaultDailyDoseMg,
+      defaultTargetPlants,
+      defaultAgronomicText: personalized.agronomic.text
+    };
+  };
+
+  const handleResetAgronomicReportFromTriage = () => {
+    const defaults = buildTriageAgronomicDefaults();
+    setAgronomicPatientName(defaults.pName);
+    setAgronomicCpf(defaults.pCpf);
+    setAgronomicDiagnosis(defaults.defaultDiagnosis);
+    setAgronomicDailyDoseMg(defaults.defaultDailyDoseMg);
+    setAgronomicTargetPlants(defaults.defaultTargetPlants);
+    setAgronomicText(defaults.defaultAgronomicText);
+
+    const patientKey = getPatientReportKey(defaults.resolvedId, defaults.pName);
+    saveReportToStorage(patientKey, 'agronomico', {
+      patientName: defaults.pName,
+      cpf: defaults.pCpf,
+      emissionDate: agronomicEmissionDate || new Date().toLocaleDateString('pt-BR'),
+      agronomistName: agronomicName || 'Wilian Dalenogare Pereira',
+      agronomistCrea: agronomicCrea || 'CREA-PR 172.458/D',
+      diagnosis: defaults.defaultDiagnosis,
+      dailyDoseMg: defaults.defaultDailyDoseMg,
+      targetPlants: defaults.defaultTargetPlants,
+      agronomicText: defaults.defaultAgronomicText
+    }, defaults.resolvedId);
+
+    showActionToast('✓ Dados da triagem do paciente carregados no Parecer Agronômico!');
+    return {
+      patientName: defaults.pName,
+      cpf: defaults.pCpf,
+      diagnosis: defaults.defaultDiagnosis,
+      dailyDoseMg: defaults.defaultDailyDoseMg,
+      targetPlants: defaults.defaultTargetPlants,
+      agronomicText: defaults.defaultAgronomicText
+    };
+  };
+
+  const handleOpenAgronomicReportEditor = () => {
+    setStandaloneTargetPatientId(null);
+    const defaults = buildTriageAgronomicDefaults(currentPatient?.id || null);
+    const patientKey = getPatientReportKey(defaults.resolvedId, defaults.pName);
+    const rawSaved = loadSavedReport(patientKey, 'agronomico', defaults.pName, defaults.resolvedId);
+
+    let validSaved = rawSaved;
+    if (rawSaved?.agronomicText && defaults.pName && defaults.pName.toLowerCase() !== 'paciente') {
+      if (!rawSaved.agronomicText.toLowerCase().includes(defaults.pName.toLowerCase())) {
+        validSaved = null;
+      }
+    }
+
+    setAgronomicPatientName(validSaved?.patientName || defaults.pName);
+    setAgronomicCpf(validSaved?.cpf || defaults.pCpf);
+    setAgronomicEmissionDate(validSaved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
+    setAgronomicName(validSaved?.agronomistName || 'Wilian Dalenogare Pereira');
+    setAgronomicCrea(validSaved?.agronomistCrea || 'CREA-PR 172.458/D');
+    setAgronomicDiagnosis(validSaved?.diagnosis || defaults.defaultDiagnosis);
+    setAgronomicDailyDoseMg(validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg);
+    setAgronomicTargetPlants(validSaved?.targetPlants || defaults.defaultTargetPlants);
+    setAgronomicText(validSaved?.agronomicText || defaults.defaultAgronomicText);
     setShowAgronomicReportEditorModal(true);
   };
 
-  const handleDownloadAgronomicReportFromEditor = () => {
-    generateAgronomicReportPDF(agronomicPatientName, {
-      customPatientName: agronomicPatientName,
-      cpf: agronomicCpf,
-      emissionDate: agronomicEmissionDate,
-      agronomistName: agronomicName,
-      agronomistCrea: agronomicCrea,
-      diagnosis: agronomicDiagnosis,
-      dailyDoseMg: agronomicDailyDoseMg,
-      targetPlants: agronomicTargetPlants,
+  const handleDownloadAgronomicReportFromEditor = (overrideData?: {
+    patientName: string;
+    cpf: string;
+    emissionDate: string;
+    agronomistName: string;
+    agronomistCrea: string;
+    diagnosis: string;
+    dailyDoseMg: number;
+    targetPlants: number;
+    agronomicText: string;
+  }) => {
+    const defaults = buildTriageAgronomicDefaults();
+    const finalName = overrideData?.patientName || agronomicPatientName || defaults.pName;
+    const finalCpf = overrideData?.cpf || agronomicCpf || defaults.pCpf;
+    const finalEmission = overrideData?.emissionDate || agronomicEmissionDate;
+    const finalAgronomist = overrideData?.agronomistName || agronomicName;
+    const finalCrea = overrideData?.agronomistCrea || agronomicCrea;
+    const finalDiagnosis = overrideData?.diagnosis || agronomicDiagnosis || defaults.defaultDiagnosis;
+    const finalDailyDose = overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg;
+    const finalTargetPlants = overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants;
+    const finalText = overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText;
+
+    generateAgronomicReportPDF(finalName, {
+      patientId: defaults.resolvedId || undefined,
+      customPatientName: finalName,
+      cpf: finalCpf,
+      birthDate: defaults.pBirthDate,
+      emissionDate: finalEmission,
+      agronomistName: finalAgronomist,
+      agronomistCrea: finalCrea,
+      diagnosis: finalDiagnosis,
+      prescribedProducts: defaults.prescribedProductsStr,
+      dailyDoseMg: finalDailyDose,
+      targetPlants: finalTargetPlants,
+      customText: finalText,
+      answers: defaults.patientAnswers,
       htmlContent: undefined
     });
   };
 
-  const handleSendAgronomicReportToChat = async () => {
-    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+  const handleSendAgronomicReportToChat = async (overrideData?: {
+    patientName: string;
+    cpf: string;
+    emissionDate: string;
+    agronomistName: string;
+    agronomistCrea: string;
+    diagnosis: string;
+    dailyDoseMg: number;
+    targetPlants: number;
+    agronomicText: string;
+  }) => {
+    const targetPatientId = currentPatient?.id || standaloneTargetPatientId || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Nenhum paciente selecionado para envio do parecer agronômico.");
       return;
@@ -3760,27 +4075,42 @@ export function DoctorDashboardScreen() {
     try {
       setIsSendingAgronomicToChat(true);
 
-      const annualGrams = ((agronomicDailyDoseMg * 365) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
-      const dryFlowerMargin = (((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-      const wetFlower = (((((agronomicDailyDoseMg * 365 / 1000) / 0.10 / 1000) * 1.3038) / 0.30)).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-      const seeds = Math.round(agronomicTargetPlants * 1.3038);
-      const perCycle = Math.round(agronomicTargetPlants / 4);
+      const defaults = buildTriageAgronomicDefaults(targetPatientId);
+      const finalName = overrideData?.patientName || agronomicPatientName || defaults.pName;
+      const finalCpf = overrideData?.cpf || agronomicCpf || defaults.pCpf;
+      const finalEmission = overrideData?.emissionDate || agronomicEmissionDate;
+      const finalAgronomist = overrideData?.agronomistName || agronomicName;
+      const finalCrea = overrideData?.agronomistCrea || agronomicCrea;
+      const finalDiagnosis = overrideData?.diagnosis || agronomicDiagnosis || defaults.defaultDiagnosis;
+      const finalDailyDose = overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg;
+      const finalTargetPlants = overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants;
+      const finalText = overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText;
 
-      const pdfBlob = await generateAgronomicReportPDF(agronomicPatientName, {
-        customPatientName: agronomicPatientName,
-        cpf: agronomicCpf,
-        emissionDate: agronomicEmissionDate,
-        agronomistName: agronomicName,
-        agronomistCrea: agronomicCrea,
-        diagnosis: agronomicDiagnosis,
-        dailyDoseMg: agronomicDailyDoseMg,
-        targetPlants: agronomicTargetPlants,
-        customText: agronomicText,
+      const annualGrams = ((finalDailyDose * 365) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+      const dryFlowerMargin = (((finalDailyDose * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const wetFlower = (((((finalDailyDose * 365 / 1000) / 0.10 / 1000) * 1.3038) / 0.30)).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const seeds = Math.round(finalTargetPlants * 1.3038);
+      const perCycle = Math.round(finalTargetPlants / 4);
+
+      const pdfBlob = await generateAgronomicReportPDF(finalName, {
+        patientId: targetPatientId,
+        customPatientName: finalName,
+        cpf: finalCpf,
+        birthDate: defaults.pBirthDate,
+        emissionDate: finalEmission,
+        agronomistName: finalAgronomist,
+        agronomistCrea: finalCrea,
+        diagnosis: finalDiagnosis,
+        prescribedProducts: defaults.prescribedProductsStr,
+        dailyDoseMg: finalDailyDose,
+        targetPlants: finalTargetPlants,
+        customText: finalText,
+        answers: defaults.patientAnswers,
         returnBlob: true
       }) as Blob;
 
       let fileUrl = '';
-      const cleanPatientName = (agronomicPatientName || 'Paciente').replace(/\s+/g, '_');
+      const cleanPatientName = (finalName || 'Paciente').replace(/\s+/g, '_');
       const fileName = `Parecer_Agronomico_${cleanPatientName}.pdf`;
 
       if (pdfBlob) {
@@ -3815,7 +4145,7 @@ export function DoctorDashboardScreen() {
         sender: 'doctor',
         type: 'agronomic_report',
         docType: 'laudo_agronomico',
-        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${agronomicPatientName}\n- **CPF:** ${agronomicCpf}\n- **Consultor e Eng. Agrônomo:** ${agronomicName} (${agronomicCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* com finalidade medicinal (GACP / RDC ANVISA)\n- **Patologias / CIDs:** ${agronomicDiagnosis}\n- **Demanda Farmacológica:** ${agronomicDailyDoseMg} mg/dia de extrato integral (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80%)\n- **Dimensionamento Autorizado:** ${agronomicTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades importadas\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
+        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${finalName}\n- **CPF:** ${finalCpf}\n- **Consultor e Eng. Agrônomo:** ${finalAgronomist} (${finalCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* com finalidade medicinal (GACP / RDC ANVISA)\n- **Patologias / CIDs:** ${finalDiagnosis}\n- **Demanda Farmacológica:** ${finalDailyDose} mg/dia de extrato integral (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80%)\n- **Dimensionamento Autorizado:** ${finalTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades importadas\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
         attachment: {
           name: fileName,
           url: fileUrl || '',
@@ -3837,7 +4167,7 @@ export function DoctorDashboardScreen() {
       }
 
       setShowAgronomicReportEditorModal(false);
-      showActionToast(`Parecer Agronômico enviado com sucesso para ${agronomicPatientName || 'o paciente'}!`);
+      showActionToast(`Parecer Agronômico enviado com sucesso para ${finalName || 'o paciente'}!`);
     } catch (err: any) {
       console.error("Erro ao enviar parecer agronômico:", err);
       showActionToast(`Erro ao enviar parecer agronômico: ${err?.message || 'Tente novamente'}`);
@@ -4555,16 +4885,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
     return medications;
   };
 
-  const addPrescribedMedication = async (med: any) => {
-    // Add to addedMedications state
-    setAddedMedications(prev => {
-      if (!prev.includes(med.name)) {
-        return [...prev, med.name];
-      }
-      return prev;
-    });
-
-    const cleanMedName = med.name.toLowerCase().trim();
+  const buildPrescriptionItemFromMed = (med: any): PrescriptionItemData => {
+    const cleanMedName = (med.name || '').toLowerCase().trim();
 
     // Check if explicitly an association product
     const isExplicitlyNational = 
@@ -4586,11 +4908,47 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
 
     // Check SouCannabis if explicitly SouCannabis or national
     if (!foundProduct && (cleanMedName.includes('soucannabis') || cleanMedName.includes('sou cannabis') || isExplicitlyNational)) {
-      const sou = SOUCANNABIS_PRODUCTS.find(p => 
-        p.name.toLowerCase() === cleanMedName ||
-        p.name.toLowerCase().includes(cleanMedName) ||
-        cleanMedName.includes(p.name.toLowerCase())
-      );
+      const isSpray = cleanMedName.includes('nasal') || cleanMedName.includes('spray');
+      const isPomada = cleanMedName.includes('pomada');
+      const isExtrato = cleanMedName.includes('extrato') || cleanMedName.includes('resina') || cleanMedName.includes('pasta');
+      const isIntimo = cleanMedName.includes('íntimo') || cleanMedName.includes('intimo') || cleanMedName.includes('lubrificante');
+      const isSupositorio = cleanMedName.includes('supositório') || cleanMedName.includes('supositorio');
+
+      const sou = SOUCANNABIS_PRODUCTS.find(p => {
+        const pLower = p.name.toLowerCase().trim();
+        if (pLower === cleanMedName || cleanMedName.includes(pLower) || pLower.includes(cleanMedName)) return true;
+
+        const pIsSpray = pLower.includes('nasal') || pLower.includes('spray');
+        const pIsPomada = pLower.includes('pomada');
+        const pIsExtrato = pLower.includes('extrato') || pLower.includes('resina');
+        const pIsIntimo = pLower.includes('íntimo') || pLower.includes('intimo') || pLower.includes('lubrificante');
+        const pIsSupositorio = pLower.includes('supositório') || pLower.includes('supositorio');
+
+        if (isSpray && !pIsSpray) return false;
+        if (isPomada && !pIsPomada) return false;
+        if (isExtrato && !pIsExtrato) return false;
+        if (isIntimo && !pIsIntimo) return false;
+        if (isSupositorio && !pIsSupositorio) return false;
+
+        if (isSpray && pIsSpray) {
+          if (cleanMedName.includes('azul') && pLower.includes('azul')) return true;
+          if (cleanMedName.includes('laranja') && pLower.includes('laranja')) return true;
+          return true;
+        }
+
+        if (isPomada && pIsPomada) return true;
+        if (isExtrato && pIsExtrato) return true;
+        if (isIntimo && pIsIntimo) return true;
+        if (isSupositorio && pIsSupositorio) return true;
+
+        if (cleanMedName.includes('lilás') || cleanMedName.includes('lilas')) return pLower.includes('lilás');
+        if (cleanMedName.includes('azul')) return pLower.includes('azul');
+        if (cleanMedName.includes('rosa')) return pLower.includes('rosa');
+        if (cleanMedName.includes('laranja')) return pLower.includes('laranja');
+        if (cleanMedName.includes('branco')) return pLower.includes('branco');
+
+        return false;
+      });
       if (sou) {
         foundProduct = { ...sou, manufacturer: 'SouCannabis', origin: 'Nacional' };
       }
@@ -4691,8 +5049,6 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
       foundProduct
     );
 
-    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
-
     const finalPriceBRL = isNational 
       ? undefined 
       : (foundProduct?.priceBRL || (foundProduct?.priceUSD ? foundProduct.priceUSD * exchangeRate : 440.00));
@@ -4701,27 +5057,9 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
       ? undefined 
       : (foundProduct?.priceUSD || (foundProduct?.priceBRL ? foundProduct.priceBRL / exchangeRate : 80.00));
 
-    const newItem: PrescriptionItemData = {
-      name: foundProduct ? foundProduct.name : med.name,
-      brand: isNational ? 'Associação Nacional' : (foundProduct?.manufacturer || defaultManufacturer),
-      origin: isNational ? 'Nacional' : 'Importado',
-      type: foundProduct ? foundProduct.type : enriched.type,
-      activeIngredients: enriched.activeIngredients,
-      concentration: enriched.concentration,
-      pharmaceuticalForm: enriched.pharmaceuticalForm,
-      quantity: enriched.quantity,
-      administrationRoute: enriched.administrationRoute,
-      details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients].filter(Boolean),
-      dosage: [med.dosage || 'Tomar conforme orientação médica.'],
-      description: foundProduct && foundProduct.description ? foundProduct.description : (med.instructions || enriched.description),
-      image: foundProduct && foundProduct.image ? foundProduct.image : (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
-      priceUSD: finalPriceUSD,
-      priceBRL: finalPriceBRL
-    };
-
-    const isGummyMed = /goma|gumm|comest[íi]vel/i.test(newItem.name) || /goma|gumm/i.test(newItem.type || '') || /goma/i.test(enriched.pharmaceuticalForm || '');
-    const isFlowerMed = /flor|in natura/i.test(newItem.name) || /flor/i.test(newItem.type || '');
-    const isTopicalMed = /pomada|t[óo]pico/i.test(newItem.name) || /pomada/i.test(newItem.type || '');
+    const isGummyMed = /goma|gumm|comest[íi]vel/i.test(foundProduct ? foundProduct.name : med.name) || /goma|gumm/i.test(foundProduct ? foundProduct.type : enriched.type || '') || /goma/i.test(enriched.pharmaceuticalForm || '');
+    const isFlowerMed = /flor|in natura/i.test(foundProduct ? foundProduct.name : med.name) || /flor/i.test(foundProduct ? foundProduct.type : enriched.type || '');
+    const isTopicalMed = /pomada|t[óo]pico/i.test(foundProduct ? foundProduct.name : med.name) || /pomada/i.test(foundProduct ? foundProduct.type : enriched.type || '');
 
     let itemDosage: string[] = Array.isArray(med.dosage) 
       ? med.dosage.filter(Boolean) 
@@ -4739,7 +5077,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
       }
     } else {
       if (isGummyMed) {
-        itemDosage = itemDosage.map(line => {
+        itemDosage = itemDosage.map((line: string) => {
           if (/sublingual|gota|pingar/i.test(line)) {
             return 'Mastigar 1/2 a 1 goma ao final da tarde ou 1 hora antes de dormir (via oral). Não engolir inteira.';
           }
@@ -4748,40 +5086,242 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
       }
     }
 
-    newItem.dosage = itemDosage;
+    let finalRoute = enriched.administrationRoute;
+    let finalForm = enriched.pharmaceuticalForm;
+    let finalQty = enriched.quantity;
+
     if (isGummyMed) {
-      newItem.administrationRoute = 'Via Oral';
-      newItem.pharmaceuticalForm = 'Gomas Mastigáveis Veganas';
-      newItem.quantity = newItem.quantity && !/frasco/i.test(newItem.quantity) ? newItem.quantity : '01 Pote com 20 a 30 gomas';
+      finalRoute = 'Via Oral';
+      finalForm = 'Gomas Mastigáveis Veganas';
+      finalQty = finalQty && !/frasco/i.test(finalQty) ? finalQty : '01 Pote com 20 a 30 gomas';
     } else if (isFlowerMed) {
-      newItem.administrationRoute = 'Via Inalatória (Vaporização Medicinal)';
+      finalRoute = 'Via Inalatória (Vaporização Medicinal)';
     } else if (isTopicalMed) {
-      newItem.administrationRoute = 'Uso Tópico';
+      finalRoute = 'Uso Tópico';
     }
 
-    let updatedList: PrescriptionItemData[] = [];
-    setPrescItems(prev => {
-      const clean = newItem.name.toLowerCase().trim();
-      const exists = prev.some(p => p.name.toLowerCase().trim() === clean);
-      updatedList = exists 
-        ? prev.map(p => p.name.toLowerCase().trim() === clean ? newItem : p)
-        : [...prev, newItem];
-      return updatedList;
-    });
+    const newItem: PrescriptionItemData = {
+      name: foundProduct ? foundProduct.name : med.name,
+      sourceMedName: med.name,
+      brand: isNational ? 'Associação Nacional' : (foundProduct?.manufacturer || defaultManufacturer),
+      origin: isNational ? 'Nacional' : 'Importado',
+      type: foundProduct ? foundProduct.type : enriched.type,
+      activeIngredients: enriched.activeIngredients,
+      concentration: enriched.concentration,
+      pharmaceuticalForm: finalForm,
+      quantity: finalQty,
+      administrationRoute: finalRoute,
+      details: foundProduct && foundProduct.details ? foundProduct.details : [med.dosage, med.instructions, enriched.activeIngredients].filter(Boolean),
+      dosage: itemDosage,
+      description: foundProduct && foundProduct.description ? foundProduct.description : (med.instructions || enriched.description),
+      image: foundProduct && foundProduct.image ? foundProduct.image : (isNational ? "https://images.unsplash.com/photo-1603903597871-3312c9ba4c81?q=80&w=400&auto=format&fit=crop" : "https://images.unsplash.com/photo-1611078696894-681f215e9858?q=80&w=400&auto=format&fit=crop"),
+      priceUSD: finalPriceUSD,
+      priceBRL: finalPriceBRL
+    };
 
-    handleSavePrescription({
+    return newItem;
+  };
+
+  const doesNameMatchMed = (candidateName: string, medName: string, mappedName?: string): boolean => {
+    const cClean = (candidateName || '').toLowerCase().trim();
+    const mClean = (medName || '').toLowerCase().trim();
+    const mapClean = (mappedName || '').toLowerCase().trim();
+    if (!cClean || !mClean) return false;
+
+    if (cClean === mClean || cClean.includes(mClean) || mClean.includes(cClean)) return true;
+    if (mapClean && (cClean === mapClean || cClean.includes(mapClean) || mapClean.includes(cClean))) return true;
+
+    const mIsSou = mClean.includes('soucannabis') || mClean.includes('sou cannabis');
+    const cIsSou = cClean.includes('soucannabis') || cClean.includes('sou cannabis');
+    if (mIsSou && cIsSou) {
+      if (mClean.includes('pomada') && cClean.includes('pomada')) return true;
+      if ((mClean.includes('nasal') || mClean.includes('spray')) && (cClean.includes('nasal') || cClean.includes('spray'))) {
+        if (mClean.includes('azul') && cClean.includes('laranja')) return false;
+        if (mClean.includes('laranja') && cClean.includes('azul')) return false;
+        return true;
+      }
+      if ((mClean.includes('lilás') || mClean.includes('lilas')) && (cClean.includes('lilás') || cClean.includes('lilas'))) return true;
+      if (mClean.includes('extrato') && cClean.includes('extrato')) return true;
+      if ((mClean.includes('supositório') || mClean.includes('supositorio')) && (cClean.includes('supositório') || cClean.includes('supositorio'))) return true;
+    }
+
+    const mIsAbrace = mClean.includes('abrace');
+    const cIsAbrace = cClean.includes('abrace');
+    if (mIsAbrace && cIsAbrace) {
+      if (mClean.includes('resgate') && cClean.includes('resgate')) return true;
+      if (mClean.includes('pomada') && cClean.includes('pomada')) return true;
+    }
+
+    const mIsPangaia = mClean.includes('pangaia') || mClean.includes('táio') || mClean.includes('taio') || mClean.includes('maná') || mClean.includes('mana');
+    const cIsPangaia = cClean.includes('pangaia') || cClean.includes('táio') || cClean.includes('taio') || cClean.includes('maná') || cClean.includes('mana');
+    if (mIsPangaia && cIsPangaia) {
+      if (mClean.includes('rosin') && cClean.includes('rosin')) return true;
+      if ((mClean.includes('táio') || mClean.includes('taio')) && (cClean.includes('táio') || cClean.includes('taio'))) return true;
+      if ((mClean.includes('maná') || mClean.includes('mana')) && (cClean.includes('maná') || cClean.includes('mana'))) return true;
+    }
+
+    return false;
+  };
+
+  const doesPrescriptionItemMatchMed = (p: PrescriptionItemData, med: any, mappedName?: string): boolean => {
+    if (!p || !med || !med.name) return false;
+    const mClean = med.name.toLowerCase().trim();
+    if (p.sourceMedName && p.sourceMedName.toLowerCase().trim() === mClean) return true;
+    return doesNameMatchMed(p.name, med.name, mappedName);
+  };
+
+  const isMedicationAdded = (med: any) => {
+    if (!med || !med.name) return false;
+    const mappedItem = buildPrescriptionItemFromMed(med);
+    const mappedName = mappedItem.name;
+    if (addedMedications.some(a => doesNameMatchMed(a, med.name, mappedName))) return true;
+    return prescItems.some(p => doesPrescriptionItemMatchMed(p, med, mappedName));
+  };
+
+  const removePrescribedMedication = async (med: any) => {
+    if (!med || !med.name) return;
+    const mappedItem = buildPrescriptionItemFromMed(med);
+    const mappedName = mappedItem.name;
+    const currentList = [...prescItemsRef.current];
+
+    const updatedList = currentList.filter(p => !doesPrescriptionItemMatchMed(p, med, mappedName));
+
+    setPrescItems(updatedList);
+    setAddedMedications(prev => prev.filter(name => !doesNameMatchMed(name, med.name, mappedName)));
+
+    await handleSavePrescription({
       patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
-      birthDate: prescBirthDate,
-      cpf: prescCpf,
-      emissionDate: prescEmissionDate,
-      doctorName: prescDoctorName,
-      doctorCrm: prescDoctorCrm,
-      doctorSpecialty: prescDoctorSpecialty,
+      birthDate: prescBirthDate || currentPatient?.birthDate || userBirthDate || 'Não informada',
+      cpf: prescCpf || currentPatient?.cpf || userCpf || 'Não informado',
+      emissionDate: prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+      doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
+      doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
+      doctorSpecialty: prescDoctorSpecialty || 'Clínico Geral • Medicina Canabinoide',
       items: updatedList,
       notes: prescNotes
     });
 
-    showActionToast(`✓ "${newItem.name}" adicionado à receita e salvo!`);
+    showActionToast(`✕ "${med.name}" removido da receita.`);
+  };
+
+  const addPrescribedMedication = async (med: any) => {
+    const newItem = buildPrescriptionItemFromMed(med);
+    const currentList = [...prescItemsRef.current];
+
+    const existsIndex = currentList.findIndex(p => doesPrescriptionItemMatchMed(p, med, newItem.name));
+    const updatedList = existsIndex >= 0
+      ? currentList.map((p, idx) => idx === existsIndex ? newItem : p)
+      : [...currentList, newItem];
+
+    setPrescItems(updatedList);
+    setAddedMedications(prev => {
+      const set = new Set([...prev, med.name, newItem.name].filter(Boolean));
+      return Array.from(set);
+    });
+
+    await handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate || currentPatient?.birthDate || userBirthDate || 'Não informada',
+      cpf: prescCpf || currentPatient?.cpf || userCpf || 'Não informado',
+      emissionDate: prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+      doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
+      doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
+      doctorSpecialty: prescDoctorSpecialty || 'Clínico Geral • Medicina Canabinoide',
+      items: updatedList,
+      notes: prescNotes
+    });
+
+    showActionToast(`✓ "${med.name}" adicionado à receita e salvo!`);
+  };
+
+  const togglePrescribedMedication = async (med: any) => {
+    if (isMedicationAdded(med)) {
+      await removePrescribedMedication(med);
+    } else {
+      await addPrescribedMedication(med);
+    }
+  };
+
+  const removeMultiplePrescribedMedications = async (meds: any[]) => {
+    if (!meds || meds.length === 0) return;
+
+    const mappedPairs = meds.filter(m => m && m.name).map(m => ({
+      med: m,
+      mappedName: buildPrescriptionItemFromMed(m).name
+    }));
+
+    const currentList = [...prescItemsRef.current];
+    const updatedList = currentList.filter(p =>
+      !mappedPairs.some(({ med, mappedName }) => doesPrescriptionItemMatchMed(p, med, mappedName))
+    );
+
+    setPrescItems(updatedList);
+    setAddedMedications(prev =>
+      prev.filter(name => !mappedPairs.some(({ med, mappedName }) => doesNameMatchMed(name, med.name, mappedName)))
+    );
+
+    await handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate || currentPatient?.birthDate || userBirthDate || 'Não informada',
+      cpf: prescCpf || currentPatient?.cpf || userCpf || 'Não informado',
+      emissionDate: prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+      doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
+      doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
+      doctorSpecialty: prescDoctorSpecialty || 'Clínico Geral • Medicina Canabinoide',
+      items: updatedList,
+      notes: prescNotes
+    });
+
+    showActionToast(`✕ ${meds.length} medicamento(s) removido(s) da receita.`);
+  };
+
+  const addMultiplePrescribedMedications = async (meds: any[]) => {
+    if (!meds || meds.length === 0) return;
+
+    const currentList = [...prescItemsRef.current];
+
+    const newNames: string[] = [];
+    meds.forEach(med => {
+      const newItem = buildPrescriptionItemFromMed(med);
+      newNames.push(med.name);
+      newNames.push(newItem.name);
+      const existsIndex = currentList.findIndex(p => doesPrescriptionItemMatchMed(p, med, newItem.name));
+      if (existsIndex >= 0) {
+        currentList[existsIndex] = newItem;
+      } else {
+        currentList.push(newItem);
+      }
+    });
+
+    setPrescItems(currentList);
+    setAddedMedications(prev => {
+      const set = new Set([...prev, ...newNames].filter(Boolean));
+      return Array.from(set);
+    });
+
+    await handleSavePrescription({
+      patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+      birthDate: prescBirthDate || currentPatient?.birthDate || userBirthDate || 'Não informada',
+      cpf: prescCpf || currentPatient?.cpf || userCpf || 'Não informado',
+      emissionDate: prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+      doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
+      doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
+      doctorSpecialty: prescDoctorSpecialty || 'Clínico Geral • Medicina Canabinoide',
+      items: currentList,
+      notes: prescNotes
+    });
+
+    showActionToast(`✓ ${meds.length} medicamento(s) adicionados à receita e salvos!`);
+  };
+
+  const toggleMultiplePrescribedMedications = async (meds: any[]) => {
+    if (!meds || meds.length === 0) return;
+    const allAdded = meds.every(m => isMedicationAdded(m));
+    if (allAdded) {
+      await removeMultiplePrescribedMedications(meds);
+    } else {
+      await addMultiplePrescribedMedications(meds);
+    }
   };
 
   return (
@@ -5825,7 +6365,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                               ? String(msg.productData.dosage).split('\n').filter(Boolean)
                               : [msg.productData.dosage ? String(msg.productData.dosage) : '']
                             ).map((dose, idx) => (
-                              <li key={`${msg.id}-dose-${idx}`} className="whitespace-pre-line leading-relaxed">
+                              <li key={`${msg.id || 'doc-msg'}-dose-${idx}`} className="whitespace-pre-line leading-relaxed">
                                 {dose}
                               </li>
                             ))}
@@ -7201,55 +7741,76 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                       </div>
                       
                       <div className="mt-6 pt-4 border-t border-mecura-elevated">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-sm font-bold text-white">Medicamentos Sugeridos</h4>
-                          <span className="text-[10px] text-mecura-silver">Importados & Associações</span>
-                        </div>
-                        <div className="space-y-5">
-                          {(() => {
-                            const allMeds = parseMedications(analysisResult).filter(med => med.name);
-                            const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
-                            const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
-                            
-                            const renderMed = (med: any, idx: number, isNational: boolean) => {
-                              const isAdded = addedMedications.includes(med.name);
-                              return (
-                                <button
-                                  key={`${isNational ? 'nat' : 'imp'}-${idx}-${med.name}`}
-                                  onClick={() => addPrescribedMedication(med)}
-                                  disabled={isAdded}
-                                  className={`w-full p-3 border rounded-xl text-left transition-all group relative overflow-hidden ${
-                                    isAdded 
-                                      ? 'bg-mecura-neon/10 border-mecura-neon cursor-default' 
-                                      : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
-                                  }`}
-                                >
-                                  {isAdded && (
-                                    <div className="absolute top-0 right-0 p-2 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
-                                      <CheckCircle className="w-4 h-4" />
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-1.5 mb-1">
-                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                      isNational 
-                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                    }`}>
-                                      {isNational 
-                                        ? (med.name.toLowerCase().includes('abrace') ? '🇧🇷 ABRACE Esperança' : med.name.toLowerCase().includes('abec') ? '🇧🇷 Associação ABECMED' : med.name.toLowerCase().includes('soucannabis') ? '🇧🇷 Associação SouCannabis' : '🇧🇷 Associação Nacional')
-                                        : (med.name.toLowerCase().includes('pangaia') ? '🌐 Pangaia Biopharma' : med.name.toLowerCase().includes('flowermed') ? '🌐 Flowermed' : med.name.toLowerCase().includes('greenbudz') ? '🌐 GreenBudzCBD' : '🌐 Importado')}
-                                    </span>
-                                  </div>
-                                  <h5 className={`font-bold text-xs mb-0.5 transition-colors ${
-                                    isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
-                                  }`}>{med.name}</h5>
-                                  <p className="text-[10px] text-mecura-silver pr-8 leading-tight">{med.dosage}</p>
-                                </button>
-                              );
-                            };
+                        {(() => {
+                          const allMeds = parseMedications(analysisResult).filter(med => med.name);
+                          const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
+                          const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
+                          const hybridPair = [importedMeds[0], nationalMeds[0]].filter(Boolean);
+                          const allImportedAdded = importedMeds.length > 0 && importedMeds.every(m => isMedicationAdded(m));
+                          const allNationalAdded = nationalMeds.length > 0 && nationalMeds.every(m => isMedicationAdded(m));
+                          const allHybridAdded = hybridPair.length > 0 && hybridPair.every(m => isMedicationAdded(m));
+                          const anyMedAdded = allMeds.some(m => isMedicationAdded(m));
 
+                          const renderMed = (med: any, idx: number, isNational: boolean) => {
+                            const isAdded = isMedicationAdded(med);
                             return (
-                              <>
+                              <button
+                                key={`${isNational ? 'nat' : 'imp'}-${idx}-${med.name}`}
+                                type="button"
+                                onClick={() => togglePrescribedMedication(med)}
+                                className={`w-full p-3 border rounded-xl text-left transition-all group relative overflow-hidden cursor-pointer ${
+                                  isAdded 
+                                    ? 'bg-mecura-neon/10 border-mecura-neon hover:border-mecura-neon/80 shadow-sm' 
+                                    : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50'
+                                }`}
+                                title={isAdded ? "Clique para remover da receita" : "Clique para prescrever este medicamento"}
+                              >
+                                {isAdded ? (
+                                  <div className="absolute top-0 right-0 p-1.5 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm flex items-center gap-1">
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    <span className="text-[9px] font-black uppercase tracking-wider pr-0.5">Prescrito</span>
+                                  </div>
+                                ) : (
+                                  <div className="absolute top-2 right-2 text-[10px] font-bold text-mecura-silver/60 group-hover:text-mecura-neon transition-colors">
+                                    + Prescrever
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1.5 mb-1 pr-16">
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                    isNational 
+                                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                  }`}>
+                                    {isNational 
+                                      ? (med.name.toLowerCase().includes('abrace') ? '🇧🇷 ABRACE Esperança' : med.name.toLowerCase().includes('abec') ? '🇧🇷 Associação ABECMED' : med.name.toLowerCase().includes('soucannabis') ? '🇧🇷 Associação SouCannabis' : '🇧🇷 Associação Nacional')
+                                      : (med.name.toLowerCase().includes('pangaia') ? '🌐 Pangaia Biopharma' : med.name.toLowerCase().includes('flowermed') ? '🌐 Flowermed' : med.name.toLowerCase().includes('greenbudz') ? '🌐 GreenBudzCBD' : '🌐 Importado')}
+                                  </span>
+                                </div>
+                                <h5 className={`font-bold text-xs mb-0.5 pr-14 transition-colors ${
+                                  isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
+                                }`}>{med.name}</h5>
+                                <p className="text-[10px] text-mecura-silver pr-2 leading-tight">{med.dosage}</p>
+                              </button>
+                            );
+                          };
+
+                          return (
+                            <>
+                              <div className="flex items-center justify-between mb-3 gap-2">
+                                <h4 className="text-sm font-bold text-white">Medicamentos Sugeridos</h4>
+                                {anyMedAdded ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeMultiplePrescribedMedications(allMeds)}
+                                    className="text-[10px] font-bold text-rose-300 hover:text-white bg-rose-500/15 hover:bg-rose-500/30 px-2.5 py-1 rounded-lg border border-rose-500/40 transition-colors cursor-pointer"
+                                  >
+                                    ✕ Limpar Seleção
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-mecura-silver">Importados & Associações</span>
+                                )}
+                              </div>
+                              <div className="space-y-5">
                                 {/* Prescrição Híbrida 1+1 (1 Nacional + 1 Importado) */}
                                 {importedMeds.length > 0 && nationalMeds.length > 0 && (
                                   <div className="p-3 bg-gradient-to-r from-emerald-950/50 via-mecura-surface to-blue-950/50 border border-mecura-neon/40 rounded-xl flex items-center justify-between gap-3 shadow-md mb-2">
@@ -7264,13 +7825,18 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        if (importedMeds[0]) addPrescribedMedication(importedMeds[0]);
-                                        if (nationalMeds[0]) addPrescribedMedication(nationalMeds[0]);
-                                      }}
-                                      className="px-3 py-1.5 rounded-lg bg-mecura-neon text-black font-extrabold text-xs whitespace-nowrap hover:shadow-[0_0_12px_rgba(166,255,0,0.4)] transition-all flex items-center gap-1 flex-shrink-0 cursor-pointer"
+                                      onClick={() => toggleMultiplePrescribedMedications(hybridPair)}
+                                      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs whitespace-nowrap transition-all flex items-center gap-1 flex-shrink-0 cursor-pointer ${
+                                        allHybridAdded
+                                          ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40'
+                                          : 'bg-mecura-neon text-black hover:shadow-[0_0_12px_rgba(166,255,0,0.4)]'
+                                      }`}
                                     >
-                                      <span>⚡</span> Prescrever 1+1
+                                      {allHybridAdded ? (
+                                        <><span>✕</span> Desmarcar 1+1</>
+                                      ) : (
+                                        <><span>⚡</span> Prescrever 1+1</>
+                                      )}
                                     </button>
                                   </div>
                                 )}
@@ -7280,10 +7846,14 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                       <h5 className="text-[11px] font-bold text-blue-400 uppercase tracking-wider">Tratamento Principal (Importados)</h5>
                                       <button
                                         type="button"
-                                        onClick={() => importedMeds.forEach(m => addPrescribedMedication(m))}
-                                        className="text-[10px] font-bold text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 px-2 py-0.5 rounded border border-blue-500/40 transition-colors"
+                                        onClick={() => toggleMultiplePrescribedMedications(importedMeds)}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                                          allImportedAdded
+                                            ? 'text-rose-200 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/40'
+                                            : 'text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/40'
+                                        }`}
                                       >
-                                        + Prescrever Todos Importados
+                                        {allImportedAdded ? '✕ Desmarcar Todos Importados' : '+ Prescrever Todos Importados'}
                                       </button>
                                     </div>
                                     {importedMeds.map((med, idx) => renderMed(med, idx, false))}
@@ -7297,19 +7867,23 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                       </h5>
                                       <button
                                         type="button"
-                                        onClick={() => nationalMeds.forEach(m => addPrescribedMedication(m))}
-                                        className="text-[10px] font-bold text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 px-2 py-0.5 rounded border border-emerald-500/40 transition-colors"
+                                        onClick={() => toggleMultiplePrescribedMedications(nationalMeds)}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                                          allNationalAdded
+                                            ? 'text-rose-200 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/40'
+                                            : 'text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40'
+                                        }`}
                                       >
-                                        + Prescrever Todos Nacionais
+                                        {allNationalAdded ? '✕ Desmarcar Todos Nacionais' : '+ Prescrever Todos Nacionais'}
                                       </button>
                                     </div>
                                     {nationalMeds.map((med, idx) => renderMed(med, idx, true))}
                                   </div>
                                 )}
-                              </>
-                            );
-                          })()}
-                        </div>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       {/* Accessible Plan Callout Banner */}
@@ -8187,63 +8761,87 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                 
                 {analysisResult && (
                   <div className="mt-8 pt-8 border-t border-mecura-elevated">
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <h3 className="text-xl font-bold text-white">Medicamentos Sugeridos</h3>
-                        <p className="text-sm text-mecura-silver">Selecione opções importadas ou nacionais de associações brasileiras</p>
-                      </div>
-                      <span className="text-xs px-3 py-1 bg-mecura-surface border border-mecura-elevated rounded-full text-mecura-silver">
-                        {parseMedications(analysisResult).filter(med => med.name).length} opções disponíveis
-                      </span>
-                    </div>
-                    <div className="space-y-8">
-                      {(() => {
-                        const allMeds = parseMedications(analysisResult).filter(med => med.name);
-                        const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
-                        const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
-                        
-                        const renderMed = (med: any, idx: number, isNational: boolean) => {
-                          const isAdded = addedMedications.includes(med.name);
-                          return (
-                            <button
-                              key={`${isNational ? 'nat' : 'imp'}-${idx}-${med.name}`}
-                              onClick={() => addPrescribedMedication(med)}
-                              disabled={isAdded}
-                              className={`p-4 border rounded-xl text-left transition-all group relative overflow-hidden ${
-                                isAdded
-                                  ? 'bg-mecura-neon/10 border-mecura-neon cursor-default'
-                                  : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50 cursor-pointer'
-                              }`}
-                            >
-                              {isAdded && (
-                                <div className="absolute top-0 right-0 p-3 text-mecura-neon bg-mecura-neon/20 rounded-bl-xl shadow-sm">
-                                  <CheckCircle className="w-5 h-5" />
-                                </div>
-                              )}
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                  isNational 
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                    : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                }`}>
-                                  {isNational 
-                                    ? (med.name.toLowerCase().includes('abrace') ? '🇧🇷 ABRACE Esperança' : med.name.toLowerCase().includes('abec') ? '🇧🇷 Associação ABECMED' : med.name.toLowerCase().includes('soucannabis') ? '🇧🇷 Associação SouCannabis' : '🇧🇷 Associação Nacional')
-                                    : (med.name.toLowerCase().includes('pangaia') ? '🌐 Pangaia Biopharma' : med.name.toLowerCase().includes('flowermed') ? '🌐 Flowermed' : med.name.toLowerCase().includes('greenbudz') ? '🌐 GreenBudzCBD' : '🌐 Importado')}
-                                </span>
-                              </div>
-                              <h4 className={`font-bold mb-1 transition-colors ${
-                                isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
-                              }`}>{med.name}</h4>
-                              <p className="text-xs text-mecura-silver mb-3 pr-10">{med.dosage}</p>
-                              <span className="text-[10px] font-bold text-mecura-neon uppercase">
-                                {isAdded ? 'Adicionado ao Chat' : 'Adicionar ao Chat'}
-                              </span>
-                            </button>
-                          );
-                        };
-
+                    {(() => {
+                      const allMeds = parseMedications(analysisResult).filter(med => med.name);
+                      const importedMeds = allMeds.filter(med => med.origin !== 'Nacional');
+                      const nationalMeds = allMeds.filter(med => med.origin === 'Nacional');
+                      const hybridPair = [importedMeds[0], nationalMeds[0]].filter(Boolean);
+                      const allImportedAdded = importedMeds.length > 0 && importedMeds.every(m => isMedicationAdded(m));
+                      const allNationalAdded = nationalMeds.length > 0 && nationalMeds.every(m => isMedicationAdded(m));
+                      const allHybridAdded = hybridPair.length > 0 && hybridPair.every(m => isMedicationAdded(m));
+                      const anyMedAdded = allMeds.some(m => isMedicationAdded(m));
+                      
+                      const renderMed = (med: any, idx: number, isNational: boolean) => {
+                        const isAdded = isMedicationAdded(med);
                         return (
-                          <>
+                          <button
+                            key={`${isNational ? 'nat' : 'imp'}-${idx}-${med.name}`}
+                            type="button"
+                            onClick={() => togglePrescribedMedication(med)}
+                            className={`p-4 border rounded-xl text-left transition-all group relative overflow-hidden cursor-pointer ${
+                              isAdded
+                                ? 'bg-mecura-neon/10 border-mecura-neon hover:border-mecura-neon/80 shadow-sm'
+                                : 'bg-mecura-surface border-mecura-elevated hover:border-mecura-neon/50'
+                            }`}
+                            title={isAdded ? "Clique para remover da receita" : "Clique para prescrever este medicamento"}
+                          >
+                            <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                              {isAdded ? (
+                                <span className="flex items-center gap-1 text-[11px] font-bold text-mecura-neon bg-mecura-neon/20 px-2.5 py-1 rounded-full border border-mecura-neon/40 shadow-sm">
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  <span>Prescrito</span>
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-mecura-silver/70 group-hover:text-mecura-neon bg-white/5 group-hover:bg-mecura-neon/10 px-2.5 py-1 rounded-full border border-mecura-elevated group-hover:border-mecura-neon/30 transition-all">
+                                  + Prescrever
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-2 pr-28">
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                isNational 
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                  : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                              }`}>
+                                {isNational 
+                                  ? (med.name.toLowerCase().includes('abrace') ? '🇧🇷 ABRACE Esperança' : med.name.toLowerCase().includes('abec') ? '🇧🇷 Associação ABECMED' : med.name.toLowerCase().includes('soucannabis') ? '🇧🇷 Associação SouCannabis' : '🇧🇷 Associação Nacional')
+                                  : (med.name.toLowerCase().includes('pangaia') ? '🌐 Pangaia Biopharma' : med.name.toLowerCase().includes('flowermed') ? '🌐 Flowermed' : med.name.toLowerCase().includes('greenbudz') ? '🌐 GreenBudzCBD' : '🌐 Importado')}
+                              </span>
+                            </div>
+                            <h4 className={`font-bold mb-1 pr-24 transition-colors ${
+                              isAdded ? 'text-mecura-neon' : 'text-white group-hover:text-mecura-neon'
+                            }`}>{med.name}</h4>
+                            <p className="text-xs text-mecura-silver mb-3 pr-4">{med.dosage}</p>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isAdded ? 'text-red-400/90 group-hover:underline' : 'text-mecura-neon'}`}>
+                              {isAdded ? '✕ Clique para remover da receita' : '+ Clique para adicionar à receita'}
+                            </span>
+                          </button>
+                        );
+                      };
+
+                      return (
+                        <>
+                          <div className="flex items-center justify-between mb-6 gap-3">
+                            <div>
+                              <h3 className="text-xl font-bold text-white">Medicamentos Sugeridos</h3>
+                              <p className="text-sm text-mecura-silver">Selecione opções importadas ou nacionais de associações brasileiras</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {anyMedAdded && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeMultiplePrescribedMedications(allMeds)}
+                                  className="text-xs font-bold text-rose-300 hover:text-white bg-rose-500/15 hover:bg-rose-500/30 px-3 py-1 rounded-full border border-rose-500/40 transition-colors cursor-pointer"
+                                >
+                                  ✕ Limpar Seleção
+                                </button>
+                              )}
+                              <span className="text-xs px-3 py-1 bg-mecura-surface border border-mecura-elevated rounded-full text-mecura-silver">
+                                {allMeds.length} opções disponíveis
+                              </span>
+                            </div>
+                          </div>
+                          <div className="space-y-8">
                             {/* Prescrição Híbrida 1+1 (1 Nacional + 1 Importado) */}
                             {importedMeds.length > 0 && nationalMeds.length > 0 && (
                               <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-mecura-surface to-blue-950/60 border border-mecura-neon/40 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg mb-6">
@@ -8258,13 +8856,18 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (importedMeds[0]) addPrescribedMedication(importedMeds[0]);
-                                    if (nationalMeds[0]) addPrescribedMedication(nationalMeds[0]);
-                                  }}
-                                  className="px-4 py-2 rounded-xl bg-mecura-neon text-black font-extrabold text-xs whitespace-nowrap hover:shadow-[0_0_15px_rgba(166,255,0,0.5)] transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+                                  onClick={() => toggleMultiplePrescribedMedications(hybridPair)}
+                                  className={`px-4 py-2 rounded-xl font-extrabold text-xs whitespace-nowrap transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
+                                    allHybridAdded
+                                      ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40'
+                                      : 'bg-mecura-neon text-black hover:shadow-[0_0_15px_rgba(166,255,0,0.5)]'
+                                  }`}
                                 >
-                                  <span>⚡</span> Prescrever 1+1 Agora
+                                  {allHybridAdded ? (
+                                    <><span>✕</span> Desmarcar 1+1</>
+                                  ) : (
+                                    <><span>⚡</span> Prescrever 1+1 Agora</>
+                                  )}
                                 </button>
                               </div>
                             )}
@@ -8276,10 +8879,14 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                   </h4>
                                   <button
                                     type="button"
-                                    onClick={() => importedMeds.forEach(m => addPrescribedMedication(m))}
-                                    className="text-xs font-bold text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1 rounded-lg border border-blue-500/40 transition-colors shadow-sm"
+                                    onClick={() => toggleMultiplePrescribedMedications(importedMeds)}
+                                    className={`text-xs font-bold px-3 py-1 rounded-lg border transition-colors shadow-sm cursor-pointer ${
+                                      allImportedAdded
+                                        ? 'text-rose-200 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/40'
+                                        : 'text-blue-300 hover:text-white bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/40'
+                                    }`}
                                   >
-                                    + Prescrever Todos os Importados
+                                    {allImportedAdded ? '✕ Desmarcar Todos os Importados' : '+ Prescrever Todos os Importados'}
                                   </button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -8297,10 +8904,14 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                   </h4>
                                   <button
                                     type="button"
-                                    onClick={() => nationalMeds.forEach(m => addPrescribedMedication(m))}
-                                    className="text-xs font-bold text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 px-3 py-1 rounded-lg border border-emerald-500/40 transition-colors shadow-sm"
+                                    onClick={() => toggleMultiplePrescribedMedications(nationalMeds)}
+                                    className={`text-xs font-bold px-3 py-1 rounded-lg border transition-colors shadow-sm cursor-pointer ${
+                                      allNationalAdded
+                                        ? 'text-rose-200 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/40'
+                                        : 'text-emerald-300 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40'
+                                    }`}
                                   >
-                                    + Prescrever Tríade Nacional
+                                    {allNationalAdded ? '✕ Desmarcar Todos os Nacionais' : '+ Prescrever Tríade Nacional'}
                                   </button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -8308,10 +8919,10 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                                 </div>
                               </div>
                             )}
-                          </>
-                        );
-                      })()}
-                    </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -8834,13 +9445,13 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                           "Artrite & Artrose",
                           "Endometriose",
                           "Depressão"
-                        ].map(pill => {
+                        ].map((pill, pillIdx) => {
                           const isSelected = 
                             normalizeSearch(productDiseaseFilter).includes(normalizeSearch(pill)) || 
                             normalizeSearch(productDiseaseSearchInput).includes(normalizeSearch(pill));
                           return (
                             <button
-                              key={pill}
+                              key={`disease-pill-${pill}-${pillIdx}`}
                               type="button"
                               onClick={() => {
                                 if (dragMoved.current) return;
@@ -9237,8 +9848,8 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                         Períodos
                       </label>
                       <div className="grid grid-cols-2 gap-2">
-                        {['De manhã', 'Depois do almoço', 'De tarde', 'Antes de dormir'].map(period => (
-                          <label key={period} className="flex items-center gap-2 text-sm text-mecura-pearl bg-[#0A0A0F] border border-mecura-elevated p-3 rounded-xl cursor-pointer hover:border-mecura-neon/50">
+                        {['De manhã', 'Depois do almoço', 'De tarde', 'Antes de dormir'].map((period, pIdx) => (
+                          <label key={`period-lbl-${period}-${pIdx}`} className="flex items-center gap-2 text-sm text-mecura-pearl bg-[#0A0A0F] border border-mecura-elevated p-3 rounded-xl cursor-pointer hover:border-mecura-neon/50">
                             <input type="checkbox" className="accent-mecura-neon" />
                             {period}
                           </label>
@@ -10383,9 +10994,11 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         setTargetPlants={setAgronomicTargetPlants}
         agronomicText={agronomicText}
         setAgronomicText={setAgronomicText}
+        prescribedProducts={prescItems.length > 0 ? prescItems.map((it, idx) => `${idx + 1}. ${it.name} (${it.brand || 'Associação'} - ${it.origin || 'Nacional'})`).join('\n') : ''}
+        onResetFromTriage={handleResetAgronomicReportFromTriage}
         onDownloadPDF={handleDownloadAgronomicReportFromEditor}
         onSendToChat={handleSendAgronomicReportToChat}
-        onSave={() => showActionToast('Alterações do Parecer Agronômico salvas com sucesso!')}
+        onSave={handleSaveAgronomicReport}
         isSendingToChat={isSendingAgronomicToChat}
       />
 

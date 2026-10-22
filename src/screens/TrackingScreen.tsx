@@ -57,7 +57,7 @@ export function TrackingScreen() {
               
               return (
                 <div 
-                  key={step.id}
+                  key={`tracking-step-${step.id || index}-${index}`}
                   className="flex gap-6 relative z-10"
                 >
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-colors ${

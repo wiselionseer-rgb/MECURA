@@ -278,8 +278,8 @@ export const InteractiveRemotionToolButtons: React.FC<InteractiveToolButtonsProp
     {
       id: 'tdah',
       title: 'Teste TDAH',
-      sub: 'Foco & Atenção',
-      pill: '12 Alvos',
+      sub: 'ASRS-18 · OMS',
+      pill: 'ASRS-18',
       accentColor: '#38BDF8',
       neonBorderColor: 'rgba(56, 189, 248, 0.6)',
       icon: <Brain className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-300" />,
@@ -290,8 +290,8 @@ export const InteractiveRemotionToolButtons: React.FC<InteractiveToolButtonsProp
     {
       id: 'autism',
       title: 'Teste Autismo',
-      sub: 'Espectro TEA',
-      pill: '12 Perg.',
+      sub: 'AQ-10 · Cambridge',
+      pill: 'AQ-10',
       accentColor: '#C084FC',
       neonBorderColor: 'rgba(192, 132, 252, 0.6)',
       icon: <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-300" />,
@@ -302,7 +302,7 @@ export const InteractiveRemotionToolButtons: React.FC<InteractiveToolButtonsProp
     {
       id: 'hc',
       title: 'Plantas p/ HC',
-      sub: 'Calculadora',
+      sub: 'Calculadora GACP',
       pill: 'Fitomassa',
       accentColor: '#A6FF00',
       neonBorderColor: 'rgba(166, 255, 0, 0.7)',
@@ -319,13 +319,13 @@ export const InteractiveRemotionToolButtons: React.FC<InteractiveToolButtonsProp
       <div className="flex items-center justify-between mb-2 px-0.5">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[#A6FF00] shadow-[0_0_8px_#A6FF00] animate-pulse" />
-          <span className="text-[10px] font-bold text-[#A6FF00] uppercase tracking-[0.16em]">
-            Testes & Ferramentas Interativas
+          <span className="text-[10px] font-bold text-[#A6FF00] uppercase tracking-[0.14em]">
+            Escalas Validadas & Ferramentas Clínicas
           </span>
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-white/60 font-mono">
+        <div className="flex items-center gap-1 text-[10px] text-white/70 font-mono">
           <Sparkles className="w-3 h-3 text-[#A6FF00]" />
-          <span>Resultados em 1 min</span>
+          <span>OMS · Cambridge · CFP</span>
         </div>
       </div>
 
@@ -337,7 +337,7 @@ export const InteractiveRemotionToolButtons: React.FC<InteractiveToolButtonsProp
 
           return (
             <motion.button
-              key={t.id}
+              key={`tool-btn-${t.id || idx}-${idx}`}
               type="button"
               onClick={() => onOpenTool(t.id)}
               onMouseEnter={() => setHoveredTool(t.id)}

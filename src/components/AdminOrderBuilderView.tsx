@@ -1008,9 +1008,9 @@ export const AdminOrderBuilderView: React.FC<AdminOrderBuilderViewProps> = ({
               { id: 'with_prescription', label: 'Pós-Consulta / Receita' },
               { id: 'approved', label: 'Aprovados' },
               { id: 'requested', label: 'Solicitados (Whats)' }
-            ].map(tab => (
+            ].map((tab, tIdx) => (
               <button
-                key={tab.id}
+                key={`order-filter-tab-${tab.id}-${tIdx}`}
                 type="button"
                 onClick={() => setPatientFilterTab(tab.id as any)}
                 className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer truncate ${
@@ -1031,14 +1031,14 @@ export const AdminOrderBuilderView: React.FC<AdminOrderBuilderViewProps> = ({
                 Nenhum paciente encontrado neste filtro.
               </div>
             ) : (
-              filteredPatients.map(p => {
+              filteredPatients.map((p, pIdx) => {
                 const isSelected = p.id === selectedPatientId;
                 const pOrder = pharmacyOrders.find(o => o.patientId === p.id);
                 const prescCount = p.prescribedItemsPreview.length;
 
                 return (
                   <button
-                    key={p.id}
+                    key={`order-patient-${p.id || pIdx}-${pIdx}`}
                     type="button"
                     onClick={() => handleSelectPatient(p.id)}
                     className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-2 ${
@@ -1662,9 +1662,9 @@ export const AdminOrderBuilderView: React.FC<AdminOrderBuilderViewProps> = ({
                 >
                   Todas as Marcas
                 </button>
-                {brandTabs.map(b => (
+                {brandTabs.map((b, bIdx) => (
                   <button
-                    key={b.categoryId}
+                    key={`cat-brand-tab-${b.categoryId}-${bIdx}`}
                     type="button"
                     onClick={() => setCatalogBrandFilter(b.brandName)}
                     className={`px-3 py-1 rounded-lg text-xs font-bold shrink-0 cursor-pointer ${

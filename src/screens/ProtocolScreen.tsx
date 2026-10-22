@@ -282,25 +282,28 @@ export function ProtocolScreen() {
     }
     setDownloadingDoc('prescription');
     try {
+      const prescOptions = {
+        birthDate: displayBirthDate,
+        cpf: displayCpf,
+        customItems: prescriptionMsg?.receitaPreviaData?.items,
+        customNotes: prescriptionMsg?.receitaPreviaData?.notes,
+        customDoctorName: prescriptionMsg?.receitaPreviaData?.doctorName,
+        customDoctorCrm: prescriptionMsg?.receitaPreviaData?.doctorCrm,
+        customDoctorSpecialty: prescriptionMsg?.receitaPreviaData?.doctorSpecialty,
+        returnBlob: true
+      } as any;
+
       if (prescriptionMsg?.attachment) {
         await downloadOrGenerateAttachment(
           prescriptionMsg.attachment,
           async () => {
-            const blob = await generatePrescriptionPDF(displayName, messages, {
-              birthDate: displayBirthDate,
-              cpf: displayCpf,
-              returnBlob: true
-            } as any);
+            const blob = await generatePrescriptionPDF(displayName, messages, prescOptions);
             return blob as Blob;
           },
           `Receita_Medica_${displayName.replace(/\s+/g, '_')}.pdf`
         );
       } else {
-        const blob = await generatePrescriptionPDF(displayName, messages, {
-          birthDate: displayBirthDate,
-          cpf: displayCpf,
-          returnBlob: true
-        } as any);
+        const blob = await generatePrescriptionPDF(displayName, messages, prescOptions);
         if (blob instanceof Blob) {
           await deliverPdfBlob(blob, `Receita_Medica_${displayName.replace(/\s+/g, '_')}.pdf`);
         }
@@ -726,8 +729,9 @@ export function ProtocolScreen() {
                   <Stethoscope className="w-3.5 h-3.5 text-mecura-neon" />
                   <span>Médico Responsável</span>
                 </div>
-                <p className="text-[13px] font-bold text-white">Dr. Guilherme Taveira</p>
-                <p className="text-[10px] text-[#8A8A9E]">CRM: 12345/SP</p>
+                <p className="text-[13px] font-bold text-white">Dr. Guilherme Taveira Dias</p>
+                <p className="text-[10px] text-[#8A8A9E]">CRM/MT 17259 • Clínico Geral</p>
+                <p className="text-[9.5px] text-[#8A8A9E]/80 truncate">Primavera do Leste - MT • +55 65 3190-0629</p>
               </div>
 
               <div className="bg-[#161622] border border-white/5 rounded-2xl p-3.5">

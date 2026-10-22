@@ -943,9 +943,9 @@ export function ProgrammedPrescriptionsModal({
               { id: 'depressao', label: '☀️ Depressão' },
               { id: 'combinado', label: '✨ Ansiedade + Sono / Flores' },
               { id: 'dor', label: '🩸 Dor Crônica' }
-            ].map(tag => (
+            ].map((tag, tagIdx) => (
               <button
-                key={tag.id}
+                key={`prog-tag-${tag.id}-${tagIdx}`}
                 type="button"
                 onClick={() => setSelectedTag(tag.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
@@ -1027,11 +1027,11 @@ export function ProgrammedPrescriptionsModal({
                 <span>+ Adicionar Novo Protocolo</span>
               </button>
 
-              {filteredProfiles.map((profile) => {
+              {filteredProfiles.map((profile, profIdx) => {
                 const isSelected = profile.id === activeProfile?.id;
                 return (
                   <button
-                    key={profile.id}
+                    key={`rx-profile-${profile.id || profIdx}-${profIdx}`}
                     type="button"
                     onClick={() => setActiveProfileId(profile.id)}
                     className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer relative group flex items-start gap-2.5 ${
@@ -1476,9 +1476,9 @@ export function ProgrammedPrescriptionsModal({
                             id: c.id,
                             label: `🏷️ ${(((c as any).name || c.title || '') as string).split('(')[0].trim()} (${(c.products || []).length})`
                           }))
-                      ].map(f => (
+                      ].map((f, fIdx) => (
                         <button
-                          key={f.id}
+                          key={`cat-filter-${f.id}-${fIdx}`}
                           type="button"
                           onClick={() => setCatalogOriginFilter(f.id)}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
