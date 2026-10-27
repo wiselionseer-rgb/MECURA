@@ -260,30 +260,73 @@ export const useStore = create<AppState>((set, get) => ({
     }
     set({ userName: name });
   },
-  userEmail: '',
-  setUserEmail: (email) => set({ userEmail: email }),
-  userPhone: '',
-  setUserPhone: (phone) => set({ userPhone: phone }),
-  userCpf: '',
-  setUserCpf: (cpf) => set({ userCpf: cpf }),
-  userBirthDate: '',
-  setUserBirthDate: (birthDate) => set({ userBirthDate: birthDate }),
+  userEmail: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_email') || '') : '',
+  setUserEmail: (email) => {
+    if (typeof window !== 'undefined' && email && !email.includes('sem-email')) {
+      localStorage.setItem('mecura_patient_email', email.trim());
+    }
+    set({ userEmail: email });
+  },
+  userPhone: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_phone') || '') : '',
+  setUserPhone: (phone) => {
+    if (typeof window !== 'undefined' && phone) {
+      localStorage.setItem('mecura_patient_phone', phone.trim());
+    }
+    set({ userPhone: phone });
+  },
+  userCpf: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_cpf') || '') : '',
+  setUserCpf: (cpf) => {
+    if (typeof window !== 'undefined' && cpf) {
+      localStorage.setItem('mecura_patient_cpf', cpf.trim());
+    }
+    set({ userCpf: cpf });
+  },
+  userBirthDate: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_birthdate') || '') : '',
+  setUserBirthDate: (birthDate) => {
+    if (typeof window !== 'undefined' && birthDate) {
+      localStorage.setItem('mecura_patient_birthdate', birthDate.trim());
+    }
+    set({ userBirthDate: birthDate });
+  },
   userTier: 'Essencial',
   setUserTier: (tier) => set({ userTier: tier }),
   
   onboardingStep: 0,
   setOnboardingStep: (step) => set({ onboardingStep: step }),
-  hasCompletedOnboarding: false,
-  setHasCompletedOnboarding: (status) => set({ hasCompletedOnboarding: status }),
+  hasCompletedOnboarding: typeof window !== 'undefined' ? localStorage.getItem('mecura_onboarding_done') === 'true' : false,
+  setHasCompletedOnboarding: (status) => {
+    if (typeof window !== 'undefined') {
+      if (status) localStorage.setItem('mecura_onboarding_done', 'true');
+      else localStorage.removeItem('mecura_onboarding_done');
+    }
+    set({ hasCompletedOnboarding: status });
+  },
   healthStreak: 0,
   incrementStreak: () => set((state) => ({ healthStreak: state.healthStreak + 1 })),
   
-  answers: {
-    objectives: [],
-  },
-  setAnswer: (key, value) => set((state) => ({ 
-    answers: { ...state.answers, [key]: value } 
-  })),
+  answers: (() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('mecura_triage_answers');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            return { objectives: [], ...parsed };
+          }
+        }
+      } catch {}
+    }
+    return { objectives: [] };
+  })(),
+  setAnswer: (key, value) => set((state) => {
+    const nextAnswers = { ...state.answers, [key]: value };
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('mecura_triage_answers', JSON.stringify(nextAnswers));
+      } catch {}
+    }
+    return { answers: nextAnswers };
+  }),
   
   pagamento_consulta: typeof window !== 'undefined' ? localStorage.getItem('mecura_pagamento') === 'true' : false,
   setPagamentoConsulta: (status) => { 
@@ -563,7 +606,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
-    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 300000;
+    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 600000;
 
     const isExplicitFreshPayment = !!(
       isRecentlyApproved ||
@@ -575,8 +618,6 @@ export const useStore = create<AppState>((set, get) => ({
 
     const isAwaitingNewPaymentInDoc = !!(
       !isExplicitFreshPayment && !isAlreadyInActiveQueue && uData && (
-        uData.consultationStatus === 'awaiting_payment' ||
-        uData.consultationStatus === 'not_started' ||
         uData.consultationStatus === 'finished' ||
         uData.isConsultationFinished === true
       )
@@ -586,10 +627,8 @@ export const useStore = create<AppState>((set, get) => ({
       isExplicitFreshPayment ||
       isAlreadyInActiveQueue ||
       isDocPaid ||
-      (!isAwaitingNewPaymentInDoc && (
-        state.pagamento_consulta === true ||
-        (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
-      ))
+      state.pagamento_consulta === true ||
+      (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true')
     );
 
     if (!hasVerifiedPayment) {
@@ -2102,7 +2141,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
   
   clearTriage: () => {
-    const targetUid = auth.currentUser?.uid || get().patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_pagamento');
       localStorage.removeItem('mecura_premium');
@@ -2114,24 +2152,10 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.removeItem('mecura_queue_entered_at');
       localStorage.removeItem('mecura_queue_notified_10m');
     }
-    if (targetUid) {
-      setDoc(doc(db, 'users', targetUid), {
-        pagamento_consulta: false,
-        pagamento_premium: false,
-        hasPaid: false,
-        isPaid: false,
-        bypassedPayment: false,
-        inQueue: false,
-        consultationActive: false,
-        isConsultationFinished: false,
-        consultationStatus: 'awaiting_payment',
-        lastUpdated: new Date().toISOString()
-      }, { merge: true }).catch(() => {});
-    }
-    return set({
-      answers: { objectives: [] },
+    return set((state) => ({
+      // Preserve existing triage answers so the patient's triage history is never wiped out
+      answers: state.answers && Object.keys(state.answers).length > 0 ? state.answers : { objectives: [] },
       onboardingStep: 1,
-      hasCompletedOnboarding: false,
       consultationStatus: 'pending',
       isConsultationFinished: false,
       consultationActive: false,
@@ -2141,12 +2165,19 @@ export const useStore = create<AppState>((set, get) => ({
       inQueue: false,
       activeConsultationId: null,
       messages: []
-    });
+    }));
   },
   
   reset: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_patientId');
+      localStorage.removeItem('mecura_patient_name');
+      localStorage.removeItem('mecura_patient_email');
+      localStorage.removeItem('mecura_patient_phone');
+      localStorage.removeItem('mecura_patient_cpf');
+      localStorage.removeItem('mecura_patient_birthdate');
+      localStorage.removeItem('mecura_onboarding_done');
+      localStorage.removeItem('mecura_triage_answers');
       localStorage.removeItem('mecura_pagamento');
       localStorage.removeItem('mecura_premium');
       localStorage.removeItem('last_offer');

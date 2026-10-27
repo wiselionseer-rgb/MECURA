@@ -287,12 +287,49 @@ export function PsychologistDashboardScreen() {
       const queueData = queueSnap && queueSnap.exists() ? queueSnap.data() : {};
       const userData = userSnap && userSnap.exists() ? userSnap.data() : {};
 
-      const mergedAnswers = {
+      const allSources = [activeData?.answers, userData?.answers, queueData?.answers, patient.answers].filter(
+        (s): s is Record<string, any> => !!s && typeof s === 'object'
+      );
+      const mergedObjectives = Array.from(
+        new Set(
+          allSources.flatMap((s) =>
+            Array.isArray(s.objectives)
+              ? s.objectives.filter(Boolean)
+              : s.objective
+              ? [String(s.objective)]
+              : []
+          )
+        )
+      );
+      const mergedDescLines: string[] = [];
+      allSources.forEach((s) => {
+        if (s.description && typeof s.description === 'string') {
+          s.description
+            .split('\n')
+            .map((l: string) => l.trim())
+            .filter(Boolean)
+            .forEach((line: string) => {
+              if (!mergedDescLines.includes(line)) mergedDescLines.push(line);
+            });
+        }
+      });
+
+      const mergedAnswers: Record<string, any> = {
         ...(activeData?.answers || {}),
         ...(userData?.answers || {}),
         ...(queueData?.answers || {}),
-        ...(patient.answers || {})
+        ...(patient.answers || {}),
+        ...(mergedObjectives.length > 0 ? { objectives: mergedObjectives } : {}),
+        ...(mergedDescLines.length > 0 ? { description: mergedDescLines.join('\n') } : {}),
       };
+      for (const tk of ['adhdTestResult', 'autismTestResult', 'hcPlantCalculator', 'phq9Result', 'gad7Result']) {
+        const bestTest =
+          patient.answers?.[tk] ||
+          queueData?.answers?.[tk] ||
+          userData?.answers?.[tk] ||
+          activeData?.answers?.[tk];
+        if (bestTest) mergedAnswers[tk] = bestTest;
+      }
 
       enrichedPatient = {
         ...activeData,
@@ -352,7 +389,14 @@ export function PsychologistDashboardScreen() {
         const savedNameNorm = String(parsed.patientName || '').trim().toLowerCase();
         const currNameNorm = String(pName).trim().toLowerCase();
         const isSamePatient = !savedNameNorm || savedNameNorm === currNameNorm;
-        if (isSamePatient && parsed.demandDescription) {
+        const hasNewAdhdNotInCache =
+          !!enrichedPatient.answers?.adhdTestResult &&
+          !(Array.isArray(parsed.selectedTests) && parsed.selectedTests.some((t: any) => t.id === 'asrs18' && t.applied));
+        const hasNewAutismNotInCache =
+          !!enrichedPatient.answers?.autismTestResult &&
+          !(Array.isArray(parsed.selectedTests) && parsed.selectedTests.some((t: any) => t.id === 'aq10' && t.applied));
+
+        if (isSamePatient && parsed.demandDescription && !hasNewAdhdNotInCache && !hasNewAutismNotInCache) {
           if (parsed.reportType) setReportType(parsed.reportType);
           if (parsed.selectedTests && Array.isArray(parsed.selectedTests)) setSelectedTests(parsed.selectedTests);
           if (parsed.purpose) setReportPurpose(parsed.purpose.replace(/\s*(e|&)\s*pericial/gi, '').replace(/\s*pericial/gi, ''));
@@ -722,6 +766,10 @@ export function PsychologistDashboardScreen() {
         ...(nextAutism ? { autismTestResult: nextAutism } : {}),
       };
       setCurrentPatient((prev: any) => (prev ? { ...prev, answers: mergedAnswers } : prev));
+      const freshTests = buildDefaultSelectedTests(mergedAnswers);
+      setSelectedTests(freshTests);
+      const pName = currentPatient.patientName || (currentPatient as any).name || reportPatientName || 'Paciente';
+      applyPsicoTriageDefaults(pName, mergedAnswers, reportType, freshTests);
       setShowNeuroTestsBanner(true);
     }
   }, [queue, messages, currentPatient?.id]);

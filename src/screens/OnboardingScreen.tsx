@@ -252,7 +252,14 @@ const STEPS = [
         });
         if (vRes.ok) {
           const vData = await vRes.json();
-          if (vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+          if (vData.userData && typeof vData.userData === 'object') {
+            userData = {
+              ...vData.userData,
+              ...userData,
+              answers: { ...(vData.userData.answers || {}), ...(userData?.answers || {}) }
+            };
+          }
+          if ((vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
             backendPaid = true;
             backendStatus = vData.status;
             if (vData.queueEntry) {
@@ -322,27 +329,126 @@ const STEPS = [
       }
     }, [currentStep]);
     
+    const mergeAllTriageAndTestAnswers = (...sources: Array<Record<string, any> | undefined>): Record<string, any> => {
+      const validSources = sources.filter((s): s is Record<string, any> => !!s && typeof s === 'object');
+      const result: Record<string, any> = {};
+      const objectivesSet = new Set<string>();
+      const brandsSet = new Set<string>();
+      const descLines: string[] = [];
+
+      for (const src of validSources) {
+        Object.entries(src).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') {
+            result[k] = v;
+          } else if (result[k] === undefined && v !== undefined) {
+            result[k] = v;
+          }
+        });
+
+        if (Array.isArray(src.objectives)) {
+          src.objectives.filter(Boolean).forEach((o: string) => objectivesSet.add(String(o)));
+        } else if (src.objective) {
+          objectivesSet.add(String(src.objective));
+        }
+
+        if (Array.isArray(src.preferredBrands)) {
+          src.preferredBrands.filter(Boolean).forEach((b: string) => brandsSet.add(String(b)));
+        }
+
+        if (src.description && typeof src.description === 'string') {
+          src.description
+            .split('\n')
+            .map((l: string) => l.trim())
+            .filter(Boolean)
+            .forEach((line: string) => {
+              if (!descLines.includes(line)) {
+                descLines.push(line);
+              }
+            });
+        }
+      }
+
+      // Preserve the most recent individual test results across all sources
+      const testKeys = ['adhdTestResult', 'autismTestResult', 'hcPlantCalculator', 'phq9Result', 'gad7Result'];
+      for (const tk of testKeys) {
+        let bestTest: any = null;
+        for (const src of validSources) {
+          const candidate = src[tk];
+          if (candidate && typeof candidate === 'object') {
+            if (!bestTest) {
+              bestTest = candidate;
+            } else if (candidate.completedAt && (!bestTest.completedAt || candidate.completedAt >= bestTest.completedAt)) {
+              bestTest = { ...bestTest, ...candidate };
+            } else {
+              bestTest = { ...candidate, ...bestTest };
+            }
+          }
+        }
+        if (bestTest) {
+          result[tk] = bestTest;
+        }
+      }
+
+      if (objectivesSet.size > 0) {
+        result.objectives = Array.from(objectivesSet);
+      }
+      if (brandsSet.size > 0) {
+        result.preferredBrands = Array.from(brandsSet);
+      }
+      if (descLines.length > 0) {
+        result.description = descLines.join('\n');
+      }
+
+      return result;
+    };
+
     useEffect(() => {
       // Se já estiver logado (e não tiver deslogado manualmente), verifica conta e status da fila
       const unsubscribe = auth.onAuthStateChanged(async (user) => {
         if (typeof window !== 'undefined' && localStorage.getItem('mecura_logged_out') === 'true') {
           return;
         }
+        if (isLoading || showExistingAccountPrompt) {
+          return;
+        }
         if (user && currentStep === 0) {
           try {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
-            const data = userDoc.exists() ? userDoc.data() : {};
+            let data: Record<string, any> = userDoc.exists() ? userDoc.data() : {};
+
+            // Se o documento principal não tiver respostas da triagem, buscar por e-mail em outros documentos do mesmo paciente
+            const cleanUserEmail = (user.email || data.email || '').trim().toLowerCase();
+            if (cleanUserEmail && (!data.answers || Object.keys(data.answers).length === 0)) {
+              try {
+                const emailSnap = await getDocs(query(collection(db, 'users'), where('email', '==', cleanUserEmail)));
+                emailSnap.docs.forEach((d) => {
+                  const dData = d.data();
+                  data = {
+                    ...dData,
+                    ...data,
+                    name: data.name || dData.name,
+                    phone: data.phone || dData.phone,
+                    cpf: data.cpf || dData.cpf,
+                    birthDate: data.birthDate || dData.birthDate,
+                    hasCompletedOnboarding: data.hasCompletedOnboarding || dData.hasCompletedOnboarding,
+                    answers: mergeAllTriageAndTestAnswers(dData.answers, data.answers)
+                  };
+                });
+              } catch {}
+            }
+
             const { isOpen, isCalling, isExplicitlyFinished, queueData } = await checkPatientOpenQueueStatus(user.uid, data);
 
             const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
-            if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente' && !userName) {
+            if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente') {
               setUserName(resolvedName.trim());
             }
-            if ((data.email || queueData?.email) && !userEmail) setUserEmail(data.email || queueData?.email);
-            if ((data.phone || queueData?.phone) && !userPhone) setUserPhone(data.phone || queueData?.phone);
-            if ((data.cpf || queueData?.cpf) && !userCpf) setUserCpf(data.cpf || queueData?.cpf);
-            if ((data.birthDate || queueData?.birthDate) && !userBirthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
-            const mergedAnswers = { ...(queueData?.answers || {}), ...(data.answers || {}) };
+            if (data.email || queueData?.email || user.email) setUserEmail(data.email || queueData?.email || user.email || '');
+            if (data.phone || queueData?.phone) setUserPhone(data.phone || queueData?.phone);
+            if (data.cpf || queueData?.cpf) setUserCpf(data.cpf || queueData?.cpf);
+            if (data.birthDate || queueData?.birthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
+            const localStoreAnswers = useStore.getState().answers || {};
+            const mergedAnswers = mergeAllTriageAndTestAnswers(localStoreAnswers, queueData?.answers, data.answers);
             if (Object.keys(mergedAnswers).length > 0) {
               Object.entries(mergedAnswers).forEach(([key, value]) => {
                 setAnswer(key, value);
@@ -350,6 +456,10 @@ const STEPS = [
               if (mergedAnswers.birthDate && !data.birthDate) setUserBirthDate(mergedAnswers.birthDate);
               if (mergedAnswers.cpf && !data.cpf) setUserCpf(mergedAnswers.cpf);
               if (mergedAnswers.phone && !data.phone) setUserPhone(mergedAnswers.phone);
+              // Se o paciente acabou de realizar algum teste individual antes de logar, sincroniza no Firestore
+              if (localStoreAnswers.adhdTestResult || localStoreAnswers.autismTestResult || localStoreAnswers.hcPlantCalculator) {
+                setDoc(doc(db, 'users', user.uid), { answers: mergedAnswers, lastUpdated: new Date().toISOString() }, { merge: true }).catch(() => {});
+              }
             }
 
             if (typeof window !== 'undefined') {
@@ -388,6 +498,7 @@ const STEPS = [
                   phone: data.phone || queueData?.phone || userPhone || '',
                   cpf: data.cpf || queueData?.cpf || userCpf || '',
                   birthDate: data.birthDate || queueData?.birthDate || userBirthDate || '',
+                  answers: mergedAnswers,
                   isPremium: isPrem,
                   plan: data.plan || queueData?.plan || (isPrem ? 'premium' : 'basic'),
                   queueType: data.queueType || queueData?.queueType || 'doctor',
@@ -418,6 +529,23 @@ const STEPS = [
                   activeConsultationId: user.uid
                 });
               }
+              const hasExistingTriageData = !!(
+                data.hasCompletedOnboarding ||
+                (mergedAnswers.objectives && mergedAnswers.objectives.length > 0) ||
+                data.pagamento_consulta ||
+                data.hasPaid ||
+                data.isConsultationFinished ||
+                data.consultationStatus === 'finished' ||
+                data.consultationStatus === 'awaiting_payment' ||
+                data.hadPreviousConsultation ||
+                isExplicitlyFinished ||
+                queueData
+              );
+              if (hasExistingTriageData) {
+                setHasCompletedOnboarding(true);
+                setShowExistingAccountPrompt(true);
+                return;
+              }
             }
           } catch (err) {
             console.warn('[ONBOARDING] Error loading user doc:', err);
@@ -427,7 +555,7 @@ const STEPS = [
         }
       });
       return () => unsubscribe();
-    }, [currentStep, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium, setHasCompletedOnboarding, navigate]);
+    }, [currentStep, isLoading, showExistingAccountPrompt, setOnboardingStep, setUserName, setUserEmail, setUserPhone, setUserCpf, setUserBirthDate, setAnswer, userName, userEmail, userPhone, userCpf, userBirthDate, setPagamentoConsulta, setPagamentoPremium, setHasCompletedOnboarding, navigate]);
 
   const handleNext = async () => {
       if (step.id === 'auth') {
@@ -442,9 +570,46 @@ const STEPS = [
             localStorage.removeItem('mecura_logged_out');
           }
           const trimmedEmail = userEmail.trim();
+          const lowerEmail = trimmedEmail.toLowerCase();
 
           const handleExistingUserLogin = async (resolvedUid: string, resolvedUserData: any) => {
-            const data = resolvedUserData || {};
+            let data: Record<string, any> = { ...(resolvedUserData || {}) };
+
+            // Buscar também qualquer documento em users ou queue com o mesmo e-mail para nunca perder histórico de triagem
+            try {
+              const usersRef = collection(db, 'users');
+              const qEmailSnap = await getDocs(query(usersRef, where('email', '==', trimmedEmail)));
+              qEmailSnap.docs.forEach((docSnap) => {
+                const d = docSnap.data();
+                data = {
+                  ...d,
+                  ...data,
+                  name: data.name || d.name,
+                  phone: data.phone || d.phone,
+                  cpf: data.cpf || d.cpf,
+                  birthDate: data.birthDate || d.birthDate,
+                  hasCompletedOnboarding: data.hasCompletedOnboarding || d.hasCompletedOnboarding,
+                  answers: { ...(d.answers || {}), ...(data.answers || {}) }
+                };
+              });
+              if (lowerEmail !== trimmedEmail) {
+                const qLowerSnap = await getDocs(query(usersRef, where('email', '==', lowerEmail)));
+                qLowerSnap.docs.forEach((docSnap) => {
+                  const d = docSnap.data();
+                  data = {
+                    ...d,
+                    ...data,
+                    name: data.name || d.name,
+                    phone: data.phone || d.phone,
+                    cpf: data.cpf || d.cpf,
+                    birthDate: data.birthDate || d.birthDate,
+                    hasCompletedOnboarding: data.hasCompletedOnboarding || d.hasCompletedOnboarding,
+                    answers: { ...(d.answers || {}), ...(data.answers || {}) }
+                  };
+                });
+              }
+            } catch {}
+
             const { isOpen, isCalling, isExplicitlyFinished, queueData } = await checkPatientOpenQueueStatus(resolvedUid, data);
 
             const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
@@ -452,10 +617,15 @@ const STEPS = [
               setUserName(resolvedName.trim());
               if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', resolvedName.trim());
             }
+            setUserEmail(data.email || queueData?.email || trimmedEmail);
             if (data.phone || queueData?.phone) setUserPhone(data.phone || queueData?.phone);
             if (data.cpf || queueData?.cpf) setUserCpf(data.cpf || queueData?.cpf);
             if (data.birthDate || queueData?.birthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
-            const mergedAnswers = { ...(queueData?.answers || {}), ...(data.answers || {}) };
+            const mergedAnswers = mergeAllTriageAndTestAnswers(
+              useStore.getState().answers,
+              queueData?.answers,
+              data.answers
+            );
             if (Object.keys(mergedAnswers).length > 0) {
               Object.entries(mergedAnswers).forEach(([key, value]) => {
                 setAnswer(key, value);
@@ -469,6 +639,20 @@ const STEPS = [
               localStorage.setItem('mecura_patientId', resolvedUid);
             }
             useStore.setState({ patientId: resolvedUid });
+
+            // Sincronizar os dados recuperados no documento principal do usuário
+            try {
+              const syncPayload: Record<string, any> = {
+                email: data.email || trimmedEmail,
+                lastUpdated: new Date().toISOString()
+              };
+              if (resolvedName && resolvedName.toLowerCase() !== 'paciente') syncPayload.name = resolvedName.trim();
+              if (data.phone || queueData?.phone) syncPayload.phone = data.phone || queueData?.phone;
+              if (data.cpf || queueData?.cpf) syncPayload.cpf = data.cpf || queueData?.cpf;
+              if (data.birthDate || queueData?.birthDate) syncPayload.birthDate = data.birthDate || queueData?.birthDate;
+              if (Object.keys(mergedAnswers).length > 0) syncPayload.answers = mergedAnswers;
+              setDoc(doc(db, 'users', resolvedUid), syncPayload, { merge: true }).catch(() => {});
+            } catch {}
 
             if (isOpen) {
               setPagamentoConsulta(true);
@@ -501,6 +685,7 @@ const STEPS = [
                   phone: data.phone || queueData?.phone || userPhone || '',
                   cpf: data.cpf || queueData?.cpf || userCpf || '',
                   birthDate: data.birthDate || queueData?.birthDate || userBirthDate || '',
+                  answers: mergedAnswers,
                   isPremium: isPrem,
                   plan: data.plan || queueData?.plan || (isPrem ? 'premium' : 'basic'),
                   queueType: data.queueType || queueData?.queueType || 'doctor',
@@ -532,7 +717,22 @@ const STEPS = [
                   activeConsultationId: resolvedUid
                 });
               }
-              if (data.hasCompletedOnboarding || data.pagamento_consulta || data.hasPaid || data.isConsultationFinished || data.consultationStatus === 'finished' || data.hadPreviousConsultation || isExplicitlyFinished || queueData) {
+              const hasCompletedOrTriage = !!(
+                data.hasCompletedOnboarding ||
+                (mergedAnswers.objectives && mergedAnswers.objectives.length > 0) ||
+                data.name ||
+                data.cpf ||
+                data.pagamento_consulta ||
+                data.hasPaid ||
+                data.isConsultationFinished ||
+                data.consultationStatus === 'finished' ||
+                data.consultationStatus === 'awaiting_payment' ||
+                data.hadPreviousConsultation ||
+                isExplicitlyFinished ||
+                queueData ||
+                isLogin
+              );
+              if (hasCompletedOrTriage) {
                 setHasCompletedOnboarding(true);
                 setShowExistingAccountPrompt(true);
                 setIsLoading(false);
@@ -556,12 +756,11 @@ const STEPS = [
                 resolvedUserData = { email: trimmedEmail };
               }
             } catch (authErr: any) {
-              // Fallback: If Firebase Auth password fails, verify if patient reset password via CPF in Firestore
+              // Fallback: If Firebase Auth password fails, verify if patient exists in Firestore users collection
               const usersRef = collection(db, 'users');
               const qSnap = await getDocs(query(usersRef, where('email', '==', trimmedEmail)));
               let matchedDoc = qSnap.docs.find(d => d.data().password === password);
               if (!matchedDoc) {
-                const lowerEmail = trimmedEmail.toLowerCase();
                 const allUsersSnap = await getDocs(usersRef);
                 matchedDoc = allUsersSnap.docs.find(d => 
                   (d.data().email || '').toLowerCase().trim() === lowerEmail && d.data().password === password
@@ -584,6 +783,23 @@ const STEPS = [
             try {
               const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
               try {
+                // Verificar se já existia algum documento com esse e-mail no Firestore para preservar histórico
+                let existingDataByEmail: Record<string, any> = {};
+                try {
+                  const existingSnap = await getDocs(query(collection(db, 'users'), where('email', '==', trimmedEmail)));
+                  existingSnap.docs.forEach(d => {
+                    if (d.id !== userCredential.user.uid) {
+                      existingDataByEmail = { ...d.data(), ...existingDataByEmail };
+                    }
+                  });
+                } catch {}
+
+                if (Object.keys(existingDataByEmail).length > 0 && (existingDataByEmail.hasCompletedOnboarding || existingDataByEmail.answers)) {
+                  const handled = await handleExistingUserLogin(userCredential.user.uid, existingDataByEmail);
+                  if (handled) return;
+                }
+
+                const initialAnswers = mergeAllTriageAndTestAnswers(useStore.getState().answers, answers);
                 await setDoc(doc(db, 'users', userCredential.user.uid), {
                   email: trimmedEmail,
                   password: password,
@@ -595,13 +811,14 @@ const STEPS = [
                   inQueue: false,
                   consultationStatus: 'not_started',
                   createdAt: new Date().toISOString(),
-                  tier: 'basic'
+                  tier: 'basic',
+                  ...(Object.keys(initialAnswers).length > 0 ? { answers: initialAnswers } : {})
                 }, { merge: true });
 
                 // Reset any stale payment state from localStorage/store
                 setPagamentoConsulta(false);
                 setPagamentoPremium(false);
-                useStore.setState({ inQueue: false, consultationActive: false, isConsultationFinished: false });
+                useStore.setState({ inQueue: false, consultationActive: false, isConsultationFinished: false, patientId: userCredential.user.uid });
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_patientId', userCredential.user.uid);
                   localStorage.removeItem('mecura_pagamento');
@@ -615,7 +832,7 @@ const STEPS = [
                 console.error("Error creating early user data", e);
               }
             } catch (createErr: any) {
-              // Se o e-mail já existir e o paciente digitou sua senha na aba Criar Conta, autentica e localiza a conta automaticamente
+              // Se o e-mail já existir e o paciente digitou na aba Criar Conta, autentica e localiza a conta automaticamente
               if (createErr.code === 'auth/email-already-in-use') {
                 let resolvedUid: string | null = null;
                 let resolvedUserData: any = null;
@@ -626,12 +843,15 @@ const STEPS = [
                   resolvedUserData = uDoc.exists() ? uDoc.data() : { email: trimmedEmail };
                 } catch {
                   const usersRef = collection(db, 'users');
-                  const qSnap = await getDocs(query(usersRef, where('email', '==', trimmedEmail)));
-                  const matchedDoc = qSnap.docs.find(d => d.data().password === password);
+                  const allUsersSnap = await getDocs(usersRef);
+                  const matchedDoc = allUsersSnap.docs.find(d => 
+                    (d.data().email || '').toLowerCase().trim() === lowerEmail && d.data().password === password
+                  );
                   if (matchedDoc) {
                     resolvedUid = matchedDoc.id;
                     resolvedUserData = matchedDoc.data();
                   } else {
+                    setIsLogin(true);
                     throw createErr;
                   }
                 }
@@ -649,9 +869,10 @@ const STEPS = [
         } catch (error: any) {
           console.error(error);
           if (error.code === 'auth/email-already-in-use') {
-            setAuthError('Este e-mail já está cadastrado. Clique em "Fazer Login" ou em "Esqueci minha senha" para acessar.');
+            setIsLogin(true);
+            setAuthError('Identificamos que este e-mail já possui cadastro! Mudamos para "Fazer Login". Digite sua senha cadastrada ou clique em "Esqueci / Trocar Senha" abaixo.');
           } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-            setAuthError('E-mail ou senha incorretos. Caso tenha esquecido, clique em "Esqueci minha senha" abaixo.');
+            setAuthError('E-mail ou senha incorretos. Caso tenha esquecido, clique em "Esqueci / Trocar Senha" abaixo.');
           } else if (error.code === 'auth/weak-password') {
             setAuthError('A senha deve ter pelo menos 6 caracteres.');
           } else if (error.code === 'auth/operation-not-allowed') {
@@ -704,6 +925,35 @@ const STEPS = [
       }
 
       if (currentStep < STEPS.length - 1) {
+        // Salvar progresso parcial da triagem no Firestore e localStorage em cada etapa
+        try {
+          const partialUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
+          if (partialUid) {
+            const mergedPartialAnswers = mergeAllTriageAndTestAnswers(
+              useStore.getState().answers,
+              answers,
+              {
+                ...(userBirthDate ? { birthDate: userBirthDate } : {}),
+                ...(userCpf ? { cpf: userCpf } : {}),
+                ...(userPhone ? { phone: userPhone } : {})
+              }
+            );
+            const partialPayload: Record<string, any> = {
+              answers: mergedPartialAnswers,
+              lastUpdated: new Date().toISOString()
+            };
+            if (userName && userName.trim() && userName.trim().toLowerCase() !== 'paciente') {
+              partialPayload.name = userName.trim();
+            }
+            if (userEmail && !userEmail.includes('sem-email')) {
+              partialPayload.email = userEmail.trim();
+            }
+            if (userPhone && userPhone.trim()) partialPayload.phone = userPhone.trim();
+            if (userCpf && userCpf.trim()) partialPayload.cpf = userCpf.trim();
+            if (userBirthDate && userBirthDate.trim()) partialPayload.birthDate = userBirthDate.trim();
+            setDoc(doc(db, 'users', partialUid), partialPayload, { merge: true }).catch(() => {});
+          }
+        } catch {}
         setCurrentStep(prev => prev + 1);
         setOnboardingStep(currentStep + 1);
       } else {
@@ -730,6 +980,24 @@ const STEPS = [
         }
 
         try {
+          const finalAnswers = mergeAllTriageAndTestAnswers(
+            useStore.getState().answers,
+            answers,
+            {
+              birthDate: userBirthDate,
+              cpf: userCpf,
+              phone: userPhone
+            }
+          );
+          Object.entries(finalAnswers).forEach(([k, v]) => {
+            setAnswer(k, v);
+          });
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('mecura_triage_answers', JSON.stringify(finalAnswers));
+            } catch {}
+          }
+
           const targetUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId') || undefined;
           if (targetUid) {
             const nowIso = new Date().toISOString();
@@ -749,12 +1017,7 @@ const STEPS = [
               isConsultationFinished: false,
               consultationStatus: 'awaiting_payment',
               lastTriageAt: nowIso,
-              answers: {
-                ...answers,
-                birthDate: userBirthDate,
-                cpf: userCpf,
-                phone: userPhone
-              },
+              answers: finalAnswers,
               lastUpdated: nowIso
             };
 
@@ -1874,29 +2137,29 @@ const STEPS = [
               ) : (
                 <>
                   <p className="text-mecura-silver text-sm mb-6 leading-relaxed">
-                    Olá, <strong className="text-white">{userName || 'Paciente'}</strong>! Você já possui cadastro ativo na plataforma. Deseja realizar uma nova triagem/consulta ou acessar seu painel?
+                    Olá, <strong className="text-white">{userName || 'Paciente'}</strong>! Localizamos seu cadastro e histórico de triagem na plataforma. Deseja acessar seu painel do paciente ou revisar/atualizar sua triagem?
                   </p>
                   <div className="flex flex-col gap-3">
                     <Button 
                       className="w-full shadow-lg shadow-mecura-neon/20 font-bold"
                       onClick={() => {
-                        useStore.getState().clearTriage();
+                        setHasCompletedOnboarding(true);
                         setShowExistingAccountPrompt(false);
-                        setCurrentStep(1);
-                        setOnboardingStep(1);
+                        navigate('/dashboard');
                       }}
                     >
-                      Continuar Nova Triagem
+                      Acessar Meu Painel e Histórico
                     </Button>
                     <Button 
                       variant="outline"
                       className="w-full border-mecura-elevated text-mecura-silver hover:text-white"
                       onClick={() => {
                         setShowExistingAccountPrompt(false);
-                        navigate('/dashboard');
+                        setCurrentStep(1);
+                        setOnboardingStep(1);
                       }}
                     >
-                      Ir para Meu Painel
+                      Revisar / Atualizar Minha Triagem
                     </Button>
                   </div>
                 </>

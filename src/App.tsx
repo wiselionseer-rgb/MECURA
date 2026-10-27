@@ -108,7 +108,21 @@ export default function App() {
           })
             .then(r => r.ok ? r.json() : null)
             .then(vData => {
-              if (vData && vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+              if (!vData) return;
+              const u = vData.userData || vData.queueEntry;
+              if (u) {
+                if (u.name && typeof u.name === 'string' && u.name.trim() !== '' && u.name.toLowerCase() !== 'paciente') {
+                  useStore.getState().setUserName(u.name.trim());
+                }
+                if (u.email) useStore.getState().setUserEmail(u.email);
+                if (u.phone) useStore.getState().setUserPhone(u.phone);
+                if (u.cpf) useStore.getState().setUserCpf(u.cpf);
+                if (u.birthDate) useStore.getState().setUserBirthDate(u.birthDate);
+                if (u.answers && typeof u.answers === 'object') {
+                  Object.entries(u.answers).forEach(([k, v]) => useStore.getState().setAnswer(k, v));
+                }
+              }
+              if ((vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
                 const isCalling = vData.status === 'in-consultation';
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_patientId', user.uid);
@@ -124,7 +138,7 @@ export default function App() {
                   consultationActive: isCalling,
                   isConsultationFinished: false
                 });
-              } else if (vData && vData.status === 'finished') {
+              } else if (vData.status === 'finished') {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_consultation_finished', 'true');
                 }

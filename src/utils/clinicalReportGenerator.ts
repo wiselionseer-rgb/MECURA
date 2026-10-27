@@ -287,19 +287,58 @@ export function generatePersonalizedClinicalReport(
     healthHistoryParts.push(`Histórico de arritmia cardíaca: ${arritmiaDetails || 'Sim (monitoramento cardiovascular indicado)'}`);
   }
 
+  // Lifestyle & psychomotor context from triage
+  const fuma = patientData.answers?.fuma;
+  const bebida = patientData.answers?.bebida;
+  const exercicio = patientData.answers?.exercicio;
+  const dirige = patientData.dirige ?? ans.dirige;
+  const dirigeDetails = (patientData.dirige_details ?? ans.dirige_details ?? '').trim();
+  const maquinario = patientData.maquinario ?? ans.maquinario;
+  const maquinarioDetails = (patientData.maquinario_details ?? ans.maquinario_details ?? '').trim();
+
+  const lifestyleParts: string[] = [];
+  if (exercicio !== undefined) lifestyleParts.push(`Atividade física: ${exercicio ? 'Sim' : 'Sedentário(a)'}`);
+  if (fuma !== undefined) lifestyleParts.push(`Tabagismo: ${fuma ? 'Sim' : 'Não'}`);
+  if (bebida !== undefined) lifestyleParts.push(`Etilismo social: ${bebida ? 'Sim' : 'Não'}`);
+  if (dirige) lifestyleParts.push(`Conduz veículos automotores${dirigeDetails ? ` (${dirigeDetails})` : ''}`);
+  if (maquinario) lifestyleParts.push(`Opera maquinário/equipamentos${maquinarioDetails ? ` (${maquinarioDetails})` : ''}`);
+
   if (healthHistoryParts.length > 0) {
     triageNarrativeParts.push(`Antecedentes Clínicos Informados na Triagem: ${healthHistoryParts.join('; ')}.`);
   }
+  if (lifestyleParts.length > 0) {
+    triageNarrativeParts.push(`Hábitos de Vida e Contexto Ocupacional/Funcional: ${lifestyleParts.join(' | ')}.`);
+  }
 
-  // Neurobehavioral screening results if performed by the patient
+  // Neurobehavioral screening results & Individual Tests if performed by the patient
   if (adhdRes && adhdRes.scorePercent !== undefined) {
+    const asrsEq = adhdRes.asrs18EquivalentScore !== undefined ? ` | Escore ASRS-18 (OMS): ${adhdRes.asrs18EquivalentScore}/72 pts` : '';
+    const gadComp = adhdRes.gad7ComplementScore !== undefined ? ` | GAD-7 (Ansiedade): ${adhdRes.gad7ComplementScore}/21 pts` : '';
+    const phqComp = adhdRes.phq9ComplementScore !== undefined ? ` | PHQ-9 (Humor/Energia): ${adhdRes.phq9ComplementScore}/27 pts` : '';
     triageNarrativeParts.push(
-      `Rastreio Neurocomportamental TDAH (Escala ASRS-18): ${adhdRes.classification || 'Avaliado'} — Compatibilidade de ${adhdRes.scorePercent}% (${adhdRes.totalPoints || 0}/${adhdRes.maxPoints || 36} pontos).`
+      `Rastreio Neurocomportamental TDAH (Escala ASRS-18 Validada): ${adhdRes.classification || 'Avaliado'} — Compatibilidade de ${adhdRes.scorePercent}% (${adhdRes.totalPoints || 0}/${adhdRes.maxPoints || 36} pontos${asrsEq}${gadComp}${phqComp}).`
     );
   }
   if (autismRes && autismRes.scorePercent !== undefined) {
+    const aq10Eq = autismRes.aq10EquivalentScore !== undefined ? ` | Escore AQ-10 (Cambridge): ${autismRes.aq10EquivalentScore}/10 pts` : '';
+    const gadComp = autismRes.gad7ComplementScore !== undefined ? ` | GAD-7 (Ansiedade): ${autismRes.gad7ComplementScore}/21 pts` : '';
+    const phqComp = autismRes.phq9ComplementScore !== undefined ? ` | PHQ-9 (Exaustão/Sono): ${autismRes.phq9ComplementScore}/27 pts` : '';
     triageNarrativeParts.push(
-      `Mapeamento Neurocomportamental para TEA / Autismo (${autismRes.targetProfile || 'Adulto'}): ${autismRes.classification || 'Avaliado'} — Compatibilidade de ${autismRes.scorePercent}% (${autismRes.totalPoints || 0}/${autismRes.maxPoints || 36} pontos).`
+      `Mapeamento Neurocomportamental para TEA / Autismo (${autismRes.targetProfile || 'Adulto'}): ${autismRes.classification || 'Avaliado'} — Compatibilidade de ${autismRes.scorePercent}% (${autismRes.totalPoints || 0}/${autismRes.maxPoints || 36} pontos${aq10Eq}${gadComp}${phqComp}).`
+    );
+  }
+  if (!adhdRes && !autismRes && (ans.phq9Result?.score !== undefined || ans.gad7Result?.score !== undefined)) {
+    const scaleParts: string[] = [];
+    if (ans.gad7Result?.score !== undefined) scaleParts.push(`GAD-7 (Ansiedade): ${ans.gad7Result.score}/21 pts`);
+    if (ans.phq9Result?.score !== undefined) scaleParts.push(`PHQ-9 (Humor/Depressão): ${ans.phq9Result.score}/27 pts`);
+    triageNarrativeParts.push(`Escalas Psicométricas Registradas: ${scaleParts.join(' | ')}.`);
+  }
+  if (hcCalc && (hcCalc.annualPlants || hcCalc.dailyDoseMg)) {
+    const hcMedsStr = Array.isArray(hcCalc.selectedMedications) && hcCalc.selectedMedications.length > 0
+      ? hcCalc.selectedMedications.map((m: any) => `${m.name} (${m.dailyUnits} ${m.unitLabel || 'un/dia'} — ${m.dailyMg} mg/dia)`).join('; ')
+      : (hcCalc.condition || '');
+    triageNarrativeParts.push(
+      `Dimensionamento Técnico Prévio de Autocultivo Medicinal (Calculadora HC): Demanda estimada de ${hcCalc.dailyDoseMg || 3000} mg/dia (${hcCalc.annualPlants || 24} plantas/ano • ${hcCalc.plantsPerCycle || 6} plantas/ciclo em cultivo ${hcCalc.cultivationType || 'indoor'})${hcMedsStr ? ` — Base farmacológica selecionada: ${hcMedsStr}` : ''}.`
     );
   }
 
@@ -486,10 +525,16 @@ CIDs Associados: ${cidsSecundarios}`;
     triageAgroSummary.push(`Experiência prévia com Cannabis medicinal informada na triagem: ${cannabisDetails || 'uso prévio com resposta clínica positiva'}.`);
   }
   if (adhdRes && adhdRes.scorePercent !== undefined) {
-    triageAgroSummary.push(`Rastreio Neurocomportamental ASRS-18 (TDAH): ${adhdRes.scorePercent}% (${adhdRes.classification || 'avaliado'}).`);
+    const asrsEq = adhdRes.asrs18EquivalentScore !== undefined ? ` — ASRS-18: ${adhdRes.asrs18EquivalentScore}/72 pts` : '';
+    triageAgroSummary.push(`Rastreio Neurocomportamental ASRS-18 (TDAH): ${adhdRes.scorePercent}% (${adhdRes.classification || 'avaliado'}${asrsEq}).`);
   }
   if (autismRes && autismRes.scorePercent !== undefined) {
-    triageAgroSummary.push(`Mapeamento Neurocomportamental TEA: ${autismRes.scorePercent}% (${autismRes.classification || 'avaliado'}).`);
+    const aq10Eq = autismRes.aq10EquivalentScore !== undefined ? ` — AQ-10: ${autismRes.aq10EquivalentScore}/10 pts` : '';
+    triageAgroSummary.push(`Mapeamento Neurocomportamental TEA: ${autismRes.scorePercent}% (${autismRes.classification || 'avaliado'}${aq10Eq}).`);
+  }
+  if (hcCalc && Array.isArray(hcCalc.selectedMedications) && hcCalc.selectedMedications.length > 0) {
+    const hcMedsList = hcCalc.selectedMedications.map((m: any) => `${m.name} (${m.dailyUnits} ${m.unitLabel || 'un/dia'} = ${m.dailyMg} mg/dia)`).join(', ');
+    triageAgroSummary.push(`Medicamentos e posologias parametrizados na Calculadora Técnica HC do(a) paciente: ${hcMedsList} (regime de cultivo selecionado: ${hcCalc.cultivationType || 'indoor'}).`);
   }
 
   const fullDiagnosisLabel = `${conditionName} (${cidPrincipal}${matchedCids.length > 1 ? ` / ${cidsSecundarios}` : ''})`;

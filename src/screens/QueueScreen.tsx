@@ -201,7 +201,7 @@ export function QueueScreen() {
   // Payment guard: Unpaid users or already-finished consultations cannot wait in queue without a new payment
   useEffect(() => {
     const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
-    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+    const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 600000;
     const isEntryActiveOrWaiting = !!(myQueueEntry && (myQueueEntry.status === 'waiting' || myQueueEntry.status === 'in-consultation'));
 
     if (!isRecentlyApproved && !isEntryActiveOrWaiting && (isConsultationFinished || myQueueEntry?.status === 'finished')) {
@@ -227,11 +227,11 @@ export function QueueScreen() {
         fetch('/api/verify-patient-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ patientId: currentUserId, email: auth.currentUser?.email || '' })
+          body: JSON.stringify({ patientId: currentUserId, email: auth.currentUser?.email || useStore.getState().userEmail || '' })
         })
           .then(r => r.ok ? r.json() : null)
           .then(vData => {
-            if (vData && vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+            if (vData && (vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
               if (typeof window !== 'undefined') {
                 localStorage.setItem('mecura_pagamento', 'true');
                 localStorage.removeItem('mecura_consultation_finished');
@@ -298,12 +298,12 @@ export function QueueScreen() {
       if (snap.exists()) {
         const data = snap.data();
         const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
-        const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
-        const isQueueActive = queueDocStatus === 'waiting' || queueDocStatus === 'in-consultation';
+        const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 600000;
+        const isQueueActive = queueDocStatus === 'waiting' || queueDocStatus === 'in-consultation' || myQueueEntry?.status === 'waiting' || myQueueEntry?.status === 'in-consultation';
+        const hasLocalPaid = useStore.getState().pagamento_consulta === true || (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true');
 
-        const isAwaitingPayment = !isRecentlyApproved && !isQueueActive && (data.consultationStatus === 'awaiting_payment' || data.consultationStatus === 'not_started');
-        const isFinished = !isRecentlyApproved && !isQueueActive && !isAwaitingPayment && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
-        const hasValidPayment = isRecentlyApproved || isQueueActive || (!isAwaitingPayment && !isFinished && !!(
+        const isFinished = !isRecentlyApproved && !isQueueActive && (data.consultationStatus === 'finished' || data.isConsultationFinished === true);
+        const hasValidPayment = isRecentlyApproved || isQueueActive || hasLocalPaid || (!isFinished && !!(
           data.pagamento_consulta === true || 
           data.hasPaid === true || 
           data.isPaid === true || 
@@ -327,11 +327,11 @@ export function QueueScreen() {
           fetch('/api/verify-patient-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ patientId: currentUserId, email: data.email || auth.currentUser?.email || '' })
+            body: JSON.stringify({ patientId: currentUserId, email: data.email || auth.currentUser?.email || useStore.getState().userEmail || '' })
           })
             .then(r => r.ok ? r.json() : null)
             .then(vData => {
-              if (vData && vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+              if (vData && (vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mecura_pagamento', 'true');
                 }
@@ -381,6 +381,7 @@ export function QueueScreen() {
       }
       useStore.setState({ isConsultationFinished: false, consultationActive: false, inQueue: true });
 
+      const st = useStore.getState();
       const pUid = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || undefined;
       const storedPatientName = typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '';
       const pName = (auth.currentUser?.displayName && auth.currentUser.displayName.toLowerCase() !== 'paciente') 
@@ -401,13 +402,16 @@ export function QueueScreen() {
       const isPrem = resolvedOffer === 'premium' || resolvedOffer === 'complete';
       const isPsico = resolvedOffer === 'psychologist';
       const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
-      const isFreshPayment = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+      const isFreshPayment = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 600000;
 
       joinQueue({
         id: pUid,
         patientName: pName || 'Paciente',
-        email: auth.currentUser?.email || '',
-        phone: userPhone || '',
+        email: auth.currentUser?.email || st.userEmail || '',
+        phone: userPhone || st.userPhone || '',
+        cpf: st.userCpf || '',
+        birthDate: st.userBirthDate || '',
+        answers: st.answers || {},
         isPremium: isPrem,
         plan: resolvedOffer,
         selectedOffer: resolvedOffer,

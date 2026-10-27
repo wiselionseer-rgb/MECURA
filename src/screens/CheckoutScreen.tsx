@@ -390,10 +390,15 @@ export function CheckoutScreen() {
 
     // 4. Join waiting queue immediately
     try {
+      const st = useStore.getState();
       await joinQueue({
         id: patientUid,
         patientName: patientName,
         email: patientEmail,
+        phone: st.userPhone || '',
+        cpf: st.userCpf || '',
+        birthDate: st.userBirthDate || '',
+        answers: st.answers || {},
         isPremium: isPrem,
         plan: finalPlan,
         queueType: targetQueueType,
@@ -450,7 +455,7 @@ export function CheckoutScreen() {
           });
           if (vRes.ok) {
             const vData = await vRes.json();
-            if (vData.paid && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+            if ((vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
               isHandled = true;
               if (pollingInterval.current) clearInterval(pollingInterval.current);
               handleSuccess(payId || undefined);

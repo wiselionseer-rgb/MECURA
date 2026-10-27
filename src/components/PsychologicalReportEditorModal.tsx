@@ -144,6 +144,10 @@ export function buildPsychologicalReportFromTriage(
   if (ans.irritado) emotionalFlags.push('irritabilidade acentuada');
   if (ans.foco) emotionalFlags.push('dificuldade de concentração e sustentação do foco');
   if (ans.memoria) emotionalFlags.push('queixas mnêmicas no cotidiano');
+  if (ans.cansado) emotionalFlags.push('fadiga e esgotamento psicofísico diurno');
+  if (ans.dor_cabeca) {
+    emotionalFlags.push(ans.dor_cabeca_details ? `cefaleia/enxaqueca associada (${String(ans.dor_cabeca_details).trim()})` : 'cefaleia tensional/enxaqueca associada');
+  }
   if (ans.panico) {
     emotionalFlags.push(ans.panico_details ? `episódios de pânico (${String(ans.panico_details).trim()})` : 'episódios compatíveis com crises de pânico');
   }
@@ -151,7 +155,37 @@ export function buildPsychologicalReportFromTriage(
     emotionalFlags.push(ans.ansiedade_diag_details ? `histórico prévio de ansiedade/depressão (${String(ans.ansiedade_diag_details).trim()})` : 'diagnóstico prévio de ansiedade/depressão');
   }
   if (emotionalFlags.length > 0 && !isEvolutivo) {
-    demandParts.push(`No rastreio emocional da triagem inicial, assinalou: ${emotionalFlags.join('; ')}.`);
+    demandParts.push(`No rastreio emocional e psicossomático da triagem inicial, assinalou: ${emotionalFlags.join('; ')}.`);
+  }
+
+  const clinicalContextFlags: string[] = [];
+  if (ans.tratamento_atual && ans.tratamento_atual_details) {
+    clinicalContextFlags.push(`tratamento em curso: ${String(ans.tratamento_atual_details).trim()}`);
+  }
+  if (ans.remedios && ans.remedios_details) {
+    clinicalContextFlags.push(`medicações de uso contínuo: ${String(ans.remedios_details).trim()}`);
+  }
+  if (ans.doenca_cronica && ans.doenca_cronica_details) {
+    clinicalContextFlags.push(`condições crônicas associadas: ${String(ans.doenca_cronica_details).trim()}`);
+  }
+  if (ans.cannabis) {
+    clinicalContextFlags.push(ans.cannabis_details ? `experiência prévia com terapia canabinoide (${String(ans.cannabis_details).trim()})` : 'experiência prévia com terapia canabinoide');
+  }
+  if (clinicalContextFlags.length > 0) {
+    demandParts.push(`Contexto clínico e terapêutico informado na triagem: ${clinicalContextFlags.join('; ')}.`);
+  }
+
+  if (ans.adhdTestResult && ans.adhdTestResult.scorePercent !== undefined) {
+    const adhd = ans.adhdTestResult;
+    demandParts.push(
+      `No rastreio individual de TDAH (ASRS-18 OMS + Matriz GAD-7/PHQ-9), obteve ${adhd.scorePercent}% de compatibilidade (${adhd.classification || 'Avaliado'}${adhd.asrs18EquivalentScore !== undefined ? ` • ASRS-18 Eq.: ${adhd.asrs18EquivalentScore}/72 pts` : ''}${adhd.gad7ComplementScore !== undefined ? ` • GAD-7: ${adhd.gad7ComplementScore}/21 pts` : ''}${adhd.phq9ComplementScore !== undefined ? ` • PHQ-9: ${adhd.phq9ComplementScore}/27 pts` : ''}).`
+    );
+  }
+  if (ans.autismTestResult && ans.autismTestResult.scorePercent !== undefined) {
+    const tea = ans.autismTestResult;
+    demandParts.push(
+      `No mapeamento individual para TEA / Autismo (${tea.targetProfile || 'Adulto'} — AQ-10 Cambridge + Matriz GAD-7/PHQ-9), obteve ${tea.scorePercent}% de compatibilidade (${tea.classification || 'Avaliado'}${tea.aq10EquivalentScore !== undefined ? ` • AQ-10 Eq.: ${tea.aq10EquivalentScore}/10 pts` : ''}${tea.gad7ComplementScore !== undefined ? ` • GAD-7: ${tea.gad7ComplementScore}/21 pts` : ''}${tea.phq9ComplementScore !== undefined ? ` • PHQ-9: ${tea.phq9ComplementScore}/27 pts` : ''}).`
+    );
   }
 
   // Active tests description

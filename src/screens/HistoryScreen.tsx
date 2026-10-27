@@ -43,6 +43,15 @@ export function HistoryScreen() {
     }
   ];
 
+  const hasTriageData = !!(
+    (answers?.objectives && answers.objectives.length > 0) ||
+    answers?.diseaseOrigin ||
+    answers?.intensity ||
+    answers?.duration ||
+    answers?.height ||
+    answers?.weight
+  );
+
   return (
     <div className="flex flex-col min-h-full bg-[#000000] text-mecura-pearl relative overflow-y-auto pb-12 font-sans">
       {/* Header */}
@@ -54,7 +63,7 @@ export function HistoryScreen() {
         >
           <ChevronLeft className="w-6 h-6 pr-0.5" />
         </button>
-        <h1 className="text-center text-base sm:text-lg font-bold text-white">Histórico de Consultas</h1>
+        <h1 className="text-center text-base sm:text-lg font-bold text-white">Histórico Clínico e Triagem</h1>
         <button 
           onClick={() => navigate('/dashboard')}
           className="w-10 h-10 rounded-full bg-[#161622] border border-mecura-neon/30 flex items-center justify-center text-mecura-neon hover:bg-mecura-neon/10 transition-colors"
@@ -64,7 +73,114 @@ export function HistoryScreen() {
         </button>
       </header>
 
-      <div className="p-6">
+      <div className="p-6 space-y-6">
+        {hasTriageData && (
+          <div className="bg-[#161622] border border-mecura-neon/30 rounded-[32px] p-6 shadow-2xl relative overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Histórico da Sua Triagem Clínica</h2>
+                  <p className="text-xs text-[#8A8A9E]">Dados registrados para avaliação médica</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-mecura-neon/15 border border-mecura-neon/30 text-[10px] font-bold text-mecura-neon uppercase">
+                Salva
+              </span>
+            </div>
+
+            {answers?.objectives && answers.objectives.length > 0 && (
+              <div className="mb-4">
+                <span className="block text-[11px] font-bold text-[#8A8A9E] uppercase tracking-wider mb-2">Objetivos e Queixas Principais</span>
+                <div className="flex flex-wrap gap-2">
+                  {answers.objectives.map((obj: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-3 py-1.5 rounded-xl bg-mecura-neon/10 border border-mecura-neon/30 text-xs font-semibold text-mecura-neon"
+                    >
+                      {obj}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              {userName && (
+                <div className="bg-[#12121A] border border-white/5 rounded-xl p-3">
+                  <span className="block text-[10px] text-[#8A8A9E] uppercase">Paciente</span>
+                  <strong className="text-xs text-white">{userName}</strong>
+                </div>
+              )}
+              {(userCpf || answers?.cpf) && (
+                <div className="bg-[#12121A] border border-white/5 rounded-xl p-3">
+                  <span className="block text-[10px] text-[#8A8A9E] uppercase">CPF</span>
+                  <strong className="text-xs text-white">{userCpf || answers?.cpf}</strong>
+                </div>
+              )}
+              {(userBirthDate || answers?.birthDate) && (
+                <div className="bg-[#12121A] border border-white/5 rounded-xl p-3">
+                  <span className="block text-[10px] text-[#8A8A9E] uppercase">Nascimento</span>
+                  <strong className="text-xs text-white">{userBirthDate || answers?.birthDate}</strong>
+                </div>
+              )}
+              {answers?.intensity && (
+                <div className="bg-[#12121A] border border-white/5 rounded-xl p-3">
+                  <span className="block text-[10px] text-[#8A8A9E] uppercase">Intensidade</span>
+                  <strong className="text-xs text-white">{answers.intensity}/10</strong>
+                </div>
+              )}
+              {answers?.duration && (
+                <div className="bg-[#12121A] border border-white/5 rounded-xl p-3">
+                  <span className="block text-[10px] text-[#8A8A9E] uppercase">Tempo dos Sintomas</span>
+                  <strong className="text-xs text-white">{answers.duration}</strong>
+                </div>
+              )}
+              {(answers?.weight || answers?.height) && (
+                <div className="bg-[#12121A] border border-white/5 rounded-xl p-3">
+                  <span className="block text-[10px] text-[#8A8A9E] uppercase">Peso / Altura</span>
+                  <strong className="text-xs text-white">{answers.weight ? `${answers.weight}kg` : '-'} / {answers.height ? `${answers.height}cm` : '-'}</strong>
+                </div>
+              )}
+            </div>
+
+            {answers?.diseaseOrigin && (
+              <div className="bg-[#12121A] border border-white/5 rounded-xl p-3.5 mb-3">
+                <span className="block text-[10px] text-[#8A8A9E] uppercase mb-1">Histórico / Origem do Quadro</span>
+                <p className="text-xs text-white/90 leading-relaxed">{answers.diseaseOrigin}</p>
+              </div>
+            )}
+
+            {answers?.previousTreatments && (
+              <div className="bg-[#12121A] border border-white/5 rounded-xl p-3.5 mb-3">
+                <span className="block text-[10px] text-[#8A8A9E] uppercase mb-1">Tratamentos / Medicamentos Anteriores</span>
+                <p className="text-xs text-white/90 leading-relaxed">
+                  {Array.isArray(answers.previousTreatments) ? answers.previousTreatments.join(', ') : String(answers.previousTreatments)}
+                </p>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2.5 mt-4 pt-3 border-t border-white/5">
+              {!pagamento_consulta && !isConsultationFinished && (
+                <button
+                  onClick={() => navigate('/checkout')}
+                  className="flex-1 py-3 px-4 rounded-xl bg-mecura-neon text-black font-extrabold text-xs hover:brightness-110 transition-all cursor-pointer"
+                >
+                  Iniciar Consulta com Esta Triagem →
+                </button>
+              )}
+              <button
+                onClick={() => navigate('/onboarding')}
+                className="flex-1 py-3 px-4 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-xs hover:bg-white/10 transition-all cursor-pointer"
+              >
+                Editar / Atualizar Triagem
+              </button>
+            </div>
+          </div>
+        )}
+
         {!hasActualHistory ? (
           <div className="bg-[#161622] border border-[#262636] rounded-[32px] p-8 flex flex-col items-center text-center shadow-2xl relative overflow-hidden">
             <div className="w-16 h-16 rounded-full bg-mecura-neon/10 border border-mecura-neon/30 flex items-center justify-center text-3xl mb-4">
@@ -72,7 +188,7 @@ export function HistoryScreen() {
             </div>
             <h2 className="text-xl font-bold text-white mb-2">Nenhuma consulta finalizada</h2>
             <p className="text-sm text-mecura-silver max-w-xs mb-8 leading-relaxed">
-              O seu histórico médico, receitas oficiais e orientações estarão disponíveis aqui assim que a sua consulta com o Dr. Guilherme for concluída.
+              As suas receitas oficiais, laudos e orientações pós-consulta ficarão disponíveis aqui assim que o seu atendimento médico for concluído.
             </p>
             <div className="flex flex-col gap-3 w-full max-w-xs">
               {inQueue && pagamento_consulta && (

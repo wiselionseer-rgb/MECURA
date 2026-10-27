@@ -49,7 +49,20 @@ export function WelcomeScreen() {
           });
           if (vRes.ok) {
             const vData = await vRes.json();
-            if (vData.paid && vData.status === 'in-consultation') {
+            const u = vData.userData || vData.queueEntry;
+            if (u) {
+              if (u.name && typeof u.name === 'string' && u.name.trim().toLowerCase() !== 'paciente') {
+                useStore.getState().setUserName(u.name.trim());
+              }
+              if (u.email) useStore.getState().setUserEmail(u.email);
+              if (u.phone) useStore.getState().setUserPhone(u.phone);
+              if (u.cpf) useStore.getState().setUserCpf(u.cpf);
+              if (u.birthDate) useStore.getState().setUserBirthDate(u.birthDate);
+              if (u.answers && typeof u.answers === 'object') {
+                Object.entries(u.answers).forEach(([k, v]) => useStore.getState().setAnswer(k, v));
+              }
+            }
+            if ((vData.paid || vData.hasActivePaidConsultation) && vData.status === 'in-consultation') {
               useStore.setState({
                 patientId: user.uid,
                 activeConsultationId: user.uid,
@@ -67,7 +80,7 @@ export function WelcomeScreen() {
               navigate('/chat');
               return;
             }
-            if (vData.paid && vData.status === 'waiting') {
+            if ((vData.paid || vData.hasActivePaidConsultation) && vData.status === 'waiting') {
               useStore.setState({
                 patientId: user.uid,
                 activeConsultationId: user.uid,
@@ -104,7 +117,6 @@ export function WelcomeScreen() {
         navigate(st.consultationActive ? '/chat' : '/queue');
         return;
       }
-      st.clearTriage();
       navigate('/onboarding');
     }
   };

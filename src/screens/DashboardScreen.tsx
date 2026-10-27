@@ -46,17 +46,17 @@ import { LegalInfoModal } from '../components/LegalInfoModal';
 import { INSTITUTIONAL_INFO } from '../data/legalAndPrivacy';
 
 const containerVariants = {
-  hidden: { opacity: 0 },
+  hidden: { opacity: 1 },
   show: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1
+      staggerChildren: 0.05
     }
   }
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 1, y: 0 },
   show: { opacity: 1, y: 0, transition: { type: "spring" as any, stiffness: 300, damping: 24 } }
 };
 
@@ -69,7 +69,7 @@ export function DashboardScreen() {
     userName, selectedOffer, setSelectedOffer, scheduledConsultation, consultationStatus, 
     pagamento_consulta, pagamento_premium, isConsultationFinished, resetConsultation, 
     inQueue, consultationActive, setPagamentoConsulta, setPagamentoPremium, joinQueue, 
-    messages, subscribeToMessages, patientId, userPhone, userEmail, userCpf, userBirthDate, queue, subscribeToQueue 
+    messages, subscribeToMessages, patientId, userPhone, userEmail, userCpf, userBirthDate, answers, queue, subscribeToQueue 
   } = useStore();
   const { pharmacyOrders } = useAdminStore();
   
@@ -211,10 +211,10 @@ export function DashboardScreen() {
 
   // Sync messages and user payment status if user is logged in
   useEffect(() => {
-    const currentUid = auth.currentUser?.uid || localStorage.getItem('mecura_patientId');
+    const currentUid = auth.currentUser?.uid || patientId || localStorage.getItem('mecura_patientId');
     if (currentUid) {
       const unsub = subscribeToMessages(currentUid);
-      // Also check Firestore user document directly for payment persistence and identity restoration
+      // Also check Firestore user document directly for payment persistence, identity, and triage answers restoration
       getDoc(doc(db, 'users', currentUid)).then((snap) => {
         if (snap.exists()) {
           const u = snap.data();
@@ -226,6 +226,12 @@ export function DashboardScreen() {
           if (u.phone) useStore.getState().setUserPhone(u.phone);
           if (u.cpf) useStore.getState().setUserCpf(u.cpf);
           if (u.birthDate) useStore.getState().setUserBirthDate(u.birthDate);
+          if (u.answers && typeof u.answers === 'object') {
+            Object.entries(u.answers).forEach(([k, v]) => useStore.getState().setAnswer(k, v));
+          }
+          if (u.hasCompletedOnboarding) {
+            useStore.getState().setHasCompletedOnboarding(true);
+          }
 
           const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
           const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
@@ -267,9 +273,46 @@ export function DashboardScreen() {
         }
       }).catch(e => console.warn('Could not check user doc in dashboard:', e));
 
+      // Also verify payment & triage history via backend in case email matches another doc or serverQueue
+      fetch('/api/verify-patient-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId: currentUid,
+          email: auth.currentUser?.email || useStore.getState().userEmail || ''
+        })
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(vData => {
+          if (!vData) return;
+          const u = vData.userData || vData.queueEntry;
+          if (u) {
+            if (u.name && typeof u.name === 'string' && u.name.trim().toLowerCase() !== 'paciente' && !useStore.getState().userName) {
+              useStore.getState().setUserName(u.name.trim());
+            }
+            if (u.phone && !useStore.getState().userPhone) useStore.getState().setUserPhone(u.phone);
+            if (u.cpf && !useStore.getState().userCpf) useStore.getState().setUserCpf(u.cpf);
+            if (u.birthDate && !useStore.getState().userBirthDate) useStore.getState().setUserBirthDate(u.birthDate);
+            if (u.answers && typeof u.answers === 'object') {
+              Object.entries(u.answers).forEach(([k, v]) => useStore.getState().setAnswer(k, v));
+            }
+          }
+          if ((vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
+            setPagamentoConsulta(true);
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_pagamento', 'true');
+            useStore.setState({
+              pagamento_consulta: true,
+              inQueue: vData.status === 'waiting',
+              consultationActive: vData.status === 'in-consultation',
+              isConsultationFinished: false
+            });
+          }
+        })
+        .catch(() => {});
+
       return () => unsub();
     }
-  }, [subscribeToMessages, setPagamentoConsulta, setPagamentoPremium]);
+  }, [patientId, subscribeToMessages, setPagamentoConsulta, setPagamentoPremium, setSelectedOffer]);
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -785,7 +828,7 @@ export function DashboardScreen() {
             <h3 className="text-[18px] font-serif font-bold text-white tracking-tight">Serviços Rápidos</h3>
           </div>
           
-          <div className={`grid gap-3 ${!pagamento_premium ? 'grid-cols-3' : 'grid-cols-4'}`}>
+          <div className="grid grid-cols-4 gap-3">
             {/* Chat / Consultation */}
             <button 
               onClick={() => {
@@ -862,20 +905,78 @@ export function DashboardScreen() {
               <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Protocolo</span>
             </button>
 
-            {/* History (only if premium) */}
-            {pagamento_premium && (
-              <button 
-                onClick={() => navigate('/history')} 
-                className="flex flex-col items-center gap-2.5 group outline-none"
-              >
-                <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
-                  <History className="w-6 h-6 text-[#8A8A9E] group-hover:text-white transition-colors relative z-10" />
-                  <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Histórico</span>
-              </button>
-            )}
+            {/* History (always accessible so patient can view triage & consultation history) */}
+            <button 
+              onClick={() => navigate('/history')} 
+              className="flex flex-col items-center gap-2.5 group outline-none cursor-pointer"
+            >
+              <div className="w-full aspect-square rounded-[22px] bg-[#12121A] border border-white/5 flex items-center justify-center group-hover:bg-[#1A1A24] transition-colors shadow-[0_4px_15px_rgba(0,0,0,0.2)] relative overflow-hidden">
+                <History className="w-6 h-6 text-[#8A8A9E] group-hover:text-mecura-neon transition-colors relative z-10" />
+                <div className="absolute inset-0 bg-mecura-neon/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <span className="text-[11px] text-[#8A8A9E] font-medium group-hover:text-white transition-colors">Histórico</span>
+            </button>
           </div>
+
+          {/* Card de Histórico da Triagem do Paciente */}
+          {((answers?.objectives && answers.objectives.length > 0) || answers?.diseaseOrigin || answers?.height || answers?.weight) && (
+            <motion.div
+              variants={itemVariants}
+              className="mt-4 rounded-2xl p-4 bg-[#12121A] border border-mecura-neon/25 shadow-[0_4px_20px_rgba(0,0,0,0.3)]"
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-mecura-neon" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Sua Triagem Clínica Salva</h4>
+                    <p className="text-[11px] text-[#8A8A9E]">Dados clínicos vinculados à sua conta</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/history')}
+                  className="text-[11px] font-bold text-mecura-neon hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  Ver completa <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {answers?.objectives && answers.objectives.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {answers.objectives.map((obj: string, i: number) => (
+                    <span
+                      key={i}
+                      className="px-2.5 py-1 rounded-full bg-mecura-neon/10 border border-mecura-neon/30 text-[11px] font-semibold text-mecura-neon"
+                    >
+                      {obj}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(answers?.intensity || answers?.duration || answers?.height || answers?.weight) && (
+                <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-white/5 text-[11px] text-[#8A8A9E]">
+                  {answers?.intensity && (
+                    <div>
+                      <span className="block text-[10px] text-white/40 uppercase">Intensidade</span>
+                      <strong className="text-white">{answers.intensity}/10</strong>
+                    </div>
+                  )}
+                  {answers?.duration && (
+                    <div>
+                      <span className="block text-[10px] text-white/40 uppercase">Duração</span>
+                      <strong className="text-white">{answers.duration}</strong>
+                    </div>
+                  )}
+                  {(answers?.weight || answers?.height) && (
+                    <div>
+                      <span className="block text-[10px] text-white/40 uppercase">Físico</span>
+                      <strong className="text-white">{answers.weight ? `${answers.weight}kg` : ''} {answers.height ? `• ${answers.height}cm` : ''}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* Card de Pedido Aprovado na Farmácia */}
           {myApprovedPharmacyOrder && (
@@ -944,12 +1045,12 @@ export function DashboardScreen() {
                 <h4 className="text-sm font-bold text-white">
                   {isWaitingInQueue || isDoctorCalling || canEnterWaitingQueue
                     ? 'Voltar para a Fila'
-                    : 'Nova Triagem Clínica'}
+                    : (answers?.objectives && answers.objectives.length > 0 ? 'Atualizar / Refazer Triagem' : 'Nova Triagem Clínica')}
                 </h4>
                 <p className="text-xs text-[#8A8A9E]">
                   {isWaitingInQueue || isDoctorCalling || canEnterWaitingQueue
                     ? 'Atendimento em aberto • Nova triagem liberada após finalizar'
-                    : 'Iniciar avaliação para uma nova queixa'}
+                    : 'Revisar respostas da sua anamnese ou informar nova queixa'}
                 </p>
               </div>
             </div>
@@ -1193,7 +1294,7 @@ export function DashboardScreen() {
                 <div className="space-y-2.5 flex-1 flex flex-col justify-end">
                   <div className="flex items-center gap-3 bg-[#1A1A24] p-3 rounded-xl border border-white/5">
                     <Calendar className="w-4 h-4 text-[#A6FF00]" />
-                    <span className="text-[12px] font-bold text-white">{scheduledConsultation.date.split('-').reverse().join('/')}</span>
+                    <span className="text-[12px] font-bold text-white">{(scheduledConsultation?.date || '').split('-').reverse().join('/')}</span>
                   </div>
                   <div className="flex items-center gap-3 bg-[#1A1A24] p-3 rounded-xl border border-white/5">
                     <Clock className="w-4 h-4 text-[#A6FF00]" />

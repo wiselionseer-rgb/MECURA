@@ -34,6 +34,21 @@ export interface PatientClinicalAnswers {
   fuma?: boolean;
   bebida?: boolean;
   exercicio?: boolean;
+  diseaseOrigin?: string;
+  tristeza?: boolean;
+  foco?: boolean;
+  memoria?: boolean;
+  irritado?: boolean;
+  cansado?: boolean;
+  dor_cabeca?: boolean;
+  dor_cabeca_details?: string;
+  preferredBrands?: string[];
+  preferredBrandNotes?: string;
+  adhdTestResult?: any;
+  autismTestResult?: any;
+  hcPlantCalculator?: any;
+  phq9Result?: any;
+  gad7Result?: any;
 }
 
 export function generateClinicalAnalysisFallback(
@@ -98,16 +113,23 @@ export function generateClinicalAnalysisFallback(
     /Uso de Fármacos \(Sim/i.test(textToScan)
   );
 
-  const combinedText = `${objectives.join(' ')} ${description} ${textToScan}`.toLowerCase();
+  const diseaseOrigin = patientData?.diseaseOrigin || extractFieldFromPrompt(textToScan, 'Origem e Evolução do Quadro:') || '';
+  const adhdRes = patientData?.adhdTestResult;
+  const autismRes = patientData?.autismTestResult;
+  const hcCalc = patientData?.hcPlantCalculator;
+  const phq9Res = patientData?.phq9Result;
+  const gad7Res = patientData?.gad7Result;
+
+  const combinedText = `${objectives.join(' ')} ${diseaseOrigin} ${description} ${textToScan}`.toLowerCase();
 
   // Pathology classification
-  const isPain = /dor|lombar|coluna|articular|artrite|artrose|muscular|fibromialgia|nervo|ciático|enxaqueca|cefaleia|algia/i.test(combinedText);
+  const isPain = /dor|lombar|coluna|articular|artrite|artrose|muscular|fibromialgia|nervo|ciático|enxaqueca|cefaleia|algia/i.test(combinedText) || !!patientData?.dor_cabeca;
   const isInsomnia = /sono|insônia|dormir|acordar|despertar|noturno|descanso/i.test(combinedText);
-  const isAnxiety = /ansiedade|pânico|estresse|nervosismo|tensão|angústia|burnout|tept/i.test(combinedText);
-  const isADHD = /tdah|foco|concentra|atenção|hiperatividade|produtividade|memória/i.test(combinedText);
-  const isDepression = /depressão|desânimo|tristeza|anedonia|apatia|fadiga|cansaço/i.test(combinedText);
+  const isAnxiety = /ansiedade|pânico|estresse|nervosismo|tensão|angústia|burnout|tept/i.test(combinedText) || !!patientData?.ansiedade_diag || !!patientData?.panico || !!patientData?.estresse;
+  const isADHD = /tdah|foco|concentra|atenção|hiperatividade|produtividade|memória/i.test(combinedText) || !!patientData?.foco || !!(adhdRes && adhdRes.scorePercent >= 40);
+  const isDepression = /depressão|desânimo|tristeza|anedonia|apatia|fadiga|cansaço/i.test(combinedText) || !!patientData?.tristeza;
   const isEpilepsy = /epilepsia|convuls|crise|convulsiva/i.test(combinedText);
-  const isAutism = /autismo|tea|espectro/i.test(combinedText);
+  const isAutism = /autismo|tea|espectro/i.test(combinedText) || !!(autismRes && autismRes.scorePercent >= 40);
 
   // Determine Primary Syndrome
   let primarySyndrome = "Transtorno de Ansiedade Generalizada, Tensão Psicoemocional e Desregulação do Eixo HPA";
@@ -1065,11 +1087,54 @@ export function generateClinicalAnalysisFallback(
     riskBulletPoints.push(`🍽️ **Trato Gastrointestinal:** Queixas digestivas relatadas (${digestivoDetails}). Recomenda-se via sublingual com retenção de 60 a 90 segundos para absorção venosa direta, ou via inalatória vaporizada, poupando a mucosa gástrica.`);
   }
 
+  // If the patient selected specific registered medications in the HC Calculator, prepend them to the appropriate prescription list
+  if (hcCalc && Array.isArray(hcCalc.selectedMedications) && hcCalc.selectedMedications.length > 0) {
+    hcCalc.selectedMedications.forEach((m: any) => {
+      if (!m || !m.name) return;
+      const isNat = /soucannabis|abrace|abec/i.test(`${m.manufacturer || ''} ${m.category || ''} ${m.name}`);
+      const targetArr = isNat ? nationalList : importedList;
+      if (!targetArr.some(item => item.name.toLowerCase().trim() === String(m.name).toLowerCase().trim())) {
+        targetArr.unshift({
+          name: m.name,
+          indication: `Medicamento selecionado pelo(a) paciente no Dimensionamento Técnico HC (${m.dailyMg || ''} mg/dia)`,
+          usage: `Administrar **${m.dailyUnits || 1} ${m.unitLabel || 'unidades/dia'}** conforme titulação médica (${m.dailyMg || ''} mg/dia).`,
+          notes: `Fabricante/Origem: ${m.manufacturer || 'Catálogo Oficial'} • Integrado automaticamente da Calculadora Técnica HC.`
+        });
+      }
+    });
+  }
+
+  const individualTestsBullets: string[] = [];
+  if (adhdRes && adhdRes.scorePercent !== undefined) {
+    individualTestsBullets.push(
+      `- **Rastreio Validado de TDAH (ASRS-18 OMS + Matriz GAD-7/PHQ-9):** Compatibilidade de **${adhdRes.scorePercent}%** (${adhdRes.classification || 'Avaliado'}) • Escore ASRS-18 Eq.: **${adhdRes.asrs18EquivalentScore ?? adhdRes.totalPoints}/${adhdRes.asrs18EquivalentScore !== undefined ? 72 : (adhdRes.maxPoints || 36)} pts**${adhdRes.gad7ComplementScore !== undefined ? ` | GAD-7: **${adhdRes.gad7ComplementScore}/21 pts**` : ''}${adhdRes.phq9ComplementScore !== undefined ? ` | PHQ-9: **${adhdRes.phq9ComplementScore}/27 pts**` : ''}.`
+    );
+  }
+  if (autismRes && autismRes.scorePercent !== undefined) {
+    individualTestsBullets.push(
+      `- **Mapeamento Validado de Autismo / TEA (AQ-10 Cambridge — ${autismRes.targetProfile || 'Adulto'}):** Compatibilidade de **${autismRes.scorePercent}%** (${autismRes.classification || 'Avaliado'}) • Escore AQ-10 Eq.: **${autismRes.aq10EquivalentScore ?? autismRes.totalPoints}/${autismRes.aq10EquivalentScore !== undefined ? 10 : (autismRes.maxPoints || 36)} pts**${autismRes.gad7ComplementScore !== undefined ? ` | GAD-7: **${autismRes.gad7ComplementScore}/21 pts**` : ''}${autismRes.phq9ComplementScore !== undefined ? ` | PHQ-9: **${autismRes.phq9ComplementScore}/27 pts**` : ''}.`
+    );
+  }
+  if (!adhdRes && !autismRes && (phq9Res?.score !== undefined || gad7Res?.score !== undefined)) {
+    individualTestsBullets.push(
+      `- **Escalas Psicométricas (GAD-7 / PHQ-9):** ${gad7Res?.score !== undefined ? `GAD-7 Ansiedade: **${gad7Res.score}/21 pts** ` : ''}${phq9Res?.score !== undefined ? `PHQ-9 Humor/Depressão: **${phq9Res.score}/27 pts**` : ''}.`
+    );
+  }
+  if (hcCalc && (hcCalc.annualPlants || hcCalc.dailyDoseMg)) {
+    const hcMedsText = Array.isArray(hcCalc.selectedMedications) && hcCalc.selectedMedications.length > 0
+      ? hcCalc.selectedMedications.map((m: any) => `${m.name} (${m.dailyUnits} ${m.unitLabel || 'un/dia'})`).join(' + ')
+      : (hcCalc.condition || '');
+    individualTestsBullets.push(
+      `- **Dimensionamento Técnico Calculadora HC (Autocultivo Medicinal):** **${hcCalc.annualPlants} plantas/ano** (${hcCalc.plantsPerCycle} plantas/ciclo • cultivo ${hcCalc.cultivationType || 'indoor'}) para suprir **${hcCalc.dailyDoseMg} mg/dia**${hcMedsText ? ` • Base escolhida: **${hcMedsText}**` : ''}.`
+    );
+  }
+
   return `
 ### 1. Diagnóstico Sindrômico e Avaliação Clínica
 - **Condição Primária:** **${primarySyndrome}**
-- **Sintomatologia:** Queixa relatada com intensidade **${intensity}/10**, de caráter **${duration}**.
-- **Histórico e Dados do Paciente:** Altura **${height}m**, Peso **${weight}kg**, Sexo **${sex}**. ${description ? `Detalhes: *"${description}"*.` : ''}
+- **Objetivos / Queixas da Triagem:** **${objectives.length > 0 ? objectives.join(', ') : 'Modulação Endocanabinoide'}**
+- **Sintomatologia:** Queixa relatada com intensidade **${intensity}/10**, de caráter **${duration}**.${diseaseOrigin ? `\n- **Origem e Evolução Relatadas na Triagem:** *"${diseaseOrigin}"*` : ''}
+- **Histórico e Dados do Paciente:** Altura **${height}m**, Peso **${weight}kg**, Sexo **${sex}**. ${description ? `Detalhes: *"${description}"*.` : ''}${individualTestsBullets.length > 0 ? `\n${individualTestsBullets.join('\n')}` : ''}
 - **Avaliação Endocanabinoide:** A intensidade dos sintomas sugere um desequilíbrio sustentado no tônus endocanabinoide basal (Deficiência Clínica Endocanabinoide), justificando a reposição e neuromodulação fitocanabinoide direcionada.
 
 ### 2. Racional Terapêutico Fisiopatológico

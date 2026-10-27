@@ -495,80 +495,46 @@ async function startServer() {
         return res.status(400).json({ error: "Missing patient id" });
       }
 
-      // Check user document in Firestore to prevent adding unpaid registrations to the doctor's queue
+      let existingUserDocData: any = null;
       try {
         const userSnap = await getDoc(doc(db, "users", patient.id));
-        const u = userSnap.exists() ? userSnap.data() : null;
-        const isAwaitingOrFinishedInDoc = !!(
-          u && (
-            u.consultationStatus === 'awaiting_payment' ||
-            u.consultationStatus === 'not_started' ||
-            u.consultationStatus === 'finished' ||
-            u.isConsultationFinished === true
-          )
-        );
-        const hasRealPayment = !!(
-          patient.freshPayment === true ||
-          patient.pagamento_consulta === true ||
-          patient.hasPaid === true ||
-          patient.isPaid === true ||
-          (!isAwaitingOrFinishedInDoc && (
-            u && (
-              u.pagamento_consulta === true || 
-              u.hasPaid === true || 
-              u.isPaid === true || 
-              u.bypassedPayment === true
-            )
-          ))
-        );
-        if (!hasRealPayment) {
-          console.warn(`[QUEUE FORCE-JOIN] Bloqueado paciente ${patient.id} sem pagamento confirmado para nova consulta.`);
-          return res.status(403).json({ error: "Pagamento não confirmado para esta consulta" });
+        if (userSnap.exists()) {
+          existingUserDocData = userSnap.data();
         }
-
-        const rawPatientPlan = patient.plan || patient.selectedOffer;
-        const resolvedPatientPlan: 'basic' | 'premium' | 'complete' | 'psychologist' =
-          (rawPatientPlan === 'complete' || rawPatientPlan === 'premium' || rawPatientPlan === 'psychologist' || rawPatientPlan === 'basic')
-            ? rawPatientPlan
-            : (patient.isPremium === true ? 'premium' : 'basic');
-        const isUserPrem = resolvedPatientPlan === 'premium' || resolvedPatientPlan === 'complete';
-        const resolvedQueueType = patient.queueType || (resolvedPatientPlan === 'psychologist' ? 'psychologist' : 'doctor');
-
-        // Garantir que o status do usuário em users reflita pagamento e plano ativo
-        setDoc(doc(db, "users", patient.id), {
-          pagamento_consulta: true,
-          pagamento_premium: isUserPrem,
-          hasPaid: true,
-          isPaid: true,
-          isPremium: isUserPrem,
-          plan: resolvedPatientPlan,
-          queueType: resolvedQueueType,
-          selectedOffer: resolvedPatientPlan,
-          tier: isUserPrem ? 'Premium' : 'basic',
-          inQueue: true,
-          isConsultationFinished: false,
-          consultationActive: false,
-          consultationStatus: 'waiting'
-        }, { merge: true }).catch(() => {});
       } catch (err) {
-        console.warn("[QUEUE FORCE-JOIN] Erro ao verificar usuário:", err);
+        console.warn("[QUEUE FORCE-JOIN] Erro ao ler usuário:", err);
       }
 
-      const rawCleanPlan = patient.plan || patient.selectedOffer;
+      const rawCleanPlan = patient.plan || patient.selectedOffer || existingUserDocData?.plan || existingUserDocData?.selectedOffer;
       const finalCleanPlan: 'basic' | 'premium' | 'complete' | 'psychologist' =
         (rawCleanPlan === 'complete' || rawCleanPlan === 'premium' || rawCleanPlan === 'psychologist' || rawCleanPlan === 'basic')
           ? rawCleanPlan
-          : (patient.isPremium === true ? 'premium' : 'basic');
+          : (patient.isPremium === true || existingUserDocData?.isPremium === true ? 'premium' : 'basic');
       const finalIsPrem = finalCleanPlan === 'premium' || finalCleanPlan === 'complete';
-      const finalQueueType = patient.queueType || (finalCleanPlan === 'psychologist' ? 'psychologist' : 'doctor');
+      const finalQueueType = patient.queueType || existingUserDocData?.queueType || (finalCleanPlan === 'psychologist' ? 'psychologist' : 'doctor');
+
+      const resolvedNameFromPayload = (patient.patientName || patient.name || '').trim();
+      const resolvedNameFromDoc = (existingUserDocData?.name || existingUserDocData?.patientName || '').trim();
+      const finalPatientName =
+        (resolvedNameFromPayload && resolvedNameFromPayload.toLowerCase() !== 'paciente')
+          ? resolvedNameFromPayload
+          : (resolvedNameFromDoc && resolvedNameFromDoc.toLowerCase() !== 'paciente')
+            ? resolvedNameFromDoc
+            : (resolvedNameFromPayload || resolvedNameFromDoc || 'Paciente');
+
+      const mergedAnswers = {
+        ...(existingUserDocData?.answers || {}),
+        ...(patient.answers || {})
+      };
 
       const cleanPatient = {
         id: patient.id,
-        patientName: (patient.patientName || patient.name || 'Paciente').trim(),
-        email: patient.email || '',
-        phone: patient.phone || '',
-        cpf: patient.cpf || '',
-        birthDate: patient.birthDate || '',
+        patientName: finalPatientName,
+        name: finalPatientName,
+        email: patient.email || existingUserDocData?.email || '',
+        phone: patient.phone || existingUserDocData?.phone || mergedAnswers?.phone || '',
+        cpf: patient.cpf || existingUserDocData?.cpf || mergedAnswers?.cpf || '',
+        birthDate: patient.birthDate || existingUserDocData?.birthDate || mergedAnswers?.birthDate || '',
         tier: finalIsPrem ? 'Premium' : 'basic',
         isPremium: finalIsPrem,
         plan: finalCleanPlan,
@@ -579,8 +545,10 @@ async function startServer() {
         hasUnread: patient.hasUnread !== undefined ? patient.hasUnread : true,
         lastMessageAt: new Date().toISOString(),
         lastMessageText: patient.lastMessageText || (finalQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Aguardando atendimento médico'),
-        answers: patient.answers || {},
+        answers: mergedAnswers,
         pagamento_consulta: true,
+        hasPaid: true,
+        isPaid: true,
         pagamento_premium: finalIsPrem
       };
 
@@ -588,7 +556,7 @@ async function startServer() {
       const cleanEmail = (cleanPatient.email || '').trim().toLowerCase();
       const existingIdx = currentQueue.findIndex(p => 
         p.id === cleanPatient.id || 
-        (cleanEmail && p.email && p.email.trim().toLowerCase() === cleanEmail)
+        (cleanEmail && !cleanEmail.includes('sem-email') && p.email && p.email.trim().toLowerCase() === cleanEmail)
       );
       if (existingIdx >= 0) {
         const existing = currentQueue[existingIdx];
@@ -601,6 +569,7 @@ async function startServer() {
         currentQueue[existingIdx] = { 
           ...existing, 
           ...cleanPatient,
+          id: cleanPatient.id,
           status: existing.status === 'in-consultation' ? 'in-consultation' : 'waiting',
           patientName: mergedName,
           name: mergedName,
@@ -608,7 +577,10 @@ async function startServer() {
           phone: cleanPatient.phone || existing.phone || '',
           birthDate: cleanPatient.birthDate || existing.birthDate || '',
           email: cleanPatient.email || existing.email || '',
-          answers: { ...(existing.answers || {}), ...(cleanPatient.answers || {}) }
+          answers: { ...(existing.answers || {}), ...(cleanPatient.answers || {}) },
+          pagamento_consulta: true,
+          hasPaid: true,
+          isPaid: true
         };
       } else {
         currentQueue.unshift(cleanPatient);
@@ -619,27 +591,42 @@ async function startServer() {
       // Non-blocking background Firestore sync with timeout
       Promise.race([
         setDoc(doc(db, "queue", cleanPatient.id), cleanPatient, { merge: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2500))
       ]).catch((fsErr) => console.warn("[QUEUE FORCE-JOIN] Firestore queue warning:", fsErr));
 
+      const userSyncPayload: Record<string, any> = {
+        inQueue: true,
+        isConsultationFinished: false,
+        consultationActive: false,
+        consultationStatus: 'waiting',
+        pagamento_consulta: true,
+        hasPaid: true,
+        isPaid: true,
+        pagamento_premium: cleanPatient.isPremium,
+        isPremium: cleanPatient.isPremium,
+        plan: cleanPatient.plan,
+        tier: cleanPatient.tier,
+        queueType: cleanPatient.queueType,
+        selectedOffer: cleanPatient.selectedOffer,
+        hasCompletedOnboarding: true,
+        lastUpdated: new Date().toISOString()
+      };
+      if (cleanPatient.patientName && cleanPatient.patientName !== 'Paciente') {
+        userSyncPayload.name = cleanPatient.patientName;
+      }
+      if (cleanPatient.email && !cleanPatient.email.includes('sem-email')) {
+        userSyncPayload.email = cleanPatient.email;
+      }
+      if (cleanPatient.phone) userSyncPayload.phone = cleanPatient.phone;
+      if (cleanPatient.cpf) userSyncPayload.cpf = cleanPatient.cpf;
+      if (cleanPatient.birthDate) userSyncPayload.birthDate = cleanPatient.birthDate;
+      if (cleanPatient.answers && Object.keys(cleanPatient.answers).length > 0) {
+        userSyncPayload.answers = cleanPatient.answers;
+      }
+
       Promise.race([
-        setDoc(doc(db, "users", cleanPatient.id), {
-          inQueue: true,
-          isConsultationFinished: false,
-          consultationActive: false,
-          consultationStatus: 'waiting',
-          pagamento_consulta: true,
-          hasPaid: true,
-          isPaid: true,
-          pagamento_premium: cleanPatient.isPremium,
-          isPremium: cleanPatient.isPremium,
-          plan: cleanPatient.plan,
-          tier: cleanPatient.tier,
-          queueType: cleanPatient.queueType,
-          selectedOffer: cleanPatient.selectedOffer,
-          lastUpdated: new Date().toISOString()
-        }, { merge: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000))
+        setDoc(doc(db, "users", cleanPatient.id), userSyncPayload, { merge: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2500))
       ]).catch(() => {});
     } catch (e: any) {
       console.error("[QUEUE FORCE-JOIN] Error:", e);
@@ -746,12 +733,13 @@ async function startServer() {
         } catch {}
       }
 
-      if (!userData && cleanEmail) {
+      if ((!userData || !userData.answers || Object.keys(userData.answers || {}).length === 0) && cleanEmail) {
         try {
           const uQuery = await getDocs(query(collection(db, "users"), where("email", "==", cleanEmail)));
           if (!uQuery.empty) {
-            if (!targetId) targetId = uQuery.docs[0].id;
-            userData = uQuery.docs[0].data();
+            const matchedDoc = uQuery.docs.find(d => d.data()?.answers && Object.keys(d.data().answers).length > 0) || uQuery.docs[0];
+            if (!targetId) targetId = matchedDoc.id;
+            userData = { ...(matchedDoc.data() || {}), ...(userData || {}), answers: { ...(matchedDoc.data()?.answers || {}), ...(userData?.answers || {}) } };
           }
         } catch {}
       }
@@ -851,6 +839,8 @@ async function startServer() {
             status: (userData?.consultationStatus === 'in-consultation' ? 'in-consultation' : 'waiting'),
             joinedAt: recentUnconsumedPayment?.date || userData?.lastPaymentDate || new Date().toISOString(),
             pagamento_consulta: true,
+            hasPaid: true,
+            isPaid: true,
             pagamento_premium: isPrem,
             hasUnread: true,
             lastMessageAt: new Date().toISOString(),
@@ -906,18 +896,22 @@ async function startServer() {
       if (activeQueueEntry) {
         return res.json({
           success: true,
+          paid: true,
           hasActivePaidConsultation: true,
           status: activeQueueEntry.status || 'waiting',
           patientId: activeQueueEntry.id,
-          queueEntry: activeQueueEntry
+          queueEntry: activeQueueEntry,
+          userData: userData || null
         });
       }
 
       return res.json({
         success: true,
+        paid: false,
         hasActivePaidConsultation: false,
         status: (userData?.isConsultationFinished || userData?.consultationStatus === 'finished') ? 'finished' : (userData?.consultationStatus || 'none'),
-        patientId: targetId || null
+        patientId: targetId || null,
+        userData: userData || null
       });
     } catch (e: any) {
       console.error("[VERIFY PAYMENT] Error:", e);

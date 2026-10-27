@@ -1826,24 +1826,64 @@ export function DoctorDashboardScreen() {
       enrichedPatient.isPremium = resolvedIsPremium;
       (enrichedPatient as any).pagamento_premium = resolvedIsPremium;
 
-      // Deep-merge all triage answers from user profile, queue, active_consultations, and local queue entry
-      // so partial queue answers never overwrite the complete onboarding triage in users/{patient.id}.answers
-      const mergedAnswers = {
+      // Deep-merge all triage answers and individual tests from user profile, queue, active_consultations, and local queue entry
+      // so partial queue answers never overwrite the complete onboarding triage or individual test results
+      const allSources = [cd?.answers, qd?.answers, userData?.answers, patient.answers].filter(
+        (s): s is Record<string, any> => !!s && typeof s === 'object'
+      );
+      const mergedObjectives = Array.from(
+        new Set(
+          allSources.flatMap((s) =>
+            Array.isArray(s.objectives)
+              ? s.objectives.filter(Boolean)
+              : s.objective
+              ? [String(s.objective)]
+              : []
+          )
+        )
+      );
+      const mergedBrands = Array.from(
+        new Set(
+          allSources.flatMap((s) =>
+            Array.isArray(s.preferredBrands) ? s.preferredBrands.filter(Boolean) : []
+          )
+        )
+      );
+      const mergedDescLines: string[] = [];
+      allSources.forEach((s) => {
+        if (s.description && typeof s.description === 'string') {
+          s.description
+            .split('\n')
+            .map((l: string) => l.trim())
+            .filter(Boolean)
+            .forEach((line: string) => {
+              if (!mergedDescLines.includes(line)) mergedDescLines.push(line);
+            });
+        }
+      });
+
+      const mergedAnswers: Record<string, any> = {
         ...(cd?.answers || {}),
         ...(qd?.answers || {}),
         ...(userData?.answers || {}),
         ...(patient.answers || {}),
-        // Ensure non-empty arrays/strings from userData.answers take precedence if patient.answers had empty defaults
-        ...(Array.isArray(userData?.answers?.objectives) && userData.answers.objectives.length > 0 && (!Array.isArray(patient.answers?.objectives) || patient.answers.objectives.length === 0)
-          ? { objectives: userData.answers.objectives }
-          : {}),
+        ...(mergedObjectives.length > 0 ? { objectives: mergedObjectives } : {}),
+        ...(mergedBrands.length > 0 ? { preferredBrands: mergedBrands } : {}),
+        ...(mergedDescLines.length > 0 ? { description: mergedDescLines.join('\n') } : {}),
         ...(userData?.answers?.diseaseOrigin && !patient.answers?.diseaseOrigin ? { diseaseOrigin: userData.answers.diseaseOrigin } : {}),
-        ...(userData?.answers?.description && !patient.answers?.description ? { description: userData.answers.description } : {}),
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         isPremium: resolvedIsPremium,
         pagamento_premium: resolvedIsPremium,
       };
+      for (const tk of ['adhdTestResult', 'autismTestResult', 'hcPlantCalculator', 'phq9Result', 'gad7Result']) {
+        const bestTest =
+          patient.answers?.[tk] ||
+          userData?.answers?.[tk] ||
+          qd?.answers?.[tk] ||
+          cd?.answers?.[tk];
+        if (bestTest) mergedAnswers[tk] = bestTest;
+      }
       enrichedPatient.answers = mergedAnswers;
 
       if (userData) {
@@ -3431,11 +3471,87 @@ export function DoctorDashboardScreen() {
     return [...new Set(cids)]; // remove duplicates
   };
 
+  const resolveCompletePatientAnswers = (targetPatientIdOverride?: string | null): Record<string, any> => {
+    const resolvedId = targetPatientIdOverride !== undefined
+      ? targetPatientIdOverride
+      : (standaloneTargetPatientId || currentPatient?.id || null);
+    const qPatient = resolvedId ? queue.find(p => p.id === resolvedId) : null;
+    const hPatient = resolvedId ? consultationHistory.find(h => h.id === resolvedId) : null;
+    const isCurrent = currentPatient && (!resolvedId || currentPatient.id === resolvedId);
+
+    let msgAdhd: any = null;
+    let msgAutism: any = null;
+    if (isCurrent && Array.isArray(messages)) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i] as any;
+        if (!msgAdhd && m?.type === 'adhd_test_card' && m?.adhdTestData?.scorePercent !== undefined) {
+          msgAdhd = m.adhdTestData;
+        }
+        if (!msgAutism && m?.type === 'autism_test_card' && m?.autismTestData?.scorePercent !== undefined) {
+          msgAutism = m.autismTestData;
+        }
+      }
+    }
+
+    const sources = [
+      !currentPatient && !resolvedId ? answers : undefined,
+      (hPatient as any)?.answers,
+      qPatient?.answers,
+      isCurrent ? currentPatient.answers : undefined,
+    ].filter((s): s is Record<string, any> => !!s && typeof s === 'object');
+
+    const combined: Record<string, any> = {};
+    const objsSet = new Set<string>();
+    const brandsSet = new Set<string>();
+    const descLines: string[] = [];
+
+    sources.forEach(src => {
+      Object.entries(src).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') {
+          combined[k] = v;
+        } else if (combined[k] === undefined && v !== undefined) {
+          combined[k] = v;
+        }
+      });
+      if (Array.isArray(src.objectives)) {
+        src.objectives.filter(Boolean).forEach((o: string) => objsSet.add(String(o)));
+      } else if (src.objective) {
+        objsSet.add(String(src.objective));
+      }
+      if (Array.isArray(src.preferredBrands)) {
+        src.preferredBrands.filter(Boolean).forEach((b: string) => brandsSet.add(String(b)));
+      }
+      if (src.description && typeof src.description === 'string') {
+        src.description
+          .split('\n')
+          .map((l: string) => l.trim())
+          .filter(Boolean)
+          .forEach((line: string) => {
+            if (!descLines.includes(line)) descLines.push(line);
+          });
+      }
+    });
+
+    for (const tk of ['adhdTestResult', 'autismTestResult', 'hcPlantCalculator', 'phq9Result', 'gad7Result']) {
+      for (const src of sources) {
+        if (src[tk]) {
+          combined[tk] = { ...(combined[tk] || {}), ...src[tk] };
+        }
+      }
+    }
+    if (msgAdhd) combined.adhdTestResult = { ...(combined.adhdTestResult || {}), ...msgAdhd };
+    if (msgAutism) combined.autismTestResult = { ...(combined.autismTestResult || {}), ...msgAutism };
+
+    if (objsSet.size > 0) combined.objectives = Array.from(objsSet);
+    if (brandsSet.size > 0) combined.preferredBrands = Array.from(brandsSet);
+    if (descLines.length > 0) combined.description = descLines.join('\n');
+
+    return combined;
+  };
+
   const buildTriageReportDefaults = (type: 'inicial' | 'evolutivo' = medicalReportType) => {
     const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
-    const patientAnswers = currentPatient
-      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
-      : (answers || {});
+    const patientAnswers = resolveCompletePatientAnswers(currentPatient?.id || null);
     const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
@@ -3651,7 +3767,8 @@ export function DoctorDashboardScreen() {
     const rawSaved = loadSavedReport(patientKey, type, pName, currentPatient?.id);
 
     // Validate that any previously saved report in localStorage actually belongs to this patient
-    // (and wasn't polluted by an older session with a different patient's name in the text)
+    // and includes any new individual tests (TDAH, Autism, HC Calculator) completed by the patient
+    const currentAns = resolveCompletePatientAnswers(currentPatient?.id || null);
     let validSaved = rawSaved;
     if (rawSaved?.diagnosis && pName && pName.toLowerCase() !== 'paciente') {
       const matchInText = rawSaved.diagnosis.match(/paciente\s+([^,]+),\s*inscrito/i);
@@ -3660,6 +3777,15 @@ export function DoctorDashboardScreen() {
         if (nameInDiagnosis !== pName.trim().toLowerCase()) {
           validSaved = null;
         }
+      }
+      if (validSaved && currentAns?.adhdTestResult && !/ASRS-18|TDAH/i.test(validSaved.diagnosis)) {
+        validSaved = null;
+      }
+      if (validSaved && currentAns?.autismTestResult && !/TEA|Autismo|AQ-10/i.test(validSaved.diagnosis)) {
+        validSaved = null;
+      }
+      if (validSaved && currentAns?.hcPlantCalculator && !/Calculadora HC|Autocultivo/i.test(validSaved.diagnosis)) {
+        validSaved = null;
       }
     }
 
@@ -3682,9 +3808,7 @@ export function DoctorDashboardScreen() {
   const handleOpenPsychomotorReportEditor = () => {
     setStandaloneTargetPatientId(null);
     const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
-    const patientAnswers = currentPatient
-      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
-      : (answers || {});
+    const patientAnswers = resolveCompletePatientAnswers(currentPatient?.id || null);
     const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
     const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
     const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
@@ -3844,9 +3968,7 @@ export function DoctorDashboardScreen() {
     const qPatient = resolvedId
       ? (queue.find(p => p.id === resolvedId) || consultationHistory.find(h => h.id === resolvedId))
       : null;
-    const patientAnswers = (currentPatient && (!resolvedId || currentPatient.id === resolvedId))
-      ? { ...(qPatient?.answers || {}), ...(currentPatient.answers || {}) }
-      : (qPatient?.answers || answers || {});
+    const patientAnswers = resolveCompletePatientAnswers(resolvedId);
     const pName = (
       (currentPatient && (!resolvedId || currentPatient.id === resolvedId) ? (currentPatient.patientName || (currentPatient as any)?.name) : '') ||
       qPatient?.patientName ||
@@ -3999,6 +4121,9 @@ export function DoctorDashboardScreen() {
     let validSaved = rawSaved;
     if (rawSaved?.agronomicText && defaults.pName && defaults.pName.toLowerCase() !== 'paciente') {
       if (!rawSaved.agronomicText.toLowerCase().includes(defaults.pName.toLowerCase())) {
+        validSaved = null;
+      }
+      if (validSaved && defaults.patientAnswers?.hcPlantCalculator?.annualPlants && Number(validSaved.targetPlants) !== Number(defaults.patientAnswers.hcPlantCalculator.annualPlants)) {
         validSaved = null;
       }
     }
@@ -4614,7 +4739,7 @@ export function DoctorDashboardScreen() {
     }
     if (analysisResult && !force && selectedBrand === brandPreference && selectedNational === nationalPreference && selectedImported === importedPreference) return;
     
-    const patientAnswers = currentPatient?.answers || answers;
+    const patientAnswers = resolveCompletePatientAnswers(currentPatient?.id || null);
     
     setIsAnalyzing(true);
     if (force) setAnalysisResult(null);
@@ -4653,6 +4778,16 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         importedDirective = `MARCA IMPORTADA ESCOLHIDA: **CATÁLOGOS IMPORTADOS (Pangaia, Flowermed, GreenBudzCBD)**.`;
       }
 
+      const adhdTestSummary = patientAnswers?.adhdTestResult
+        ? `Realizado — Compatibilidade: ${patientAnswers.adhdTestResult.scorePercent}% (${patientAnswers.adhdTestResult.classification || 'Avaliado'}) | ASRS-18 Eq.: ${patientAnswers.adhdTestResult.asrs18EquivalentScore ?? patientAnswers.adhdTestResult.totalPoints}/72 pts | GAD-7: ${patientAnswers.adhdTestResult.gad7ComplementScore ?? '-'}/21 | PHQ-9: ${patientAnswers.adhdTestResult.phq9ComplementScore ?? '-'}/27`
+        : 'Não realizado';
+      const autismTestSummary = patientAnswers?.autismTestResult
+        ? `Realizado (${patientAnswers.autismTestResult.targetProfile || 'Adulto'}) — Compatibilidade: ${patientAnswers.autismTestResult.scorePercent}% (${patientAnswers.autismTestResult.classification || 'Avaliado'}) | AQ-10 Eq.: ${patientAnswers.autismTestResult.aq10EquivalentScore ?? patientAnswers.autismTestResult.totalPoints}/10 pts | GAD-7: ${patientAnswers.autismTestResult.gad7ComplementScore ?? '-'}/21 | PHQ-9: ${patientAnswers.autismTestResult.phq9ComplementScore ?? '-'}/27`
+        : 'Não realizado';
+      const hcCalcSummary = patientAnswers?.hcPlantCalculator
+        ? `Realizado — ${patientAnswers.hcPlantCalculator.annualPlants} plantas/ano (${patientAnswers.hcPlantCalculator.plantsPerCycle} plantas/ciclo, cultivo ${patientAnswers.hcPlantCalculator.cultivationType || 'indoor'}), Dose: ${patientAnswers.hcPlantCalculator.dailyDoseMg} mg/dia, Medicamentos base escolhidos: ${Array.isArray(patientAnswers.hcPlantCalculator.selectedMedications) ? patientAnswers.hcPlantCalculator.selectedMedications.map((m: any) => `${m.name} (${m.dailyUnits} ${m.unitLabel || 'un/dia'})`).join(' + ') : (patientAnswers.hcPlantCalculator.condition || 'Padrão')}`
+        : 'Não realizado';
+
       const prompt = `
         Atue como um Especialista Sênior em Medicina Canabinoide e Prescrição Médica de Alto Nível.
         Sua missão é fornecer uma análise clínica com PRECISÃO MÁXIMA, baseada em protocolos rigorosos e literatura médica atualizada, indicando os melhores tratamentos e medicamentos à base de cannabis medicinal.
@@ -4661,12 +4796,18 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         - ${nationalDirective}
         - ${importedDirective}
         
-        Dados Clínicos do Paciente:
+        Dados Clínicos do Paciente (Triagem Completa + Testes Individuais):
         - Queixa Principal / Objetivos: ${patientAnswers?.objectives?.join(', ') || 'Não informados'}
         - Intensidade do Sintoma: ${patientAnswers?.intensity || 'Não informada'}/10
         - Cronicidade/Duração: ${patientAnswers?.duration || 'Não informada'}
+        - Origem e Evolução do Quadro: ${patientAnswers?.diseaseOrigin || 'Não informada'}
         - História da Moléstia (Descrição): ${patientAnswers?.description || 'Não informada'}
         - Dados Biométricos: Altura ${patientAnswers?.height || 'Não informada'}m, Peso ${patientAnswers?.weight || 'Não informada'}kg, Sexo ${patientAnswers?.sex || 'Não informada'}
+        - Sintomas Cognitivos e Emocionais da Triagem: Tristeza/Desânimo (${patientAnswers?.tristeza ? 'Sim' : 'Não'}), Dificuldade de Foco (${patientAnswers?.foco ? 'Sim' : 'Não'}), Queixa de Memória (${patientAnswers?.memoria ? 'Sim' : 'Não'}), Irritabilidade (${patientAnswers?.irritado ? 'Sim' : 'Não'}), Cansaço/Fadiga (${patientAnswers?.cansado ? 'Sim' : 'Não'}), Dor de Cabeça/Enxaqueca (${patientAnswers?.dor_cabeca ? 'Sim' + (patientAnswers?.dor_cabeca_details ? ': ' + patientAnswers.dor_cabeca_details : '') : 'Não'}).
+        - Testes Individuais e Rastreios Neurocomportamentais Realizados pelo Paciente:
+          • Teste de TDAH (Escala ASRS-18 OMS + Matriz GAD-7/PHQ-9): ${adhdTestSummary}
+          • Teste de Autismo / TEA (AQ-10 Cambridge + Matriz GAD-7/PHQ-9): ${autismTestSummary}
+          • Dimensionamento Calculadora Técnica HC (Autocultivo Medicinal): ${hcCalcSummary}
         - Histórico Médico e Social COMPLETO: 
           Tratamento Atual (${patientAnswers?.tratamento_atual ? 'Sim' + (patientAnswers?.tratamento_atual_details ? ': ' + patientAnswers.tratamento_atual_details : '') : 'Não'}), 
           Uso de Fármacos (${patientAnswers?.remedios ? 'Sim' + (patientAnswers?.remedios_details ? ': ' + patientAnswers.remedios_details : '') : 'Não'}), 
@@ -4675,9 +4816,9 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
           Alergias (${patientAnswers?.alergia ? 'Sim' + (patientAnswers?.alergia_details ? ': ' + patientAnswers.alergia_details : '') : 'Não'}), 
           Problemas Digestivos (${patientAnswers?.digestivo ? 'Sim' + (patientAnswers?.digestivo_details ? ': ' + patientAnswers.digestivo_details : '') : 'Não'}), 
           Uso Prévio de Cannabis (${patientAnswers?.cannabis ? 'Sim' + (patientAnswers?.cannabis_details ? ': ' + patientAnswers.cannabis_details : '') : 'Não'}).
-        - Psicomotor e Riscos: Dirige (${patientAnswers?.dirige ? 'Sim' : 'Não'}), Opera Maquinário (${patientAnswers?.maquinario ? 'Sim' : 'Não'}), 
+        - Psicomotor e Riscos: Dirige (${patientAnswers?.dirige ? 'Sim' + (patientAnswers?.dirige_details ? ': ' + patientAnswers.dirige_details : '') : 'Não'}), Opera Maquinário (${patientAnswers?.maquinario ? 'Sim' + (patientAnswers?.maquinario_details ? ': ' + patientAnswers.maquinario_details : '') : 'Não'}), 
           Blitz/Frequente (${patientAnswers?.blitz ? 'Sim' : 'Não'}), Laudo Psicomotor (${patientAnswers?.laudo_psicomotor ? 'Sim' : 'Não'}).
-        - Cardiovascular e Saúde Mental: Arritmia (${patientAnswers?.arritmia ? 'Sim' : 'Não'}), 
+        - Cardiovascular e Saúde Mental: Arritmia (${patientAnswers?.arritmia ? 'Sim' + (patientAnswers?.arritmia_details ? ': ' + patientAnswers.arritmia_details : '') : 'Não'}), 
           Histórico Psicose/Esquizofrenia (${patientAnswers?.psicose_hist || patientAnswers?.esquizofrenia_diag || patientAnswers?.esquizofrenia_parente ? 'Sim' : 'Não'}), 
           Pânico/Ansiedade (${patientAnswers?.panico || patientAnswers?.ansiedade_diag ? 'Sim' : 'Não'}), Estresse (${patientAnswers?.estresse ? 'Sim' : 'Não'}).
         - Hábitos de Vida: Fuma (${patientAnswers?.fuma ? 'Sim' : 'Não'}), Bebida Alcoólica (${patientAnswers?.bebida ? 'Sim' : 'Não'}), 

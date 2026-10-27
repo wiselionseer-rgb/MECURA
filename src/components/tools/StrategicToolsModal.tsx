@@ -25,6 +25,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { useAdminStore } from '../../store/useAdminStore';
+import { auth, db } from '../../firebase';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import {
   cbdGuideData,
   CBDProduct,
@@ -828,125 +830,199 @@ export const StrategicToolsModal: React.FC<StrategicToolsModalProps> = ({
     }
   };
 
-  const handleProceedFromAdhd = () => {
-    const existingObjs: string[] = Array.isArray(answers?.objectives) ? answers.objectives : [];
-    const mergedObjs = Array.from(
-      new Set(['TDAH', 'Aumento do Foco', 'Controle da Ansiedade', ...existingObjs])
-    );
-    const summaryText = `[Rastreio Validado ASRS-18 (OMS) + Matriz GAD-7/PHQ-9: ${adhdPercentage}% — ${adhdClassification.level}] Escore ASRS-18 Eq.: ${adhdMultiScale.asrs18Score}/72 pts | GAD-7 (Ansiedade): ${adhdMultiScale.gad7Score}/21 pts | PHQ-9 (Humor/Energia): ${adhdMultiScale.phq9Score}/27 pts. Relata desatenção executiva, hiperatividade da DMN e busca avaliação integrada médica e psicológica (CFP 06/2019).`;
+  const persistMergedTestAnswers = (
+    patch: Record<string, any>,
+    addedObjectives: string[],
+    summaryText: string
+  ) => {
+    let savedLocal: Record<string, any> = {};
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('mecura_triage_answers');
+        if (raw) savedLocal = JSON.parse(raw);
+      } catch {}
+    }
 
-    reset();
-    setAnswer('objectives', mergedObjs);
-    setAnswer('foco', true);
-    setAnswer('memoria', true);
-    setAnswer('intensity', adhdPercentage >= 70 ? '8' : '6');
-    setAnswer('phq9Result', {
-      score: adhdMultiScale.phq9Score,
-      completedAt: new Date().toISOString(),
+    const storeAnswers = useStore.getState().answers || {};
+    const baseAnswers: Record<string, any> = {
+      ...savedLocal,
+      ...storeAnswers,
+      ...(answers || {}),
+    };
+
+    const existingObjs: string[] = Array.isArray(baseAnswers.objectives)
+      ? baseAnswers.objectives.filter(Boolean)
+      : baseAnswers.objective
+      ? [String(baseAnswers.objective)]
+      : [];
+
+    const mergedObjs = Array.from(new Set([...addedObjectives, ...existingObjs]));
+
+    const prevDesc = String(baseAnswers.description || '').trim();
+    const nextDescription = prevDesc
+      ? prevDesc.includes(summaryText)
+        ? prevDesc
+        : `${prevDesc}\n${summaryText}`
+      : summaryText;
+
+    const nextAnswers: Record<string, any> = {
+      ...baseAnswers,
+      ...patch,
+      objectives: mergedObjs,
+      description: nextDescription,
+    };
+
+    Object.entries(nextAnswers).forEach(([k, v]) => {
+      setAnswer(k, v);
     });
-    setAnswer('gad7Result', {
-      score: adhdMultiScale.gad7Score,
-      completedAt: new Date().toISOString(),
-    });
-    setAnswer('adhdTestResult', {
-      scorePercent: adhdPercentage,
-      totalPoints: adhdTotalPoints,
-      maxPoints: adhdMaxPoints,
-      asrs18EquivalentScore: adhdMultiScale.asrs18Score,
-      gad7ComplementScore: adhdMultiScale.gad7Score,
-      phq9ComplementScore: adhdMultiScale.phq9Score,
-      questionsCount: ADHD_QUESTIONS.length,
-      classification: adhdClassification.level,
-      answers: adhdScores,
-      completedAt: new Date().toISOString(),
-    });
-    setAnswer(
-      'description',
-      answers?.description ? `${answers.description}\n${summaryText}` : summaryText
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('mecura_triage_answers', JSON.stringify(nextAnswers));
+      } catch {}
+    }
+
+    const targetUid =
+      auth.currentUser?.uid ||
+      useStore.getState().patientId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
+
+    if (targetUid) {
+      const nowIso = new Date().toISOString();
+      setDoc(
+        doc(db, 'users', targetUid),
+        {
+          answers: nextAnswers,
+          lastUpdated: nowIso,
+        },
+        { merge: true }
+      ).catch(() => {});
+
+      updateDoc(doc(db, 'queue', targetUid), {
+        answers: nextAnswers,
+      }).catch(() => {});
+
+      fetch('/api/queue/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: targetUid, answers: nextAnswers }),
+      }).catch(() => {});
+    }
+  };
+
+  const handleProceedFromAdhd = () => {
+    const summaryText = `[Rastreio Validado ASRS-18 (OMS) + Matriz GAD-7/PHQ-9: ${adhdPercentage}% — ${adhdClassification.level}] Escore ASRS-18 Eq.: ${adhdMultiScale.asrs18Score}/72 pts | GAD-7 (Ansiedade): ${adhdMultiScale.gad7Score}/21 pts | PHQ-9 (Humor/Energia): ${adhdMultiScale.phq9Score}/27 pts. Relata desatenção executiva, hiperatividade da DMN e busca avaliação integrada médica e psicológica (CFP 06/2019).`;
+    const nowIso = new Date().toISOString();
+
+    persistMergedTestAnswers(
+      {
+        foco: true,
+        memoria: true,
+        intensity: answers?.intensity || (adhdPercentage >= 70 ? '8' : '6'),
+        phq9Result: {
+          score: adhdMultiScale.phq9Score,
+          completedAt: nowIso,
+        },
+        gad7Result: {
+          score: adhdMultiScale.gad7Score,
+          completedAt: nowIso,
+        },
+        adhdTestResult: {
+          scorePercent: adhdPercentage,
+          totalPoints: adhdTotalPoints,
+          maxPoints: adhdMaxPoints,
+          asrs18EquivalentScore: adhdMultiScale.asrs18Score,
+          gad7ComplementScore: adhdMultiScale.gad7Score,
+          phq9ComplementScore: adhdMultiScale.phq9Score,
+          questionsCount: ADHD_QUESTIONS.length,
+          classification: adhdClassification.level,
+          answers: adhdScores,
+          completedAt: nowIso,
+        },
+      },
+      ['TDAH', 'Aumento do Foco', 'Controle da Ansiedade'],
+      summaryText
     );
+
     onClose();
     navigate('/onboarding');
   };
 
   const handleProceedFromAutism = () => {
-    const existingObjs: string[] = Array.isArray(answers?.objectives) ? answers.objectives : [];
-    const mergedObjs = Array.from(
-      new Set(['Autismo (TEA)', 'Equilíbrio emocional', 'Melhora do Sono', ...existingObjs])
-    );
     const targetLabel =
       autismTarget === 'adulto' ? 'Adulto (Próprio Paciente)' : 'Criança / Dependente';
     const summaryText = `[Rastreio Validado AQ-10 (Cambridge) + Matriz Sensorial GAD-7/PHQ-9 (${targetLabel}): ${autismPercentage}% — ${autismClassification.level}] Escore AQ-10 Eq.: ${autismMultiScale.aq10Score}/10 pts (Corte ≥ 6) | GAD-7 (Ansiedade): ${autismMultiScale.gad7Score}/21 pts | PHQ-9 (Exaustão/Sono): ${autismMultiScale.phq9Score}/27 pts. Busca regulação sensorial, homeostase endocanabinoide e suporte médico + psicológico (CFP 06/2019).`;
+    const nowIso = new Date().toISOString();
 
-    reset();
-    setAnswer('objectives', mergedObjs);
-    setAnswer('intensity', autismPercentage >= 66 ? '8' : '6');
-    setAnswer('phq9Result', {
-      score: autismMultiScale.phq9Score,
-      completedAt: new Date().toISOString(),
-    });
-    setAnswer('gad7Result', {
-      score: autismMultiScale.gad7Score,
-      completedAt: new Date().toISOString(),
-    });
-    setAnswer('autismTestResult', {
-      scorePercent: autismPercentage,
-      totalPoints: autismTotalPoints,
-      maxPoints: autismMaxPoints,
-      aq10EquivalentScore: autismMultiScale.aq10Score,
-      gad7ComplementScore: autismMultiScale.gad7Score,
-      phq9ComplementScore: autismMultiScale.phq9Score,
-      questionsCount: AUTISM_QUESTIONS.length,
-      targetProfile: targetLabel,
-      classification: autismClassification.level,
-      answers: autismScores,
-      completedAt: new Date().toISOString(),
-    });
-    setAnswer(
-      'description',
-      answers?.description ? `${answers.description}\n${summaryText}` : summaryText
+    persistMergedTestAnswers(
+      {
+        intensity: answers?.intensity || (autismPercentage >= 66 ? '8' : '6'),
+        phq9Result: {
+          score: autismMultiScale.phq9Score,
+          completedAt: nowIso,
+        },
+        gad7Result: {
+          score: autismMultiScale.gad7Score,
+          completedAt: nowIso,
+        },
+        autismTestResult: {
+          scorePercent: autismPercentage,
+          totalPoints: autismTotalPoints,
+          maxPoints: autismMaxPoints,
+          aq10EquivalentScore: autismMultiScale.aq10Score,
+          gad7ComplementScore: autismMultiScale.gad7Score,
+          phq9ComplementScore: autismMultiScale.phq9Score,
+          questionsCount: AUTISM_QUESTIONS.length,
+          targetProfile: targetLabel,
+          classification: autismClassification.level,
+          answers: autismScores,
+          completedAt: nowIso,
+        },
+      },
+      ['Autismo (TEA)', 'Equilíbrio emocional', 'Melhora do Sono'],
+      summaryText
     );
+
     onClose();
     navigate('/onboarding');
   };
 
   const handleProceedFromHcCalculator = () => {
-    const existingObjs: string[] = Array.isArray(answers?.objectives) ? answers.objectives : [];
-    const mergedObjs = Array.from(
-      new Set(['Habeas Corpus (Cultivo Medicinal)', ...existingObjs])
-    );
     const medsSummaryList = selectedHcMeds.map(
       (s) => `${s.med.name} (${s.dailyUnits} ${s.med.unitLabel})`
     );
     const summaryText = `[Dimensionamento Calculadora HC com Medicamentos Cadastrados: ${hcMetrics.annualPlants} plantas/ano (${hcMetrics.plantsPerCycle} plantas/ciclo, ${hcMetrics.cyclesPerYear} ciclos/ano) | Base Escolhida: ${medsSummaryList.join(' + ')} | Dose Total: ${hcMetrics.dailyDoseMg} mg/dia | Flores secas: ${hcMetrics.dryFlowersGrams}g/ano | Sementes: ${hcMetrics.seedsPerYear}/ano].`;
+    const nowIso = new Date().toISOString();
 
-    reset();
-    setAnswer('objectives', mergedObjs);
-    setAnswer('intensity', '8');
-    setAnswer('hcPlantCalculator', {
-      condition: medsSummaryList.join(' + '),
-      selectedMedications: selectedHcMeds.map((s) => ({
-        name: s.med.name,
-        manufacturer: s.med.manufacturer,
-        category: s.med.categoryBadge,
-        dailyUnits: s.dailyUnits,
-        unitLabel: s.med.unitLabel,
-        dailyMg: Math.round(s.dailyUnits * s.med.mgPerUnit),
-      })),
-      cultivationType,
-      dailyDoseMg: hcMetrics.dailyDoseMg,
-      annualExtractGrams: Number(hcMetrics.annualExtractGrams.toFixed(1)),
-      dryFlowersGrams: hcMetrics.dryFlowersGrams,
-      dryFlowersKg: Number(hcMetrics.dryFlowersKg.toFixed(3)),
-      wetFlowersKg: Number(hcMetrics.wetFlowersKg.toFixed(3)),
-      plantsPerCycle: hcMetrics.plantsPerCycle,
-      annualPlants: hcMetrics.annualPlants,
-      seedsPerYear: hcMetrics.seedsPerYear,
-      completedAt: new Date().toISOString(),
-    });
-    setAnswer(
-      'description',
-      answers?.description ? `${answers.description}\n${summaryText}` : summaryText
+    persistMergedTestAnswers(
+      {
+        intensity: answers?.intensity || '8',
+        hcPlantCalculator: {
+          condition: medsSummaryList.join(' + '),
+          selectedMedications: selectedHcMeds.map((s) => ({
+            name: s.med.name,
+            manufacturer: s.med.manufacturer,
+            category: s.med.categoryBadge,
+            dailyUnits: s.dailyUnits,
+            unitLabel: s.med.unitLabel,
+            dailyMg: Math.round(s.dailyUnits * s.med.mgPerUnit),
+          })),
+          cultivationType,
+          dailyDoseMg: hcMetrics.dailyDoseMg,
+          annualExtractGrams: Number(hcMetrics.annualExtractGrams.toFixed(1)),
+          dryFlowersGrams: hcMetrics.dryFlowersGrams,
+          dryFlowersKg: Number(hcMetrics.dryFlowersKg.toFixed(3)),
+          wetFlowersKg: Number(hcMetrics.wetFlowersKg.toFixed(3)),
+          plantsPerCycle: hcMetrics.plantsPerCycle,
+          annualPlants: hcMetrics.annualPlants,
+          seedsPerYear: hcMetrics.seedsPerYear,
+          completedAt: nowIso,
+        },
+      },
+      ['Habeas Corpus (Cultivo Medicinal)'],
+      summaryText
     );
+
     onClose();
     navigate('/onboarding');
   };
