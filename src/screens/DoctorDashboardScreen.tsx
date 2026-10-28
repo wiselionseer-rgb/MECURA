@@ -101,7 +101,7 @@ import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorM
 import { StandaloneDocumentModal, StandalonePatientData } from '../components/StandaloneDocumentModal';
 import { AreaPasswordModal } from '../components/AreaPasswordModal';
 import { ProgrammedPrescriptionsModal } from '../components/ProgrammedPrescriptionsModal';
-import { ProgrammedPrescriptionProfile, getProgrammedProfiles } from '../data/programmedPrescriptions';
+import { ProgrammedPrescriptionProfile, getProgrammedProfiles, getDoctorCustomModel } from '../data/programmedPrescriptions';
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
@@ -1185,7 +1185,7 @@ export function DoctorDashboardScreen() {
                 brand: updated.manufacturer || item.brand,
                 origin: updated.origin || item.origin,
                 type: updated.type || item.type,
-                concentration: updated.concentration || updated.activeIngredients || item.concentration,
+                concentration: updated.concentration || item.concentration,
                 activeIngredients: updated.activeIngredients || item.activeIngredients,
                 pharmaceuticalForm: updated.pharmaceuticalForm || item.pharmaceuticalForm,
                 quantity: updated.quantity || item.quantity,
@@ -4518,7 +4518,7 @@ export function DoctorDashboardScreen() {
     ];
 
     if (type === 'broad_cbn') {
-      prodName = 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml';
+      prodName = 'Broad Spectrum CBD + CBN 1065mg (15ml)';
       prodDesc = 'Extrato Broad Spectrum rico em CBD e CBN (1065mg em 15ml), 0% THC. Indicado para insônia, distúrbios do sono, ansiedade e desaceleração noturna.';
       dosage = [
         'Pingar 2 gotas pela manhã e 4 a noite.',
@@ -6275,6 +6275,32 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                     <Trash2 className="w-3 h-3 md:w-4 md:h-4 text-red-400" /> <span className="hidden md:inline">Limpar Prescrições</span><span className="md:hidden">Limpar</span>
                   </button>
                 )}
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const model = getDoctorCustomModel();
+                    handleApplyProgrammedFromDashboard(model, 'replace', currentPatient);
+                  }}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-500/20 hover:from-amber-500/35 hover:to-yellow-500/30 text-amber-200 hover:text-white border border-amber-400/40 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(245,158,11,0.2)] active:scale-95 cursor-pointer"
+                  title="Aplicar seu Modelo Salvo Padrão (Óleo Predominante CBD 100mg/ml + Broad Spectrum CBD+CBN 1065mg)"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="hidden md:inline">⭐ Modelo Salvo</span>
+                  <span className="md:hidden">⭐ Modelo</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setProgrammedTargetPatient(currentPatient);
+                    setShowProgrammedPrescriptionModal(true);
+                  }}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-purple-600/25 via-indigo-600/25 to-purple-600/25 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 hover:text-white border border-purple-500/40 rounded-xl text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(168,85,247,0.2)] active:scale-95 cursor-pointer"
+                  title="Abrir Perfis de Receitas Programadas Prontas (Ansiedade, Insônia, Depressão, etc.)"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                  <span className="hidden md:inline">Receitas Programadas</span>
+                  <span className="md:hidden">Programadas</span>
+                </button>
                 <button 
                   onClick={() => setShowAccessiblePlanModal(true)}
                   className="px-3 md:px-4 py-2 md:py-2.5 bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-emerald-500/25 hover:border-emerald-500/50 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(16,185,129,0.15)]"

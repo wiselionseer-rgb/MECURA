@@ -272,6 +272,8 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
     setTimeout(() => setIsSavedFeedback(false), 2500);
   };
 
+  if (!isOpen) return null;
+
   return (
     <AnimatePresence>
       <div 

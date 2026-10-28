@@ -22,7 +22,8 @@ import {
   Pill,
   AlertTriangle,
   ChevronRight,
-  Layers
+  Layers,
+  BookmarkCheck
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
@@ -33,7 +34,12 @@ import { useAdminStore } from '../store/useAdminStore';
 import { getBestCategoryIdForProduct, getCustomBulaData, applyCustomBulaToProduct, getDeletedProductNames } from '../utils/productCatalog';
 import { ProductBulaModal } from './ProductBulaModal';
 import { ProgrammedPrescriptionsModal } from './ProgrammedPrescriptionsModal';
-import { ProgrammedPrescriptionProfile } from '../data/programmedPrescriptions';
+import { 
+  ProgrammedPrescriptionProfile, 
+  getDoctorCustomModel, 
+  saveDoctorCustomModel, 
+  getProgrammedProfiles 
+} from '../data/programmedPrescriptions';
 
 interface PrescriptionEditorModalProps {
   isOpen: boolean;
@@ -224,6 +230,53 @@ export function PrescriptionEditorModal({
     setTimeout(() => setFeedbackBannerText(null), 5000);
   };
 
+  const handleLoadSavedModel = () => {
+    const model = getDoctorCustomModel();
+    if (!model || !model.items || model.items.length === 0) {
+      setFeedbackBannerText('Nenhum modelo salvo encontrado. Restaurando modelo padrão de Ansiedade.');
+      return;
+    }
+    const cleanItems = model.items.map(it => ({ ...it }));
+    setItems(cleanItems);
+    propSetItems(cleanItems);
+    if (model.defaultNotes) {
+      setNotes(model.defaultNotes);
+      propSetNotes(model.defaultNotes);
+    }
+    setIsSavedFeedback(true);
+    setFeedbackBannerText(`⭐ Modelo Salvo carregado com sucesso (${cleanItems.length} medicamentos)!`);
+    setTimeout(() => {
+      setIsSavedFeedback(false);
+      setFeedbackBannerText(null);
+    }, 4000);
+  };
+
+  const handleSaveAsDoctorModel = () => {
+    if (items.length === 0) {
+      alert('Adicione pelo menos um medicamento para salvar como modelo padrão.');
+      return;
+    }
+    const currentModel = getDoctorCustomModel();
+    const newProfile: ProgrammedPrescriptionProfile = {
+      id: 'perfil-ansiedade',
+      name: currentModel?.name || '⭐ Modelo Salvo • Ansiedade',
+      conditionTag: 'ansiedade',
+      badge: '⭐ Modelo Salvo',
+      color: 'from-blue-600 via-indigo-600 to-purple-600',
+      icon: 'Brain',
+      description: 'Protocolo clínico personalizado salvo pelo médico.',
+      items: items.map(it => ({ ...it })),
+      defaultNotes: notes
+    };
+    saveDoctorCustomModel(newProfile);
+    setIsSavedFeedback(true);
+    setFeedbackBannerText('⭐ Prescrição atual salva como seu Modelo Padrão com sucesso!');
+    setTimeout(() => {
+      setIsSavedFeedback(false);
+      setFeedbackBannerText(null);
+    }, 4000);
+  };
+
   // Synchronize when Bula is edited or saved anywhere in the system
   const [bulaVersion, setBulaVersion] = useState(0);
   useEffect(() => {
@@ -250,7 +303,7 @@ export function PrescriptionEditorModal({
                 brand: updated.manufacturer || item.brand,
                 origin: updated.origin || item.origin,
                 type: updated.type || item.type,
-                concentration: updated.concentration || updated.activeIngredients || item.concentration,
+                concentration: updated.concentration || item.concentration,
                 activeIngredients: updated.activeIngredients || item.activeIngredients,
                 pharmaceuticalForm: updated.pharmaceuticalForm || item.pharmaceuticalForm,
                 quantity: updated.quantity || item.quantity,
@@ -733,9 +786,9 @@ export function PrescriptionEditorModal({
         description: 'Extrato integral rico em CBD com alto rendimento terapêutico.'
       };
     } else if (type === 'broad_cbn') {
-      const enriched = enrichMedicationDetails('Broad SPECTRUM CBD, CBN 1065mg —————- 15ml', 'Associação Nacional', 'Nacional');
+      const enriched = enrichMedicationDetails('Broad Spectrum CBD + CBN 1065mg (15ml)', 'Associação Nacional', 'Nacional');
       newItem = {
-        name: 'Broad SPECTRUM CBD, CBN 1065mg —————- 15ml',
+        name: 'Broad Spectrum CBD + CBN 1065mg (15ml)',
         brand: 'Associação Nacional (Brasil)',
         origin: 'Nacional',
         activeIngredients: enriched.activeIngredients || 'Canabidiol (CBD) Broad Spectrum + Canabinol (CBN) - Total 1065mg',
@@ -1171,6 +1224,8 @@ export function PrescriptionEditorModal({
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
     <AnimatePresence>
       <div 
@@ -1234,6 +1289,27 @@ export function PrescriptionEditorModal({
                   <span>Visualizar A4</span>
                 </button>
               </div>
+
+              {/* Botões do Modelo Salvo pelo Médico */}
+              <button
+                type="button"
+                onClick={handleLoadSavedModel}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 text-amber-200 border border-amber-400/40 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+                title="Carregar seu Modelo Salvo Padrão (Óleo Predominante CBD 100mg/ml + Broad Spectrum CBD+CBN 1065mg)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>⭐ Carregar Modelo Salvo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveAsDoctorModel}
+                className="flex items-center gap-1.5 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/35 text-purple-200 border border-purple-500/40 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+                title="Salvar esta receita e posologias atuais como seu Modelo Padrão Permanente"
+              >
+                <BookmarkCheck className="w-3.5 h-3.5 text-purple-300" />
+                <span>Salvar como Modelo</span>
+              </button>
 
               {onSendPreviewToChat && (
                 <button
@@ -1447,6 +1523,14 @@ export function PrescriptionEditorModal({
                       </button>
                       <button
                         type="button"
+                        onClick={handleLoadSavedModel}
+                        className="px-3 py-1.5 bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-500/20 border border-amber-400/40 text-amber-200 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        title="Carregar seu Modelo Salvo Padrão (Óleo Predominante CBD + Broad Spectrum CBD/CBN)"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" /> ⭐ Meu Modelo Salvo
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleAddItem('blank')}
                         className="px-3 py-1.5 bg-mecura-surface border border-mecura-elevated text-white rounded-lg text-xs font-bold hover:bg-white/10 transition-colors flex items-center gap-1.5"
                       >
@@ -1457,7 +1541,7 @@ export function PrescriptionEditorModal({
                         onClick={() => handleAddItem('broad_cbn')}
                         className="px-2.5 py-1.5 bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-500/30 transition-colors flex items-center gap-1 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
                       >
-                        <Plus className="w-3.5 h-3.5" /> + Broad SPECTRUM CBD/CBN (15ml)
+                        <Plus className="w-3.5 h-3.5" /> + Broad Spectrum CBD + CBN (15ml)
                       </button>
                       <button
                         type="button"

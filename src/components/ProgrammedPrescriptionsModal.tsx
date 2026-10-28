@@ -35,7 +35,9 @@ import {
   ProgrammedPrescriptionProfile, 
   getProgrammedProfiles, 
   saveProgrammedProfiles, 
-  resetProgrammedProfilesToDefault 
+  resetProgrammedProfilesToDefault,
+  getDoctorCustomModel,
+  saveDoctorCustomModel
 } from '../data/programmedPrescriptions';
 import { PrescriptionItemData } from '../utils/pdfGenerator';
 import { useAdminStore } from '../store/useAdminStore';
@@ -730,6 +732,20 @@ export function ProgrammedPrescriptionsModal({
     });
   };
 
+  const handleRestoreDoctorModel = () => {
+    resetProgrammedProfilesToDefault();
+    const fresh = getProgrammedProfiles();
+    setProfiles(fresh);
+    setActiveProfileId('perfil-ansiedade');
+    showToast('⭐ Modelo Salvo restaurado com sucesso! (Óleo Predominante CBD + Broad Spectrum CBD+CBN)');
+  };
+
+  const handleSaveActiveAsDoctorModel = () => {
+    if (!activeProfile) return;
+    saveDoctorCustomModel(activeProfile);
+    showToast(`⭐ "${activeProfile.name}" definido como seu Modelo Salvo Permanente!`);
+  };
+
   const getProfileIcon = (icon: string) => {
     switch (icon) {
       case 'Moon': return <Moon className="w-5 h-5" />;
@@ -739,6 +755,8 @@ export function ProgrammedPrescriptionsModal({
       default: return <Brain className="w-5 h-5" />;
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <AnimatePresence>
@@ -782,8 +800,20 @@ export function ProgrammedPrescriptionsModal({
               </div>
             </div>
 
-            {/* Top Action Buttons: Novo Protocolo + Importar + Fechar */}
+            {/* Top Action Buttons: Restaurar Modelo + Novo Protocolo + Importar + Fechar */}
             <div className="flex items-center gap-2 ml-auto">
+              {/* Botão Restaurar Modelo Salvo Principal do Médico */}
+              <button
+                type="button"
+                onClick={handleRestoreDoctorModel}
+                className="px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 text-amber-200 border border-amber-400/40 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                title="Restaurar seu Modelo Salvo Padrão (Óleo Predominante CBD + Broad Spectrum CBD/CBN)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span className="hidden sm:inline">⭐ Restaurar Meu Modelo</span>
+                <span className="sm:hidden">⭐ Modelo</span>
+              </button>
+
               {/* Botão Adicionar Novos Protocolos */}
               <button
                 type="button"
@@ -1030,9 +1060,16 @@ export function ProgrammedPrescriptionsModal({
               {filteredProfiles.map((profile, profIdx) => {
                 const isSelected = profile.id === activeProfile?.id;
                 return (
-                  <button
+                  <div
                     key={`rx-profile-${profile.id || profIdx}-${profIdx}`}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActiveProfileId(profile.id);
+                      }
+                    }}
                     onClick={() => setActiveProfileId(profile.id)}
                     className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer relative group flex items-start gap-2.5 ${
                       isSelected
@@ -1086,7 +1123,7 @@ export function ProgrammedPrescriptionsModal({
                         isSelected ? 'text-mecura-neon translate-x-0.5' : 'text-[#505068]'
                       }`} />
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -1129,6 +1166,17 @@ export function ProgrammedPrescriptionsModal({
                         >
                           <Save className="w-3.5 h-3.5 text-emerald-400" />
                           <span>Salvar Protocolo</span>
+                        </button>
+
+                        {/* Botão: Salvar como Meu Modelo Padrão */}
+                        <button
+                          type="button"
+                          onClick={handleSaveActiveAsDoctorModel}
+                          className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 hover:text-white border border-amber-400/40 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                          title="Salvar este protocolo como seu Modelo Salvo Padrão Permanente"
+                        >
+                          <BookmarkCheck className="w-3.5 h-3.5 text-amber-300" />
+                          <span>⭐ Meu Modelo</span>
                         </button>
 
                         {/* Botão 3: Excluir Protocolo */}

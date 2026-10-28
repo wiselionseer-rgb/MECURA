@@ -144,6 +144,8 @@ export function PsychomotorReportEditorModal({
     await onSendToChat();
   };
 
+  if (!isOpen) return null;
+
   return (
     <AnimatePresence>
       <div 

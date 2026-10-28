@@ -267,6 +267,8 @@ export function MedicalReportEditorModal({
     await onSendToChat(currentData);
   };
 
+  if (!isOpen) return null;
+
   return (
     <AnimatePresence>
       <div 
