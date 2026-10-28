@@ -146,7 +146,7 @@ export function PrescriptionViewScreen() {
             <div className="flex justify-between items-end pt-6 border-t border-[#E4E4E7]">
               <div>
                 <p className="font-bold text-[#18181B]">Dr. Guilherme Taveira Dias</p>
-                <p className="text-[#52525B] text-xs font-semibold">CRM/MT 17259 • Estado MT • Clínico Geral</p>
+                <p className="text-[#52525B] text-xs font-semibold">CRM/MT 17259 • Clínico Geral</p>
                 <p className="text-[#71717A] text-xs mt-0.5">Tel: +55 65 3190-0629 • Wiselionseer@gmail.com</p>
                 <p className="text-[#71717A] text-xs">Primavera do Leste - MT • CEP 78850-000</p>
               </div>

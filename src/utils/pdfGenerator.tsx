@@ -42,6 +42,14 @@ export interface PatientPrescriptionData {
   customNotes?: string;
 }
 
+export const formatDoctorCrmLine = (crm: string, spec?: string) => {
+  const trimmedCrm = (crm || '').trim();
+  const hasUf = /(?:CRM[/-]?[A-Z]{2}|[/-][A-Z]{2}\b|\bMT\b|\bSP\b|\bRJ\b)/i.test(trimmedCrm);
+  const crmPart = hasUf ? trimmedCrm : `${trimmedCrm} • Estado MT`;
+  const specPart = spec || 'Clínico Geral';
+  return `${crmPart} • ${specPart}`;
+};
+
 export const isNationalProduct = (item: PrescriptionItemData): boolean => {
   const originLower = (item.origin || '').toLowerCase().trim();
   const brandLower = (item.brand || '').toLowerCase().trim();
@@ -731,7 +739,7 @@ export const generatePrescriptionPDF = async (
         <div className="text-center w-56">
           <div className="border-b border-[#94A3B8] mb-1" style={{ height: '0px' }} />
           <p className="text-[10.5px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.2' }}>{docName}</p>
-          <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • Clínico Geral</p>
+          <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, 'Clínico Geral')}</p>
           <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
         </div>
       </div>
@@ -819,7 +827,7 @@ export const generatePrescriptionPDF = async (
             </div>
             <div className="text-right">
               <h3 className="text-xs font-bold text-[#1E1B4B] m-0">{docName}</h3>
-              <p className="text-[9.5px] text-[#475569] font-semibold m-0">{docCrm} • Estado MT • {docSpec}</p>
+              <p className="text-[9.5px] text-[#475569] font-semibold m-0">{formatDoctorCrmLine(docCrm, docSpec)}</p>
               <p className="text-[8px] text-[#64748B] m-0">{docContactLine}</p>
               <p className="text-[8px] text-[#64748B] m-0">{docAddressLine}</p>
             </div>
@@ -1020,7 +1028,7 @@ export const generatePrescriptionPDF = async (
                     </div>
                     <div className="text-right">
                       <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
-                      <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • {docSpec}</p>
+                      <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, docSpec)}</p>
                       <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docContactLine}</p>
                       <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docAddressLine}</p>
                     </div>
@@ -1069,18 +1077,18 @@ export const generatePrescriptionPDF = async (
 
                   {/* Dispensação & Regulatory box when <= 2 items (or <= 3 without notes) so the signature is never clipped */}
                   {(page.items.length <= 2 || (page.items.length === 3 && !page.notesText && dispensacaoH < 80)) && renderDispensacaoBlock(isNationalGuide, isCompact)}
-
-                  {/* Place Doctor Signature & ICP-Brasil Badge */}
-                  <div className={page.items.length <= 3 ? "mt-3" : "mt-auto pt-1.5"}>
-                    {renderPrescriptionSignatureBlock()}
-                  </div>
                 </div>
 
-                {/* Slim Institutional Rodapé anchored at the very bottom */}
-                <div className="shrink-0 mt-auto pt-1 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
-                  <span>MECURA • Primavera do Leste - MT (CEP 78850-000)</span>
-                  <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
-                  <span>Receituário Oficial • Folha {page.pageNumber} de {page.totalPages}</span>
+                {/* Rodapé Oficial Fixado no Final da Folha (Assinatura + ICP-Brasil + Barra Institucional) */}
+                <div className="shrink-0 mt-auto pt-2 space-y-1.5">
+                  {renderPrescriptionSignatureBlock()}
+
+                  {/* Slim Institutional Rodapé anchored at the very bottom */}
+                  <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
+                    <span>MECURA • Primavera do Leste - MT (CEP 78850-000)</span>
+                    <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
+                    <span>Receituário Oficial • Folha {page.pageNumber} de {page.totalPages}</span>
+                  </div>
                 </div>
               </div>
             );
@@ -1486,7 +1494,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         </div>
         <div className="text-right">
           <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
-          <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • {docSpec}</p>
+          <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, docSpec)}</p>
           <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docContactLine}</p>
           <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docAddressLine}</p>
         </div>
@@ -1563,7 +1571,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
         <div className="flex flex-col items-center shrink-0 w-60">
           <div className="w-52 border-b border-[#94A3B8] mb-1" style={{ height: '0px' }}></div>
           <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.2' }}>{docName}</p>
-          <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • Clínico Geral</p>
+          <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, 'Clínico Geral')}</p>
           <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
         </div>
       </div>
@@ -1795,9 +1803,9 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                   {page.blocks.map((block, bIdx) => renderBlockElement(block, `${pageNumber}-${block.id}-${bIdx}`))}
                 </div>
 
-                {/* On the last page, place signature directly below content if there is ample space so there is never an empty void */}
+                {/* On the last page, anchor signature at the bottom of the page */}
                 {isLastPage && (
-                  <div className="mt-4">
+                  <div className="mt-auto pt-2">
                     {renderFinalSignatureAndFooter(pageNumber, totalPagesCount)}
                   </div>
                 )}
@@ -2036,7 +2044,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
         </div>
         <div className="text-right">
           <h3 className="text-xs font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.25' }}>{docName}</h3>
-          <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{docCrm} • Estado MT • {docSpec}</p>
+          <p className="text-[9.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, docSpec)}</p>
           <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docContactLine}</p>
           <p className="text-[8px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>{docAddressLine}</p>
         </div>
@@ -2066,7 +2074,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
         <div style={{ textAlign: 'center', minWidth: '240px' }}>
           <div style={{ borderBottom: '1.5px solid #1E1B4B', marginBottom: '5px', height: '14px' }}></div>
           <p style={{ margin: 0, fontSize: '11px', fontWeight: 800, color: '#1E1B4B' }}>{docName}</p>
-          <p style={{ margin: '1px 0 0 0', fontSize: '9px', fontWeight: 600, color: '#475569' }}>{docCrm} • Estado MT • Clínico Geral</p>
+          <p style={{ margin: '1px 0 0 0', fontSize: '9px', fontWeight: 600, color: '#475569' }}>{formatDoctorCrmLine(docCrm, 'Clínico Geral')}</p>
           <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
         </div>
       </div>
@@ -2159,15 +2167,20 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
                 overflow: 'hidden'
               }}
             >
-              <div>
+              <div className="flex-1 flex flex-col justify-start min-h-0">
                 {renderHeader(pIdx > 0)}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
                   {pageBlocks.map((b, bIdx) => (
                     <div key={`psy-p${pIdx}-${b.id || bIdx}-${bIdx}`}>{renderPsychomotorBlock(b)}</div>
                   ))}
                 </div>
-                {isLastPage && renderSignature()}
               </div>
+
+              {isLastPage && (
+                <div style={{ marginTop: 'auto', paddingTop: '10px', marginBottom: '8px' }}>
+                  {renderSignature()}
+                </div>
+              )}
 
               <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B' }}>
                 <span>Mecura • Laudo Médico de Aptidão Psicomotora e Cognitiva</span>

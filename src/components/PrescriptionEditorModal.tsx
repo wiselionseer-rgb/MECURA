@@ -3010,7 +3010,7 @@ export function PrescriptionEditorModal({
                           <div className="text-right">
                             <h3 className="text-sm font-bold text-[#1E1B4B]">{doctorName}</h3>
                             <p className="text-xs text-slate-600 font-semibold mt-0.5">
-                              {doctorCrm} • Estado MT • {doctorSpecialty.toLowerCase().includes('clínico geral') || doctorSpecialty.toLowerCase().includes('clinico geral') ? doctorSpecialty : `Clínico Geral • ${doctorSpecialty}`}
+                              {doctorCrm} • {doctorSpecialty.toLowerCase().includes('clínico geral') || doctorSpecialty.toLowerCase().includes('clinico geral') ? doctorSpecialty : `Clínico Geral • ${doctorSpecialty}`}
                             </p>
                             <p className="text-[10px] text-slate-500 mt-0.5">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
                             <p className="text-[10px] text-slate-500">Primavera do Leste - MT • CEP 78850-000</p>
@@ -3130,7 +3130,7 @@ export function PrescriptionEditorModal({
                       </div>
 
                       {/* Independent Signature Block for this guide */}
-                      <div className="pt-8 border-t border-slate-200 mt-8 flex justify-between items-end">
+                      <div className="pt-8 border-t border-slate-200 mt-auto flex justify-between items-end">
                         <div className="text-[10px] text-slate-500 space-y-0.5">
                           <p>Data de Emissão: <strong>{emissionDate}</strong> • Local: <strong>Primavera do Leste - MT (CEP 78850-000)</strong></p>
                           <p className="text-slate-600 font-medium">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
@@ -3140,7 +3140,7 @@ export function PrescriptionEditorModal({
                         <div className="text-center w-60">
                           <div className="border-b border-slate-400 mb-2" />
                           <p className="text-xs font-bold text-slate-900">{doctorName}</p>
-                          <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm} • Estado MT • Clínico Geral</p>
+                          <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm} • Clínico Geral</p>
                           <p className="text-[9px] text-slate-500 mt-0.5">+55 65 3190-0629 • Wiselionseer@gmail.com</p>
                         </div>
                       </div>
