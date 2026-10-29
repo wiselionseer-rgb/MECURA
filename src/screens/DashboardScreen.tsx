@@ -327,16 +327,24 @@ export function DashboardScreen() {
     }
     
     if (paymentStatus === 'success' || status === 'approved' || collectionStatus === 'approved' || (paymentId && (status === 'approved' || collectionStatus === 'approved'))) {
-      const savedOffer = (localStorage.getItem('last_offer') || selectedOffer || 'basic') as 'basic' | 'premium' | 'psychologist' | 'complete';
-      const isPremium = savedOffer === 'premium' || savedOffer === 'complete';
-      const planPrice = savedOffer === 'complete' ? 387.00 : (savedOffer === 'premium' ? 249.90 : (savedOffer === 'psychologist' ? 150.00 : 49.90));
-      const planTitle = savedOffer === 'complete' ? 'Plano Completo 360° (Médico + Psicólogo)' : (savedOffer === 'premium' ? 'Consulta Premium VIP' : (savedOffer === 'psychologist' ? 'Consulta com Psicólogo + Laudo' : 'Consulta Básica'));
-      
+      const urlPlan = params.get('plan');
+      const validPlans = ['basic', 'premium', 'psychologist', 'complete'];
+      const initialOffer = (
+        (urlPlan && validPlans.includes(urlPlan) ? urlPlan : null) ||
+        (localStorage.getItem('last_offer') && validPlans.includes(localStorage.getItem('last_offer') || '') ? localStorage.getItem('last_offer') : null) ||
+        (selectedOffer && validPlans.includes(selectedOffer) ? selectedOffer : null) ||
+        'basic'
+      ) as 'basic' | 'premium' | 'psychologist' | 'complete';
+
       const processSuccess = async () => {
+        let savedOffer = initialOffer;
         if (paymentId) {
           try {
             const res = await fetch(`/api/payment-status/${paymentId}`);
             const data = await res.json();
+            if (data.plan && validPlans.includes(data.plan)) {
+              savedOffer = data.plan;
+            }
             if (data.status && data.status !== 'approved' && data.status !== 'completed' && data.status !== 'in_process') {
               console.warn("Mercado Pago informou pagamento não aprovado:", data);
             }
@@ -345,16 +353,24 @@ export function DashboardScreen() {
           }
         }
 
-        const patientUid = auth.currentUser?.uid || useStore.getState().patientId || localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id') || ('paciente_' + Date.now());
-        const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
-        const patientEmail = auth.currentUser?.email || useStore.getState().userEmail || '';
+        const isPremium = savedOffer === 'premium' || savedOffer === 'complete';
+        const allowDualChat = savedOffer === 'complete';
+        const planPrice = savedOffer === 'complete' ? 387.00 : (savedOffer === 'premium' ? 249.90 : (savedOffer === 'psychologist' ? 150.00 : 49.90));
+        const planTitle = savedOffer === 'complete' ? 'Plano Completo 360° (Médico + Psicólogo)' : (savedOffer === 'premium' ? 'Consulta Premium VIP' : (savedOffer === 'psychologist' ? 'Consulta com Psicólogo + Laudo' : 'Consulta Básica'));
 
+        const st = useStore.getState();
+        const patientUid = auth.currentUser?.uid || st.patientId || localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id') || ('paciente_' + Date.now());
+        const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
+        const patientEmail = auth.currentUser?.email || st.userEmail || '';
+
+        setSelectedOffer(savedOffer);
         setPagamentoConsulta(true);
         setPagamentoPremium(isPremium);
         if (typeof window !== 'undefined') {
           localStorage.setItem('mecura_patientId', patientUid);
           localStorage.setItem('mecura_pagamento', 'true');
           localStorage.setItem('mecura_payment_approved_at', Date.now().toString());
+          localStorage.setItem('last_offer', savedOffer);
           if (isPremium) {
             localStorage.setItem('mecura_premium', 'true');
           } else {
@@ -377,6 +393,7 @@ export function DashboardScreen() {
               plan: savedOffer,
               selectedOffer: savedOffer,
               queueType: targetQueueType,
+              allowDualChat,
               isPremium,
               consultationStatus: 'waiting',
               inQueue: true,
@@ -397,6 +414,7 @@ export function DashboardScreen() {
             plan: savedOffer,
             selectedOffer: savedOffer,
             queueType: targetQueueType,
+            allowDualChat,
             isPremium,
             patientName: patientName || 'Paciente',
             patientEmail: patientEmail || '',
@@ -411,9 +429,14 @@ export function DashboardScreen() {
           id: patientUid,
           patientName: patientName,
           email: patientEmail,
+          phone: st.userPhone || '',
+          cpf: st.userCpf || '',
+          birthDate: st.userBirthDate || '',
+          answers: st.answers || {},
           isPremium,
           plan: savedOffer,
           queueType: targetQueueType,
+          allowDualChat,
           selectedOffer: savedOffer,
           freshPayment: true,
           pagamento_consulta: true,
@@ -444,7 +467,7 @@ export function DashboardScreen() {
       };
       processSuccess();
     }
-  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, joinQueue, navigate]);
+  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, setSelectedOffer, joinQueue, navigate]);
 
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
   const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);

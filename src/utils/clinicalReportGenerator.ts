@@ -542,8 +542,10 @@ CIDs Associados: ${cidsSecundarios}`;
   const agronomicText = `1. SÍNTESE DA TRIAGEM CLÍNICA E DEMANDA INDIVIDUAL DO(A) PACIENTE:
 O presente Parecer Técnico Agronômico foi elaborado de forma estritamente individualizada a partir dos dados da triagem médica do(a) paciente ${pName} (CPF: ${pCpf}), diagnosticado(a) com ${fullDiagnosisLabel}. ${triageAgroSummary.join(' ')}
 
-2. DIRETRIZ QUIMIOTÍPICA E AGRONÔMICA ESPECÍFICA PARA O CASO:
-Em consonância direta com as queixas principais da triagem (${conditionName}), o manejo agronômico deve priorizar o cultivo de ${chemotypeRecommendation}. Para suprir ininterruptamente a posologia diária de ${agronomicDoseMg} mg/dia (${annualGramsNum.toFixed(1)} g de extrato bruto/ano), dimensiona-se o cultivo anual de ${calculatedPlants} plantas fêmeas adultas (${plantsPerCycle} plantas por ciclo produtivo em regime de 4 ciclos/ano), partindo de ${seedsNeeded} sementes/propágulos anuais sob as Boas Práticas Agrícolas e de Coleta (GACP/OMS), garantindo autossuficiência terapêutica, rastreabilidade fitossanitária e segurança jurídica para fins de Salvo-Conduto / Habeas Corpus.`;
+2. DIRETRIZ QUIMIOTÍPICA, FORMULAÇÕES ARTESANAIS E DIMENSIONAMENTO PARA HABEAS CORPUS:
+Em consonância direta com as queixas da triagem (${conditionName}), o manejo agronômico residencial baseia-se exclusivamente na extração e manipulação artesanal caseira de fitoterápicos (óleos/extratos oleosos integrais em gotas, inflorescências secas padronizadas para vaporização terapêutica e pomadas medicinais tópicas), priorizando a seleção de ${chemotypeRecommendation}.
+Para suprir ininterruptamente a demanda diária estimada de ${agronomicDoseMg} mg/dia (${annualGramsNum.toFixed(1)} g de fitocanabinoides ativos/ano), dimensiona-se o cultivo anual de ${calculatedPlants} plantas fêmeas adultas (${plantsPerCycle} plantas por ciclo produtivo em regime de 4 ciclos rotativos anuais), partindo de ${seedsNeeded} sementes feminizadas com taxa de segurança de 30% sob as Boas Práticas Agrícolas e de Coleta (GACP/OMS).
+A produção própria artesanal é a única via garantidora contra custos farmacêuticos comerciais proibitivos e riscos de desabastecimento, respaldando a concessão do Salvo-Conduto / Habeas Corpus.`;
 
   const psychomotorText = `Declaro, para os devidos fins de direito, que o(a) paciente <strong>${pName}</strong>, inscrito(a) no CPF <strong>${pCpf}</strong>, encontra-se em acompanhamento médico regular neste Centro Integrado de Medicina Canabinoide em tratamento continuado para <strong>${conditionName} (${cidPrincipal})</strong>.
 
@@ -575,5 +577,232 @@ Ressalto que os fitocanabinoides têm finalidade estritamente terapêutica, sem 
     psychomotor: {
       text: psychomotorText
     }
+  };
+}
+
+export interface ArtisanalPrescriptionAnalysis {
+  artisanalItems: {
+    originalName: string;
+    artisanalName: string;
+    category: 'oleo' | 'flor' | 'pomada' | 'extracao';
+    categoryLabel: string;
+    pharmaceuticalForm: string;
+    route: string;
+    posology: string;
+    estimatedDailyMg: number;
+    estimatedDryFlowerGramsDaily: number;
+  }[];
+  totalDailyDoseMg: number;
+  totalDryFlowerGramsDaily: number;
+  totalDryFlowerKgAnnual: number;
+  dryFlowerMarginKgAnnual: number;
+  wetFlowerKgAnnual: number;
+  calculatedPlants: number;
+  plantsPerCycle: number;
+  seedsNeeded: number;
+  prescribedArtisanalText: string;
+  hasFlowers: boolean;
+  hasOils: boolean;
+  hasTopicals: boolean;
+  hasResins: boolean;
+}
+
+/**
+ * Builds and sizes agronomic requirements strictly from national and artisanal formulations.
+ * Converts any commercial/imported reference into the corresponding home artisanal preparation
+ * (Óleo Integral Artesanal, Flores Secas in natura para vaporização, Pomada/Bálsamo e Extratos brutos).
+ */
+export function buildAgronomicArtisanalMedications(
+  items: Array<{
+    name: string;
+    brand?: string;
+    origin?: string;
+    type?: string;
+    activeIngredients?: string;
+    concentration?: string;
+    pharmaceuticalForm?: string;
+    quantity?: string;
+    administrationRoute?: string;
+    dosage?: string[];
+    posologyHeader?: string;
+  }>,
+  patientCondition?: string,
+  hcCalcOverride?: any
+): ArtisanalPrescriptionAnalysis {
+  const effectiveItems = (items && items.length > 0)
+    ? items
+    : [
+        {
+          name: 'Óleo / Extrato Oleoso Artesanal Integral (Full Spectrum) CBD/THC',
+          brand: 'Produção Doméstica / Associação Brasileira',
+          origin: 'Nacional',
+          pharmaceuticalForm: 'Óleo em Gotas (Solução Oleosa Sublingual)',
+          concentration: '100 mg/mL (3.000 mg / 30 mL)',
+          administrationRoute: 'Via Sublingual / Oral',
+          dosage: ['Administrar 10 a 15 gotas pela manhã e 10 a 15 gotas à noite (via sublingual), conforme titulação gradual.']
+        },
+        {
+          name: 'Inflorescências / Flores Secas Medicinais in natura',
+          brand: 'Cultivo Próprio sob Boas Práticas (GACP)',
+          origin: 'Nacional',
+          pharmaceuticalForm: 'Flores Secas Curadas para Inalação',
+          concentration: 'Teor médio de 10% a 15% de fitocanabinoides',
+          administrationRoute: 'Via Inalatória (Vaporização Térmica sem Combustão)',
+          dosage: ['Inalar/Vaporizar 0.5g a 1.0g com vaporizador medicinal em picos álgicos ou crises agudas.']
+        },
+        {
+          name: 'Pomada / Bálsamo Fitoterápico Artesanal',
+          brand: 'Manipulação Caseira / Associação',
+          origin: 'Nacional',
+          pharmaceuticalForm: 'Pomada Dérmica Artesanal (Cera de Abelha + Óleo Infundido)',
+          concentration: '20 mg/g de canabinoides',
+          administrationRoute: 'Via Tópica Local',
+          dosage: ['Aplicar 1 a 2 vezes ao dia sobre a região afetada com massagem suave.']
+        }
+      ];
+
+  const parsedArtisanalList: ArtisanalPrescriptionAnalysis['artisanalItems'] = [];
+  let sumDailyMg = 0;
+  let sumDryFlowerGramsDaily = 0;
+  let hasFlowers = false;
+  let hasOils = false;
+  let hasTopicals = false;
+  let hasResins = false;
+
+  effectiveItems.forEach((it) => {
+    const combinedStr = `${it.name} ${it.type || ''} ${it.pharmaceuticalForm || ''} ${it.administrationRoute || ''} ${(it.dosage || []).join(' ')}`.toLowerCase();
+
+    let category: 'oleo' | 'flor' | 'pomada' | 'extracao' = 'oleo';
+    let categoryLabel = 'Óleo Artesanal em Gotas';
+    let artisanalName = '';
+    let form = it.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)';
+    let route = it.administrationRoute || 'Via Sublingual / Oral';
+    let posology = (it.dosage && it.dosage.length > 0) ? it.dosage.join(' ') : 'Conforme orientação médica e titulação individual.';
+    let estimatedDailyMg = 60;
+    let dryFlowerGramsDaily = 0;
+
+    if (/flor|infloresc|erva|in natura|buds|vaporiz|inala/i.test(combinedStr)) {
+      category = 'flor';
+      categoryLabel = 'Inflorescências / Flores Secas para Vaporização';
+      hasFlowers = true;
+      artisanalName = 'Inflorescências / Flores Secas Medicinais in natura (Autocultivo Doméstico para Vaporização Terapêutica)';
+      form = 'Flores Secas Curadas para Inalação';
+      route = 'Via Inalatória (Vaporizador Térmico Medicinal sem Combustão)';
+
+      const gramMatch = combinedStr.match(/(\d+(?:[.,]\d+)?)\s*(?:g|gramas?)\b/i);
+      let grams = gramMatch ? parseFloat(gramMatch[1].replace(',', '.')) : 1.0;
+      if (grams <= 0 || grams > 5) grams = 1.0;
+      dryFlowerGramsDaily = grams;
+      estimatedDailyMg = Math.round(grams * 100);
+    } else if (/pomada|creme|b[aá]lsamo|t[oó]pico|gel|lo[cç][aã]o/i.test(combinedStr)) {
+      category = 'pomada';
+      categoryLabel = 'Pomada / Bálsamo Medicinal Artesanal';
+      hasTopicals = true;
+      artisanalName = 'Pomada / Bálsamo Fitoterápico Artesanal (Manipulação Tópica Doméstica a partir de Biomassa Infundida)';
+      form = 'Pomada Dérmica Artesanal';
+      route = 'Via Tópica Local';
+      estimatedDailyMg = 40;
+      dryFlowerGramsDaily = 0.5;
+    } else if (/resina|rso|feco|pasta|concentrado|extra[cç][aã]o/i.test(combinedStr)) {
+      category = 'extracao';
+      categoryLabel = 'Extrato Concentrado / Resina Artesanal';
+      hasResins = true;
+      artisanalName = 'Extrato Concentrado / Resina Medicinal Artesanal (Extração Caseira Integral - RSO / FECO)';
+      form = 'Extrato Concentrado em Pasta/Resina';
+      route = 'Via Sublingual / Oral';
+      estimatedDailyMg = 150;
+      dryFlowerGramsDaily = Number((estimatedDailyMg / (100 * 0.8)).toFixed(2));
+    } else {
+      category = 'oleo';
+      categoryLabel = 'Óleo Artesanal Integral (Full Spectrum)';
+      hasOils = true;
+      artisanalName = 'Óleo / Extrato Oleoso Artesanal Integral (Full Spectrum) CBD/THC — Preparação Doméstica Caseira';
+      form = 'Solução Oleosa Sublingual (Gotas)';
+      route = 'Via Sublingual / Oral';
+
+      let mgPerMl = 100;
+      const concMatch = (it.concentration || combinedStr).match(/(\d+)\s*mg\s*\/?\s*(?:(\d+)\s*ml|ml)?/i);
+      if (concMatch) {
+        const totalMg = parseInt(concMatch[1], 10);
+        const totalMl = concMatch[2] ? parseInt(concMatch[2], 10) : 30;
+        mgPerMl = totalMl > 0 ? totalMg / totalMl : 100;
+      }
+
+      const dropMultMatch = combinedStr.match(/(\d+)\s*gotas?.*?(\d+)\s*x/i);
+      const singleDropMatch = combinedStr.match(/(\d+)\s*gotas?/i);
+      let totalDrops = 20;
+      if (dropMultMatch) {
+        totalDrops = parseInt(dropMultMatch[1], 10) * parseInt(dropMultMatch[2], 10);
+      } else if (singleDropMatch) {
+        totalDrops = parseInt(singleDropMatch[1], 10);
+        if (combinedStr.includes('2 vezes') || combinedStr.includes('2x')) totalDrops *= 2;
+        if (combinedStr.includes('3 vezes') || combinedStr.includes('3x')) totalDrops *= 3;
+      }
+      if (totalDrops <= 0 || totalDrops > 100) totalDrops = 20;
+
+      const dailyMl = totalDrops / 25;
+      estimatedDailyMg = Math.round(dailyMl * mgPerMl);
+      if (estimatedDailyMg < 20) estimatedDailyMg = 60;
+      dryFlowerGramsDaily = Number((estimatedDailyMg / 80).toFixed(2));
+    }
+
+    sumDailyMg += estimatedDailyMg;
+    sumDryFlowerGramsDaily += dryFlowerGramsDaily;
+
+    parsedArtisanalList.push({
+      originalName: it.name,
+      artisanalName,
+      category,
+      categoryLabel,
+      pharmaceuticalForm: form,
+      route,
+      posology,
+      estimatedDailyMg,
+      estimatedDryFlowerGramsDaily: Number(dryFlowerGramsDaily.toFixed(2))
+    });
+  });
+
+  let finalDailyDoseMg = sumDailyMg;
+  if (hcCalcOverride?.dailyDoseMg && Number(hcCalcOverride.dailyDoseMg) > 0) {
+    finalDailyDoseMg = Number(hcCalcOverride.dailyDoseMg);
+  } else if (finalDailyDoseMg < 120) {
+    finalDailyDoseMg = Math.max(120, finalDailyDoseMg);
+  }
+
+  const annualExtractGrams = (finalDailyDoseMg * 365) / 1000;
+  const dryFlowerKgBase = (annualExtractGrams / (0.10 * 0.80)) / 1000;
+  const dryFlowerMarginKgAnnual = dryFlowerKgBase * 1.3038;
+  const wetFlowerKgAnnual = dryFlowerMarginKgAnnual / 0.25;
+
+  let calculatedPlants = Math.max(16, Math.ceil((dryFlowerMarginKgAnnual * 1000) / 100));
+  if (hcCalcOverride?.annualPlants && Number(hcCalcOverride.annualPlants) > 0) {
+    calculatedPlants = Number(hcCalcOverride.annualPlants);
+  }
+  const plantsPerCycle = Math.max(4, Math.round(calculatedPlants / 4));
+  const seedsNeeded = Math.round(calculatedPlants * 1.3038);
+
+  const prescribedArtisanalText = parsedArtisanalList.map((item, idx) => {
+    return `${idx + 1}. ${item.artisanalName}
+• Categoria: ${item.categoryLabel} (${item.pharmaceuticalForm})
+• Via de Administração: ${item.route}
+• Posologia Médica Oficial: ${item.posology}
+• Finalidade no Cultivo: Extração e manipulação artesanal caseira (~${item.estimatedDailyMg} mg/dia de fitocanabinoides ativos).`;
+  }).join('\n\n');
+
+  return {
+    artisanalItems: parsedArtisanalList,
+    totalDailyDoseMg: finalDailyDoseMg,
+    totalDryFlowerGramsDaily: Number(sumDryFlowerGramsDaily.toFixed(2)),
+    totalDryFlowerKgAnnual: Number(dryFlowerKgBase.toFixed(3)),
+    dryFlowerMarginKgAnnual: Number(dryFlowerMarginKgAnnual.toFixed(3)),
+    wetFlowerKgAnnual: Number(wetFlowerKgAnnual.toFixed(3)),
+    calculatedPlants,
+    plantsPerCycle,
+    seedsNeeded,
+    prescribedArtisanalText,
+    hasFlowers,
+    hasOils,
+    hasTopicals,
+    hasResins
   };
 }

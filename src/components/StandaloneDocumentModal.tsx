@@ -241,7 +241,7 @@ export function StandaloneDocumentModal({
           dailyDoseMg: 5000,
           targetPlants: 18,
           agronomistName: "Wilian Dalenogare Pereira",
-          agronomistCrea: "CREA-PR 172.458/D"
+          agronomistCrea: "CREA-BA Nº 052193520-2"
         });
         setDirectSuccessMessage("Laudo Agronômico baixado com sucesso!");
       }

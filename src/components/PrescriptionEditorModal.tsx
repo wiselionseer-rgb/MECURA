@@ -26,7 +26,7 @@ import {
   BookmarkCheck
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
+import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, SANTA_GAIA_PRODUCTS, ACAFLOR_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 import { GREENBUDZ_PRODUCTS, GreenBudzProduct } from '../data/greenbudzCatalog';
@@ -269,6 +269,7 @@ export function PrescriptionEditorModal({
       defaultNotes: notes
     };
     saveDoctorCustomModel(newProfile);
+    window.dispatchEvent(new Event('mecura_bula_updated'));
     setIsSavedFeedback(true);
     setFeedbackBannerText('⭐ Prescrição atual salva como seu Modelo Padrão com sucesso!');
     setTimeout(() => {
@@ -417,6 +418,16 @@ export function PrescriptionEditorModal({
       addProd(p, 'ABRACE Esperança (Associação Nacional)', 'ABRACE');
     }
 
+    // 10. From Santa Gaia Official National Catalog (Brasil)
+    for (const p of SANTA_GAIA_PRODUCTS) {
+      addProd(p, 'Associação Santa Gaia (Nacional)', 'Santa Gaia');
+    }
+
+    // 11. From Acaflor Official National Catalog (Brasil)
+    for (const p of ACAFLOR_PRODUCTS) {
+      addProd(p, 'Associação Acaflor (Nacional)', 'Acaflor');
+    }
+
     return list;
   }, [productCategories, bulaVersion]);
 
@@ -445,6 +456,14 @@ export function PrescriptionEditorModal({
           (p.sourceCatalog || '').toLowerCase().includes('soucannabis') || 
           (p.name || '').toLowerCase().includes('soucannabis')
         );
+      } else if (librarySelectedCategory === 'santa_gaia' || librarySelectedCategory === 'santa_gaia_oficial') {
+        result = result.filter(p =>
+          /santa\s*gaia|santagaia/i.test(`${p.manufacturer || ''} ${p.sourceCatalog || ''} ${p.name || ''}`)
+        );
+      } else if (librarySelectedCategory === 'acaflor' || librarySelectedCategory === 'acaflor_oficial') {
+        result = result.filter(p =>
+          /acaflor|açaflor/i.test(`${p.manufacturer || ''} ${p.sourceCatalog || ''} ${p.name || ''}`)
+        );
       } else if (librarySelectedCategory === 'abecmed') {
         result = result.filter(p => 
           (p.manufacturer || '').toLowerCase().includes('abec') || 
@@ -465,7 +484,8 @@ export function PrescriptionEditorModal({
           (p.manufacturer || '').toLowerCase().includes('associação') ||
           (p.manufacturer || '').toLowerCase().includes('abec') ||
           (p.manufacturer || '').toLowerCase().includes('abrace') ||
-          (p.manufacturer || '').toLowerCase().includes('soucannabis')
+          (p.manufacturer || '').toLowerCase().includes('soucannabis') ||
+          /santa\s*gaia|acaflor|açaflor/i.test(`${p.manufacturer || ''} ${p.name || ''}`)
         );
       } else if (librarySelectedCategory === 'flowermed') {
         result = result.filter(p => (p.manufacturer || '').toLowerCase().includes('flowermed') || p.sourceCatalog === 'Flowermed');
@@ -618,9 +638,9 @@ export function PrescriptionEditorModal({
     const isSyrup = /syrup|xarope/i.test(product.name || product.type || '');
 
     const isNat = product.origin === 'Nacional' || 
-      /associação|associacao|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|brasil/i.test(product.manufacturer || '') ||
-      /associação|associacao|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|brasil/i.test(product.origin || '') ||
-      /abrace|abecmed|associação|associacao|santa cannabis|flor da vida/i.test(product.name || '');
+      /associação|associacao|abrace|abecmed|soucannabis|santa\s*gaia|santagaia|acaflor|açaflor|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|brasil/i.test(product.manufacturer || '') ||
+      /associação|associacao|abrace|abecmed|soucannabis|santa\s*gaia|santagaia|acaflor|açaflor|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|brasil/i.test(product.origin || '') ||
+      /abrace|abecmed|soucannabis|santa\s*gaia|santagaia|acaflor|açaflor|associação|associacao|santa cannabis|flor da vida/i.test(product.name || '');
 
     const enriched = enrichMedicationDetails(
       product.name,
@@ -1016,7 +1036,7 @@ export function PrescriptionEditorModal({
 
     if (saveToGlobalCatalog && addProduct) {
       try {
-        const catId = getBestCategoryIdForProduct(newProdOrigin, newProdBrand);
+        const catId = getBestCategoryIdForProduct(newProdOrigin, newProdBrand, cleanName);
         const prodData: CBDProduct = {
           name: cleanName,
           manufacturer: newProdBrand.trim() || 'Associação Brasileira',
@@ -1195,6 +1215,7 @@ export function PrescriptionEditorModal({
         notes
       });
     }
+    window.dispatchEvent(new Event('mecura_bula_updated'));
     setIsSavedFeedback(true);
     const now = new Date();
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });

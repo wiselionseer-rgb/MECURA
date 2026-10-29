@@ -1849,7 +1849,7 @@ export const StrategicToolsModal: React.FC<StrategicToolsModalProps> = ({
                   </div>
 
                   <p className="text-[11px] text-[#A0A0B4] leading-snug">
-                    Baseado nos medicamentos reais selecionados por você, convertidos para produção artesanal pelo Eng. Agrônomo (CREA-PR 172.458/D) + Prescrição Médica (CRM/MT 17259).
+                    Baseado nos medicamentos reais selecionados por você, convertidos para produção artesanal pelo Eng. Agr. Wilian Dalenogare Pereira (CREA-BA Nº 052193520-2) + Prescrição Médica (CRM/MT 17259).
                   </p>
                 </div>
 

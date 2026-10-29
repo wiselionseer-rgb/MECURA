@@ -268,7 +268,7 @@ async function startServer() {
   const resolvePaymentPlan = (payment: any) => {
     const val = Number(payment.transaction_amount) || 0;
     const desc = (payment.description || '').toLowerCase();
-    const metaPlan = payment.metadata?.plan;
+    const metaPlan = payment.metadata?.plan || payment.plan || payment.selectedOffer;
     let plan: 'basic' | 'premium' | 'complete' | 'psychologist' = 'basic';
     if (metaPlan === 'complete' || metaPlan === 'premium' || metaPlan === 'psychologist' || metaPlan === 'basic') {
       plan = metaPlan;
@@ -283,18 +283,19 @@ async function startServer() {
     }
     const isPrem = plan === 'premium' || plan === 'complete';
     const queueType = plan === 'psychologist' ? 'psychologist' : 'doctor';
+    const allowDualChat = plan === 'complete';
     const typeLabel =
       plan === 'complete' ? 'Plano Completo VIP (Médico + Psicólogo)' :
       plan === 'premium' ? 'Acompanhamento VIP (Médico)' :
       plan === 'psychologist' ? 'Consulta com Psicólogo + Laudo' :
       'Consulta Essencial (Médico)';
-    return { plan, isPrem, queueType, typeLabel, val };
+    return { plan, isPrem, queueType, allowDualChat, typeLabel, val };
   };
 
   const processApprovedPayment = async (payment: any) => {
     try {
       if (!payment || (payment.status !== 'approved' && payment.status !== 'completed')) return;
-      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, typeLabel, val } = resolvePaymentPlan(payment);
+      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, val } = resolvePaymentPlan(payment);
       const payerEmail = payment.payer?.email;
       const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : (payment.metadata?.patient_name || 'Paciente');
       const patientId = payment.external_reference || payment.metadata?.patient_id;
@@ -306,6 +307,7 @@ async function startServer() {
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
+        allowDualChat: allowDualChat,
         isPremium: isPrem,
         status: payment.status || 'approved',
         date: payment.date_approved || payment.date_created || new Date().toISOString(),
@@ -378,12 +380,15 @@ async function startServer() {
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
+        allowDualChat: allowDualChat,
         joinedAt: payment.date_approved || new Date().toISOString(),
         status: 'waiting',
         pagamento_consulta: true,
         pagamento_premium: isPrem,
+        hasPaid: true,
+        isPaid: true,
         hasUnread: true,
-        lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Paciente aguardando atendimento médico',
+        lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : (allowDualChat ? 'Plano Completo 360° (Médico + Psicólogo) — Aguardando atendimento' : 'Paciente aguardando atendimento médico'),
         lastMessageAt: new Date().toISOString()
       };
 
@@ -394,10 +399,13 @@ async function startServer() {
       await setDoc(doc(db, "users", targetPatientId), {
         pagamento_consulta: true,
         pagamento_premium: isPrem,
+        hasPaid: true,
+        isPaid: true,
         isPremium: isPrem,
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
+        allowDualChat: allowDualChat,
         tier: isPrem ? 'Premium' : 'basic',
         inQueue: true,
         isConsultationFinished: false,
@@ -1119,20 +1127,23 @@ async function startServer() {
 
     try {
       const { title, price, quantity = 1, payerEmail, payerName, patientId, isPremium, plan } = req.body;
+      const resolvedPlan = (plan === 'complete' || plan === 'premium' || plan === 'psychologist' || plan === 'basic')
+        ? plan
+        : (isPremium ? 'premium' : 'basic');
+      const resolvedIsPrem = isPremium || resolvedPlan === 'premium' || resolvedPlan === 'complete';
       const mpInfo = await getMpClient();
 
       if (!mpInfo) {
         console.warn("⚠️ Token do Mercado Pago não configurado. Fornecendo fallback de teste.");
         return res.json({
           id: 'test-pref-' + Date.now(),
-          init_point: `${origin}/dashboard?payment=success`,
-          sandbox_init_point: `${origin}/dashboard?payment=success`,
+          init_point: `${origin}/dashboard?payment=success&plan=${encodeURIComponent(resolvedPlan)}`,
+          sandbox_init_point: `${origin}/dashboard?payment=success&plan=${encodeURIComponent(resolvedPlan)}`,
           isTestMode: true
         });
       }
 
       const numPrice = Math.round(Number(price) * 100) / 100;
-      // R$ 49,90 em até 3x, R$ 249,90 em até 5x
       const maxInstallments = req.body.installments ? Number(req.body.installments) : (numPrice > 100 ? 5 : 3);
 
       const preference = new Preference(mpInfo.client);
@@ -1163,14 +1174,14 @@ async function startServer() {
           metadata: {
             patient_id: patientId || '',
             patient_name: payerName || '',
-            is_premium: !!isPremium,
-            plan: plan || (isPremium ? 'premium' : 'basic')
+            is_premium: resolvedIsPrem,
+            plan: resolvedPlan
           },
           ...(isHttps ? {
             back_urls: {
-              success: `${origin}/dashboard?payment=success`,
-              failure: `${origin}/checkout?payment=failed`,
-              pending: `${origin}/dashboard?payment=pending`,
+              success: `${origin}/dashboard?payment=success&plan=${encodeURIComponent(resolvedPlan)}`,
+              failure: `${origin}/checkout?payment=failed&plan=${encodeURIComponent(resolvedPlan)}`,
+              pending: `${origin}/dashboard?payment=pending&plan=${encodeURIComponent(resolvedPlan)}`,
             },
             auto_return: 'approved',
           } : {}),
@@ -1178,7 +1189,7 @@ async function startServer() {
           statement_descriptor: "MECURA SAUDE",
         }
       });
-      res.json({ id: result.id, init_point: result.init_point, sandbox_init_point: result.sandbox_init_point });
+      res.json({ id: result.id, init_point: result.init_point, sandbox_init_point: result.sandbox_init_point, plan: resolvedPlan });
     } catch (error: any) {
       console.error("Erro MP Preference:", error?.message || error);
       return res.status(500).json({
@@ -1207,6 +1218,10 @@ async function startServer() {
   app.post("/api/create-pix-payment", async (req, res) => {
     try {
       const { title, price, email, firstName, lastName, patientId, isPremium, plan } = req.body;
+      const resolvedPlan = (plan === 'complete' || plan === 'premium' || plan === 'psychologist' || plan === 'basic')
+        ? plan
+        : (isPremium ? 'premium' : 'basic');
+      const resolvedIsPrem = isPremium || resolvedPlan === 'premium' || resolvedPlan === 'complete';
       const mpInfo = await getMpClient();
 
       if (!mpInfo) {
@@ -1218,7 +1233,7 @@ async function startServer() {
         return res.status(400).json({ error: "O valor da transação deve ser maior que R$ 0,00." });
       }
 
-      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${email} (Plano: ${plan || 'basic'})`);
+      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${email} (Plano: ${resolvedPlan})`);
 
       const payment = new Payment(mpInfo.client);
       const isSellerEmail = email && (
@@ -1249,8 +1264,8 @@ async function startServer() {
           metadata: {
             patient_id: patientId || '',
             patient_name: firstName || '',
-            is_premium: !!isPremium,
-            plan: plan || (isPremium ? 'premium' : 'basic')
+            is_premium: resolvedIsPrem,
+            plan: resolvedPlan
           },
           notification_url: (process.env.APP_URL || origin).startsWith('https://') ? `${process.env.APP_URL || origin}/api/webhook` : undefined,
         }
@@ -1261,6 +1276,8 @@ async function startServer() {
       res.json({
         id: result.id,
         status: result.status,
+        plan: resolvedPlan,
+        isPremium: resolvedIsPrem,
         qr_code: result.point_of_interaction?.transaction_data?.qr_code,
         qr_code_base64: result.point_of_interaction?.transaction_data?.qr_code_base64,
       });
@@ -1285,7 +1302,12 @@ async function startServer() {
         if (paySnap.exists()) {
           const pData = paySnap.data();
           if (pData.status === 'approved' || pData.status === 'completed' || pData.type) {
-            return res.json({ status: 'approved' });
+            return res.json({
+              status: 'approved',
+              plan: pData.plan || pData.selectedOffer,
+              isPremium: pData.isPremium,
+              queueType: pData.queueType
+            });
           }
         }
       } catch (fErr) {
@@ -1299,11 +1321,18 @@ async function startServer() {
       const payment = new Payment(mpInfo.client);
       const result = await payment.get({ id: paymentId });
 
+      const resolved = result ? resolvePaymentPlan(result) : null;
+
       if (result && (result.status === 'approved' || result.status === 'completed')) {
         processApprovedPayment(result).catch(e => console.warn("Erro ao processar fila pós verificação de status:", e));
       }
 
-      res.json({ status: result.status });
+      res.json({
+        status: result.status,
+        plan: resolved?.plan,
+        isPremium: resolved?.isPrem,
+        queueType: resolved?.queueType
+      });
     } catch (error) {
       res.status(500).json({ error: "Erro ao consultar status." });
     }

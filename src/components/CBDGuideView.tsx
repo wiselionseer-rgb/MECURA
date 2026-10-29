@@ -27,13 +27,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
-import { mergeProductCatalogs, subscribeToFirestoreCatalog, getBestCategoryIdForProduct, getBrandTabsFromCategories } from '../utils/productCatalog';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, getBestCategoryIdForProduct, getBrandTabsFromCategories, getDeletedCategoryIds } from '../utils/productCatalog';
 import { useStore } from '../store/useStore';
 import { ProductBulaModal } from './ProductBulaModal';
 
 export function CBDGuideView() {
-  const { productCategories: storeCategories, addProduct, updateProduct, deleteProduct } = useAdminStore();
+  const { productCategories: storeCategories, addProduct, updateProduct, deleteProduct, deleteCategory, restoreDeletedCategories } = useAdminStore();
   const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
+  const [catalogRefreshTick, setCatalogRefreshTick] = useState(0);
 
   useEffect(() => {
     const unsub = subscribeToFirestoreCatalog((cats) => {
@@ -41,16 +42,27 @@ export function CBDGuideView() {
         setCloudCategories(cats);
       }
     });
-    return () => unsub();
+    const handleStorageOrBulaRefresh = () => setCatalogRefreshTick(t => t + 1);
+    window.addEventListener('mecura_bula_updated', handleStorageOrBulaRefresh);
+    window.addEventListener('storage', handleStorageOrBulaRefresh);
+    return () => {
+      unsub();
+      window.removeEventListener('mecura_bula_updated', handleStorageOrBulaRefresh);
+      window.removeEventListener('storage', handleStorageOrBulaRefresh);
+    };
   }, []);
 
   const productCategories = React.useMemo(() => {
     return mergeProductCatalogs(cbdGuideData, storeCategories, cloudCategories);
-  }, [storeCategories, cloudCategories]);
+  }, [storeCategories, cloudCategories, catalogRefreshTick]);
 
   const brandTabs = React.useMemo(() => {
     return getBrandTabsFromCategories(productCategories);
-  }, [productCategories]);
+  }, [productCategories, catalogRefreshTick]);
+
+  const deletedCategoriesCount = React.useMemo(() => {
+    return getDeletedCategoryIds().size;
+  }, [productCategories, catalogRefreshTick]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [diseaseFilter, setDiseaseFilter] = useState('');
@@ -90,6 +102,24 @@ export function CBDGuideView() {
   const [newProdPriceUSD, setNewProdPriceUSD] = useState('');
   const [newProdDescription, setNewProdDescription] = useState('');
   const [addSuccessToast, setAddSuccessToast] = useState<string | null>(null);
+  const [tabPendingDeletion, setTabPendingDeletion] = useState<{
+    categoryId: string;
+    brandName: string;
+    productCount: number;
+  } | null>(null);
+
+  const handleConfirmDeleteTab = () => {
+    if (!tabPendingDeletion) return;
+    const { categoryId, brandName } = tabPendingDeletion;
+    deleteCategory(categoryId);
+    if (selectedCategoryFilter === categoryId) {
+      setSelectedCategoryFilter('all');
+    }
+    setCatalogRefreshTick(t => t + 1);
+    setTabPendingDeletion(null);
+    setAddSuccessToast(`✓ Aba "${brandName}" excluída com sucesso!`);
+    setTimeout(() => setAddSuccessToast(null), 4000);
+  };
 
   const openAddModalForBrand = (brandName?: string, origin?: 'Nacional' | 'Importado', createNewBrand?: boolean) => {
     if (createNewBrand) {
@@ -136,7 +166,7 @@ export function CBDGuideView() {
       newProdType
     );
 
-    const brandCatId = getBestCategoryIdForProduct(newProdOrigin, cleanBrand);
+    const brandCatId = getBestCategoryIdForProduct(newProdOrigin, cleanBrand, cleanName);
     const targetCatId = (newProdCategory && newProdCategory !== 'auto_brand') ? newProdCategory : brandCatId;
 
     const resolvedActive = newProdActiveIngredients.trim() || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum';
@@ -492,7 +522,7 @@ export function CBDGuideView() {
               <Building2 className="w-3.5 h-3.5 text-mecura-neon" />
               <span>Escolher Associação / Laboratório / Marca:</span>
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => openAddModalForBrand(undefined, 'Nacional', true)}
@@ -502,6 +532,21 @@ export function CBDGuideView() {
                 <Plus className="w-3 h-3 stroke-[3]" />
                 <span>Criar Nova Marca / Aba</span>
               </button>
+              {deletedCategoriesCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    restoreDeletedCategories();
+                    setCatalogRefreshTick(t => t + 1);
+                    setAddSuccessToast('✓ Abas ocultas/excluídas foram restauradas!');
+                    setTimeout(() => setAddSuccessToast(null), 3500);
+                  }}
+                  className="text-[11px] text-amber-300 hover:text-white bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer"
+                  title="Restaurar abas de marcas/associações que foram excluídas"
+                >
+                  <span>↺ Restaurar Abas Excluídas ({deletedCategoriesCount})</span>
+                </button>
+              )}
               {selectedCategoryFilter !== 'all' && (
                 <button
                   onClick={() => setSelectedCategoryFilter('all')}
@@ -521,55 +566,80 @@ export function CBDGuideView() {
 
               if (tab.theme === 'emerald') {
                 btnStyle = isSelected
-                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.35)] scale-105'
+                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.35)] scale-[1.02]'
                   : 'bg-emerald-950/40 text-emerald-300 hover:text-white hover:bg-emerald-900/50 border-emerald-500/40';
                 badgeStyle = isSelected ? 'bg-black text-emerald-300' : 'bg-emerald-500/20 text-emerald-200';
               } else if (tab.theme === 'cyan') {
                 btnStyle = isSelected
-                  ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] scale-105'
+                  ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] scale-[1.02]'
                   : 'bg-cyan-950/40 text-cyan-300 hover:text-white hover:bg-cyan-900/50 border-cyan-500/40';
                 badgeStyle = isSelected ? 'bg-black text-cyan-300' : 'bg-cyan-500/20 text-cyan-200';
               } else if (tab.theme === 'sky') {
                 btnStyle = isSelected
-                  ? 'bg-sky-400 text-black border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-105'
+                  ? 'bg-sky-400 text-black border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
                   : 'bg-sky-950/40 text-sky-300 hover:text-white border-sky-500/40';
                 badgeStyle = isSelected ? 'bg-black text-sky-300' : 'bg-sky-500/20 text-sky-200';
               } else if (tab.theme === 'purple') {
                 btnStyle = isSelected
-                  ? 'bg-purple-400 text-black border-purple-300 shadow-[0_0_15px_rgba(192,132,252,0.35)] scale-105'
+                  ? 'bg-purple-400 text-black border-purple-300 shadow-[0_0_15px_rgba(192,132,252,0.35)] scale-[1.02]'
                   : 'bg-purple-950/40 text-purple-300 hover:text-white border-purple-500/40';
                 badgeStyle = isSelected ? 'bg-black text-purple-300' : 'bg-purple-500/20 text-purple-200';
               } else if (tab.theme === 'amber') {
                 btnStyle = isSelected
-                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.35)] scale-105'
+                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.35)] scale-[1.02]'
                   : 'bg-amber-950/40 text-amber-300 hover:text-white border-amber-500/40';
                 badgeStyle = isSelected ? 'bg-black text-amber-300' : 'bg-amber-500/20 text-amber-200';
               } else {
                 btnStyle = isSelected
-                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-105'
+                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-[1.02]'
                   : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated';
                 badgeStyle = isSelected ? 'bg-black text-mecura-neon' : 'bg-white/10 text-mecura-silver';
               }
 
               return (
-                <button
+                <div
                   key={tab.categoryId}
-                  id={`btn-choose-${tab.categoryId}`}
-                  onClick={() => handleSelectCategory(tab.categoryId)}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-2 border shadow-sm cursor-pointer ${btnStyle}`}
+                  className={`rounded-xl font-bold whitespace-nowrap transition-all flex items-center border shadow-sm flex-shrink-0 ${btnStyle}`}
                 >
-                  <span>{tab.emoji} {tab.brandName}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${badgeStyle}`}>
-                    {tab.badge} ({tab.productCount})
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    id={`btn-choose-${tab.categoryId}`}
+                    onClick={() => handleSelectCategory(tab.categoryId)}
+                    className="pl-3 pr-1.5 py-1.5 flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>{tab.emoji} {tab.brandName}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${badgeStyle}`}>
+                      {tab.badge} ({tab.productCount})
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTabPendingDeletion({
+                        categoryId: tab.categoryId,
+                        brandName: tab.brandName,
+                        productCount: tab.productCount
+                      });
+                    }}
+                    className={`mr-1.5 p-1 rounded-lg transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'text-black/70 hover:text-red-900 hover:bg-black/15'
+                        : 'text-white/50 hover:text-red-400 hover:bg-red-500/20'
+                    }`}
+                    title={`Excluir aba "${tab.brandName}"`}
+                    aria-label={`Excluir aba ${tab.brandName}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               );
             })}
 
             {/* Ver Todas */}
             <button
               onClick={() => setSelectedCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border cursor-pointer flex-shrink-0 ${
                 selectedCategoryFilter === 'all'
                   ? 'bg-white/15 text-white border-white/30'
                   : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
@@ -927,18 +997,36 @@ export function CBDGuideView() {
                         const defaultBrandName = matchedTab?.brandName || category.products[0]?.manufacturer || category.title.split('—')[0].trim();
                         const defaultOrigin: 'Nacional' | 'Importado' = matchedTab?.origin || (category.title.toLowerCase().includes('importado') ? 'Importado' : 'Nacional');
                         return (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openAddModalForBrand(defaultBrandName, defaultOrigin, false);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                            title={`Adicionar novo medicamento dentro da aba ${defaultBrandName}`}
-                          >
-                            <Plus className="w-3 h-3 stroke-[3]" />
-                            <span>+ Adicionar Medicamento nesta Aba</span>
-                          </button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openAddModalForBrand(defaultBrandName, defaultOrigin, false);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                              title={`Adicionar novo medicamento dentro da aba ${defaultBrandName}`}
+                            >
+                              <Plus className="w-3 h-3 stroke-[3]" />
+                              <span>+ Adicionar Medicamento nesta Aba</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTabPendingDeletion({
+                                  categoryId: category.id,
+                                  brandName: defaultBrandName,
+                                  productCount: category.products.length
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/30 text-red-300 hover:text-white border border-red-500/40 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                              title={`Excluir a aba "${defaultBrandName}"`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Excluir Aba</span>
+                            </button>
+                          </div>
                         );
                       })()}
                     </div>
@@ -1000,6 +1088,40 @@ export function CBDGuideView() {
                           >
                             <Plus className="w-4 h-4 stroke-[3]" />
                             <span>+ Adicionar Outro Medicamento em {brandDisplay}</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Santa Gaia & Acaflor Official Association Hubs */}
+                    {(category.id === 'santa_gaia_oficial' || category.id === 'acaflor_oficial') && (() => {
+                      const isSantaGaia = category.id === 'santa_gaia_oficial';
+                      const assocName = isSantaGaia ? 'Associação Santa Gaia' : 'Associação Acaflor';
+                      return (
+                        <div className="p-5 md:p-6 bg-gradient-to-br from-emerald-950/50 via-black/60 to-[#0A0A0F] border border-emerald-500/40 rounded-2xl mb-4 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs border border-emerald-400/30 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" /> Associação Nacional • {assocName}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 text-mecura-silver text-[11px] border border-white/10">
+                                {category.products.length} {category.products.length === 1 ? 'formulação cadastrada' : 'formulações cadastradas'}
+                              </span>
+                            </div>
+                            <h4 className="text-lg md:text-xl font-bold text-white tracking-tight">
+                              Catálogo {assocName} • Formulações & Itens Salvos pelo Médico
+                            </h4>
+                            <p className="text-xs text-mecura-silver mt-1 max-w-2xl leading-relaxed">
+                              Todos os medicamentos oficiais e itens adicionados ou salvos pelo médico para a <strong className="text-white">{assocName}</strong> ficam reunidos nesta aba. Clique no botão ao lado para cadastrar novas formulações nesta associação.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openAddModalForBrand(assocName, 'Nacional', false)}
+                            className="px-4 py-2.5 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 text-black font-extrabold rounded-xl text-xs md:text-sm flex items-center gap-2 shadow-lg cursor-pointer flex-shrink-0 transition-all"
+                          >
+                            <Plus className="w-4 h-4 stroke-[3]" />
+                            <span>+ Adicionar Medicamento em {isSantaGaia ? 'Santa Gaia' : 'Acaflor'}</span>
                           </button>
                         </div>
                       );
@@ -2298,6 +2420,8 @@ export function CBDGuideView() {
                       {brandTabs.map(t => (
                         <option key={`dl-${t.categoryId}`} value={t.brandName} />
                       ))}
+                      <option value="Associação Santa Gaia" />
+                      <option value="Associação Acaflor" />
                       <option value="Santa Cannabis" />
                       <option value="Flor da Vida" />
                       <option value="Apepi" />
@@ -2323,7 +2447,7 @@ export function CBDGuideView() {
 
                 {/* Live Brand Tab Destination Indicator */}
                 {newProdManufacturer.trim() && (() => {
-                  const previewCatId = getBestCategoryIdForProduct(newProdOrigin, newProdManufacturer.trim());
+                  const previewCatId = getBestCategoryIdForProduct(newProdOrigin, newProdManufacturer.trim(), newProdName.trim());
                   const existingTab = brandTabs.find(t => t.categoryId === previewCatId);
                   return (
                     <div className="px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-[11px] flex items-center justify-between gap-2">
@@ -2472,7 +2596,7 @@ export function CBDGuideView() {
                   >
                     <option value="auto_brand">Somente na Aba da Marca ({newProdManufacturer || 'Marca'})</option>
                     {productCategories
-                      .filter(cat => !cat.id.startsWith('brand_') && !['soucannabis_oficial', 'pangaia_oficial', 'abrace_oficial', 'abecmed_oficial', 'flowermed_oficial', 'greenbudz_oficial', 'flores_extracoes', 'associacoes_nacionais'].includes(cat.id))
+                      .filter(cat => !cat.id.startsWith('brand_') && !['soucannabis_oficial', 'santa_gaia_oficial', 'acaflor_oficial', 'pangaia_oficial', 'abrace_oficial', 'abecmed_oficial', 'flowermed_oficial', 'greenbudz_oficial', 'flores_extracoes', 'associacoes_nacionais'].includes(cat.id))
                       .map((cat, catIdx) => (
                         <option key={`cat-opt-${cat.id}-${catIdx}`} value={cat.id}>+ {cat.title}</option>
                       ))}
@@ -2567,6 +2691,65 @@ export function CBDGuideView() {
                   <span>Salvar na Aba da Marca</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Deleting a Brand Tab */}
+      {tabPendingDeletion && (
+        <div
+          className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setTabPendingDeletion(null)}
+        >
+          <div
+            className="bg-[#0F0F16] border border-red-500/40 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-white/10 bg-[#14141F] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Excluir Aba / Marca</h3>
+                  <p className="text-xs text-mecura-silver">Confirmação de exclusão no Guia Completo</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTabPendingDeletion(null)}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-mecura-pearl leading-relaxed">
+                Tem certeza que deseja excluir a aba <strong className="text-white">"{tabPendingDeletion.brandName}"</strong> ({tabPendingDeletion.productCount} {tabPendingDeletion.productCount === 1 ? 'medicamento' : 'medicamentos'})?
+              </p>
+              <p className="text-xs text-mecura-silver bg-white/5 border border-white/10 rounded-xl p-3">
+                💡 Caso exclua por engano, você poderá clicar em <strong className="text-amber-300">"Restaurar Abas Excluídas"</strong> na barra superior ou criar a aba novamente a qualquer momento.
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-[#14141F] flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setTabPendingDeletion(null)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteTab}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(239,68,68,0.35)] transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Sim, Excluir Aba</span>
+              </button>
             </div>
           </div>
         </div>

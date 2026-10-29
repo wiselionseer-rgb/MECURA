@@ -58,9 +58,11 @@ export function CheckoutScreen() {
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix' | null>('pix');
   const [isLoading, setIsLoading] = useState(false);
   
-  const [pixData, setPixData] = useState<{ id: string, qr_code: string, qr_code_base64: string } | null>(null);
+  const [pixData, setPixData] = useState<{ id: string, qr_code: string, qr_code_base64: string, plan?: 'basic' | 'premium' | 'psychologist' | 'complete' } | null>(null);
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [copiedPix, setCopiedPix] = useState(false);
   const pollingInterval = React.useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -202,11 +204,13 @@ export function CheckoutScreen() {
           if (data.id && data.qr_code && data.qr_code_base64) {
             if (typeof window !== 'undefined') {
               localStorage.setItem('mecura_pending_payment_id', data.id.toString());
+              localStorage.setItem('last_offer', selectedOffer);
             }
             setPixData({
               id: data.id.toString(),
               qr_code: data.qr_code,
-              qr_code_base64: data.qr_code_base64
+              qr_code_base64: data.qr_code_base64,
+              plan: selectedOffer
             });
             setIsLoading(false);
             return;
@@ -214,14 +218,14 @@ export function CheckoutScreen() {
         } else {
           const errData = await response.json().catch(() => ({}));
           console.error("Erro MP Pix:", errData);
-          alert(errData.details || errData.error || "Falha ao gerar o Pix via Mercado Pago.");
+          setErrorToast(errData.details || errData.error || "Falha ao gerar o Pix via Mercado Pago.");
           setIsLoading(false);
           return;
         }
       } catch (err) {
         console.error("Erro ao gerar PIX: ", err);
       }
-      alert("Falha ao gerar o Pix. Verifique sua conexão e tente novamente.");
+      setErrorToast("Falha ao gerar o Pix. Verifique sua conexão e tente novamente.");
       setIsLoading(false);
       return;
     }
@@ -246,11 +250,20 @@ export function CheckoutScreen() {
         if (response.ok) {
           const data = await response.json();
           if (data.init_point) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('last_offer', selectedOffer);
+            }
             setCardUrl(data.init_point);
             setIsLoading(false);
             
             try {
-              window.open(data.init_point, '_blank');
+              const link = document.createElement('a');
+              link.href = data.init_point;
+              link.target = '_blank';
+              link.rel = 'noopener noreferrer';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
             } catch (e) {
               console.log("Popup contido pelo navegador, botão direto disponível.");
             }
@@ -258,11 +271,11 @@ export function CheckoutScreen() {
           }
         }
         setIsLoading(false);
-        alert("Não foi possível gerar a página de pagamento do Mercado Pago. Por favor, tente novamente ou pague via Pix.");
+        setErrorToast("Não foi possível gerar a página de pagamento do Mercado Pago. Por favor, tente novamente ou pague via Pix.");
       } catch (err) {
         console.error("Erro ao iniciar pagamento com cartão: ", err);
         setIsLoading(false);
-        alert("Erro de conexão ao abrir o Mercado Pago. Verifique sua internet e tente novamente.");
+        setErrorToast("Erro de conexão ao abrir o Mercado Pago. Verifique sua internet e tente novamente.");
       }
       return;
     }
@@ -270,14 +283,26 @@ export function CheckoutScreen() {
     setIsLoading(false);
   };
 
-  const handleSuccess = async (mpIdCustom?: string) => {
+  const handleSuccess = async (mpIdCustom?: string, overridePlan?: 'basic' | 'premium' | 'psychologist' | 'complete') => {
     setIsLoading(false);
     setSuccessToast("Pagamento confirmado com sucesso! Liberando acesso...");
-    const resolvedOffer = (selectedOffer || (typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null) || 'basic') as 'basic' | 'premium' | 'psychologist' | 'complete';
+    const urlPlan = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('plan') : null;
+    const validPlans = ['basic', 'premium', 'psychologist', 'complete'];
+    const rawOffer =
+      (overridePlan && validPlans.includes(overridePlan) ? overridePlan : null) ||
+      (pixData?.plan && validPlans.includes(pixData.plan) ? pixData.plan : null) ||
+      (urlPlan && validPlans.includes(urlPlan) ? urlPlan : null) ||
+      (useStore.getState().selectedOffer && validPlans.includes(useStore.getState().selectedOffer as string) ? useStore.getState().selectedOffer : null) ||
+      (selectedOffer && validPlans.includes(selectedOffer) ? selectedOffer : null) ||
+      (typeof window !== 'undefined' && validPlans.includes(localStorage.getItem('last_offer') || '') ? localStorage.getItem('last_offer') : null) ||
+      'basic';
+
+    const resolvedOffer = rawOffer as 'basic' | 'premium' | 'psychologist' | 'complete';
     const isPrem = resolvedOffer === 'premium' || resolvedOffer === 'complete';
-    const isPsicoOnly = resolvedOffer === 'psychologist' || finalPrice === 150;
+    const isPsicoOnly = resolvedOffer === 'psychologist';
     const targetQueueType = isPsicoOnly ? 'psychologist' : 'doctor';
-    const finalPlan = isPsicoOnly ? 'psychologist' : resolvedOffer;
+    const finalPlan = resolvedOffer;
+    const allowDualChat = finalPlan === 'complete';
 
     const patientUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : '') || ('paciente_' + Date.now());
     const patientName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
@@ -338,6 +363,7 @@ export function CheckoutScreen() {
           selectedOffer: finalPlan,
           tier: isPrem ? 'Premium' : 'basic',
           queueType: targetQueueType,
+          allowDualChat,
           isPremium: isPrem,
           consultationStatus: 'waiting',
           inQueue: true,
@@ -355,9 +381,11 @@ export function CheckoutScreen() {
       await addDoc(collection(db, 'payments'), {
         mpId: mpIdCustom || pixData?.id || 'mp_' + finalPlan + '_' + Date.now(),
         type: planTypeNames[finalPlan] || 'Consulta Médica',
-        value: finalPrice || basePrice,
+        value: finalPrice || getOfferBasePrice(finalPlan),
         plan: finalPlan,
         selectedOffer: finalPlan,
+        queueType: targetQueueType,
+        allowDualChat,
         isPremium: isPrem,
         patientName: patientName || 'Paciente',
         patientEmail: patientEmail || '',
@@ -379,7 +407,7 @@ export function CheckoutScreen() {
         const uemail = patientEmail || undefined;
         await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
           planName: planTypeNames[finalPlan] || 'Consulta Mecura',
-          price: finalPrice || basePrice,
+          price: finalPrice || getOfferBasePrice(finalPlan),
           isPremium: isPrem
         });
         localStorage.removeItem('mecura_applied_coupon');
@@ -402,6 +430,7 @@ export function CheckoutScreen() {
         isPremium: isPrem,
         plan: finalPlan,
         queueType: targetQueueType,
+        allowDualChat,
         selectedOffer: finalPlan,
         freshPayment: true,
         pagamento_consulta: true,
@@ -433,7 +462,7 @@ export function CheckoutScreen() {
             if (data.status === 'approved' || data.status === 'completed') {
               isHandled = true;
               if (pollingInterval.current) clearInterval(pollingInterval.current);
-              handleSuccess(payId);
+              handleSuccess(payId, data.plan);
               return;
             }
           }
@@ -458,7 +487,8 @@ export function CheckoutScreen() {
             if ((vData.paid || vData.hasActivePaidConsultation) && (vData.status === 'waiting' || vData.status === 'in-consultation')) {
               isHandled = true;
               if (pollingInterval.current) clearInterval(pollingInterval.current);
-              handleSuccess(payId || undefined);
+              const backendPlan = vData.queueEntry?.plan || vData.userData?.plan;
+              handleSuccess(payId || undefined, backendPlan);
             }
           }
         } catch (e) {
@@ -492,16 +522,25 @@ export function CheckoutScreen() {
     const paymentParam = params.get('payment');
     const paymentId = params.get('payment_id') || params.get('collection_id');
     const statusParam = params.get('status') || params.get('collection_status');
+    const planParam = params.get('plan') as 'basic' | 'premium' | 'psychologist' | 'complete' | null;
 
-    if (!paymentId && !statusParam) {
-      if (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true') {
+    if (!paymentId && !statusParam && !paymentParam) {
+      const st = useStore.getState();
+      const isFinished = st.isConsultationFinished || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true');
+      const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+      const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+      if (!isFinished && (st.inQueue || isRecentlyApproved) && typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true') {
         navigate('/queue');
         return;
       }
     }
     
     if (paymentParam === 'failed' || paymentParam === 'cancelled' || statusParam === 'rejected') {
-      setSelectedOffer('basic');
+      if (planParam && ['basic', 'premium', 'psychologist', 'complete'].includes(planParam)) {
+        setSelectedOffer(planParam);
+      } else {
+        setSelectedOffer('basic');
+      }
       setStep('checkout');
       setPaymentMethod('card');
       setPagamentoConsulta(false);
@@ -509,7 +548,7 @@ export function CheckoutScreen() {
         localStorage.removeItem('mecura_pagamento');
         localStorage.removeItem('mecura_consultation_active');
       }
-      alert('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
+      setErrorToast('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
@@ -522,18 +561,18 @@ export function CheckoutScreen() {
           .then(data => {
             setIsLoading(false);
             window.history.replaceState({}, '', window.location.pathname);
-            handleSuccess(paymentId);
+            handleSuccess(paymentId, data.plan || planParam || undefined);
           })
           .catch(err => {
             setIsLoading(false);
             console.error("Erro ao verificar pagamento MP, aplicando aprovação:", err);
             window.history.replaceState({}, '', window.location.pathname);
-            handleSuccess(paymentId);
+            handleSuccess(paymentId, planParam || undefined);
           });
       } else {
         setIsLoading(false);
         window.history.replaceState({}, '', window.location.pathname);
-        handleSuccess();
+        handleSuccess(undefined, planParam || undefined);
       }
       return;
     }
@@ -626,11 +665,13 @@ export function CheckoutScreen() {
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(pixData.qr_code);
-                      alert("Copiado!");
+                      setCopiedPix(true);
+                      setTimeout(() => setCopiedPix(false), 2500);
                     }}
-                    className="bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon p-3 rounded-xl transition-colors border border-mecura-neon/20"
+                    className="bg-mecura-neon/10 hover:bg-mecura-neon/20 text-mecura-neon p-3 rounded-xl transition-colors border border-mecura-neon/20 flex items-center gap-1.5"
                   >
-                    <Ticket className="w-5 h-5" />
+                    {copiedPix ? <Check className="w-5 h-5" /> : <Ticket className="w-5 h-5" />}
+                    {copiedPix && <span className="text-[11px] font-bold">Copiado!</span>}
                   </button>
                 </div>
               </div>
@@ -2042,8 +2083,26 @@ export function CheckoutScreen() {
         onClose={() => setShowLegalModal(false)}
       />
 
-      {/* Success Notification Modal / Overlay (evita window.alert) */}
+      {/* Success & Error Notification Modals (evita window.alert) */}
       <AnimatePresence>
+        {errorToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed top-6 left-4 right-4 z-50 max-w-md mx-auto bg-red-950/95 border border-red-500/50 text-red-100 px-4 py-3.5 rounded-2xl shadow-2xl flex items-start gap-3"
+          >
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs leading-relaxed font-medium">{errorToast}</div>
+            <button
+              type="button"
+              onClick={() => setErrorToast(null)}
+              className="text-red-300 hover:text-white p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
         {successToast && (
           <motion.div 
             initial={{ opacity: 0 }}

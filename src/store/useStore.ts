@@ -710,6 +710,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     const resolvedQueueType = patientObj.queueType || (isPsychologistConsultation ? 'psychologist' : 'doctor');
     const resolvedStatus = existingQueueStatus === 'in-consultation' ? 'in-consultation' : 'waiting';
+    const allowDualChat = resolvedPlan === 'complete' || !!patientObj.allowDualChat;
 
     let newPatient = { 
       id: currentUserId, 
@@ -724,6 +725,7 @@ export const useStore = create<AppState>((set, get) => ({
       selectedOffer: resolvedPlan,
       tier: isPremium ? 'Premium' : 'basic',
       queueType: resolvedQueueType,
+      allowDualChat,
       answers: {
         ...resolvedAnswers,
         birthDate: resolvedBirthDate,
@@ -745,6 +747,7 @@ export const useStore = create<AppState>((set, get) => ({
       selectedOffer: resolvedPlan,
       tier: isPremium ? 'Premium' : 'basic',
       queueType: resolvedQueueType,
+      allowDualChat,
       joinedAt: new Date().toISOString(),
       status: resolvedStatus,
       freshPayment: isExplicitFreshPayment,
@@ -753,7 +756,7 @@ export const useStore = create<AppState>((set, get) => ({
       isPaid: true,
       pagamento_premium: isPremium,
       hasUnread: true,
-      lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : 'Aguardando atendimento médico',
+      lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : (allowDualChat ? 'Plano Completo 360° (Médico + Psicólogo) — Aguardando atendimento' : 'Aguardando atendimento médico'),
       lastMessageAt: new Date().toISOString()
     };
 
@@ -825,12 +828,15 @@ export const useStore = create<AppState>((set, get) => ({
           selectedOffer: resolvedPlan,
           tier: isPremium ? 'Premium' : 'basic',
           queueType: resolvedQueueType,
+          allowDualChat,
           lastUpdated: new Date().toISOString()
         };
 
         if (hasVerifiedPayment) {
           userUpdateData.pagamento_consulta = true;
           userUpdateData.pagamento_premium = isPremium;
+          userUpdateData.hasPaid = true;
+          userUpdateData.isPaid = true;
         }
 
         // ONLY write identity fields if they are REAL, non-empty values (never overwrite with 'Paciente' or blank!)
@@ -1388,13 +1394,33 @@ export const useStore = create<AppState>((set, get) => ({
               localStorage.setItem('mecura_pagamento', 'true');
               localStorage.removeItem('mecura_consultation_active');
             }
+            const myTargetQueue = myEntry.queueType === 'psychologist' || myEntry.plan === 'psychologist' ? 'psychologist' : 'doctor';
+            const waitingInSameQueue = queueData
+              .filter(p => {
+                if (p.status !== 'waiting') return false;
+                const pQType = p.queueType === 'psychologist' || p.plan === 'psychologist' ? 'psychologist' : 'doctor';
+                return pQType === myTargetQueue;
+              })
+              .sort((a, b) => {
+                const isVipA = !!(a.isPremium || a.plan === 'premium' || a.plan === 'complete');
+                const isVipB = !!(b.isPremium || b.plan === 'premium' || b.plan === 'complete');
+                if (isVipA !== isVipB) return isVipA ? -1 : 1;
+                const tA = a.joinedAt instanceof Date ? a.joinedAt.getTime() : new Date(a.joinedAt || 0).getTime();
+                const tB = b.joinedAt instanceof Date ? b.joinedAt.getTime() : new Date(b.joinedAt || 0).getTime();
+                return tA - tB;
+              });
+            const waitingIdx = waitingInSameQueue.findIndex(p => p.id === resolvedConsultationId);
+            const finalPos = waitingIdx >= 0 ? waitingIdx : 0;
+            const isVipEntry = !!(myEntry.isPremium || myEntry.plan === 'premium' || myEntry.plan === 'complete');
             set({
-              queuePosition: myIndex, // 0 means next
-              estimatedWaitTime: Math.max(1, myIndex + 1) * 15,
+              queuePosition: finalPos, // 0 means next
+              estimatedWaitTime: Math.max(1, finalPos + 1) * (isVipEntry ? 5 : 10),
               inQueue: true,
               isConsultationFinished: false,
               consultationActive: false,
               pagamento_consulta: true,
+              pagamento_premium: isVipEntry,
+              selectedOffer: myEntry.plan || myEntry.selectedOffer || state.selectedOffer || 'basic',
               activeConsultationId: authUid || resolvedConsultationId
             });
           }

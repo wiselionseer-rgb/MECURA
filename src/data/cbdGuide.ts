@@ -675,6 +675,220 @@ export const NATIONAL_ASSOCIATION_PRODUCTS: CBDProduct[] = [
   }
 ];
 
+export const SANTA_GAIA_PRODUCTS: CBDProduct[] = [
+  {
+    name: "Óleo Full Spectrum Rico em CBD 50mg/mL (1500mg) - Santa Gaia (30mL)",
+    manufacturer: "Associação Santa Gaia",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante CBD",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Rico em Canabidiol (CBD) Full Spectrum",
+    concentration: "50 mg/mL (Total 1.500 mg de Canabinoides) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 280,
+    details: ["Frasco 30 mL", "50 mg/mL (1.500 mg)", "Full Spectrum Rico em CBD", "Associação Santa Gaia", "Uso Sublingual / Oral"],
+    description: "Óleo Full Spectrum artesanal padronizado da Associação Santa Gaia com predomínio de Canabidiol (50 mg/mL). Indicado para ansiedade, estresse crônico, regulação do humor, neuroproteção e quadros inflamatórios.",
+    usageInstructions: "• Iniciar com 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 4 a 5 dias conforme orientação médica.",
+    indications: "Ansiedade, Estresse Crônico, Insônia, TDAH, Autismo (TEA), Dores Inflamatórias"
+  },
+  {
+    name: "Óleo Full Spectrum Rico em CBD 100mg/mL (3000mg) - Santa Gaia (30mL)",
+    manufacturer: "Associação Santa Gaia",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante CBD Alta Concentração",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Rico em Canabidiol (CBD) Full Spectrum",
+    concentration: "100 mg/mL (Total 3.000 mg de Canabinoides) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 450,
+    details: ["Frasco 30 mL", "100 mg/mL (3.000 mg)", "Full Spectrum Alta Concentração", "Associação Santa Gaia", "Uso Sublingual / Oral"],
+    description: "Extrato integral Full Spectrum de alta concentração (100 mg/mL — 3.000 mg) da Associação Santa Gaia. Ideal para pacientes que demandam maior aporte diário de CBD com excelente rendimento.",
+    usageInstructions: "• Iniciar com 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Aumentar 01 gota a cada 5 dias conforme resposta clínica.",
+    indications: "Ansiedade Generalizada, Epilepsia Refratária, Autismo (TEA), Fibromialgia, Parkinson, Dor Crônica"
+  },
+  {
+    name: "Óleo Full Spectrum Balanceado 1:1 CBD:THC 50mg/mL (1500mg) - Santa Gaia (30mL)",
+    manufacturer: "Associação Santa Gaia",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Equilibrado 1:1 (CBD:THC)",
+    activeIngredients: "Extrato Integral Equilibrado de Cannabis sativa L. (25 mg/mL CBD + 25 mg/mL THC)",
+    concentration: "50 mg/mL (25 mg CBD + 25 mg THC por mL • Total 1.500 mg) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 320,
+    details: ["Frasco 30 mL", "Proporção 1:1 (25mg CBD + 25mg THC/mL)", "Total 1.500 mg", "Associação Santa Gaia", "Uso Sublingual / Oral"],
+    description: "Formulação balanceada 1:1 (CBD:THC) da Associação Santa Gaia para máxima sinergia analgésica e miorrelaxante (Efeito Entourage). Indicada para dores crônicas, neuropáticas, fibromialgia e espasticidade.",
+    usageInstructions: "• Iniciar com 02 a 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular gradualmente a cada 5 dias.",
+    indications: "Dor Crônica, Fibromialgia, Neuropatias, Espasticidade, Artrite Reumatoide, Endometriose"
+  },
+  {
+    name: "Óleo Full Spectrum Balanceado 1:1 CBD:THC 100mg/mL (3000mg) - Santa Gaia (30mL)",
+    manufacturer: "Associação Santa Gaia",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Equilibrado 1:1 Alta Potência",
+    activeIngredients: "Extrato Integral Equilibrado de Cannabis sativa L. (50 mg/mL CBD + 50 mg/mL THC)",
+    concentration: "100 mg/mL (50 mg CBD + 50 mg THC por mL • Total 3.000 mg) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 490,
+    details: ["Frasco 30 mL", "Proporção 1:1 (50mg CBD + 50mg THC/mL)", "Total 3.000 mg", "Associação Santa Gaia", "Uso Sublingual / Oral"],
+    description: "Formulação 1:1 de alta potência (100 mg/mL) da Associação Santa Gaia para quadros álgicos severos, fibromialgia refratária e cuidados paliativos.",
+    usageInstructions: "• Iniciar com 01 a 02 gotas por via sublingual de 12/12 horas sob acompanhamento médico. Reter por 60 segundos antes de engolir.",
+    indications: "Dor Crônica Intensa, Cuidados Paliativos, Espasticidade Severa, Fibromialgia Refratária"
+  },
+  {
+    name: "Óleo Full Spectrum Predominante THC 50mg/mL (1500mg) - Santa Gaia (30mL)",
+    manufacturer: "Associação Santa Gaia",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Rico em THC",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Predominante em Delta-9-THC",
+    concentration: "50 mg/mL (Total 1.500 mg • Predomínio THC) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 340,
+    details: ["Frasco 30 mL", "50 mg/mL Predominante THC", "Uso Noturno / Analgésico", "Associação Santa Gaia", "Uso Sublingual / Oral"],
+    description: "Extrato integral rico em THC da Associação Santa Gaia voltado para indução do sono reparador, analgesia noturna, estímulo de apetite e controle de náuseas.",
+    usageInstructions: "• Administrar 02 a 04 gotas por via sublingual 1 hora antes de dormir. Reter sob a língua por 60 segundos antes de deglutir.",
+    indications: "Insônia Severa, Dores Noturnas, Oncologia, Náuseas, Caquexia"
+  },
+  {
+    name: "Pomada Canábica Terapêutica Full Spectrum - Santa Gaia (50g)",
+    manufacturer: "Associação Santa Gaia",
+    origin: "Nacional",
+    type: "Pomada Tópica",
+    activeIngredients: "Fitocanabinoides Integrais Full Spectrum (CBD + THC) em Base Vegetal",
+    concentration: "500 mg de Fitocanabinoides Totais • Pote de 50g",
+    pharmaceuticalForm: "Pomada Tópica Dermatológica e Muscular",
+    quantity: "01 Pote de 50g",
+    administrationRoute: "Via Tópica (Uso Externo)",
+    priceBRL: 120,
+    details: ["Pote 50g", "500 mg Fitocanabinoides", "Ação Anti-inflamatória Local", "Associação Santa Gaia", "Uso Tópico"],
+    description: "Pomada fitoterápica da Associação Santa Gaia para alívio rápido e localizado de dores articulares, musculares, artrite, tendinites e processos inflamatórios cutâneos.",
+    usageInstructions: "• Aplicar fina camada sobre a região afetada de 2 a 3 vezes ao dia, massageando suavemente até completa absorção.",
+    indications: "Dores Musculares, Artrite, Artrose, Tendinite, Lesões Desportivas, Dermatites"
+  }
+];
+
+export const ACAFLOR_PRODUCTS: CBDProduct[] = [
+  {
+    name: "Óleo Full Spectrum Rico em CBD 30mg/mL (900mg) - Acaflor (30mL)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante CBD",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Rico em Canabidiol (CBD) Full Spectrum",
+    concentration: "30 mg/mL (Total 900 mg de Canabinoides) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 220,
+    details: ["Frasco 30 mL", "30 mg/mL (900 mg)", "Full Spectrum Rico em CBD", "Associação Acaflor", "Uso Sublingual / Oral"],
+    description: "Óleo Full Spectrum rico em CBD (30 mg/mL) produzido pela Associação Acaflor com controle de qualidade analítico. Indicado para início de tratamento em ansiedade, insônia leve a moderada e equilíbrio emocional.",
+    usageInstructions: "• Iniciar com 03 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 4 a 5 dias.",
+    indications: "Ansiedade, Estresse, Insônia, TDAH, Início de Tratamento Endocanabinoide"
+  },
+  {
+    name: "Óleo Full Spectrum Rico em CBD 50mg/mL (1500mg) - Acaflor (30mL)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante CBD",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Rico em Canabidiol (CBD) Full Spectrum",
+    concentration: "50 mg/mL (Total 1.500 mg de Canabinoides) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 310,
+    details: ["Frasco 30 mL", "50 mg/mL (1.500 mg)", "Full Spectrum Rico em CBD", "Associação Acaflor", "Uso Sublingual / Oral"],
+    description: "Extrato integral Full Spectrum 50 mg/mL (1.500 mg) da Associação Acaflor. Excelente resposta clínica para ansiedade crônica, fibromialgia, autismo (TEA) e regulação do sono.",
+    usageInstructions: "• Iniciar com 03 a 05 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Ajustar conforme resposta clínica.",
+    indications: "Ansiedade Crônica, Fibromialgia, Autismo (TEA), Dor Inflamatória, Distúrbios do Sono"
+  },
+  {
+    name: "Óleo Full Spectrum Rico em CBD 100mg/mL (3000mg) - Acaflor (30mL)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante CBD Alta Concentração",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Rico em Canabidiol (CBD) Full Spectrum",
+    concentration: "100 mg/mL (Total 3.000 mg de Canabinoides) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 460,
+    details: ["Frasco 30 mL", "100 mg/mL (3.000 mg)", "Full Spectrum Alta Potência", "Associação Acaflor", "Uso Sublingual / Oral"],
+    description: "Óleo Full Spectrum de alta concentração (100 mg/mL — 3.000 mg) da Associação Acaflor para quadros neurológicos, psiquiátricos e álgicos que requerem maior aporte de fitocanabinoides por gota.",
+    usageInstructions: "• Iniciar com 02 a 04 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Epilepsia, Autismo (TEA), Parkinson, Alzheimer, Ansiedade Refratária, Dor Crônica"
+  },
+  {
+    name: "Óleo Full Spectrum Equilibrado 1:1 CBD:THC 50mg/mL (1500mg) - Acaflor (30mL)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Equilibrado 1:1 (CBD:THC)",
+    activeIngredients: "Extrato Integral Equilibrado de Cannabis sativa L. (25 mg/mL CBD + 25 mg/mL THC)",
+    concentration: "50 mg/mL (25 mg CBD + 25 mg THC por mL • Total 1.500 mg) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 330,
+    details: ["Frasco 30 mL", "Proporção 1:1 (25mg CBD + 25mg THC/mL)", "Total 1.500 mg", "Associação Acaflor", "Uso Sublingual / Oral"],
+    description: "Óleo Full Spectrum balanceado 1:1 da Associação Acaflor, promovendo sinergia entre CBD e THC para controle de dores neuropáticas, fibromialgia, espasticidade e distúrbios do sono associados à dor.",
+    usageInstructions: "• Iniciar com 02 a 03 gotas por via sublingual de 12/12 horas. Reter sob a língua por 60 segundos antes de engolir. Titular 01 gota a cada 5 dias.",
+    indications: "Dor Neuropática, Fibromialgia, Espasticidade, Esclerose Múltipla, Artrite, Endometriose"
+  },
+  {
+    name: "Óleo Full Spectrum Rico em THC 30mg/mL (900mg) - Acaflor (30mL)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Óleo Full Spectrum Predominante THC",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Rico em Delta-9-THC",
+    concentration: "30 mg/mL (Total 900 mg • Predomínio THC) • Frasco de 30 mL",
+    pharmaceuticalForm: "Solução Oleosa Sublingual (Gotas)",
+    quantity: "01 Frasco de 30 mL",
+    administrationRoute: "Via Sublingual / Oral",
+    priceBRL: 260,
+    details: ["Frasco 30 mL", "30 mg/mL Predominante THC", "Uso Noturno / Analgésico", "Associação Acaflor", "Uso Sublingual / Oral"],
+    description: "Formulação Full Spectrum predominante em THC da Associação Acaflor para insônia refratária, dores noturnas intensas, cuidados paliativos e estímulo do apetite.",
+    usageInstructions: "• Administrar 02 a 04 gotas por via sublingual 1 hora antes de deitar. Reter sob a língua por 60 segundos antes de engolir.",
+    indications: "Insônia Grave, Dor Oncológica, Cuidados Paliativos, Caquexia, Náuseas"
+  },
+  {
+    name: "Pomada Canábica Full Spectrum - Acaflor (50g)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Pomada Tópica",
+    activeIngredients: "Extrato Integral de Cannabis sativa L. Full Spectrum para Uso Tópico",
+    concentration: "500 mg de Fitocanabinoides • Pote de 50g",
+    pharmaceuticalForm: "Pomada Tópica Anti-inflamatória",
+    quantity: "01 Pote de 50g",
+    administrationRoute: "Via Tópica (Uso Externo)",
+    priceBRL: 115,
+    details: ["Pote 50g", "Full Spectrum Tópico", "Alívio Localizado", "Associação Acaflor", "Uso Tópico"],
+    description: "Pomada terapêutica da Associação Acaflor para aplicação local em articulações doloridas, contraturas musculares, tendinites e afecções dermatológicas inflamatórias.",
+    usageInstructions: "• Aplicar sobre a área afetada de 2 a 3 vezes ao dia, massageando até completa absorção.",
+    indications: "Dores Articulares, Contraturas Musculares, Artrite, Tendinite, Psoríase, Dermatite"
+  },
+  {
+    name: "Inflorescências Medicinais In Natura Associativas - Acaflor (10g)",
+    manufacturer: "Associação Acaflor",
+    origin: "Nacional",
+    type: "Flor in natura (Inalação/Vaporização)",
+    activeIngredients: "Inflorescências Secas Padronizadas de Cannabis sativa L. (CBD / THC)",
+    concentration: "Alta Densidade de Fitocanabinoides e Terpenos • Embalagem de 10g",
+    pharmaceuticalForm: "Inflorescências Secas In Natura (10g)",
+    quantity: "01 Embalagem Lacrada de 10g",
+    administrationRoute: "Via Inalatória (Vaporização Medicinal)",
+    priceBRL: 450,
+    details: ["Embalagem 10g", "Inflorescências Associativas", "Resgate Rápido via Vaporização", "Associação Acaflor", "Sem Combustão"],
+    description: "Inflorescências medicinais in natura dispensadas pela Associação Acaflor para vaporização térmica medicinal, proporcionando alívio imediato em crises álgicas agudas, enxaqueca e crises de pânico.",
+    usageInstructions: "• Utilizar 0,1g a 0,15g em vaporizador térmico de ervas secas a 175°C–190°C sob demanda para resgate de crise. Proibida a combustão.",
+    indications: "Crises Álgicas Agudas, Enxaqueca Refratária, Crises de Pânico, Espasmos Severos"
+  }
+];
+
 export const cbdGuideData: CBDCategory[] = [
   {
     id: "associacoes_nacionais",
@@ -744,6 +958,34 @@ export const cbdGuideData: CBDCategory[] = [
     ],
     dosageGuidance: "Frete grátis para todo o Brasil na SouCannabis. Média de 26 gotas por mL para óleos em MCT. Sprays nasais acionados por jato transmucoso. Supositórios por via retal/vaginal. Extratos puros (pedido mínimo 3g) e Inflorescências Sequoia conforme prescrição médica.",
     products: SOUCANNABIS_PRODUCTS
+  },
+  {
+    id: "santa_gaia_oficial",
+    title: "SANTA GAIA — ASSOCIAÇÃO CANÁBICA NACIONAL (CATÁLOGO OFICIAL)",
+    description: "Catálogo Oficial da Associação Santa Gaia (Associação Brasileira de Pacientes de Cannabis Medicinal). Óleos Full Spectrum artesanais padronizados ricos em CBD (50 mg/mL e 100 mg/mL), Óleos Equilibrados 1:1 CBD:THC (50 mg/mL e 100 mg/mL), Óleo Rico em THC (50 mg/mL) e Pomada Terapêutica Full Spectrum (50g), além dos medicamentos personalizados cadastrados pelo médico.",
+    indicationsList: [
+      "Ansiedade, Estresse Crônico & Humor (Óleo Full Spectrum CBD 50 mg/mL e 100 mg/mL)",
+      "Dor Crônica, Fibromialgia & Neuropatias (Óleo Balanceado 1:1 CBD:THC 50 mg/mL e 100 mg/mL)",
+      "Epilepsia Refratária & Autismo / TEA (Óleo Full Spectrum CBD 100 mg/mL)",
+      "Insônia Severa & Dores Noturnas (Óleo Predominante THC 50 mg/mL)",
+      "Dores Articulares, Musculares & Artrite (Pomada Terapêutica Santa Gaia 50g)"
+    ],
+    dosageGuidance: "Uso sublingual com retenção de 60 segundos sob a língua antes de deglutir. Titulação gradual 'Start Low, Go Slow' a cada 4 a 5 dias conforme prescrição médica individualizada.",
+    products: SANTA_GAIA_PRODUCTS
+  },
+  {
+    id: "acaflor_oficial",
+    title: "ACAFLOR — ASSOCIAÇÃO CANÁBICA FLORESCER (CATÁLOGO OFICIAL NACIONAL)",
+    description: "Catálogo Oficial da Associação Acaflor (Associação Canábica Florescer — Brasil). Óleos Full Spectrum padronizados ricos em CBD (30 mg/mL, 50 mg/mL e 100 mg/mL), Óleo Equilibrado 1:1 CBD:THC (50 mg/mL), Óleo Rico em THC (30 mg/mL), Pomada Canábica Full Spectrum (50g) e Inflorescências Medicinais In Natura (10g), além dos medicamentos personalizados adicionados pelo médico.",
+    indicationsList: [
+      "Ansiedade, Insônia & Equilíbrio Emocional (Óleos Rico em CBD 30 mg/mL e 50 mg/mL)",
+      "TEA (Autismo), Epilepsia & Neurologia (Óleo Rico em CBD 100 mg/mL — 3000mg)",
+      "Fibromialgia, Dor Neuropática & Espasticidade (Óleo Equilibrado 1:1 CBD:THC 50 mg/mL)",
+      "Insônia Grave, Oncologia & Cuidados Paliativos (Óleo Rico em THC 30 mg/mL)",
+      "Resgate Imediato de Crises Álgicas (Inflorescências In Natura 10g & Pomada Tópica 50g)"
+    ],
+    dosageGuidance: "Administração sublingual para óleos (reter 60s sob a língua), uso tópico local para pomada e vaporização medicinal térmica sem combustão (175°C–190°C) para inflorescências.",
+    products: ACAFLOR_PRODUCTS
   },
   {
     id: "pangaia_oficial",
@@ -2357,7 +2599,7 @@ function _enrichMedicationDetails(
   const originLower = (origin || '').toLowerCase();
   const brandLower = (brand || '').toLowerCase();
   const isImportedExplicit = originLower.includes('import') || originLower.includes('eua') || brandLower.includes('flowermed') || brandLower.includes('greenbudz') || brandLower.includes('pangaia');
-  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRACE|ABRASCORP|AMAME|APEPI|SouCannabis/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação') || brandLower.includes('abrace') || brandLower.includes('soucannabis'));
+  const isNational = !isImportedExplicit && (/Associação|Nacional|ABECMED|ABRACE|ABRASCORP|AMAME|APEPI|SouCannabis|Santa Gaia|SantaGaia|Acaflor|Açaflor/i.test(pName) || originLower.includes('nacional') || brandLower.includes('associação') || brandLower.includes('abrace') || brandLower.includes('soucannabis') || brandLower.includes('santa gaia') || brandLower.includes('santagaia') || brandLower.includes('acaflor') || brandLower.includes('açaflor'));
   const manufacturer = brand || (isNational ? 'Associação Brasileira' : 'GreenBudzCBD');
   const prodOrigin = origin || (isNational ? 'Nacional' : 'Importado');
   const typeLower = (type || '').toLowerCase();

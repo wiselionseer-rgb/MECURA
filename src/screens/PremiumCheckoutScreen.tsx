@@ -57,6 +57,8 @@ export function PremiumCheckoutScreen() {
   const [pixData, setPixData] = useState<{ id: string, qr_code: string, qr_code_base64: string } | null>(null);
   const [cardUrl, setCardUrl] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [copiedPix, setCopiedPix] = useState(false);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -168,15 +170,20 @@ export function PremiumCheckoutScreen() {
             email: auth.currentUser?.email || 'paciente@mecura.com',
             firstName: userName || 'Paciente',
             patientId: currentUserId,
-            isPremium: true
+            isPremium: true,
+            plan: 'premium'
           })
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.qr_code && data.qr_code_base64) {
+            if (typeof window !== 'undefined' && data.id) {
+              localStorage.setItem('mecura_pending_payment_id', data.id.toString());
+              localStorage.setItem('last_offer', 'premium');
+            }
             setPixData({
-              id: data.id,
+              id: data.id.toString(),
               qr_code: data.qr_code,
               qr_code_base64: data.qr_code_base64
             });
@@ -186,14 +193,14 @@ export function PremiumCheckoutScreen() {
         } else {
           const errData = await response.json().catch(() => ({}));
           console.error("Erro MP Pix:", errData);
-          alert(errData.details || errData.error || "Falha ao gerar o Pix via Mercado Pago.");
+          setErrorToast(errData.details || errData.error || "Falha ao gerar o Pix via Mercado Pago.");
           setIsLoading(false);
           return;
         }
       } catch (err) {
         console.error("Erro ao gerar PIX: ", err);
       }
-      alert("Falha ao gerar o Pix. Verifique sua conexão e tente novamente.");
+      setErrorToast("Falha ao gerar o Pix. Verifique sua conexão e tente novamente.");
       setIsLoading(false);
       return;
     }
@@ -210,18 +217,28 @@ export function PremiumCheckoutScreen() {
             payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
             patientId: currentUserId,
-            isPremium: true
+            isPremium: true,
+            plan: 'premium'
           })
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.init_point) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('last_offer', 'premium');
+            }
             setCardUrl(data.init_point);
             setIsLoading(false);
 
             try {
-              window.open(data.init_point, '_blank');
+              const link = document.createElement('a');
+              link.href = data.init_point;
+              link.target = '_blank';
+              link.rel = 'noopener noreferrer';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
             } catch (e) {
               console.log("Popup contido pelo navegador, botão direto disponível.");
             }
@@ -229,11 +246,11 @@ export function PremiumCheckoutScreen() {
           }
         }
         setIsLoading(false);
-        alert("Não foi possível gerar a página de pagamento do Mercado Pago. Por favor, tente novamente ou pague via Pix.");
+        setErrorToast("Não foi possível gerar a página de pagamento do Mercado Pago. Por favor, tente novamente ou pague via Pix.");
       } catch (err) {
         console.error("Erro ao conectar cartão Mercado Pago: ", err);
         setIsLoading(false);
-        alert("Erro de conexão ao abrir o Mercado Pago. Verifique sua internet e tente novamente.");
+        setErrorToast("Erro de conexão ao abrir o Mercado Pago. Verifique sua internet e tente novamente.");
       }
       return;
     }
@@ -262,6 +279,7 @@ export function PremiumCheckoutScreen() {
       localStorage.removeItem('mecura_queue_display_pos');
       localStorage.removeItem('mecura_queue_entered_at');
       localStorage.removeItem('mecura_queue_notified_10m');
+      localStorage.removeItem('mecura_pending_payment_id');
     }
     useStore.setState({
       patientId: patientUid,
@@ -305,6 +323,7 @@ export function PremiumCheckoutScreen() {
         value: finalPrice || 249.90,
         plan: 'premium',
         selectedOffer: 'premium',
+        queueType: 'doctor',
         isPremium: true,
         patientName: patientName || 'Paciente VIP',
         patientEmail: patientEmail || '',
@@ -335,12 +354,17 @@ export function PremiumCheckoutScreen() {
       }
     }
 
-    // 4. Join waiting queue immediately
+    // 4. Join waiting queue immediately with full triage data
     try {
+      const st = useStore.getState();
       await joinQueue({
         id: patientUid,
         patientName: patientName,
         email: patientEmail,
+        phone: st.userPhone || '',
+        cpf: st.userCpf || '',
+        birthDate: st.userBirthDate || '',
+        answers: st.answers || {},
         isPremium: true,
         plan: 'premium',
         queueType: 'doctor',
@@ -367,21 +391,32 @@ export function PremiumCheckoutScreen() {
   };
 
   useEffect(() => {
-    if (pixData?.id) {
-      pollingInterval.current = setInterval(async () => {
+    const activePaymentId = pixData?.id || (typeof window !== 'undefined' ? localStorage.getItem('mecura_pending_payment_id') : null);
+    let isHandled = false;
+
+    const checkPaymentNow = async () => {
+      if (isHandled) return;
+      const payId = pixData?.id || (typeof window !== 'undefined' ? localStorage.getItem('mecura_pending_payment_id') : null);
+      if (payId) {
         try {
-          const res = await fetch(`/api/payment-status/${pixData.id}`);
+          const res = await fetch(`/api/payment-status/${payId}`);
           if (res.ok) {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
+              isHandled = true;
               if (pollingInterval.current) clearInterval(pollingInterval.current);
-              handleSuccess(pixData.id);
+              handleSuccess(payId);
             }
           }
         } catch (e) {
           console.error(e);
         }
-      }, 3000);
+      }
+    };
+
+    if (activePaymentId) {
+      checkPaymentNow();
+      pollingInterval.current = setInterval(checkPaymentNow, 3000);
     }
     return () => {
       if (pollingInterval.current) clearInterval(pollingInterval.current);
@@ -394,15 +429,19 @@ export function PremiumCheckoutScreen() {
     const paymentId = params.get('payment_id') || params.get('collection_id');
     const statusParam = params.get('status') || params.get('collection_status');
 
-    if (!paymentId && !statusParam) {
-      if (typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true') {
+    if (!paymentId && !statusParam && !paymentParam) {
+      const st = useStore.getState();
+      const isFinished = st.isConsultationFinished || (typeof window !== 'undefined' && localStorage.getItem('mecura_consultation_finished') === 'true');
+      const approvedAtRaw = typeof window !== 'undefined' ? Number(localStorage.getItem('mecura_payment_approved_at') || 0) : 0;
+      const isRecentlyApproved = approvedAtRaw > 0 && (Date.now() - approvedAtRaw) < 120000;
+      if (!isFinished && (st.inQueue || isRecentlyApproved) && typeof window !== 'undefined' && localStorage.getItem('mecura_pagamento') === 'true') {
         navigate('/queue');
         return;
       }
     }
 
     if (paymentParam === 'failed' || paymentParam === 'cancelled' || statusParam === 'rejected') {
-      alert('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
+      setErrorToast('O pagamento com cartão não foi concluído ou foi recusado pelo Mercado Pago. Você pode tentar novamente com outro cartão ou pagar via Pix.');
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
@@ -487,11 +526,13 @@ export function PremiumCheckoutScreen() {
                 <button 
                   onClick={() => {
                     navigator.clipboard.writeText(pixData.qr_code);
-                    alert("Copiado!");
+                    setCopiedPix(true);
+                    setTimeout(() => setCopiedPix(false), 2500);
                   }}
-                  className="bg-[#A6FF00]/10 hover:bg-[#A6FF00]/20 text-[#A6FF00] p-2.5 rounded-lg transition-colors"
+                  className="bg-[#A6FF00]/10 hover:bg-[#A6FF00]/20 text-[#A6FF00] p-2.5 rounded-lg transition-colors flex items-center gap-1"
                 >
                   <Ticket className="w-5 h-5" />
+                  {copiedPix && <span className="text-[11px] font-bold">Copiado!</span>}
                 </button>
               </div>
             </div>
@@ -1195,8 +1236,26 @@ export function PremiumCheckoutScreen() {
         onClose={() => setShowLegalModal(false)}
       />
 
-      {/* Success Notification Modal / Overlay (evita window.alert) */}
+      {/* Success & Error Notification Modals (evita window.alert) */}
       <AnimatePresence>
+        {errorToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed top-6 left-4 right-4 z-50 max-w-md mx-auto bg-red-950/95 border border-red-500/50 text-red-100 px-4 py-3.5 rounded-2xl shadow-2xl flex items-start gap-3"
+          >
+            <XCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs leading-relaxed font-medium">{errorToast}</div>
+            <button
+              type="button"
+              onClick={() => setErrorToast(null)}
+              className="text-red-300 hover:text-white p-1"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
         {successToast && (
           <motion.div 
             initial={{ opacity: 0 }}

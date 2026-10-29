@@ -43,9 +43,10 @@ export interface PatientPrescriptionData {
 }
 
 export const formatDoctorCrmLine = (crm: string, spec?: string) => {
-  const trimmedCrm = (crm || '').trim();
+  let trimmedCrm = (crm || '').trim();
+  trimmedCrm = trimmedCrm.replace(/\s*•?\s*Estado\s+[A-Z]{2}\b/gi, '').trim();
   const hasUf = /(?:CRM[/-]?[A-Z]{2}|[/-][A-Z]{2}\b|\bMT\b|\bSP\b|\bRJ\b)/i.test(trimmedCrm);
-  const crmPart = hasUf ? trimmedCrm : `${trimmedCrm} • Estado MT`;
+  const crmPart = hasUf ? trimmedCrm : `${trimmedCrm} • MT`;
   const specPart = spec || 'Clínico Geral';
   return `${crmPart} • ${specPart}`;
 };
@@ -128,6 +129,10 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     originLower.includes('cultive') ||
     originLower.includes('salva') ||
     originLower.includes('santa cannabis') ||
+    originLower.includes('santa gaia') ||
+    originLower.includes('santagaia') ||
+    originLower.includes('acaflor') ||
+    originLower.includes('açaflor') ||
     originLower.includes('flor da vida') ||
     brandLower.includes('associação') ||
     brandLower.includes('associacao') ||
@@ -135,6 +140,10 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
     brandLower.includes('abecmed') ||
     brandLower.includes('soucannabis') ||
     brandLower.includes('sou cannabis') ||
+    brandLower.includes('santa gaia') ||
+    brandLower.includes('santagaia') ||
+    brandLower.includes('acaflor') ||
+    brandLower.includes('açaflor') ||
     brandLower.includes('abrascorp') ||
     brandLower.includes('amame') ||
     brandLower.includes('apepi') ||
@@ -157,7 +166,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
 
   // 4. Name indicators for Brazilian associations
   if (
-    /soucannabis|sou\s*cannabis|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|associação|associacao|nacional|brasil|óleo integral/i.test(nameLower)
+    /soucannabis|sou\s*cannabis|santa\s*gaia|santagaia|acaflor|açaflor|abrace|abecmed|abrascorp|amame|apepi|cultive|santa cannabis|flor da vida|associação|associacao|nacional|brasil|óleo integral/i.test(nameLower)
   ) {
     return true;
   }
@@ -170,7 +179,7 @@ export const isNationalProduct = (item: PrescriptionItemData): boolean => {
       if (eOrigin.includes('import') || eOrigin.includes('eua') || eOrigin.includes('usa')) {
         return false;
       }
-      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao') || eOrigin.includes('abrace') || eOrigin.includes('abecmed') || eOrigin.includes('soucannabis') || eOrigin.includes('sou cannabis')) {
+      if (eOrigin.includes('nacional') || eOrigin.includes('associação') || eOrigin.includes('associacao') || eOrigin.includes('abrace') || eOrigin.includes('abecmed') || eOrigin.includes('soucannabis') || eOrigin.includes('sou cannabis') || eOrigin.includes('santa gaia') || eOrigin.includes('acaflor') || eOrigin.includes('açaflor')) {
         return true;
       }
     }
@@ -1080,7 +1089,15 @@ export const generatePrescriptionPDF = async (
                 </div>
 
                 {/* Rodapé Oficial Fixado no Final da Folha (Assinatura + ICP-Brasil + Barra Institucional) */}
-                <div className="shrink-0 mt-auto pt-2 space-y-1.5">
+                <div
+                  className="shrink-0 space-y-1.5"
+                  style={{
+                    position: 'absolute',
+                    bottom: isDense ? '14px' : isCompact ? '15px' : '16px',
+                    left: isDense ? '36px' : isCompact ? '36px' : '38px',
+                    right: isDense ? '36px' : isCompact ? '36px' : '38px'
+                  }}
+                >
                   {renderPrescriptionSignatureBlock()}
 
                   {/* Slim Institutional Rodapé anchored at the very bottom */}
@@ -1796,28 +1813,32 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                 overflow: 'hidden'
               }}
             >
-              <div className="flex-1 flex flex-col justify-start min-h-0">
+              <div className="flex-1 flex flex-col justify-start min-h-0" style={{ paddingBottom: isLastPage ? '110px' : '40px' }}>
                 {renderPageHeaderChrome(pageNumber, totalPagesCount, pageTitle)}
 
                 <div className="flex flex-col" style={{ gap: `${BLOCK_GAP}px` }}>
                   {page.blocks.map((block, bIdx) => renderBlockElement(block, `${pageNumber}-${block.id}-${bIdx}`))}
                 </div>
-
-                {/* On the last page, anchor signature at the bottom of the page */}
-                {isLastPage && (
-                  <div className="mt-auto pt-2">
-                    {renderFinalSignatureAndFooter(pageNumber, totalPagesCount)}
-                  </div>
-                )}
               </div>
 
               {!isLastPage ? (
                 renderContinuationFooter(pageNumber, totalPagesCount)
               ) : (
-                <div className="shrink-0 mt-auto pt-1.5 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
-                  <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
-                  <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
-                  <span>Documento Médico Oficial • Folha {pageNumber}/{totalPagesCount}</span>
+                <div
+                  className="shrink-0 space-y-1.5"
+                  style={{
+                    position: 'absolute',
+                    bottom: '16px',
+                    left: '34px',
+                    right: '34px'
+                  }}
+                >
+                  {renderFinalSignatureAndFooter(pageNumber, totalPagesCount)}
+                  <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
+                    <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+                    <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
+                    <span>Documento Médico Oficial • Folha {pageNumber}/{totalPagesCount}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -2691,8 +2712,10 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   const patientCpf = agronomicData?.cpf || patientAnswers?.cpf || storeState.userCpf || 'Não informado';
   const patientBirthDate = agronomicData?.birthDate || patientAnswers?.birthDate || storeState.userBirthDate || 'Não informada';
   const emissionDate = agronomicData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
-  const agronomistName = agronomicData?.agronomistName || 'Wilian Dalenogare Pereira';
-  const agronomistCrea = agronomicData?.agronomistCrea || 'CREA-PR 172.458/D';
+  const rawAgroName = agronomicData?.agronomistName || 'Wilian Dalenogare Pereira';
+  const agronomistName = rawAgroName.replace(/^Eng\.?\s*Agr\.?\s*/i, '').trim() || 'Wilian Dalenogare Pereira';
+  const rawAgroCrea = agronomicData?.agronomistCrea || 'CREA-BA Nº 052193520-2';
+  const agronomistCrea = /172\.?458|CREA-PR/i.test(rawAgroCrea) ? 'CREA-BA Nº 052193520-2' : rawAgroCrea;
 
   const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
     ? patientAnswers.objectives
@@ -2780,6 +2803,43 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   // Importação estimada de sementes feminizadas com taxa de segurança de 30%
   const seedsNeeded = agronomicData?.seedsNeeded || Math.round(targetPlants * 1.3038) || 206;
 
+  // Parse customAgroText into modular chunks to prevent massive single-block page breaks
+  const agroCustomSections: { title?: string; paragraphs: string[] }[] = [];
+  if (customAgroText) {
+    const majorParts = customAgroText.split(/\n\s*(?=(?:1\.|2\.|3\.)\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/);
+    if (majorParts.length > 1) {
+      majorParts.forEach(part => {
+        const lines = part.trim().split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length > 0) {
+          const firstLine = lines[0];
+          if (/^(?:1\.|2\.|3\.)\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(firstLine)) {
+            agroCustomSections.push({
+              title: firstLine,
+              paragraphs: lines.slice(1)
+            });
+          } else {
+            agroCustomSections.push({
+              paragraphs: lines
+            });
+          }
+        }
+      });
+    } else {
+      const rawParas = customAgroText.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+      if (rawParas.length > 1) {
+        rawParas.forEach(p => {
+          agroCustomSections.push({
+            paragraphs: p.split('\n').map(l => l.trim()).filter(Boolean)
+          });
+        });
+      } else {
+        agroCustomSections.push({
+          paragraphs: customAgroText.split('\n').map(l => l.trim()).filter(Boolean)
+        });
+      }
+    }
+  }
+
   interface AgroBlock {
     id: string;
     render: () => React.ReactNode;
@@ -2800,7 +2860,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           </div>
           <div style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '12px' }}>
             <p style={{ margin: 0, fontSize: '8.5px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Responsável Técnico Pericial</p>
-            <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', fontWeight: '800', color: '#0F172A' }}>Consultor e Eng. Agr: {agronomistName}</p>
+            <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', fontWeight: '800', color: '#0F172A' }}>Eng. Agr. {agronomistName}</p>
             <p style={{ margin: '1px 0 0 0', fontSize: '10.5px', color: '#334155' }}>Registro Profissional: <strong>{agronomistCrea}</strong></p>
             <p style={{ margin: '1px 0 0 0', fontSize: '9.5px', color: '#059669', fontWeight: '600' }}>
               Perito em Fitotecnia & Fitoquímica Canabinoide
@@ -2816,15 +2876,15 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
             <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
             <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              1. Resumo & Enquadramento Regulatório (ANVISA)
+              1. Enquadramento Técnico-Pericial e Fundamento do Salvo-Conduto para Autocultivo
             </h2>
           </div>
           <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
             <p style={{ margin: '0 0 5px 0', textIndent: '18px' }}>
-              A ANVISA definiu, por meio da <strong>Resolução da Diretoria Colegiada (RDC) nº 335/2020</strong>, alterada pela <strong>RDC nº 570/2021</strong> e consolidada na <strong>RDC nº 660/2022</strong>, os critérios e os procedimentos para a importação de Produto derivado de <em>Cannabis</em>, por pessoa física, para uso próprio, mediante prescrição de profissional legalmente habilitado, para tratamento de saúde. Dessa forma, ainda que o produto não tenha registro para comercialização no Brasil, a importação poderá ser autorizada se os critérios e procedimentos definidos na mencionada RDC forem cumpridos, conforme a <strong>Nota Técnica nº 37/2021/SEI/COCIC/GPCON/GGMON/DIRE5/ANVISA</strong>.
+              O presente Parecer Técnico Agronômico destina-se a instruir pedido de <strong>Salvo-Conduto em sede de Habeas Corpus preventivo</strong> com esteio nos arts. 1º, III, 5º, <em>caput</em>, e 196 da Constituição Federal de 1988, c/c o art. 2º, parágrafo único, da Lei Federal nº 11.343/2006. O dimensionamento técnico aqui exarado fundamenta-se na necessidade comprovada de produção doméstica artesanal e ininterrupta dos medicamentos fitoterápicos prescritos pelo médico assistente — abrangendo <strong>óleos artesanais integrais em gotas, inflorescências secas para vaporização terapêutica, pomadas/bálsamos tópicos e extratos concentrados</strong>.
             </p>
             <p style={{ margin: 0, textIndent: '18px' }}>
-              A fim de proporcionar uma orientação adequada para um cultivo em pequena escala, conhecido comumente como <strong>"cultivo caseiro"</strong>, para paciente que necessita utilizar as moléculas produzidas pela espécie vegetal — nomeadamente o <strong>Δ9–Tetrahidrocanabinol (THC)</strong>, o <strong>Cannabidiol (CBD)</strong> e o <strong>Canabigerol (CBG)</strong>, reconhecidas por suas propriedades terapêuticas —, foi elaborado este parecer com indicações técnicas para o cultivo sob as boas práticas comercialmente conhecidas por <strong>GACP (Good Agriculture and Collection Practices)</strong>, aplicadas para garantir produtividade, pureza biológica e sanidade adequada dos cultivos.
+              A fim de assegurar a orientação técnica adequada para o cultivo doméstico em pequena escala voltado exclusivamente ao consumo pessoal do(a) paciente, o manejo vegetal e a extração caseira são dimensionados conforme as diretrizes internacionais da Organização Mundial da Saúde de <strong>Boas Práticas de Agricultura e Coleta (GACP — Good Agriculture and Collection Practices)</strong>, assegurando padronização dos teores de canabinoides, pureza biológica e isenção de contaminantes.
             </p>
           </div>
         </div>
@@ -2837,55 +2897,67 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
             <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
             <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              2. Dimensionamento do Cultivo e Soberania Terapêutica
+              2. Soberania Terapêutica e Inviabilidade Econômica de Medicamentos Comerciais
             </h2>
           </div>
           <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
             <p style={{ margin: '0 0 5px 0', textIndent: '18px' }}>
-              O cultivo caseiro é a maneira indicada de garantir o acesso continuado aos medicamentos para pacientes que não têm condições de arcar com os elevados custos dos fármacos atualmente disponíveis no mercado, que normalmente <strong>ultrapassam a barreira dos R$ 2.000,00 a R$ 5.000,00 mensais</strong> para produtos comercializados nacionalmente ou importados.
+              O autocultivo artesanal constitui a única via viável para assegurar a continuidade do tratamento sem interrupções lesivas à saúde. Os fármacos canabinoides comerciais disponíveis no mercado farmacêutico apresentam custos exorbitantes, oscilando habitualmente entre <strong>R$ 2.000,00 e R$ 5.000,00 mensais</strong>, valor financeiramente proibitivo para a realidade do(a) paciente.
             </p>
             <p style={{ margin: 0, textIndent: '18px' }}>
-              Ademais, a segurança da autossuficiência na produção e na manipulação artesanal do próprio fitofármaco garante que o paciente não sofra com desabastecimentos, retenções alfandegárias, quebras de importação ou descontinuidade posológica do seu tratamento médico.
+              Ademais, a segurança da autossuficiência na produção e na manipulação artesanal própria dos óleos, pomadas e flores medicinais garante que o(a) paciente não sofra com desabastecimentos mercadológicos, custos impeditivos ou descontinuidade posológica do seu tratamento médico.
             </p>
           </div>
         </div>
       )
     },
     {
-      id: 'sec-3',
+      id: 'sec-3-header',
       render: () => (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-            <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
-            <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              3. Anamnese da Triagem, Prescrição Médica e Demanda Terapêutica Individual
-            </h2>
-          </div>
-          <div style={{ fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155' }}>
-            {customAgroText ? (
-              <div style={{ backgroundColor: '#F8FAFC', borderLeft: '3px solid #059669', borderTop: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0', borderRadius: '4px', padding: '7px 10px', marginBottom: '6px' }}>
-                {customAgroText.split('\n').filter(Boolean).map((para, pIdx) => (
-                  <p key={pIdx} style={{ margin: pIdx === 0 ? 0 : '4px 0 0 0', fontSize: '9.8px', lineHeight: '1.45', color: '#1E293B' }}>
-                    {para}
-                  </p>
-                ))}
-              </div>
-            ) : null}
-            {prescribedProductsText ? (
-              <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', padding: '6px 10px', marginBottom: '6px' }}>
-                <p style={{ margin: '0 0 2px 0', fontSize: '8.8px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase' }}>
-                  Protocolo Prescrito Vinculado ao Dimensionamento:
-                </p>
-                <p style={{ margin: 0, fontSize: '9.5px', color: '#064E3B', whiteSpace: 'pre-line' }}>
-                  {prescribedProductsText}
-                </p>
-              </div>
-            ) : null}
-            <p style={{ margin: 0, textIndent: '18px' }}>
-              Estes medicamentos contêm, em média, entre 5-6g de fitocanabinoides em sua composição por frasco de 30 ml (200 mg/ml), com teores modulados de CBD, THC e CBG. No caso do(a) paciente <strong>{sanitizedUserName}</strong>, conforme recomendações médicas oficiais que balizam este parecer técnico, o quadro clínico de <strong>{diagnosis}</strong> visa ser tratado com o uso concomitante de extratos integrais (Full Spectrum) com predominância de CBD/THC, CBD, THC e CBG, além de inflorescências secas padronizadas para vaporização terapêutica em crises álgicas ou insônia aguda, instruindo a memória de cálculo fitoquímico e de biomassa a seguir demonstrada.
-            </p>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+          <span style={{ width: '3px', height: '13px', backgroundColor: '#059669', borderRadius: '2px' }}></span>
+          <h2 style={{ margin: 0, fontSize: '11px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            3. Anamnese da Triagem, Prescrição Médica e Demanda Terapêutica Individual
+          </h2>
         </div>
+      )
+    },
+    ...agroCustomSections.map((sec, sIdx) => ({
+      id: `sec-3-custom-${sIdx}`,
+      render: () => (
+        <div style={{ backgroundColor: '#F8FAFC', borderLeft: '3px solid #059669', borderTop: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0', borderRadius: '4px', padding: '6px 10px', fontSize: '9.8px', lineHeight: '1.45', textAlign: 'justify', color: '#1E293B' }}>
+          {sec.title && (
+            <p style={{ margin: '0 0 3px 0', fontSize: '9.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.2px' }}>
+              {sec.title}
+            </p>
+          )}
+          {sec.paragraphs.map((para, pIdx) => (
+            <p key={pIdx} style={{ margin: pIdx === 0 && !sec.title ? 0 : '3px 0 0 0' }}>
+              {para}
+            </p>
+          ))}
+        </div>
+      )
+    })),
+    ...(prescribedProductsText ? [{
+      id: 'sec-3-presc',
+      render: () => (
+        <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', padding: '6px 10px' }}>
+          <p style={{ margin: '0 0 2px 0', fontSize: '8.8px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase' }}>
+            Protocolo Prescrito Vinculado ao Dimensionamento (Preparações Artesanais):
+          </p>
+          <p style={{ margin: 0, fontSize: '9.5px', color: '#064E3B', whiteSpace: 'pre-line' }}>
+            {prescribedProductsText}
+          </p>
+        </div>
+      )
+    }] : []),
+    {
+      id: 'sec-3-concl',
+      render: () => (
+        <p style={{ margin: 0, fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#334155', textIndent: '18px' }}>
+          No caso do(a) paciente <strong>{sanitizedUserName}</strong>, conforme prescrição médica oficial que baliza este parecer técnico, o quadro clínico de <strong>{diagnosis}</strong> demanda tratamento com formulações artesanais de produção e extração própria (óleos integrais com espectro completo de fitocanabinoides, inflorescências medicinais secas padronizadas para inalação em vaporizador térmico medicinal em crises álgicas ou insônia aguda, pomadas/bálsamos tópicos e/ou extratos concentrados), instruindo o dimensionamento fitotécnico e a biomassa a seguir demonstrada.
+        </p>
       )
     },
     {
@@ -3010,7 +3082,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
               <p style={{ margin: '1px 0 0 0', fontSize: '11.5px', fontWeight: '900', color: '#065F46' }}>{targetPlants} espécimes</p>
             </div>
             <div style={{ textAlign: 'center', borderLeft: '1px solid #E2E8F0' }}>
-              <span style={{ fontSize: '8px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Sementes Importadas</span>
+              <span style={{ fontSize: '8px', color: '#64748B', fontWeight: '700', textTransform: 'uppercase' }}>Sementes Feminizadas</span>
               <p style={{ margin: '1px 0 0 0', fontSize: '11.5px', fontWeight: '900', color: '#0F172A' }}>{seedsNeeded} un.</p>
             </div>
           </div>
@@ -3071,7 +3143,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           </div>
           <div style={{ backgroundColor: '#F0FDF4', borderLeft: '3.5px solid #059669', borderRight: '1px solid #BBF7D0', borderTop: '1px solid #BBF7D0', borderBottom: '1px solid #BBF7D0', padding: '9px 12px', fontSize: '10.2px', lineHeight: '1.48', textAlign: 'justify', color: '#064E3B' }}>
             <p style={{ margin: 0 }}>
-              <strong>Conclusão Técnica:</strong> Com base nas prescrições médicas que amparam este parecer, nos cálculos dosimétricos de fitomassa e na biologia da espécie, conclui-se que o dimensionamento anual de <strong>{targetPlants} espécimes de <em>Cannabis sativa L.</em></strong> (em ciclos de aproximadamente <strong>{plantsPerCycle} plantas em floração por colheita</strong>), juntamente com a importação de <strong>{seedsNeeded} sementes feminizadas</strong>, é <strong>agronomicamente justificado, estritamente proporcional e indispensável</strong> para assegurar a autossuficiência e continuidade do tratamento médico do(a) paciente <strong>{sanitizedUserName}</strong> por 12 meses, sem excedentes para finalidade diversa.
+              <strong>Conclusão Técnica:</strong> Com base nas prescrições médicas que amparam este parecer, nos cálculos dosimétricos de fitomassa e na biologia da espécie, conclui-se que o dimensionamento anual de <strong>{targetPlants} espécimes de <em>Cannabis sativa L.</em></strong> (em ciclos de aproximadamente <strong>{plantsPerCycle} plantas em floração por colheita</strong>), juntamente com a aquisição de <strong>{seedsNeeded} sementes feminizadas</strong>, é <strong>agronomicamente justificado, estritamente proporcional e indispensável</strong> para assegurar a autossuficiência e continuidade do tratamento médico do(a) paciente <strong>{sanitizedUserName}</strong> por 12 meses, sem excedentes para finalidade diversa.
             </p>
           </div>
         </div>
@@ -3135,10 +3207,10 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   const renderAgroSignature = () => (
     <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '20px', marginTop: '14px', paddingTop: '8px' }}>
       <div style={{ textAlign: 'center', borderTop: '1.5px solid #94A3B8', paddingTop: '7px' }}>
-        <p style={{ margin: 0, fontSize: '11px', fontWeight: '900', color: '#0F172A' }}>{agronomistName}</p>
-        <p style={{ margin: '1px 0 0 0', fontSize: '9.5px', fontWeight: '700', color: '#065F46' }}>Engenheiro Agrônomo — {agronomistCrea}</p>
+        <p style={{ margin: 0, fontSize: '11px', fontWeight: '900', color: '#0F172A' }}>Eng. Agr. {agronomistName}</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '10px', fontWeight: '800', color: '#065F46' }}>{agronomistCrea}</p>
         <p style={{ margin: '1px 0 0 0', fontSize: '8.5px', color: '#475569' }}>Perito em Fitotecnia, Fitoquímica Canabinoide & GACP</p>
-        <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>ART de Perícia Agronômica vinculada ao CREA-PR</p>
+        <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>ART de Perícia Agronômica vinculada ao CREA-BA</p>
       </div>
       <div style={{ textAlign: 'center', borderTop: '1.5px solid #94A3B8', paddingTop: '7px' }}>
         <p style={{ margin: 0, fontSize: '10.5px', fontWeight: '800', color: '#0F172A' }}>MECURA SAÚDE & BEM-ESTAR</p>
@@ -3208,6 +3280,13 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           usedH += g + h;
           cursor++;
         }
+
+        // Avoid leaving a lone section header at the very bottom of a page
+        if (pageBlocks.length > 1 && pageBlocks[pageBlocks.length - 1].id.endsWith('-header')) {
+          pageBlocks.pop();
+          cursor--;
+        }
+
         pages.push(pageBlocks);
       }
 
@@ -3233,7 +3312,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
                   backgroundColor: '#FFFFFF'
                 }}
               >
-                <div>
+                <div style={{ paddingBottom: '35px' }}>
                   {renderAgroHeader(pIdx > 0)}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
                     {pageBlocks.map((b, bIdx) => (
@@ -3243,7 +3322,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
                   {isLastPage && renderAgroSignature()}
                 </div>
 
-                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B' }}>
+                <div style={{ position: 'absolute', bottom: '20px', left: '40px', right: '40px', borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B' }}>
                   <span>Mecura • Assessoria Pericial em Fitotecnia & Autocultivo Medicinal</span>
                   <span style={{ fontWeight: '700', color: '#0F172A' }}>Parecer Técnico — Página {pIdx + 1} de {pages.length}</span>
                   <span>Documento para Instrução de Habeas Corpus Preventivo</span>

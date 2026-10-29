@@ -105,7 +105,7 @@ import { ProgrammedPrescriptionProfile, getProgrammedProfiles, getDoctorCustomMo
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { generatePersonalizedClinicalReport } from '../utils/clinicalReportGenerator';
+import { generatePersonalizedClinicalReport, buildAgronomicArtisanalMedications } from '../utils/clinicalReportGenerator';
 import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
 const calculateAge = (birthDateStr?: string) => {
@@ -588,7 +588,7 @@ export function DoctorDashboardScreen() {
   const [agronomicCpf, setAgronomicCpf] = useState('');
   const [agronomicEmissionDate, setAgronomicEmissionDate] = useState('');
   const [agronomicName, setAgronomicName] = useState('Wilian Dalenogare Pereira');
-  const [agronomicCrea, setAgronomicCrea] = useState('CREA-PR 172.458/D');
+  const [agronomicCrea, setAgronomicCrea] = useState('CREA-BA Nº 052193520-2');
   const [agronomicDiagnosis, setAgronomicDiagnosis] = useState('');
   const [agronomicDailyDoseMg, setAgronomicDailyDoseMg] = useState(5900);
   const [agronomicTargetPlants, setAgronomicTargetPlants] = useState(158);
@@ -1431,7 +1431,11 @@ export function DoctorDashboardScreen() {
     setAgronomicCpf(validSaved?.cpf || pCpf);
     setAgronomicEmissionDate(validSaved?.emissionDate || patientData.emissionDate || new Date().toLocaleDateString('pt-BR'));
     setAgronomicName(validSaved?.agronomistName || 'Wilian Dalenogare Pereira');
-    setAgronomicCrea(validSaved?.agronomistCrea || 'CREA-PR 172.458/D');
+    setAgronomicCrea(
+      validSaved?.agronomistCrea && !/172\.?458|CREA-PR/i.test(validSaved.agronomistCrea)
+        ? validSaved.agronomistCrea
+        : 'CREA-BA Nº 052193520-2'
+    );
     setAgronomicDiagnosis(validSaved?.diagnosis || patientData.diagnosis || personalized.agronomic.diagnosis);
     setAgronomicDailyDoseMg(validSaved?.dailyDoseMg || (hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg));
     setAgronomicTargetPlants(validSaved?.targetPlants || (hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants));
@@ -4057,13 +4061,17 @@ export function DoctorDashboardScreen() {
     const prescKey = getPatientReportKey(resolvedId, pName);
     const savedPresc = loadSavedPrescription(prescKey, pName, resolvedId);
     const activePrescItems = prescItems.length > 0 ? prescItems : (savedPresc?.items && Array.isArray(savedPresc.items) ? savedPresc.items : []);
-    const prescribedProductsStr = activePrescItems.length > 0
-      ? activePrescItems.map((it: PrescriptionItemData, idx: number) => `${idx + 1}. ${it.name} (${it.brand || 'Associação'} - ${it.origin || 'Nacional'}) • ${(it.dosage || []).join(' ')}`).join('\n')
-      : '';
-
     const hcCalc = patientAnswers?.hcPlantCalculator;
-    const defaultDailyDoseMg = hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg;
-    const defaultTargetPlants = hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants;
+
+    const artisanalAnalysis = buildAgronomicArtisanalMedications(
+      activePrescItems,
+      personalized.clinicalCondition,
+      hcCalc
+    );
+
+    const prescribedProductsStr = artisanalAnalysis.prescribedArtisanalText;
+    const defaultDailyDoseMg = artisanalAnalysis.totalDailyDoseMg;
+    const defaultTargetPlants = artisanalAnalysis.calculatedPlants;
 
     return {
       resolvedId,
@@ -4094,7 +4102,7 @@ export function DoctorDashboardScreen() {
       cpf: defaults.pCpf,
       emissionDate: agronomicEmissionDate || new Date().toLocaleDateString('pt-BR'),
       agronomistName: agronomicName || 'Wilian Dalenogare Pereira',
-      agronomistCrea: agronomicCrea || 'CREA-PR 172.458/D',
+      agronomistCrea: (agronomicCrea && !/172\.?458|CREA-PR/i.test(agronomicCrea)) ? agronomicCrea : 'CREA-BA Nº 052193520-2',
       diagnosis: defaults.defaultDiagnosis,
       dailyDoseMg: defaults.defaultDailyDoseMg,
       targetPlants: defaults.defaultTargetPlants,
@@ -4127,12 +4135,20 @@ export function DoctorDashboardScreen() {
         validSaved = null;
       }
     }
+    // Invalidate old templates referencing RDC 335 / commercial import to ensure HC compliance with artisanal national preparations
+    if (validSaved && /rdc\s*n?º?\s*335|importação de produto/i.test(validSaved.agronomicText || '')) {
+      validSaved = null;
+    }
 
     setAgronomicPatientName(validSaved?.patientName || defaults.pName);
     setAgronomicCpf(validSaved?.cpf || defaults.pCpf);
     setAgronomicEmissionDate(validSaved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
     setAgronomicName(validSaved?.agronomistName || 'Wilian Dalenogare Pereira');
-    setAgronomicCrea(validSaved?.agronomistCrea || 'CREA-PR 172.458/D');
+    setAgronomicCrea(
+      validSaved?.agronomistCrea && !/172\.?458|CREA-PR/i.test(validSaved.agronomistCrea)
+        ? validSaved.agronomistCrea
+        : 'CREA-BA Nº 052193520-2'
+    );
     setAgronomicDiagnosis(validSaved?.diagnosis || defaults.defaultDiagnosis);
     setAgronomicDailyDoseMg(validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg);
     setAgronomicTargetPlants(validSaved?.targetPlants || defaults.defaultTargetPlants);
@@ -4270,7 +4286,7 @@ export function DoctorDashboardScreen() {
         sender: 'doctor',
         type: 'agronomic_report',
         docType: 'laudo_agronomico',
-        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${finalName}\n- **CPF:** ${finalCpf}\n- **Consultor e Eng. Agrônomo:** ${finalAgronomist} (${finalCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* com finalidade medicinal (GACP / RDC ANVISA)\n- **Patologias / CIDs:** ${finalDiagnosis}\n- **Demanda Farmacológica:** ${finalDailyDose} mg/dia de extrato integral (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80%)\n- **Dimensionamento Autorizado:** ${finalTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades importadas\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
+        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${finalName}\n- **CPF:** ${finalCpf}\n- **Consultor e Eng. Agrônomo:** ${finalAgronomist} (${finalCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* para produção e extração artesanal própria de fitofármacos (GACP / CF/88 Art. 196)\n- **Patologias / CIDs:** ${finalDiagnosis}\n- **Demanda Farmacológica:** ${finalDailyDose} mg/dia de substâncias ativas em formulações artesanais integrais (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem de segurança agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80% na secagem/cura)\n- **Dimensionamento Autorizado:** ${finalTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades com taxa germinativa\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
         attachment: {
           name: fileName,
           url: fileUrl || '',
@@ -5678,7 +5694,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
 
                 {/* Filtro Específico por Plano (VIP x Essencial) */}
                 {(() => {
-                  const vipCount = doctorQueue.filter(p => !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium)).length;
+                  const vipCount = doctorQueue.filter(p => isPatientVip(p)).length;
                   const basicCount = doctorQueue.length - vipCount;
 
                   return (
@@ -5713,7 +5729,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
             const matchesStatus = queueFilter === 'all' ? true : p.status === queueFilter;
             const pName = (p.patientName || (p as any).name || '').toLowerCase();
             const matchesSearch = pName.includes((queueSearchTerm || '').toLowerCase());
-            const isPrem = !!(p.isPremium || p.plan === 'premium' || (p as any).selectedOffer === 'premium' || p.answers?.isPremium || (p as any).pagamento_premium);
+            const isPrem = isPatientVip(p);
             const matchesPlan = queuePlanFilter === 'all' ? true : queuePlanFilter === 'premium' ? isPrem : !isPrem;
             const isPaid = p.id?.startsWith('sample_patient_') || (p as any).queueType === 'doctor' || (p as any).inQueue === true || !!((p as any).pagamento_consulta === true || (p as any).hasPaid === true || (p as any).isPaid === true);
             return matchesStatus && matchesSearch && matchesPlan && (p.status !== 'waiting' || isPaid);

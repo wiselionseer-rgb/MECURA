@@ -1,7 +1,7 @@
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted, buildCustomBrandCategory, getBestCategoryIdForProduct } from '../utils/productCatalog';
+import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted, markCategoryAsDeleted, unmarkCategoryAsDeleted, restoreAllDeletedCategories, buildCustomBrandCategory, getBestCategoryIdForProduct } from '../utils/productCatalog';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -140,6 +140,8 @@ interface AdminState {
   addProduct: (categoryId: string, product: CBDProduct) => void;
   updateProduct: (categoryId: string, productName: string, product: Partial<CBDProduct>) => void;
   deleteProduct: (categoryId: string, productName: string) => void;
+  deleteCategory: (categoryId: string) => void;
+  restoreDeletedCategories: () => void;
 }
 
 export const useAdminStore = create<AdminState>()(
@@ -381,13 +383,15 @@ export const useAdminStore = create<AdminState>()(
       addProduct: (categoryId, product) => {
         unmarkProductAsDeleted(product.name);
         set((state) => {
-          const brandCategoryId = getBestCategoryIdForProduct(product.origin, product.manufacturer);
+          const brandCategoryId = getBestCategoryIdForProduct(product.origin, product.manufacturer, product.name);
           const targetCategoryIds = new Set<string>();
           if (brandCategoryId) {
             targetCategoryIds.add(brandCategoryId);
+            unmarkCategoryAsDeleted(brandCategoryId);
           }
           if (categoryId && categoryId !== 'all' && categoryId !== 'auto_brand') {
             targetCategoryIds.add(categoryId);
+            unmarkCategoryAsDeleted(categoryId);
           }
 
           let updated = [...state.productCategories];
@@ -454,8 +458,9 @@ export const useAdminStore = create<AdminState>()(
             ...productData
           };
 
-          const brandCatId = getBestCategoryIdForProduct(fullProd.origin, fullProd.manufacturer);
+          const brandCatId = getBestCategoryIdForProduct(fullProd.origin, fullProd.manufacturer, fullProd.name);
           if (brandCatId) {
+            unmarkCategoryAsDeleted(brandCatId);
             const bIdx = updated.findIndex(c => c.id === brandCatId);
             const targetClean = (fullProd.name || '').trim().toLowerCase();
             if (bIdx !== -1) {
@@ -490,6 +495,25 @@ export const useAdminStore = create<AdminState>()(
             products: c.products.filter(p => (p.name || '').trim().toLowerCase() !== productName.trim().toLowerCase())
           }));
           const merged = mergeProductCatalogs(cbdGuideData, updated);
+          syncCatalogToFirestore(merged);
+          return { productCategories: merged };
+        });
+      },
+      deleteCategory: (categoryId) => {
+        set((state) => {
+          const targetCat = state.productCategories.find(c => c.id === categoryId);
+          const prodNames = targetCat ? targetCat.products.map(p => p.name) : [];
+          markCategoryAsDeleted(categoryId, prodNames);
+          const updated = state.productCategories.filter(c => c.id !== categoryId);
+          const merged = mergeProductCatalogs(cbdGuideData, updated);
+          syncCatalogToFirestore(merged);
+          return { productCategories: merged };
+        });
+      },
+      restoreDeletedCategories: () => {
+        restoreAllDeletedCategories();
+        set((state) => {
+          const merged = mergeProductCatalogs(cbdGuideData, state.productCategories);
           syncCatalogToFirestore(merged);
           return { productCategories: merged };
         });

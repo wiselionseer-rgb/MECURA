@@ -90,7 +90,9 @@ export function AgronomicReportEditorModal({
   const [cpf, setCpf] = useState(propCpf);
   const [emissionDate, setEmissionDate] = useState(propEmissionDate);
   const [agronomistName, setAgronomistName] = useState(propAgronomistName);
-  const [agronomistCrea, setAgronomistCrea] = useState(propAgronomistCrea);
+  const [agronomistCrea, setAgronomistCrea] = useState(
+    /172\.?458|CREA-PR/i.test(propAgronomistCrea || '') ? 'CREA-BA Nº 052193520-2' : (propAgronomistCrea || 'CREA-BA Nº 052193520-2')
+  );
   const [diagnosis, setDiagnosis] = useState(propDiagnosis);
   const [dailyDoseMg, setDailyDoseMg] = useState(propDailyDoseMg);
   const [targetPlants, setTargetPlants] = useState(propTargetPlants);
@@ -103,7 +105,9 @@ export function AgronomicReportEditorModal({
       setCpf(propCpf);
       setEmissionDate(propEmissionDate);
       setAgronomistName(propAgronomistName);
-      setAgronomistCrea(propAgronomistCrea);
+      setAgronomistCrea(
+        /172\.?458|CREA-PR/i.test(propAgronomistCrea || '') ? 'CREA-BA Nº 052193520-2' : (propAgronomistCrea || 'CREA-BA Nº 052193520-2')
+      );
       setDiagnosis(propDiagnosis);
       setDailyDoseMg(propDailyDoseMg);
       setTargetPlants(propTargetPlants);
@@ -215,37 +219,39 @@ export function AgronomicReportEditorModal({
 
   const handleCopy = () => {
     const fullText = `Auto cultivo para finalidade medicinal
-Parecer Técnico
-Indicações técnicas para cultivo pessoal com finalidade medicinal
+Parecer Técnico Pericial de Dimensionamento Agronômico
+Indicações técnicas para cultivo pessoal com finalidade medicinal (Instrução de Habeas Corpus / Salvo-Conduto)
 Paciente: ${patientName}
 CPF PACIENTE: ${cpf}
-Consultor e Eng. Agr: ${agronomistName} (${agronomistCrea})
-Indicações técnicas para cultivo pessoal de Cannabis sativa L. com finalidade medicinal.
+Eng. Agr. ${agronomistName.replace(/^Eng\.?\s*Agr\.?\s*/i, '')} (${agronomistCrea})
+Indicações técnicas para cultivo pessoal de Cannabis sativa L. para produção e extração artesanal própria de fitofármacos.
 
-Resumo:
-A ANVISA definiu, por meio da Resolução da Diretoria Colegiada (RDC) nº 335/2020, alterada pela RDC n° 570/2021, os critérios e os procedimentos para a importação de Produto derivado de Cannabis, por pessoa física, para uso próprio, mediante prescrição de profissional legalmente habilitado, para tratamento de saúde. Dessa forma, ainda que o produto não tenha registro para comercialização no Brasil, a importação poderá ser autorizada se os critérios e procedimentos definidos na mencionada RDC forem cumpridos. E, dessa forma, a ANVISA publicou a Nota Técnica nº 37/2021/SEI/COCIC/GPCON/GGMON/DIRE5/ANVISA com a lista de produtos derivados de Cannabis de que trata o §3º do Art. 5° da RDC n° 335/2020, alterada pela RDC n° 570/2021.
-A fim de proporcionar uma orientação adequada para um cultivo em escala pequena, conhecido como “cultivo caseiro”, para paciente que necessita utilizar as moléculas produzidas pela espécie, nomeadamente o Δ9 – Tetrahidrocanabinol (THC) e o Cannabidiol (CBD) reconhecidas por suas propriedades terapêuticas, foi elaborado este parecer com indicações técnicas para o cultivo com boas práticas comercialmente conhecido por GACP (Good Agriculture and Collection Practices), em português, boas práticas de agricultura e coleta, aplicadas para garantir o sucesso em termos de produtividade e a sanidade adequada dos cultivos.
+1. Enquadramento Técnico-Pericial e Fundamento do Salvo-Conduto para Autocultivo:
+O presente Parecer Técnico Agronômico destina-se a instruir pedido de Salvo-Conduto (Habeas Corpus preventivo) com esteio nos arts. 1º, III, 5º, caput, e 196 da Constituição Federal de 1988, c/c o art. 2º, parágrafo único, da Lei nº 11.343/2006.
+O dimensionamento aqui firmado fundamenta-se na necessidade inegociável de produção doméstica artesanal e contínua dos medicamentos prescritos pelo corpo médico assistente (óleos integrais em gotas, inflorescências secas para inalação em vaporizador térmico medicinal, pomadas/bálsamos tópicos e extratos concentrados). A extração caseira e a produção vegetal própria sob as normas internacionais GACP (Good Agriculture and Collection Practices - OMS) consagram a soberania terapêutica e a dignidade humana do paciente contra a vulnerabilidade financeira e as flutuações de mercado.
 
-Síntese da Triagem Clínica e Diretriz Quimiotípica do Caso:
+2. Dimensionamento do Cultivo e Inviabilidade Econômica de Produtos Comerciais:
+O autocultivo artesanal é a única via exequível para assegurar a continuidade do tratamento sem descontinuidade posológica. Os custos de aquisição de fitofármacos comerciais no mercado farmacêutico oscilam rotineiramente entre R$ 2.000,00 e R$ 5.000,00 mensais, valor proibitivo para a esmagadora maioria dos cidadãos. A autossuficiência por meio do cultivo doméstico planejado e da manipulação artesanal própria dos óleos, pomadas e flores medicinais garante o abastecimento perene da terapêutica individual.
+
+3. Anamnese da Triagem, Prescrição Médica e Demanda Terapêutica Individual:
 ${agronomicText}
-${prescribedProducts ? `\nProtocolo Prescrito:\n${prescribedProducts}\n` : ''}
-Dimensionamento do Cultivo:
-O cultivo caseiro é a maneira indicada de garantir o acesso aos medicamentos para pacientes que não têm condições de arcar com os altos custos dos medicamentos atualmente disponíveis, que normalmente ultrapassa a barreira dos R$ 2.000,00 a R$ 5.000,00 mensais, para produtos disponíveis nacionalmente, podendo atingir até valores muito mais elevados quando é feita a importação. Porém não somente pacientes que não têm condições de pagar os preços de mercado dos produtos de sua medicina e ter a capacidade de se tornarem autossustentáveis em produção e manipulação da mesma buscam o cultivo da Cannabis e os benefícios que este pode trazer.
-No caso do paciente, conforme recomendações médicas que balizam este parecer técnico, a condição de ${diagnosis} visa ser tratada com o uso de extratos integrais de CBD/THC/CBG em concentração de 3000mg/30ml e flores secas, totalizando o consumo diário de ${dailyDoseMg}mg/dia (equivalente a 48 frascos anuais).
+${prescribedProducts ? `\nProtocolo de Preparações Artesanais Prescritas:\n${prescribedProducts}\n` : ''}
+4. Dosimetria Farmacológica e Consumo Anual Estimado:
+No caso do(a) paciente, a condição clínica de ${diagnosis} demanda consumo diário de ${dailyDoseMg}mg/dia de substância ativa (equivalente a ${annualGrams}g anuais de fitocanabinoides em formulações artesanais integrais).
 Extrapolando o uso para intervalos mensais e anuais, temos que o paciente vai necessitar:
-- Diário: ${dailyDoseMg}mg de CBD/THC/CBG.
-- Mensal: ${dailyDoseMg}mg x 31 dias = ${monthlyMg.toLocaleString('pt-BR')} mg ou ${monthlyGrams}g de CBD/THC/CBG.
-- Anual: ${dailyDoseMg}mg x 365 dias = ${annualMg.toLocaleString('pt-BR')}mg ou ${annualGrams}g de CBD/THC/CBG.
+- Diário: ${dailyDoseMg}mg de fitocanabinoides em formulações artesanais (óleo integral, flor medicinal vaporizada, pomada/extrato).
+- Mensal: ${dailyDoseMg}mg x 31 dias = ${monthlyMg.toLocaleString('pt-BR')} mg ou ${monthlyGrams}g de substâncias ativas.
+- Anual: ${dailyDoseMg}mg x 365 dias = ${annualMg.toLocaleString('pt-BR')}mg ou ${annualGrams}g de substâncias ativas.
 
-Memória de Cálculo Fitoquímico e Eficiência de Extração:
-A 100g de flores secas com teor de 10% de CBD/THC geram 10g de extrato concentrado com recuperação de 80% na extração caseira.
-Para obter ${annualGrams}g anualmente o paciente precisa produzir no mínimo ${dryFlowerKgStr}kg de flores secas por ano.
-Considerando uma perda natural de 30% por pragas e clima, o cultivo deve ser dimensionado para ${dryFlowerMarginKgStr}kg secas por ano.
-As flores após a colheita perdem entre 70 a 80% do peso em água; logo, para atingir ${dryFlowerMarginKgStr}kg secas, o paciente deve produzir ${wetFlowerKgStr}kg de flores molhadas anualmente.
-Estima-se que para garantir o consumo anual, o paciente deve produzir ${targetPlants} plantas em floração por ano, e a importação de ${seedsNeeded} sementes feminizadas com taxa de segurança de 30%.
+5. Memória de Cálculo Fitoquímico e Eficiência de Extração Artesanal:
+A cada 100g de inflorescências secas com teor médio fitoquímico de 10% obtêm-se ~80mg de canabinoides ativos por grama considerando rendimento de 80% na extração artesanal caseira (óleos, pomadas e resinas).
+Para suprir ${annualGrams}g anuais, o paciente necessita produzir ${dryFlowerKgStr}kg de flores secas básicas anuais.
+Aplicando a taxa de segurança agronômica de 30% contra perdas naturais (pragas, fungos e oscilações climáticas), o cultivo é dimensionado para ${dryFlowerMarginKgStr}kg de flores secas anuais.
+Considerando a perda hídrica de 70% a 80% na secagem e cura lenta, estima-se a necessidade de colher ${wetFlowerKgStr}kg de flores molhadas (frescas) por ano.
+Para produzir essa biomassa, o dimensionamento indica ${targetPlants} plantas em floração por ano, demandando ${seedsNeeded} sementes feminizadas com margem germinativa de segurança.
 
-Designer de Cultivo:
-Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias ou 4 meses), conduzindo entre ${plantsPerCycle} plantas durante cada ciclo em floração, sob regime controlado de iluminação LED, controle térmico, ventilação com filtro de carvão ativado e práticas GACP.`;
+6. Designer de Cultivo e Ciclo Rotativo:
+Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias ou 4 meses), mantendo entre ${plantsPerCycle} plantas em floração por ciclo rotativo, sob regime controlado de iluminação LED, controle de temperatura/umidade, filtragem de ar por carvão ativado e estrita observância das normas GACP da OMS.`;
     navigator.clipboard.writeText(fullText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -667,7 +673,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                     </div>
                     <div className="border-l border-slate-200 pl-3">
                       <p className="text-[9px] font-bold text-slate-500 uppercase">Responsável Técnico Pericial</p>
-                      <p className="text-xs font-bold text-slate-900">Consultor e Eng. Agr: {agronomistName}</p>
+                      <p className="text-xs font-bold text-slate-900">Eng. Agr. {agronomistName.replace(/^Eng\.?\s*Agr\.?\s*/i, '')}</p>
                       <p className="text-slate-700">Registro Profissional: <strong>{agronomistCrea}</strong></p>
                       <p className="text-emerald-700 text-[10px] font-semibold">Perito em Fitotecnia & Fitoquímica Canabinoide</p>
                     </div>
@@ -676,23 +682,23 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                   {/* Section 1 */}
                   <div className="mb-3 text-[10.5px] leading-relaxed text-justify">
                     <h4 className="text-[11px] font-bold text-emerald-900 uppercase tracking-wide mb-1 border-l-2 border-emerald-600 pl-2">
-                      1. Resumo & Enquadramento Regulatório (ANVISA)
+                      1. Enquadramento Técnico-Pericial e Fundamento do Salvo-Conduto para Autocultivo
                     </h4>
                     <p className="mb-1 text-indent-4 text-slate-700">
-                      A ANVISA definiu, por meio da <strong>Resolução da Diretoria Colegiada (RDC) nº 335/2020</strong>, alterada pela <strong>RDC nº 570/2021</strong>, os critérios e os procedimentos para a importação de Produto derivado de <em>Cannabis</em>, por pessoa física, para uso próprio, mediante prescrição de profissional legalmente habilitado, para tratamento de saúde. Dessa forma, ainda que o produto não tenha registro para comercialização no Brasil, a importação poderá ser autorizada se os critérios e procedimentos definidos na mencionada RDC forem cumpridos. E, dessa forma, a ANVISA publicou a <strong>Nota Técnica nº 37/2021/SEI/COCIC/GPCON/GGMON/DIRE5/ANVISA</strong> com a lista de produtos derivados.
+                      O presente Parecer Técnico Agronômico destina-se a instruir pedido de <strong>Salvo-Conduto em Habeas Corpus preventivo</strong> com esteio nos arts. 1º, III, 5º, <em>caput</em>, e 196 da Constituição Federal de 1988, c/c o art. 2º, parágrafo único, da Lei Federal nº 11.343/2006. O dimensionamento técnico aqui exarado fundamenta-se na necessidade comprovada de produção doméstica artesanal e contínua dos medicamentos fitoterápicos prescritos pelo médico assistente — abrangendo <strong>óleos artesanais integrais em gotas, inflorescências secas para vaporização terapêutica, pomadas/bálsamos tópicos e extratos concentrados</strong>.
                     </p>
                     <p className="text-indent-4 text-slate-700">
-                      A fim de proporcionar uma orientação adequada para um cultivo em escala pequena ("cultivo caseiro"), para paciente que necessita utilizar as moléculas produzidas pela espécie — nomeadamente o <strong>Δ9–Tetrahidrocanabinol (THC)</strong>, o <strong>Cannabidiol (CBD)</strong> e o <strong>Canabigerol (CBG)</strong> —, foi elaborado este parecer com indicações técnicas para o cultivo sob as boas práticas conhecidas por <strong>GACP (Good Agriculture and Collection Practices)</strong>.
+                      A fim de assegurar a orientação técnica adequada para o cultivo doméstico em pequena escala voltado exclusivamente ao consumo pessoal do(a) paciente, o manejo vegetal e a extração caseira são dimensionados conforme as diretrizes internacionais da Organização Mundial da Saúde de <strong>Boas Práticas de Agricultura e Coleta (GACP — Good Agriculture and Collection Practices)</strong>, assegurando padronização dos teores de canabinoides, pureza biológica e isenção de contaminantes.
                     </p>
                   </div>
 
                   {/* Section 2 */}
                   <div className="mb-3 text-[10.5px] leading-relaxed text-justify">
                     <h4 className="text-[11px] font-bold text-emerald-900 uppercase tracking-wide mb-1 border-l-2 border-emerald-600 pl-2">
-                      2. Dimensionamento do Cultivo e Custo de Mercado
+                      2. Soberania Terapêutica e Inviabilidade Econômica de Medicamentos Comerciais
                     </h4>
                     <p className="text-indent-4 text-slate-700">
-                      O cultivo caseiro é a maneira indicada de garantir o acesso aos medicamentos para pacientes que não têm condições de arcar com os altos custos dos medicamentos atualmente disponíveis, que normalmente <strong>ultrapassa a barreira dos R$ 2.000,00 a R$ 5.000,00 mensais</strong> para produtos nacionais, podendo atingir valores muito mais elevados quando é feita a importação. A autossustentabilidade em produção artesanal é a única via garantidora contra a descontinuidade do tratamento.
+                      O autocultivo artesanal constitui a única via viável para assegurar a continuidade do tratamento sem interrupções lesivas à saúde. Os fármacos canabinoides comerciais disponíveis no mercado farmacêutico apresentam custos exorbitantes, oscilando habitualmente entre <strong>R$ 2.000,00 e R$ 5.000,00 mensais</strong>, valor financeiramente proibitivo para a realidade do(a) paciente. A produção artesanal própria de óleos, extratos e flores garante a soberania terapêutica, protegendo o paciente de desabastecimentos mercadológicos e assegurando o fornecimento ininterrupto da dosagem prescrita.
                     </p>
                   </div>
 
@@ -904,10 +910,10 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                   {/* Signatures */}
                   <div className="grid grid-cols-2 gap-8 pt-4 border-t border-slate-300 text-center text-[10px]">
                     <div>
-                      <p className="font-bold text-slate-900">{agronomistName}</p>
-                      <p className="text-emerald-800 font-semibold">Engenheiro Agrônomo — {agronomistCrea}</p>
+                      <p className="font-bold text-slate-900">Eng. Agr. {agronomistName.replace(/^Eng\.?\s*Agr\.?\s*/i, '')}</p>
+                      <p className="text-emerald-800 font-bold">{agronomistCrea}</p>
                       <p className="text-slate-500 text-[9px]">Perícia em Fitotecnia & Fitoquímica Canabinoide</p>
-                      <p className="text-slate-400 text-[8.5px]">ART vinculada ao CREA-PR</p>
+                      <p className="text-slate-400 text-[8.5px]">ART vinculada ao CREA-BA</p>
                     </div>
                     <div>
                       <p className="font-bold text-slate-900">MECURA SAÚDE & BEM-ESTAR</p>

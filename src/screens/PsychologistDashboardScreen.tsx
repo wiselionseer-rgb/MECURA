@@ -218,9 +218,9 @@ export function PsychologistDashboardScreen() {
       const qType = (p as any).queueType;
       const plan = (p as any).plan;
       const offer = (p as any).selectedOffer;
-      const allowDual = !!(p as any).allowDualChat;
+      const allowDual = !!(p as any).allowDualChat || plan === 'complete' || offer === 'complete' || qType === 'complete';
 
-      // Strictly exclude if explicitly assigned to doctor and not dual-chat
+      // Strictly exclude if explicitly assigned to doctor and not dual-chat / complete plan
       if (!allowDual && qType === 'doctor') return false;
 
       // Belongs to psychologist if queueType is psychologist/complete, allowDualChat is active, OR plan/offer is psychologist/complete
@@ -867,7 +867,7 @@ export function PsychologistDashboardScreen() {
               title="Fila & Atendimento Psicológico"
             >
               <MessageSquare className="w-5 h-5" />
-              {queue.filter(p => (p as any).hasUnread && ((p as any).queueType === 'psychologist' || (p as any).plan === 'psychologist')).length > 0 && (
+              {queue.filter(p => (p as any).hasUnread && ((p as any).queueType === 'psychologist' || (p as any).plan === 'psychologist' || (p as any).plan === 'complete' || (p as any).selectedOffer === 'complete')).length > 0 && (
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12121A] animate-pulse" />
               )}
             </button>

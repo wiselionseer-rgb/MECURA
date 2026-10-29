@@ -48,6 +48,8 @@ import {
   ABECMED_PRODUCTS, 
   ABRACE_PRODUCTS, 
   SOUCANNABIS_PRODUCTS, 
+  SANTA_GAIA_PRODUCTS,
+  ACAFLOR_PRODUCTS,
   PANGAIA_PRODUCTS, 
   cbdGuideData 
 } from '../data/cbdGuide';
@@ -250,6 +252,18 @@ export function ProgrammedPrescriptionsModal({
       }
     }
 
+    // 7b. From Santa Gaia & Acaflor (Associações Nacionais Brasil)
+    if (SANTA_GAIA_PRODUCTS && Array.isArray(SANTA_GAIA_PRODUCTS)) {
+      for (const p of SANTA_GAIA_PRODUCTS) {
+        addProductToList(p, 'Associação Santa Gaia (Nacional)', 'Nacional', 'Associação Santa Gaia');
+      }
+    }
+    if (ACAFLOR_PRODUCTS && Array.isArray(ACAFLOR_PRODUCTS)) {
+      for (const p of ACAFLOR_PRODUCTS) {
+        addProductToList(p, 'Associação Acaflor (Nacional)', 'Nacional', 'Associação Acaflor');
+      }
+    }
+
     // 8. From National Association Products
     if (NATIONAL_ASSOCIATION_PRODUCTS && Array.isArray(NATIONAL_ASSOCIATION_PRODUCTS)) {
       for (const p of NATIONAL_ASSOCIATION_PRODUCTS) {
@@ -263,7 +277,7 @@ export function ProgrammedPrescriptionsModal({
         const cTitle = (cat as any).title || (cat as any).name || 'Catálogo MeCura';
         if (cat.products && Array.isArray(cat.products)) {
           cat.products.forEach(p => {
-            const isNat = p.origin === 'Nacional' || /soucannabis|abrace|abecmed|nacional/i.test(`${p.name} ${cTitle}`);
+            const isNat = p.origin === 'Nacional' || /soucannabis|santa\s*gaia|santagaia|acaflor|açaflor|abrace|abecmed|nacional/i.test(`${p.name} ${p.manufacturer || ''} ${cTitle}`);
             addProductToList(p, cTitle, isNat ? 'Nacional' : 'Importado');
           });
         }
@@ -510,7 +524,7 @@ export function ProgrammedPrescriptionsModal({
     saveProgrammedProfiles(updatedProfiles);
 
     // Also register in the global Brand Tab catalog so it stays organized in the brand's tab
-    const targetCategoryId = getBestCategoryIdForProduct(newMedItem.origin, newMedItem.brand);
+    const targetCategoryId = getBestCategoryIdForProduct(newMedItem.origin, newMedItem.brand, newMedItem.name);
     addProduct(targetCategoryId, {
       name: newMedItem.name,
       manufacturer: newMedItem.brand,
@@ -523,6 +537,7 @@ export function ProgrammedPrescriptionsModal({
       quantity: newMedItem.quantity,
       description: newMedItem.description || `${newMedItem.activeIngredients} • ${newMedItem.concentration}`
     });
+    window.dispatchEvent(new Event('mecura_bula_updated'));
 
     setShowAddMedicationModal(false);
     setEditingMedIndex(null);
