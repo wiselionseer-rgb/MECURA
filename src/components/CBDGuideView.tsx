@@ -1,9 +1,11 @@
 import { useAdminStore } from '../store/useAdminStore';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {  
   Search, 
   ChevronDown, 
   ChevronUp, 
+  ChevronLeft,
+  ChevronRight,
   Info, 
   AlertTriangle, 
   X, 
@@ -23,7 +25,8 @@ import {
   Pill, 
   FileText,
   Plus,
-  Trash2
+  Trash2,
+  LayoutGrid
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cbdGuideData, CBDCategory, CBDProduct, enrichMedicationDetails, getDiseaseClinicalDetails } from '../data/cbdGuide';
@@ -107,6 +110,34 @@ export function CBDGuideView() {
     brandName: string;
     productCount: number;
   } | null>(null);
+  const [wrapBrandTabs, setWrapBrandTabs] = useState(false);
+  const tabsScrollRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingTabsRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragScrollLeftRef = useRef(0);
+  const hasDraggedRef = useRef(false);
+
+  useEffect(() => {
+    const el = tabsScrollRef.current;
+    if (!el || wrapBrandTabs) return;
+    const handleWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+    };
+  }, [wrapBrandTabs, brandTabs.length]);
+
+  const scrollBrandTabs = (direction: 'left' | 'right') => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    const scrollAmount = direction === 'left' ? -340 : 340;
+    el.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+  };
 
   const handleConfirmDeleteTab = () => {
     if (!tabPendingDeletion) return;
@@ -516,13 +547,26 @@ export function CBDGuideView() {
         )}
 
         {/* Association & Laboratory Quick Selection Toolbar (Dynamic Brand Tabs!) */}
-        <div id="cbd-association-quick-select" className="pt-3 pb-1 border-t border-white/5 mt-2">
+        <div id="cbd-association-quick-select" className="pt-3 pb-1 border-t border-white/5 mt-2 min-w-0 w-full">
           <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <span className="text-[11px] font-bold text-mecura-silver uppercase tracking-wider flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-mecura-neon" />
               <span>Escolher Associação / Laboratório / Marca:</span>
             </span>
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setWrapBrandTabs(prev => !prev)}
+                className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                  wrapBrandTabs
+                    ? 'bg-mecura-neon/20 text-mecura-neon border-mecura-neon/40'
+                    : 'bg-white/5 hover:bg-white/10 text-mecura-silver hover:text-white border-white/10'
+                }`}
+                title={wrapBrandTabs ? "Voltar para rolagem lateral em uma linha" : "Expandir todas as abas em várias linhas para ver todas de uma vez"}
+              >
+                <LayoutGrid className="w-3 h-3" />
+                <span>{wrapBrandTabs ? 'Modo Rolagem Lateral' : 'Expandir Todas as Abas'}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => openAddModalForBrand(undefined, 'Nacional', true)}
@@ -558,95 +602,164 @@ export function CBDGuideView() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
-            {brandTabs.map((tab) => {
-              const isSelected = selectedCategoryFilter === tab.categoryId;
-              let btnStyle = '';
-              let badgeStyle = '';
+          <div className="relative flex items-center gap-1.5 min-w-0 w-full">
+            {!wrapBrandTabs && (
+              <button
+                type="button"
+                onClick={() => scrollBrandTabs('left')}
+                className="flex-shrink-0 w-7 h-8 rounded-lg bg-mecura-surface hover:bg-mecura-surface-light border border-mecura-elevated hover:border-mecura-neon/50 text-mecura-silver hover:text-mecura-neon flex items-center justify-center transition-all cursor-pointer shadow-md"
+                title="Rolar abas para a esquerda"
+                aria-label="Rolar abas para a esquerda"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
 
-              if (tab.theme === 'emerald') {
-                btnStyle = isSelected
-                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.35)] scale-[1.02]'
-                  : 'bg-emerald-950/40 text-emerald-300 hover:text-white hover:bg-emerald-900/50 border-emerald-500/40';
-                badgeStyle = isSelected ? 'bg-black text-emerald-300' : 'bg-emerald-500/20 text-emerald-200';
-              } else if (tab.theme === 'cyan') {
-                btnStyle = isSelected
-                  ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] scale-[1.02]'
-                  : 'bg-cyan-950/40 text-cyan-300 hover:text-white hover:bg-cyan-900/50 border-cyan-500/40';
-                badgeStyle = isSelected ? 'bg-black text-cyan-300' : 'bg-cyan-500/20 text-cyan-200';
-              } else if (tab.theme === 'sky') {
-                btnStyle = isSelected
-                  ? 'bg-sky-400 text-black border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
-                  : 'bg-sky-950/40 text-sky-300 hover:text-white border-sky-500/40';
-                badgeStyle = isSelected ? 'bg-black text-sky-300' : 'bg-sky-500/20 text-sky-200';
-              } else if (tab.theme === 'purple') {
-                btnStyle = isSelected
-                  ? 'bg-purple-400 text-black border-purple-300 shadow-[0_0_15px_rgba(192,132,252,0.35)] scale-[1.02]'
-                  : 'bg-purple-950/40 text-purple-300 hover:text-white border-purple-500/40';
-                badgeStyle = isSelected ? 'bg-black text-purple-300' : 'bg-purple-500/20 text-purple-200';
-              } else if (tab.theme === 'amber') {
-                btnStyle = isSelected
-                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.35)] scale-[1.02]'
-                  : 'bg-amber-950/40 text-amber-300 hover:text-white border-amber-500/40';
-                badgeStyle = isSelected ? 'bg-black text-amber-300' : 'bg-amber-500/20 text-amber-200';
-              } else {
-                btnStyle = isSelected
-                  ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-[1.02]'
-                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated';
-                badgeStyle = isSelected ? 'bg-black text-mecura-neon' : 'bg-white/10 text-mecura-silver';
-              }
-
-              return (
-                <div
-                  key={tab.categoryId}
-                  className={`rounded-xl font-bold whitespace-nowrap transition-all flex items-center border shadow-sm flex-shrink-0 ${btnStyle}`}
-                >
-                  <button
-                    type="button"
-                    id={`btn-choose-${tab.categoryId}`}
-                    onClick={() => handleSelectCategory(tab.categoryId)}
-                    className="pl-3 pr-1.5 py-1.5 flex items-center gap-2 cursor-pointer"
-                  >
-                    <span>{tab.emoji} {tab.brandName}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${badgeStyle}`}>
-                      {tab.badge} ({tab.productCount})
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTabPendingDeletion({
-                        categoryId: tab.categoryId,
-                        brandName: tab.brandName,
-                        productCount: tab.productCount
-                      });
-                    }}
-                    className={`mr-1.5 p-1 rounded-lg transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'text-black/70 hover:text-red-900 hover:bg-black/15'
-                        : 'text-white/50 hover:text-red-400 hover:bg-red-500/20'
-                    }`}
-                    title={`Excluir aba "${tab.brandName}"`}
-                    aria-label={`Excluir aba ${tab.brandName}`}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              );
-            })}
-
-            {/* Ver Todas */}
-            <button
-              onClick={() => setSelectedCategoryFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border cursor-pointer flex-shrink-0 ${
-                selectedCategoryFilter === 'all'
-                  ? 'bg-white/15 text-white border-white/30'
-                  : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
+            <div
+              ref={tabsScrollRef}
+              onMouseDown={(e) => {
+                if (wrapBrandTabs || !tabsScrollRef.current) return;
+                isDraggingTabsRef.current = true;
+                hasDraggedRef.current = false;
+                dragStartXRef.current = e.pageX - tabsScrollRef.current.offsetLeft;
+                dragScrollLeftRef.current = tabsScrollRef.current.scrollLeft;
+              }}
+              onMouseMove={(e) => {
+                if (!isDraggingTabsRef.current || wrapBrandTabs || !tabsScrollRef.current) return;
+                const x = e.pageX - tabsScrollRef.current.offsetLeft;
+                const walk = (x - dragStartXRef.current) * 1.5;
+                if (Math.abs(walk) > 6) {
+                  hasDraggedRef.current = true;
+                  e.preventDefault();
+                  tabsScrollRef.current.scrollLeft = dragScrollLeftRef.current - walk;
+                }
+              }}
+              onMouseUp={() => {
+                isDraggingTabsRef.current = false;
+              }}
+              onMouseLeave={() => {
+                isDraggingTabsRef.current = false;
+              }}
+              className={`flex items-center gap-2 text-xs min-w-0 flex-1 select-none ${
+                wrapBrandTabs
+                  ? 'flex-wrap pb-1'
+                  : 'overflow-x-auto pb-2.5 horizontal-tabs-scroll cursor-grab active:cursor-grabbing'
               }`}
             >
-              <span>📋 Ver Todas ({productCategories.length})</span>
-            </button>
+              {brandTabs.map((tab) => {
+                const isSelected = selectedCategoryFilter === tab.categoryId;
+                let btnStyle = '';
+                let badgeStyle = '';
+
+                if (tab.theme === 'emerald') {
+                  btnStyle = isSelected
+                    ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.35)] scale-[1.02]'
+                    : 'bg-emerald-950/40 text-emerald-300 hover:text-white hover:bg-emerald-900/50 border-emerald-500/40';
+                  badgeStyle = isSelected ? 'bg-black text-emerald-300' : 'bg-emerald-500/20 text-emerald-200';
+                } else if (tab.theme === 'cyan') {
+                  btnStyle = isSelected
+                    ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.35)] scale-[1.02]'
+                    : 'bg-cyan-950/40 text-cyan-300 hover:text-white hover:bg-cyan-900/50 border-cyan-500/40';
+                  badgeStyle = isSelected ? 'bg-black text-cyan-300' : 'bg-cyan-500/20 text-cyan-200';
+                } else if (tab.theme === 'sky') {
+                  btnStyle = isSelected
+                    ? 'bg-sky-400 text-black border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
+                    : 'bg-sky-950/40 text-sky-300 hover:text-white border-sky-500/40';
+                  badgeStyle = isSelected ? 'bg-black text-sky-300' : 'bg-sky-500/20 text-sky-200';
+                } else if (tab.theme === 'purple') {
+                  btnStyle = isSelected
+                    ? 'bg-purple-400 text-black border-purple-300 shadow-[0_0_15px_rgba(192,132,252,0.35)] scale-[1.02]'
+                    : 'bg-purple-950/40 text-purple-300 hover:text-white border-purple-500/40';
+                  badgeStyle = isSelected ? 'bg-black text-purple-300' : 'bg-purple-500/20 text-purple-200';
+                } else if (tab.theme === 'amber') {
+                  btnStyle = isSelected
+                    ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.35)] scale-[1.02]'
+                    : 'bg-amber-950/40 text-amber-300 hover:text-white border-amber-500/40';
+                  badgeStyle = isSelected ? 'bg-black text-amber-300' : 'bg-amber-500/20 text-amber-200';
+                } else {
+                  btnStyle = isSelected
+                    ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.35)] scale-[1.02]'
+                    : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated';
+                  badgeStyle = isSelected ? 'bg-black text-mecura-neon' : 'bg-white/10 text-mecura-silver';
+                }
+
+                return (
+                  <div
+                    key={tab.categoryId}
+                    className={`rounded-xl font-bold whitespace-nowrap transition-all flex items-center border shadow-sm flex-shrink-0 ${btnStyle}`}
+                  >
+                    <button
+                      type="button"
+                      id={`btn-choose-${tab.categoryId}`}
+                      onClick={() => {
+                        if (hasDraggedRef.current) {
+                          hasDraggedRef.current = false;
+                          return;
+                        }
+                        handleSelectCategory(tab.categoryId);
+                      }}
+                      className="pl-3 pr-1.5 py-1.5 flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>{tab.emoji} {tab.brandName}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${badgeStyle}`}>
+                        {tab.badge} ({tab.productCount})
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTabPendingDeletion({
+                          categoryId: tab.categoryId,
+                          brandName: tab.brandName,
+                          productCount: tab.productCount
+                        });
+                      }}
+                      className={`mr-1.5 p-1 rounded-lg transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'text-black/70 hover:text-red-900 hover:bg-black/15'
+                          : 'text-white/50 hover:text-red-400 hover:bg-red-500/20'
+                      }`}
+                      title={`Excluir aba "${tab.brandName}"`}
+                      aria-label={`Excluir aba ${tab.brandName}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Ver Todas */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasDraggedRef.current) {
+                    hasDraggedRef.current = false;
+                    return;
+                  }
+                  setSelectedCategoryFilter('all');
+                }}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border cursor-pointer flex-shrink-0 ${
+                  selectedCategoryFilter === 'all'
+                    ? 'bg-white/15 text-white border-white/30'
+                    : 'bg-mecura-surface text-mecura-silver hover:text-white border-mecura-elevated'
+                }`}
+              >
+                <span>📋 Ver Todas ({productCategories.length})</span>
+              </button>
+            </div>
+
+            {!wrapBrandTabs && (
+              <button
+                type="button"
+                onClick={() => scrollBrandTabs('right')}
+                className="flex-shrink-0 w-7 h-8 rounded-lg bg-mecura-surface hover:bg-mecura-surface-light border border-mecura-elevated hover:border-mecura-neon/50 text-mecura-silver hover:text-mecura-neon flex items-center justify-center transition-all cursor-pointer shadow-md"
+                title="Rolar abas para a direita"
+                aria-label="Rolar abas para a direita"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
