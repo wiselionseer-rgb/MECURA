@@ -812,19 +812,19 @@ export const generatePrescriptionPDF = async (
       });
     }
 
-    // PASS 1: Measure DOM heights of header chrome, signature, notes, and each guide's items in compact/dense/normal modes
+    // PASS 1: Measure DOM heights of header chrome, full footer, notes, and each guide's items in normal/compact/dense modes
     const MeasureRxComponent = () => (
       <div
         style={{
           fontFamily: 'ui-sans-serif, system-ui, sans-serif',
           width: '794px',
-          padding: '14px 36px 16px 36px',
+          padding: '15px 36px 17px 36px',
           boxSizing: 'border-box',
           backgroundColor: '#FFFFFF',
           color: '#111827'
         }}
       >
-        <div id="rx-measure-chrome">
+        <div id="rx-measure-chrome" style={{ overflow: 'hidden' }}>
           <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
             <span className="text-[9.5px] text-[#64748B] font-semibold">Documento Médico Oficial MECURA • Página 1 de 1</span>
             <span className="bg-[#F3E8FF] text-[#581C87] border border-[#D8B4FE] font-bold text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">Guia</span>
@@ -852,46 +852,68 @@ export const generatePrescriptionPDF = async (
               <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
             </div>
             <div className="text-right">
-              <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">CPF / Nasc.</span>
-              <span className="font-semibold text-[#334155] text-[10px] leading-none">{cpfText} • {birthDateText}</span>
+              <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">CPF / Nasc. • Emissão</span>
+              <span className="font-semibold text-[#334155] text-[10px] leading-none">{cpfText} • {birthDateText} • {emissionDateStr}</span>
             </div>
           </div>
         </div>
 
-        <div id="rx-measure-sig">{renderPrescriptionSignatureBlock()}</div>
-        <div id="rx-measure-dispensacao">{renderDispensacaoBlock(true, false)}</div>
-        <div id="rx-measure-notes-dense">{hasNotes ? renderNotesBlock(customNotesText, true, true) : null}</div>
-        <div id="rx-measure-notes-normal">{hasNotes ? renderNotesBlock(customNotesText, false, false) : null}</div>
+        <div id="rx-measure-full-footer" style={{ overflow: 'hidden', paddingTop: '8px' }}>
+          <div className="space-y-1.5">
+            {renderPrescriptionSignatureBlock()}
+            <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
+              <span>MECURA • Primavera do Leste - MT (CEP 78850-000)</span>
+              <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
+              <span>Receituário Oficial • Folha 1 de 1</span>
+            </div>
+          </div>
+        </div>
 
-        {guideGroups.map((g, gIdx) => {
-          const isDense = g.items.length >= 5;
-          const isCompact = g.items.length >= 4;
-          return (
-            <div key={gIdx}>
-              {g.items.map((it, iIdx) =>
-                renderPrescriptionItemCard(it, iIdx + 1, isDense, isCompact, `m-${gIdx}-${iIdx}`, {
+        <div id="rx-measure-dispensacao" style={{ overflow: 'hidden' }}>{renderDispensacaoBlock(true, false)}</div>
+        <div id="rx-measure-notes-dense" style={{ overflow: 'hidden' }}>{hasNotes ? renderNotesBlock(customNotesText, true, true) : null}</div>
+        <div id="rx-measure-notes-compact" style={{ overflow: 'hidden' }}>{hasNotes ? renderNotesBlock(customNotesText, false, true) : null}</div>
+        <div id="rx-measure-notes-normal" style={{ overflow: 'hidden' }}>{hasNotes ? renderNotesBlock(customNotesText, false, false) : null}</div>
+
+        {guideGroups.map((g, gIdx) => (
+          <div key={gIdx}>
+            {g.items.map((it, iIdx) => (
+              <React.Fragment key={`m-frag-${gIdx}-${iIdx}`}>
+                {renderPrescriptionItemCard(it, iIdx + 1, false, false, `m-norm-${gIdx}-${iIdx}`, {
+                  'data-rx-mode': 'normal',
                   'data-rx-group': gIdx,
                   'data-rx-idx': iIdx
-                })
-              )}
-            </div>
-          );
-        })}
+                })}
+                {renderPrescriptionItemCard(it, iIdx + 1, false, true, `m-comp-${gIdx}-${iIdx}`, {
+                  'data-rx-mode': 'compact',
+                  'data-rx-group': gIdx,
+                  'data-rx-idx': iIdx
+                })}
+                {renderPrescriptionItemCard(it, iIdx + 1, true, true, `m-dense-${gIdx}-${iIdx}`, {
+                  'data-rx-mode': 'dense',
+                  'data-rx-group': gIdx,
+                  'data-rx-idx': iIdx
+                })}
+              </React.Fragment>
+            ))}
+          </div>
+        ))}
       </div>
     );
 
     root.render(<MeasureRxComponent />);
-    await new Promise(resolve => setTimeout(resolve, 140));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
-    const chromeH = container.querySelector<HTMLElement>('#rx-measure-chrome')?.offsetHeight || 180;
-    const sigH = container.querySelector<HTMLElement>('#rx-measure-sig')?.offsetHeight || 70;
-    const dispensacaoH = container.querySelector<HTMLElement>('#rx-measure-dispensacao')?.offsetHeight || 65;
-    const notesDenseH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-dense')?.offsetHeight || 68) : 0;
-    const notesNormalH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-normal')?.offsetHeight || 78) : 0;
+    const chromeH = container.querySelector<HTMLElement>('#rx-measure-chrome')?.offsetHeight || 190;
+    const fullFooterH = container.querySelector<HTMLElement>('#rx-measure-full-footer')?.offsetHeight || 105;
+    const dispensacaoH = container.querySelector<HTMLElement>('#rx-measure-dispensacao')?.offsetHeight || 68;
+    const notesDenseH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-dense')?.offsetHeight || 72) : 0;
+    const notesCompactH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-compact')?.offsetHeight || 78) : 0;
+    const notesNormalH = hasNotes ? (container.querySelector<HTMLElement>('#rx-measure-notes-normal')?.offsetHeight || 86) : 0;
 
-    // A4 inner height = 1123 - 32 (top/bottom padding) - 22 (bottom rodapé bar) = 1069px
-    const RX_PAGE_INNER_H = 1065;
-    const availWithoutNotes = RX_PAGE_INNER_H - chromeH - sigH - 12;
+    // Total A4 height = 1123px; top+bottom padding = 32px; safety margin above footer = 28px
+    const RX_PAGE_INNER_H = 1123 - 32;
+    const SAFETY_MARGIN_PX = 28;
+    const maxContentH = RX_PAGE_INNER_H - chromeH - fullFooterH - SAFETY_MARGIN_PX;
 
     const allPagesToRender: PrescriptionPageData[] = [];
 
@@ -899,21 +921,38 @@ export const generatePrescriptionPDF = async (
       const gItems = group.items;
       if (gItems.length === 0) return;
 
-      const isDense = gItems.length >= 5;
-      const isCompact = gItems.length >= 4;
-      const gap = isDense ? 4 : isCompact ? 5 : 8;
-      const notesH = isDense || isCompact ? notesDenseH : notesNormalH;
-      const availWithNotes = availWithoutNotes - notesH - (hasNotes ? 6 : 0);
+      const heightsByMode: Record<'normal' | 'compact' | 'dense', number[]> = {
+        normal: [],
+        compact: [],
+        dense: []
+      };
 
-      const itemHeights: number[] = gItems.map((_, iIdx) => {
-        const el = container.querySelector<HTMLElement>(`[data-rx-group="${gIdx}"][data-rx-idx="${iIdx}"]`);
-        return el?.offsetHeight || 95;
+      gItems.forEach((_, iIdx) => {
+        const normEl = container.querySelector<HTMLElement>(`[data-rx-mode="normal"][data-rx-group="${gIdx}"][data-rx-idx="${iIdx}"]`);
+        const compEl = container.querySelector<HTMLElement>(`[data-rx-mode="compact"][data-rx-group="${gIdx}"][data-rx-idx="${iIdx}"]`);
+        const denseEl = container.querySelector<HTMLElement>(`[data-rx-mode="dense"][data-rx-group="${gIdx}"][data-rx-idx="${iIdx}"]`);
+        heightsByMode.normal.push(normEl?.offsetHeight || 115);
+        heightsByMode.compact.push(compEl?.offsetHeight || 100);
+        heightsByMode.dense.push(denseEl?.offsetHeight || 90);
       });
 
-      const totalItemsH = itemHeights.reduce((sum, h, i) => sum + h + (i > 0 ? gap : 0), 0);
+      const getChunkRequiredHeight = (indices: number[], includeNotes: boolean): number => {
+        const count = indices.length;
+        const isDense = count >= 5;
+        const isCompact = count >= 4;
+        const mode: 'normal' | 'compact' | 'dense' = isDense ? 'dense' : isCompact ? 'compact' : 'normal';
+        const gap = isDense ? 4 : isCompact ? 5 : 8;
+        const itemsHeight = indices.reduce((sum, idx, i) => sum + heightsByMode[mode][idx] + (i > 0 ? gap : 0), 0);
+        const notesHeight = (includeNotes && hasNotes)
+          ? ((isDense ? notesDenseH : isCompact ? notesCompactH : notesNormalH) + 6)
+          : 0;
+        return itemsHeight + notesHeight;
+      };
 
-      // If all items in this guide + notes fit on 1 single page, keep them on 1 single page!
-      if (totalItemsH <= availWithNotes) {
+      const allIndices = gItems.map((_, i) => i);
+
+      // Fit on 1 single page ONLY if <= 5 items AND exact measured height (items + notes) fits within maxContentH
+      if (gItems.length <= 5 && getChunkRequiredHeight(allIndices, true) <= maxContentH) {
         allPagesToRender.push({
           guideTitle: group.guideTitle,
           guideSubtitle: group.subtitleBase,
@@ -923,50 +962,64 @@ export const generatePrescriptionPDF = async (
           items: gItems,
           itemStartIndex: 0,
           notesText: hasNotes ? customNotesText : undefined,
-          isCompactGuide: isCompact,
-          isDenseGuide: isDense
+          isCompactGuide: gItems.length >= 4,
+          isDenseGuide: gItems.length >= 5
         });
       } else {
-        // Pack items greedily per page using exact measured DOM heights
-        const chunks: PrescriptionItemData[][] = [];
+        // Pack items across multiple pages with guaranteed room for notes & signature on the final page
+        const indexChunks: number[][] = [];
         let cursor = 0;
 
         while (cursor < gItems.length) {
-          const chunk: PrescriptionItemData[] = [];
-          let usedH = 0;
+          const remaining = allIndices.slice(cursor);
 
-          // Check if remaining items from cursor to end fit together with notes on a single final page
-          const remH = itemHeights
-            .slice(cursor)
-            .reduce((sum, h, i) => sum + h + (i > 0 ? gap : 0), 0);
-
-          if (remH <= availWithNotes) {
-            chunks.push(gItems.slice(cursor));
+          // Check if all remaining items + notes fit comfortably on a single final page
+          if (remaining.length <= 5 && getChunkRequiredHeight(remaining, true) <= maxContentH) {
+            indexChunks.push(remaining);
             break;
           }
 
-          while (cursor < gItems.length) {
-            const h = itemHeights[cursor];
-            const addGap = chunk.length > 0 ? gap : 0;
-            if (chunk.length > 0 && usedH + addGap + h > availWithoutNotes) {
+          const currentChunk: number[] = [];
+          while (cursor < gItems.length && currentChunk.length < 5) {
+            const candidate = [...currentChunk, cursor];
+            const wouldBeLastPage = cursor === gItems.length - 1;
+            const reqH = getChunkRequiredHeight(candidate, wouldBeLastPage);
+
+            if (currentChunk.length > 0 && reqH > maxContentH) {
               break;
             }
-            chunk.push(gItems[cursor]);
-            usedH += addGap + h;
+            currentChunk.push(cursor);
             cursor++;
           }
-          chunks.push(chunk);
+          indexChunks.push(currentChunk);
         }
 
-        // Verify if the last chunk + notes exceeds availWithNotes; if so, move 1 item or notes to a final page
+        // Extra safety check: if the last chunk + notes still exceeds maxContentH, move trailing item(s) to a new page
+        if (hasNotes && indexChunks.length > 0) {
+          const lastChunk = indexChunks[indexChunks.length - 1];
+          if (lastChunk.length > 1 && getChunkRequiredHeight(lastChunk, true) > maxContentH) {
+            const movedIndices: number[] = [];
+            while (lastChunk.length > 1 && getChunkRequiredHeight(lastChunk, false) > maxContentH - notesNormalH) {
+              movedIndices.unshift(lastChunk.pop()!);
+            }
+            if (movedIndices.length === 0 && getChunkRequiredHeight(lastChunk, true) > maxContentH) {
+              movedIndices.unshift(lastChunk.pop()!);
+            }
+            if (movedIndices.length > 0) {
+              indexChunks.push(movedIndices);
+            }
+          }
+        }
+
         let startIdx = 0;
-        chunks.forEach((chunk, chunkIdx) => {
-          const isLast = chunkIdx === chunks.length - 1;
-          const subtitle = chunks.length > 1
-            ? `${group.subtitleBase} (PARTE ${chunkIdx + 1})`
+        indexChunks.forEach((idxChunk, chunkIdx) => {
+          const chunk = idxChunk.map(i => gItems[i]);
+          const isLast = chunkIdx === indexChunks.length - 1;
+          const subtitle = indexChunks.length > 1
+            ? `${group.subtitleBase} (PARTE ${chunkIdx + 1} DE ${indexChunks.length})`
             : group.subtitleBase;
-          const badge = chunks.length > 1
-            ? `${group.badgeBase} • Pág ${chunkIdx + 1}`
+          const badge = indexChunks.length > 1
+            ? `${group.badgeBase} • Pág ${chunkIdx + 1}/${indexChunks.length}`
             : group.badgeBase;
 
           allPagesToRender.push({
@@ -1016,9 +1069,9 @@ export const generatePrescriptionPDF = async (
                   overflow: "hidden"
                 }}
               >
-                <div className="flex-1 flex flex-col justify-start min-h-0">
+                <div className="flex-1 flex flex-col justify-start min-h-0 overflow-hidden pb-2">
                   {/* Top Bar with Page Indicator & Guide Badge */}
-                  <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100">
+                  <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-slate-100 shrink-0">
                     <span className="text-[9.5px] text-[#64748B] font-semibold">
                       Documento Médico Oficial MECURA • Página {page.pageNumber} de {page.totalPages}
                     </span>
@@ -1028,7 +1081,7 @@ export const generatePrescriptionPDF = async (
                   </div>
 
                   {/* Header */}
-                  <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-1.5">
+                  <div className="flex items-start justify-between border-b-2 border-[#1E1B4B] pb-2 mb-1.5 shrink-0">
                     <div>
                       <h2 className="text-xl font-black text-[#1E1B4B] tracking-tight m-0 leading-none mb-1">MECURA</h2>
                       <p className="text-[9px] text-[#059669] font-bold tracking-wider uppercase m-0 leading-none">
@@ -1044,7 +1097,7 @@ export const generatePrescriptionPDF = async (
                   </div>
 
                   {/* Title & Subtitle */}
-                  <div className="text-center my-1">
+                  <div className="text-center my-1 shrink-0">
                     <h1 className="text-sm font-bold text-[#1E1B4B] uppercase tracking-widest m-0 leading-tight">
                       {page.guideTitle}
                     </h1>
@@ -1055,7 +1108,7 @@ export const generatePrescriptionPDF = async (
                   </div>
 
                   {/* Patient Info Box */}
-                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-1 mb-1.5 flex justify-between items-center">
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-3 py-1 mb-1.5 flex justify-between items-center shrink-0">
                     <div>
                       <span className="text-[#64748B] block text-[8px] uppercase font-bold leading-none mb-0.5">Paciente</span>
                       <span className="font-bold text-[#0F172A] text-xs leading-none">{sanitizedUserName}</span>
@@ -1088,16 +1141,8 @@ export const generatePrescriptionPDF = async (
                   {(page.items.length <= 2 || (page.items.length === 3 && !page.notesText && dispensacaoH < 80)) && renderDispensacaoBlock(isNationalGuide, isCompact)}
                 </div>
 
-                {/* Rodapé Oficial Fixado no Final da Folha (Assinatura + ICP-Brasil + Barra Institucional) */}
-                <div
-                  className="shrink-0 space-y-1.5"
-                  style={{
-                    position: 'absolute',
-                    bottom: isDense ? '14px' : isCompact ? '15px' : '16px',
-                    left: isDense ? '36px' : isCompact ? '36px' : '38px',
-                    right: isDense ? '36px' : isCompact ? '36px' : '38px'
-                  }}
-                >
+                {/* Rodapé Oficial Fixado no Fluxo Final da Folha (Sem sobreposição absoluta) */}
+                <div className="shrink-0 mt-auto pt-2 space-y-1.5 bg-white">
                   {renderPrescriptionSignatureBlock()}
 
                   {/* Slim Institutional Rodapé anchored at the very bottom */}
@@ -1620,10 +1665,17 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
           color: '#111827'
         }}
       >
-        <div id="measure-chrome-p1">{renderPageHeaderChrome(1, 2, baseReportTitle)}</div>
-        <div id="measure-chrome-cont">{renderPageHeaderChrome(2, 2, `${baseReportTitle} (CONTINUAÇÃO)`)}</div>
-        <div id="measure-footer-cont">{renderContinuationFooter(1, 2)}</div>
-        <div id="measure-footer-final">{renderFinalSignatureAndFooter(2, 2)}</div>
+        <div id="measure-chrome-p1" style={{ overflow: 'hidden' }}>{renderPageHeaderChrome(1, 2, baseReportTitle)}</div>
+        <div id="measure-chrome-cont" style={{ overflow: 'hidden' }}>{renderPageHeaderChrome(2, 2, `${baseReportTitle} (CONTINUAÇÃO)`)}</div>
+        <div id="measure-footer-cont" style={{ overflow: 'hidden' }}>{renderContinuationFooter(1, 2)}</div>
+        <div id="measure-footer-final" className="pt-2 space-y-1.5" style={{ overflow: 'hidden' }}>
+          {renderFinalSignatureAndFooter(2, 2)}
+          <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
+            <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
+            <span>Paciente: {sanitizedUserName} • CPF: {cpfText}</span>
+            <span>Documento Médico Oficial • Folha 2/2</span>
+          </div>
+        </div>
         <div id="measure-cont-plan-header">
           {renderBlockElement(
             {
@@ -1647,7 +1699,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     const p1ChromeH = container.querySelector<HTMLElement>('#measure-chrome-p1')?.offsetHeight || 165;
     const contChromeH = container.querySelector<HTMLElement>('#measure-chrome-cont')?.offsetHeight || 110;
     const contFooterH = container.querySelector<HTMLElement>('#measure-footer-cont')?.offsetHeight || 36;
-    const finalFooterH = container.querySelector<HTMLElement>('#measure-footer-final')?.offsetHeight || 64;
+    const finalFooterH = container.querySelector<HTMLElement>('#measure-footer-final')?.offsetHeight || 96;
     const contPlanHeaderH = container.querySelector<HTMLElement>('#measure-cont-plan-header')?.offsetHeight || 22;
 
     const blockEls = container.querySelectorAll<HTMLElement>('[data-flow-idx]');
@@ -1662,7 +1714,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
     // Total A4 height = 1123px; top padding (14px) + bottom padding (16px) = 30px -> inner height = 1093px
     const PAGE_INNER_H = 1093;
     const BLOCK_GAP = 4;
-    const SAFETY_BUFFER = 6;
+    const SAFETY_BUFFER = 22;
 
     const availSinglePage = PAGE_INNER_H - p1ChromeH - finalFooterH - SAFETY_BUFFER;
     const availP1 = PAGE_INNER_H - p1ChromeH - contFooterH - SAFETY_BUFFER;
@@ -1813,7 +1865,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
                 overflow: 'hidden'
               }}
             >
-              <div className="flex-1 flex flex-col justify-start min-h-0" style={{ paddingBottom: isLastPage ? '110px' : '40px' }}>
+              <div className="flex-1 flex flex-col justify-start min-h-0 overflow-hidden pb-2">
                 {renderPageHeaderChrome(pageNumber, totalPagesCount, pageTitle)}
 
                 <div className="flex flex-col" style={{ gap: `${BLOCK_GAP}px` }}>
@@ -1822,17 +1874,11 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
               </div>
 
               {!isLastPage ? (
-                renderContinuationFooter(pageNumber, totalPagesCount)
+                <div className="shrink-0 mt-auto pt-1.5 bg-white">
+                  {renderContinuationFooter(pageNumber, totalPagesCount)}
+                </div>
               ) : (
-                <div
-                  className="shrink-0 space-y-1.5"
-                  style={{
-                    position: 'absolute',
-                    bottom: '16px',
-                    left: '34px',
-                    right: '34px'
-                  }}
-                >
+                <div className="shrink-0 mt-auto pt-2 space-y-1.5 bg-white">
                   {renderFinalSignatureAndFooter(pageNumber, totalPagesCount)}
                   <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[7.5px] text-[#94A3B8] font-medium">
                     <span>MECURA • Centro Integrado de Medicina Canabinoide</span>
