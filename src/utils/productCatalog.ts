@@ -40,6 +40,53 @@ export function buildCustomBrandCategory(
   };
 }
 
+let cachedCloudCategories: CBDCategory[] = [];
+let cachedCloudCustomProducts: CBDProduct[] = [];
+const sessionRestoredProductNames = new Set<string>();
+const sessionRestoredCategoryIds = new Set<string>();
+
+const BASE_PRODUCT_MAP = new Map<string, string>();
+cbdGuideData.forEach(cat => {
+  cat.products.forEach(p => {
+    if (p && p.name) {
+      BASE_PRODUCT_MAP.set(p.name.trim().toLowerCase(), (p.manufacturer || '').trim().toLowerCase());
+    }
+  });
+});
+
+export function isCustomAddedProduct(p?: CBDProduct | null): boolean {
+  if (!p || !p.name) return false;
+  if ((p as any).isCustom) return true;
+  const cleanName = p.name.trim().toLowerCase();
+  if (!BASE_PRODUCT_MAP.has(cleanName)) return true;
+  const baseMfr = BASE_PRODUCT_MAP.get(cleanName) || '';
+  const currentMfr = (p.manufacturer || '').trim().toLowerCase();
+  if (currentMfr && baseMfr && currentMfr !== baseMfr) return true;
+  if (/--+|\bfrascos?\/|\bembalagen|\bcontinuo\b/i.test(cleanName)) return true;
+  return false;
+}
+
+export function getCustomAddedProducts(categories?: CBDCategory[]): CBDProduct[] {
+  const cats = categories && categories.length > 0 ? categories : mergeProductCatalogs(cbdGuideData);
+  const deletedSet = getDeletedProductNames();
+  const seen = new Set<string>();
+  const result: CBDProduct[] = [];
+
+  cats.forEach(cat => {
+    (cat.products || []).forEach(p => {
+      if (!p || !p.name) return;
+      const key = p.name.trim().toLowerCase();
+      if (!key || deletedSet.has(key) || seen.has(key)) return;
+      if (isCustomAddedProduct(p)) {
+        seen.add(key);
+        result.push(applyCustomBulaToProduct({ ...p, isCustom: true } as any));
+      }
+    });
+  });
+
+  return result;
+}
+
 /**
  * Cleanly merges base code catalog, local admin store, and cloud Firestore catalog
  * ensuring all medications (both default and custom added) are present without duplication
@@ -50,6 +97,8 @@ export function mergeProductCatalogs(
   storeCategories?: CBDCategory[],
   cloudCategories?: CBDCategory[]
 ): CBDCategory[] {
+  const effectiveCloudCategories =
+    cloudCategories && cloudCategories.length > 0 ? cloudCategories : cachedCloudCategories;
   const categoryMap = new Map<string, CBDCategory>();
   const baseProductNames = new Set<string>();
 
@@ -66,9 +115,36 @@ export function mergeProductCatalogs(
     });
   });
 
+  // Helper to hydrate compacted product fields
+  const hydrateProduct = (prod: CBDProduct): CBDProduct => {
+    const posology = prod.posologyDetails || prod.usageInstructions || '';
+    const usage = prod.usageInstructions || prod.posologyDetails || '';
+    const active = prod.activeIngredients || prod.concentration || '';
+    const conc = prod.concentration || prod.activeIngredients || '';
+    const details =
+      Array.isArray(prod.details) && prod.details.length > 0
+        ? prod.details
+        : ([
+            conc,
+            prod.pharmaceuticalForm,
+            prod.quantity,
+            prod.administrationRoute
+          ].filter(Boolean) as string[]);
+    const customFlag = isCustomAddedProduct(prod);
+    return {
+      ...prod,
+      ...(active ? { activeIngredients: active } : {}),
+      ...(conc ? { concentration: conc } : {}),
+      ...(posology ? { posologyDetails: posology, usageInstructions: usage } : {}),
+      details,
+      ...(customFlag ? { isCustom: true } : {})
+    } as CBDProduct;
+  };
+
   // Helper to insert or update a product inside a target category in categoryMap
-  const upsertProductInCategory = (targetCatId: string, prod: CBDProduct, fallbackCatMeta?: Partial<CBDCategory>) => {
-    if (!prod || !prod.name) return;
+  const upsertProductInCategory = (targetCatId: string, rawProd: CBDProduct, fallbackCatMeta?: Partial<CBDCategory>) => {
+    if (!rawProd || !rawProd.name) return;
+    const prod = hydrateProduct(rawProd);
     const cleanName = prod.name.trim().toLowerCase();
 
     if (!categoryMap.has(targetCatId)) {
@@ -97,7 +173,7 @@ export function mergeProductCatalogs(
       target.products.unshift({ ...prod });
     } else {
       const existingProd = target.products[existingIdx];
-      const isBase = baseProductNames.has(cleanName);
+      const isBase = baseProductNames.has(cleanName) && !isCustomAddedProduct(prod);
       target.products[existingIdx] = {
         ...existingProd,
         ...prod,
@@ -107,6 +183,30 @@ export function mergeProductCatalogs(
     }
   };
 
+  const normalizeCategoryId = (rawId: string, rawTitle?: string): string => {
+    const rawIdLower = (rawId || '').toLowerCase();
+    const rawTitleLower = (rawTitle || '').toLowerCase();
+    if (rawIdLower.includes('santa_gaia') || rawIdLower.includes('santagaia') || rawTitleLower.includes('santa gaia')) {
+      return 'santa_gaia_oficial';
+    }
+    if (rawIdLower.includes('acaflor') || rawIdLower.includes('açaflor') || rawTitleLower.includes('acaflor') || rawTitleLower.includes('açaflor')) {
+      return 'acaflor_oficial';
+    }
+    if (rawIdLower.startsWith('brand_ascamed')) {
+      return 'brand_ascamed_associacao';
+    }
+    if (rawIdLower.startsWith('brand_sequoia')) {
+      return 'brand_sequoia_nacional';
+    }
+    if (rawIdLower === 'associacoes-nacionais') {
+      return 'associacoes_nacionais';
+    }
+    if (rawIdLower === 'concentrados' || rawIdLower === 'bem_estar') {
+      return 'greenbudz_oficial';
+    }
+    return rawId;
+  };
+
   // Helper to merge a list of categories
   const mergeList = (categoriesToMerge?: CBDCategory[]) => {
     if (!categoriesToMerge || !Array.isArray(categoriesToMerge)) return;
@@ -114,14 +214,7 @@ export function mergeProductCatalogs(
     categoriesToMerge.forEach(sourceCat => {
       if (!sourceCat || !sourceCat.id) return;
 
-      const rawIdLower = sourceCat.id.toLowerCase();
-      const rawTitleLower = (sourceCat.title || '').toLowerCase();
-      const normalizedCatId =
-        (rawIdLower.includes('santa_gaia') || rawIdLower.includes('santagaia') || rawTitleLower.includes('santa gaia'))
-          ? 'santa_gaia_oficial'
-          : (rawIdLower.includes('acaflor') || rawIdLower.includes('açaflor') || rawTitleLower.includes('acaflor') || rawTitleLower.includes('açaflor'))
-            ? 'acaflor_oficial'
-            : sourceCat.id;
+      const normalizedCatId = normalizeCategoryId(sourceCat.id, sourceCat.title);
 
       const isGenericLooseCategory =
         sourceCat.title === 'Produtos Cadastrados' ||
@@ -135,25 +228,14 @@ export function mergeProductCatalogs(
         if (Array.isArray(sourceCat.products)) {
           sourceCat.products.forEach(p => {
             if (!p || !p.name) return;
-            const cleanName = p.name.trim().toLowerCase();
-            const isBaseProd = baseProductNames.has(cleanName);
+            const isCustom = isCustomAddedProduct(p);
             const bestBrandCatId = getBestCategoryIdForProduct(p.origin, p.manufacturer, p.name);
 
-            // If this is a manually added product with a custom brand (or a different official brand than where it was accidentally dropped),
-            // make sure it is ALSO present in its proper Brand Tab so it never stays loose!
-            if (!isBaseProd && bestBrandCatId && bestBrandCatId !== normalizedCatId) {
+            // Ensure any custom or brand-modified product is always present in its proper Brand Tab
+            if (isCustom && bestBrandCatId && bestBrandCatId !== normalizedCatId) {
               upsertProductInCategory(bestBrandCatId, p);
-              const isSourceOfficialBrand = [
-                'soucannabis_oficial',
-                'santa_gaia_oficial',
-                'acaflor_oficial',
-                'pangaia_oficial',
-                'abrace_oficial',
-                'abecmed_oficial',
-                'flowermed_oficial',
-                'greenbudz_oficial'
-              ].includes(normalizedCatId);
-              if (isSourceOfficialBrand) {
+              // Do not pollute associacoes_nacionais with products that have their own dedicated brand tab
+              if (normalizedCatId === 'associacoes_nacionais' && bestBrandCatId !== 'associacoes_nacionais') {
                 return;
               }
             }
@@ -172,10 +254,12 @@ export function mergeProductCatalogs(
         if (Array.isArray(sourceCat.products)) {
           sourceCat.products.forEach(p => {
             if (!p || !p.name) return;
-            const targetId = isGenericLooseCategory
-              ? getBestCategoryIdForProduct(p.origin, p.manufacturer, p.name)
-              : normalizedCatId;
+            const bestBrandCatId = getBestCategoryIdForProduct(p.origin, p.manufacturer, p.name);
+            const targetId = isGenericLooseCategory ? bestBrandCatId : normalizedCatId;
             upsertProductInCategory(targetId, p, isGenericLooseCategory ? undefined : sourceCat);
+            if (bestBrandCatId && bestBrandCatId !== targetId) {
+              upsertProductInCategory(bestBrandCatId, p);
+            }
           });
         }
       }
@@ -185,8 +269,15 @@ export function mergeProductCatalogs(
   // 2. Merge local admin store categories
   mergeList(storeCategories);
 
-  // 3. Merge cloud Firestore categories
-  mergeList(cloudCategories);
+  // 3. Merge cloud Firestore categories & additive cloud customProducts
+  mergeList(effectiveCloudCategories);
+  if (Array.isArray(cachedCloudCustomProducts) && cachedCloudCustomProducts.length > 0) {
+    cachedCloudCustomProducts.forEach(p => {
+      if (!p || !p.name) return;
+      const targetCatId = getBestCategoryIdForProduct(p.origin, p.manufacturer, p.name);
+      upsertProductInCategory(targetCatId, p);
+    });
+  }
 
   // 3b. Scan localStorage for any doctor-saved custom products, custom bulas, programmed prescriptions, and saved prescriptions
   if (typeof window !== 'undefined') {
@@ -593,6 +684,7 @@ export function unmarkProductAsDeleted(productName: string): void {
   if (typeof window === 'undefined' || !productName) return;
   try {
     const clean = productName.trim().toLowerCase();
+    sessionRestoredProductNames.add(clean);
     const existing = getDeletedProductNames();
     existing.delete(clean);
     const arr = Array.from(existing);
@@ -640,6 +732,7 @@ export function markCategoryAsDeleted(categoryId: string, productNamesToAlsoDele
   if (typeof window === 'undefined' || !categoryId) return;
   try {
     const cleanId = categoryId.trim();
+    sessionRestoredCategoryIds.delete(cleanId);
     const existingCats = getDeletedCategoryIds();
     existingCats.add(cleanId);
     const catArr = Array.from(existingCats);
@@ -679,6 +772,7 @@ export function unmarkCategoryAsDeleted(categoryId: string): void {
   if (typeof window === 'undefined' || !categoryId) return;
   try {
     const cleanId = categoryId.trim();
+    sessionRestoredCategoryIds.add(cleanId);
     const existingCats = getDeletedCategoryIds();
     if (!existingCats.has(cleanId)) return;
     existingCats.delete(cleanId);
@@ -805,42 +899,121 @@ export function extractAllTypes(categories: CBDCategory[]): string[] {
 }
 
 /**
+ * Compacts a product object by removing duplicate fields so Firestore documents stay well under 1 MiB
+ */
+export function compactProductForStorage(p: CBDProduct): any {
+  const copy: any = { ...p };
+  if (copy.usageInstructions && copy.posologyDetails && copy.usageInstructions === copy.posologyDetails) {
+    delete copy.usageInstructions;
+  }
+  delete copy.details;
+  Object.keys(copy).forEach(k => {
+    if (copy[k] === undefined || copy[k] === '') {
+      delete copy[k];
+    }
+  });
+  return copy;
+}
+
+/**
+ * Compacts categories before persisting to Firestore or localStorage to stay well below the 1 MiB Firestore limit
+ */
+export function compactCategoriesForStorage(categories: CBDCategory[]): CBDCategory[] {
+  const diseaseCatIds = new Set([
+    'ansiedade',
+    'dor_cronica',
+    'insonia',
+    'energia_foco',
+    'saude_mulher',
+    'gastro',
+    'neurodegenerativas',
+    'epilepsia',
+    'autismo',
+    'dermatologia',
+    'vicios',
+    'oncologia',
+    'concentrados',
+    'bem_estar',
+    'associacoes-nacionais'
+  ]);
+
+  return categories.map(cat => {
+    let prods = Array.isArray(cat.products) ? cat.products : [];
+    if (cat.id === 'associacoes_nacionais') {
+      // Do not duplicate products that belong to their own official brand tab inside associacoes_nacionais
+      prods = prods.filter(p => {
+        if (!p || !p.name) return false;
+        const bestId = getBestCategoryIdForProduct(p.origin, p.manufacturer, p.name);
+        return bestId === 'associacoes_nacionais' || !isCustomAddedProduct(p);
+      });
+    } else if (diseaseCatIds.has(cat.id)) {
+      // For clinical disease categories, only store custom/modified products in cloud storage (base products come from cbdGuideData)
+      prods = prods.filter(p => isCustomAddedProduct(p));
+    }
+
+    return {
+      id: cat.id,
+      title: cat.title,
+      description: cat.description,
+      indicationsList: cat.indicationsList,
+      dosageGuidance: cat.dosageGuidance,
+      products: prods.map(compactProductForStorage)
+    };
+  });
+}
+
+/**
  * Saves product categories to Firestore so any client (Doctor, Admin, Patient) sees newly added medications
  */
 export async function syncCatalogToFirestore(categories: CBDCategory[]): Promise<void> {
   try {
+    const deletedSet = getDeletedProductNames();
+    const customMap = new Map<string, any>();
+
+    // Preserve any existing cloud customProducts that aren't deleted
+    cachedCloudCustomProducts.forEach(p => {
+      if (!p || !p.name) return;
+      const key = p.name.trim().toLowerCase();
+      if (!deletedSet.has(key)) {
+        customMap.set(key, compactProductForStorage({ ...p, isCustom: true } as any));
+      }
+    });
+
+    // Collect all custom/modified products from current categories
+    categories.forEach(c => {
+      (c.products || []).forEach(p => {
+        if (!p || !p.name) return;
+        const key = p.name.trim().toLowerCase();
+        if (!deletedSet.has(key) && isCustomAddedProduct(p)) {
+          customMap.set(key, compactProductForStorage({ ...p, isCustom: true } as any));
+        }
+      });
+    });
+
+    const customProds = Array.from(customMap.values());
+    cachedCloudCustomProducts = customProds;
+
     // 1. Save custom products backup to localStorage so doctor-added products never disappear
     if (typeof window !== 'undefined') {
       try {
-        const baseNames = new Set<string>();
-        cbdGuideData.forEach(c => c.products.forEach(p => {
-          if (p?.name) baseNames.add(p.name.trim().toLowerCase());
-        }));
-        const customProds: CBDProduct[] = [];
-        const seenCustom = new Set<string>();
-        categories.forEach(c => {
-          (c.products || []).forEach(p => {
-            if (!p || !p.name) return;
-            const key = p.name.trim().toLowerCase();
-            if (!baseNames.has(key) && !seenCustom.has(key)) {
-              seenCustom.add(key);
-              customProds.push(p);
-            }
-          });
-        });
         localStorage.setItem('mecura_custom_catalog_v2', JSON.stringify(customProds));
       } catch {
         // ignore localStorage quota errors
       }
     }
 
-    // 2. Sanitize categories to strip `undefined` values which Firebase Firestore rejects
-    const sanitizedCategories = JSON.parse(JSON.stringify(categories));
+    // 2. Compact categories and sanitize `undefined` values so Firestore document stays ~200 KB (< 1 MiB limit)
+    const compactedCategories = compactCategoriesForStorage(categories);
+    const sanitizedCategories = JSON.parse(JSON.stringify(compactedCategories));
+    const sanitizedCustomProds = JSON.parse(JSON.stringify(customProds));
+    cachedCloudCategories = sanitizedCategories;
+
     const docRef = doc(db, 'settings', 'productCatalog');
-    const deletedList = Array.from(getDeletedProductNames());
+    const deletedList = Array.from(deletedSet);
     const deletedCatsList = Array.from(getDeletedCategoryIds());
     await setDoc(docRef, {
       categories: sanitizedCategories,
+      customProducts: sanitizedCustomProds,
       deletedProductNames: deletedList,
       deletedCategoryIds: deletedCatsList,
       updatedAt: new Date().toISOString()
@@ -864,7 +1037,10 @@ export function subscribeToFirestoreCatalog(onUpdate: (categories: CBDCategory[]
             const currentDeleted = getDeletedProductNames();
             data.deletedProductNames.forEach((name: string) => {
               if (typeof name === 'string' && name.trim()) {
-                currentDeleted.add(name.trim().toLowerCase());
+                const clean = name.trim().toLowerCase();
+                if (!sessionRestoredProductNames.has(clean)) {
+                  currentDeleted.add(clean);
+                }
               }
             });
             localStorage.setItem('mecura_deleted_products', JSON.stringify(Array.from(currentDeleted)));
@@ -874,12 +1050,33 @@ export function subscribeToFirestoreCatalog(onUpdate: (categories: CBDCategory[]
         }
         if (data && Array.isArray(data.deletedCategoryIds)) {
           try {
-            localStorage.setItem('mecura_deleted_categories', JSON.stringify(data.deletedCategoryIds));
+            const filteredCats = data.deletedCategoryIds.filter(
+              (id: string) => typeof id === 'string' && !sessionRestoredCategoryIds.has(id.trim())
+            );
+            localStorage.setItem('mecura_deleted_categories', JSON.stringify(filteredCats));
           } catch (e) {
             console.warn("Error updating local deleted categories from firestore:", e);
           }
         }
+        if (data && Array.isArray(data.customProducts)) {
+          cachedCloudCustomProducts = data.customProducts;
+          try {
+            const localRaw = localStorage.getItem('mecura_custom_catalog_v2');
+            const localArr = localRaw ? JSON.parse(localRaw) : [];
+            const unionMap = new Map<string, any>();
+            if (Array.isArray(localArr)) {
+              localArr.forEach((p: any) => {
+                if (p?.name) unionMap.set(p.name.trim().toLowerCase(), p);
+              });
+            }
+            data.customProducts.forEach((p: any) => {
+              if (p?.name) unionMap.set(p.name.trim().toLowerCase(), p);
+            });
+            localStorage.setItem('mecura_custom_catalog_v2', JSON.stringify(Array.from(unionMap.values())));
+          } catch {}
+        }
         if (data && Array.isArray(data.categories) && data.categories.length > 0) {
+          cachedCloudCategories = data.categories;
           onUpdate(data.categories);
         }
       }
@@ -903,6 +1100,8 @@ export function getBestCategoryIdForProduct(origin?: string, manufacturer?: stri
 
   if (combined.includes('santa gaia') || combined.includes('santagaia') || combined.includes('santa_gaia')) return 'santa_gaia_oficial';
   if (combined.includes('acaflor') || combined.includes('açaflor')) return 'acaflor_oficial';
+  if (combined.includes('ascamed')) return 'brand_ascamed_associacao';
+  if (combined.includes('sequoia') && !cleanM.includes('soucannabis')) return 'brand_sequoia_nacional';
 
   if (!cleanM) {
     return origin === 'Importado' ? 'pangaia_oficial' : 'associacoes_nacionais';
@@ -915,6 +1114,9 @@ export function getBestCategoryIdForProduct(origin?: string, manufacturer?: stri
   if (cleanM.includes('greenbudz') || cleanM.includes('green budz')) return 'greenbudz_oficial';
   if (cleanM.includes('flores in natura') || cleanM.includes('flores & extrações') || cleanM.includes('folheto')) return 'flores_extracoes';
   if (
+    cleanM === 'nacional' ||
+    cleanM === 'associação' ||
+    cleanM === 'associacao' ||
     cleanM === 'associação nacional' ||
     cleanM === 'associacao nacional' ||
     cleanM === 'associação brasileira' ||

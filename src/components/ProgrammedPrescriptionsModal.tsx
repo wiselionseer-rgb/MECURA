@@ -37,11 +37,19 @@ import {
   saveProgrammedProfiles, 
   resetProgrammedProfilesToDefault,
   getDoctorCustomModel,
-  saveDoctorCustomModel
+  saveDoctorCustomModel,
+  subscribeToProgrammedProfiles
 } from '../data/programmedPrescriptions';
 import { PrescriptionItemData } from '../utils/pdfGenerator';
 import { useAdminStore } from '../store/useAdminStore';
-import { getBestCategoryIdForProduct } from '../utils/productCatalog';
+import { 
+  getBestCategoryIdForProduct,
+  mergeProductCatalogs,
+  subscribeToFirestoreCatalog,
+  isCustomAddedProduct,
+  applyCustomBulaToProduct,
+  getDeletedProductNames
+} from '../utils/productCatalog';
 import { 
   enrichMedicationDetails, 
   NATIONAL_ASSOCIATION_PRODUCTS, 
@@ -137,6 +145,27 @@ export function ProgrammedPrescriptionsModal({
   const [medDosageLines, setMedDosageLines] = useState<string>('1º ao 5º dia: Iniciar com 03 gotas pela manhã e 03 gotas à noite.\nManutenção: Aumentar 01 gota a cada 5 dias até controle dos sintomas.\nReter sob a língua por 60 segundos antes de engolir.');
   const [medDescription, setMedDescription] = useState('');
 
+  const [cloudCategories, setCloudCategories] = useState<any[] | null>(null);
+  const [bulaRefreshTick, setBulaRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const unsubCatalog = subscribeToFirestoreCatalog((remoteCats) => {
+      setCloudCategories(remoteCats);
+    });
+    const unsubProfiles = subscribeToProgrammedProfiles((remoteProfiles) => {
+      if (Array.isArray(remoteProfiles) && remoteProfiles.length > 0 && !hasUnsavedChanges) {
+        setProfiles(remoteProfiles);
+      }
+    });
+    const handleBulaUpdate = () => setBulaRefreshTick(t => t + 1);
+    window.addEventListener('mecura_bula_updated', handleBulaUpdate);
+    return () => {
+      unsubCatalog();
+      unsubProfiles();
+      window.removeEventListener('mecura_bula_updated', handleBulaUpdate);
+    };
+  }, [hasUnsavedChanges]);
+
   useEffect(() => {
     if (isOpen) {
       const loaded = getProgrammedProfiles();
@@ -151,39 +180,66 @@ export function ProgrammedPrescriptionsModal({
     }
   }, [isOpen, initialPatientInfo]);
 
+  const mergedCatalogCategories = useMemo(() => {
+    return mergeProductCatalogs(cbdGuideData, productCategories, cloudCategories);
+  }, [productCategories, cloudCategories, bulaRefreshTick]);
+
   // Complete catalog list containing ALL National Associations & ALL Imported Brands
   const allCatalogProducts = useMemo(() => {
     const list: any[] = [];
     const seenNames = new Set<string>();
+    const deletedNames = getDeletedProductNames();
 
     const addProductToList = (p: any, categoryName: string, defaultOrigin: 'Nacional' | 'Importado', defaultBrand?: string) => {
       if (!p || !p.name) return;
       const clean = p.name.trim().toLowerCase();
+      if (!clean || deletedNames.has(clean)) return;
       if (seenNames.has(clean)) return;
       seenNames.add(clean);
 
+      const pWithBula = applyCustomBulaToProduct(p);
       const isImported = defaultOrigin === 'Importado' ||
-        p.origin === 'Importado' ||
+        pWithBula.origin === 'Importado' ||
         /pangaia|flowermed|flower|extraction|extração|greenbudz|eua|importad|14g|terp/i.test(
-          `${p.name} ${p.manufacturer || ''} ${p.brand || ''} ${categoryName}`
+          `${pWithBula.name} ${pWithBula.manufacturer || ''} ${(pWithBula as any).brand || ''} ${categoryName}`
         );
 
       const resolvedOrigin: 'Nacional' | 'Importado' = isImported ? 'Importado' : 'Nacional';
-      const resolvedBrand = p.manufacturer || defaultBrand || p.brand || categoryName;
-      const enriched = enrichMedicationDetails(p.name, resolvedBrand, resolvedOrigin, p.type, p);
+      const resolvedBrand = pWithBula.manufacturer || defaultBrand || (pWithBula as any).brand || categoryName;
+      const enriched = enrichMedicationDetails(pWithBula.name, resolvedBrand, resolvedOrigin, pWithBula.type, pWithBula);
 
       list.push({
-        ...p,
+        ...pWithBula,
         categoryName,
         origin: resolvedOrigin,
         brand: resolvedBrand,
-        activeIngredients: p.activeIngredients || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum',
-        concentration: p.concentration || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL',
-        pharmaceuticalForm: p.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
-        quantity: p.quantity || enriched.quantity || '01 Frasco de 30 mL',
-        administrationRoute: p.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral'
+        activeIngredients: pWithBula.activeIngredients || enriched.activeIngredients || 'Canabidiol (CBD) Full Spectrum',
+        concentration: pWithBula.concentration || enriched.concentration || '100 mg/mL (3.000 mg) • Frasco de 30 mL',
+        pharmaceuticalForm: pWithBula.pharmaceuticalForm || enriched.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+        quantity: pWithBula.quantity || enriched.quantity || '01 Frasco de 30 mL',
+        administrationRoute: pWithBula.administrationRoute || enriched.administrationRoute || 'Via Sublingual / Oral'
       });
     };
+
+    // 0. FIRST: All custom/manually added medications from mergedCatalogCategories so they appear at the top!
+    mergedCatalogCategories.forEach(cat => {
+      const cTitle = (cat as any).title || (cat as any).name || 'Catálogo MeCura';
+      (cat.products || []).forEach(p => {
+        if (isCustomAddedProduct(p)) {
+          const isNat = p.origin === 'Nacional' || /soucannabis|santa\s*gaia|santagaia|acaflor|açaflor|abrace|abecmed|ascamed|sequoia|nacional|associa/i.test(`${p.name} ${p.manufacturer || ''} ${cTitle}`);
+          addProductToList(p, cTitle, isNat ? 'Nacional' : 'Importado', p.manufacturer);
+        }
+      });
+    });
+
+    // 0b. NEXT: All remaining products from mergedCatalogCategories (Santa Gaia, Acaflor, SouCannabis, Pangaia, ASCAMED, Sequoia, etc.)
+    mergedCatalogCategories.forEach(cat => {
+      const cTitle = (cat as any).title || (cat as any).name || 'Catálogo MeCura';
+      (cat.products || []).forEach(p => {
+        const isNat = p.origin === 'Nacional' || /soucannabis|santa\s*gaia|santagaia|acaflor|açaflor|abrace|abecmed|ascamed|sequoia|nacional|associa/i.test(`${p.name} ${p.manufacturer || ''} ${cTitle}`);
+        addProductToList(p, cTitle, isNat ? 'Nacional' : 'Importado', p.manufacturer);
+      });
+    });
 
     // 1. From Pangaia Biopharmaceuticals (Importado EUA / Anvisa RDC 660)
     if (PANGAIA_PRODUCTS && Array.isArray(PANGAIA_PRODUCTS)) {
@@ -285,33 +341,51 @@ export function ProgrammedPrescriptionsModal({
     }
 
     return list;
-  }, [productCategories]);
+  }, [mergedCatalogCategories, productCategories]);
+
+  const customCatalogProducts = useMemo(() => {
+    return allCatalogProducts.filter(p => isCustomAddedProduct(p));
+  }, [allCatalogProducts]);
 
   const filteredCatalogProducts = useMemo(() => {
     let result = allCatalogProducts;
 
     // Filter by origin / brand pill
-    if (catalogOriginFilter === 'importados') {
+    if (catalogOriginFilter === 'custom_added') {
+      result = result.filter(p => isCustomAddedProduct(p));
+    } else if (catalogOriginFilter === 'importados') {
       result = result.filter(p => p.origin === 'Importado');
     } else if (catalogOriginFilter === 'nacionais') {
       result = result.filter(p => p.origin === 'Nacional');
+    } else if (catalogOriginFilter === 'santa_gaia') {
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'santa_gaia_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /santa\s*gaia|santagaia/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+    } else if (catalogOriginFilter === 'acaflor') {
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'acaflor_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /acaflor|açaflor/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'pangaia') {
-      result = result.filter(p => /pangaia/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'pangaia_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /pangaia/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'flowermed') {
-      result = result.filter(p => /flowermed/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'flowermed_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /flowermed/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'greenbudz') {
-      result = result.filter(p => /greenbudz|drops by greenbud|calm vibe|chill vibe|nightshade|beethoven|evergreen|looking glass/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'greenbudz_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /greenbudz|drops by greenbud|calm vibe|chill vibe|nightshade|beethoven|evergreen|looking glass/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'flores') {
       result = result.filter(p => /flor|extraction|extração|14g|terp/i.test(`${p.name} ${p.brand} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'soucannabis') {
-      result = result.filter(p => /soucannabis/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'soucannabis_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /soucannabis/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'abrace') {
-      result = result.filter(p => /abrace/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'abrace_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /abrace/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter === 'abecmed') {
-      result = result.filter(p => /abec/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
+      const catNames = new Set((mergedCatalogCategories.find(c => c.id === 'abecmed_oficial')?.products || []).map(p => (p.name || '').trim().toLowerCase()));
+      result = result.filter(p => catNames.has((p.name || '').trim().toLowerCase()) || /abec/i.test(`${p.name} ${p.brand} ${p.manufacturer} ${p.categoryName}`));
     } else if (catalogOriginFilter.startsWith('brand_')) {
-      const targetCat = productCategories.find(c => c.id === catalogOriginFilter);
-      const brandNameLower = (((targetCat as any)?.name || targetCat?.title || '') as string).split('(')[0].trim().toLowerCase();
+      const targetCat = mergedCatalogCategories.find(c => c.id === catalogOriginFilter) || productCategories.find(c => c.id === catalogOriginFilter);
+      const brandNameLower = (((targetCat as any)?.name || targetCat?.title || '') as string).split('—')[0].split('(')[0].trim().toLowerCase();
       const catNames = new Set((targetCat?.products || []).map(cp => cp.name.trim().toLowerCase()));
       result = result.filter(p =>
         catNames.has((p.name || '').trim().toLowerCase()) ||
@@ -332,7 +406,7 @@ export function ProgrammedPrescriptionsModal({
       (p.concentration && p.concentration.toLowerCase().includes(term)) ||
       (p.activeIngredients && p.activeIngredients.toLowerCase().includes(term))
     );
-  }, [allCatalogProducts, catalogSearchTerm, catalogOriginFilter]);
+  }, [allCatalogProducts, catalogSearchTerm, catalogOriginFilter, mergedCatalogCategories, productCategories]);
 
   // Filtered patients for dropdown search
   const filteredPatients = useMemo(() => {
@@ -1524,20 +1598,25 @@ export function ProgrammedPrescriptionsModal({
                     <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto py-0.5 scrollbar-none">
                       {[
                         { id: 'all', label: `Todos (${allCatalogProducts.length})` },
-                        { id: 'importados', label: `🌐 Medicamentos Importados (${importedCatalogCount})` },
-                        { id: 'nacionais', label: `🇧🇷 Medicamentos Nacionais (${nationalCatalogCount})` },
-                        { id: 'pangaia', label: '🌐 Pangaia Biopharma (EUA)' },
-                        { id: 'flowermed', label: '🌐 Flowermed EUA' },
-                        { id: 'greenbudz', label: '🌿 GreenBudz CBD (EUA)' },
+                        ...(customCatalogProducts.length > 0
+                          ? [{ id: 'custom_added', label: `⭐ Cadastrados Manualmente (${customCatalogProducts.length})` }]
+                          : []),
+                        { id: 'santa_gaia', label: `🌱 Santa Gaia (${(mergedCatalogCategories.find(c => c.id === 'santa_gaia_oficial')?.products || SANTA_GAIA_PRODUCTS).length})` },
+                        { id: 'acaflor', label: `🌿 Acaflor (${(mergedCatalogCategories.find(c => c.id === 'acaflor_oficial')?.products || ACAFLOR_PRODUCTS).length})` },
+                        { id: 'soucannabis', label: `🌱 SouCannabis (${(mergedCatalogCategories.find(c => c.id === 'soucannabis_oficial')?.products || SOUCANNABIS_PRODUCTS).length})` },
+                        { id: 'pangaia', label: `🌐 Pangaia Biopharma (${(mergedCatalogCategories.find(c => c.id === 'pangaia_oficial')?.products || PANGAIA_PRODUCTS).length})` },
+                        { id: 'abrace', label: `🌿 ABRACE Esperança (${(mergedCatalogCategories.find(c => c.id === 'abrace_oficial')?.products || ABRACE_PRODUCTS).length})` },
+                        { id: 'abecmed', label: `🟠 ABECMED Nacional (${(mergedCatalogCategories.find(c => c.id === 'abecmed_oficial')?.products || ABECMED_PRODUCTS).length})` },
+                        { id: 'greenbudz', label: `🌿 GreenBudz CBD (${(mergedCatalogCategories.find(c => c.id === 'greenbudz_oficial')?.products || GREENBUDZ_PRODUCTS).length})` },
+                        { id: 'flowermed', label: `🌐 Flowermed EUA (${(mergedCatalogCategories.find(c => c.id === 'flowermed_oficial')?.products || FLOWERMED_PRODUCTS).length})` },
                         { id: 'flores', label: '🌿 Flores In Natura (14g)' },
-                        { id: 'soucannabis', label: '🌱 SouCannabis Nacional' },
-                        { id: 'abrace', label: '🌿 ABRACE Esperança' },
-                        { id: 'abecmed', label: '🟠 ABECMED Nacional' },
-                        ...productCategories
-                          .filter(c => c.id.startsWith('brand_'))
+                        { id: 'nacionais', label: `🇧🇷 Todos Nacionais (${nationalCatalogCount})` },
+                        { id: 'importados', label: `🌐 Todos Importados (${importedCatalogCount})` },
+                        ...mergedCatalogCategories
+                          .filter(c => c.id.startsWith('brand_') && Array.isArray(c.products) && c.products.length > 0)
                           .map(c => ({
                             id: c.id,
-                            label: `🏷️ ${(((c as any).name || c.title || '') as string).split('(')[0].trim()} (${(c.products || []).length})`
+                            label: `🏷️ ${(((c as any).name || c.title || '') as string).split('—')[0].split('(')[0].trim()} (${(c.products || []).length})`
                           }))
                       ].map((f, fIdx) => (
                         <button
@@ -1548,7 +1627,7 @@ export function ProgrammedPrescriptionsModal({
                             catalogOriginFilter === f.id
                               ? f.id === 'importados' || f.id === 'pangaia' || f.id === 'flowermed' || f.id === 'greenbudz' || f.id === 'flores'
                                 ? 'bg-sky-500 text-black shadow-md shadow-sky-500/30'
-                                : f.id === 'nacionais' || f.id === 'soucannabis' || f.id === 'abrace' || f.id === 'abecmed' || f.id.startsWith('brand_')
+                                : f.id === 'nacionais' || f.id === 'santa_gaia' || f.id === 'acaflor' || f.id === 'soucannabis' || f.id === 'abrace' || f.id === 'abecmed' || f.id === 'custom_added' || f.id.startsWith('brand_')
                                   ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/30'
                                   : 'bg-purple-600 text-white shadow-md'
                               : 'bg-white/5 hover:bg-white/10 text-[#8A8A9E] hover:text-white border border-white/5'

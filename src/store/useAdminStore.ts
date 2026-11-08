@@ -1,7 +1,7 @@
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted, markCategoryAsDeleted, unmarkCategoryAsDeleted, restoreAllDeletedCategories, buildCustomBrandCategory, getBestCategoryIdForProduct } from '../utils/productCatalog';
+import { mergeProductCatalogs, syncCatalogToFirestore, subscribeToFirestoreCatalog, markProductAsDeleted, unmarkProductAsDeleted, markCategoryAsDeleted, unmarkCategoryAsDeleted, restoreAllDeletedCategories, buildCustomBrandCategory, getBestCategoryIdForProduct, compactCategoriesForStorage } from '../utils/productCatalog';
 import { db } from '../firebase';
 import { 
   collection, 
@@ -381,9 +381,10 @@ export const useAdminStore = create<AdminState>()(
         syncCatalogToFirestore(merged);
       },
       addProduct: (categoryId, product) => {
-        unmarkProductAsDeleted(product.name);
+        const customProduct: CBDProduct = { ...product, isCustom: true } as any;
+        unmarkProductAsDeleted(customProduct.name);
         set((state) => {
-          const brandCategoryId = getBestCategoryIdForProduct(product.origin, product.manufacturer, product.name);
+          const brandCategoryId = getBestCategoryIdForProduct(customProduct.origin, customProduct.manufacturer, customProduct.name);
           const targetCategoryIds = new Set<string>();
           if (brandCategoryId) {
             targetCategoryIds.add(brandCategoryId);
@@ -395,20 +396,20 @@ export const useAdminStore = create<AdminState>()(
           }
 
           let updated = [...state.productCategories];
-          const cleanP = (product.name || '').trim().toLowerCase();
+          const cleanP = (customProduct.name || '').trim().toLowerCase();
 
           targetCategoryIds.forEach(targetId => {
             const existingIdx = updated.findIndex(c => c.id === targetId);
             if (existingIdx !== -1) {
               const cat = updated[existingIdx];
               const filtered = cat.products.filter(p => (p.name || '').trim().toLowerCase() !== cleanP);
-              updated[existingIdx] = { ...cat, products: [product, ...filtered] };
+              updated[existingIdx] = { ...cat, products: [customProduct, ...filtered] };
             } else {
               const newCat = buildCustomBrandCategory(
                 targetId,
-                product.manufacturer || 'Marca Cadastrada',
-                product.origin || 'Nacional',
-                [product]
+                customProduct.manufacturer || 'Marca Cadastrada',
+                customProduct.origin || 'Nacional',
+                [customProduct]
               );
               updated = [newCat, ...updated];
             }
@@ -416,6 +417,9 @@ export const useAdminStore = create<AdminState>()(
 
           const merged = mergeProductCatalogs(cbdGuideData, updated);
           syncCatalogToFirestore(merged);
+          if (typeof window !== 'undefined') {
+            setTimeout(() => window.dispatchEvent(new Event('mecura_bula_updated')), 10);
+          }
           return { productCategories: merged };
         });
       },
@@ -436,7 +440,7 @@ export const useAdminStore = create<AdminState>()(
               const updatedProds = c.products.map(p => {
                 if ((p.name || '').trim().toLowerCase() === oldClean) {
                   found = true;
-                  const mergedProd = { ...p, ...productData };
+                  const mergedProd = { ...p, ...productData, isCustom: true } as any;
                   updatedProductFull = mergedProd;
                   return mergedProd;
                 }
@@ -450,13 +454,14 @@ export const useAdminStore = create<AdminState>()(
             return c;
           });
 
-          const fullProd: CBDProduct = updatedProductFull || {
+          const fullProd: CBDProduct = updatedProductFull || ({
             name: productData.name || productName,
             manufacturer: productData.manufacturer || 'Associação Brasileira',
             type: productData.type || 'Óleo Sublingual',
             origin: productData.origin || 'Nacional',
-            ...productData
-          };
+            ...productData,
+            isCustom: true
+          } as any);
 
           const brandCatId = getBestCategoryIdForProduct(fullProd.origin, fullProd.manufacturer, fullProd.name);
           if (brandCatId) {
@@ -521,6 +526,10 @@ export const useAdminStore = create<AdminState>()(
     }),
     {
       name: 'admin-storage',
+      partialize: (state) => ({
+        ...state,
+        productCategories: compactCategoriesForStorage(state.productCategories || [])
+      }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.productCategories = mergeProductCatalogs(cbdGuideData, state.productCategories);

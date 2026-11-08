@@ -1,5 +1,7 @@
 import { PrescriptionItemData } from '../utils/pdfGenerator';
 import { enrichMedicationDetails } from './cbdGuide';
+import { db } from '../firebase';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export interface ProgrammedPrescriptionProfile {
   id: string;
@@ -551,6 +553,13 @@ export function saveDoctorCustomModel(model: ProgrammedPrescriptionProfile) {
     const current = getProgrammedProfiles();
     const withoutModel = current.filter(p => p.id !== model.id && p.id !== 'modelo-salvo-doutor');
     saveProgrammedProfiles([model, ...withoutModel]);
+    try {
+      const sanitizedModel = JSON.parse(JSON.stringify(model));
+      setDoc(doc(db, 'settings', 'programmedPrescriptions'), {
+        doctorCustomModel: sanitizedModel,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
+    } catch {}
     window.dispatchEvent(new CustomEvent('mecura_doctor_model_updated'));
   } catch (e) {
     console.error('Erro ao salvar modelo personalizado do médico:', e);
@@ -574,7 +583,7 @@ function ensureCompleteProfileItems(profiles: ProgrammedPrescriptionProfile[]): 
 
       return {
         ...item,
-        name: (item.name || '').replace(/—+|-{3,}/g, '-').trim(),
+        name: (item.name || '').trim(),
         brand: item.brand?.trim() || enriched.brand || 'Associação Brasileira (Nacional)',
         origin: item.origin?.trim() || enriched.origin || 'Nacional',
         activeIngredients: !isGenericText(item.activeIngredients)
@@ -613,21 +622,6 @@ export function getProgrammedProfiles(): ProgrammedPrescriptionProfile[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      // Heal perfil-ansiedade if it has old dashes or broken dosage in user's localStorage
-      const defaultAnsiedade = DEFAULT_PROGRAMMED_PROFILES.find(p => p.id === 'perfil-ansiedade');
-      const targetAnsiedade = parsed.find((p: any) => p.id === 'perfil-ansiedade');
-      if (defaultAnsiedade && targetAnsiedade) {
-        const itemWithDashes = (targetAnsiedade.items || []).find((it: any) => /——+|--+|————-/.test(it.name || ''));
-        const itemBroad = (targetAnsiedade.items || []).find((it: any) => /broad.*cbn/i.test(it.name || ''));
-        const isOutdatedDosage = itemBroad && (!Array.isArray(itemBroad.dosage) || itemBroad.dosage.length < 2 || !itemBroad.dosage[0]?.includes('2 gotas'));
-        if (itemWithDashes || isOutdatedDosage) {
-          targetAnsiedade.items = defaultAnsiedade.items;
-          targetAnsiedade.name = defaultAnsiedade.name;
-          targetAnsiedade.badge = defaultAnsiedade.badge;
-          targetAnsiedade.defaultNotes = defaultAnsiedade.defaultNotes;
-        }
-      }
-
       // Check if custom doctor model exists in storage and prepend if missing
       const customModelRaw = localStorage.getItem(DOCTOR_CUSTOM_MODEL_KEY);
       if (customModelRaw) {
@@ -645,7 +639,9 @@ export function getProgrammedProfiles(): ProgrammedPrescriptionProfile[] {
         ? [...parsed, ...missingDefaults]
         : parsed.filter((p: any) => !deletedIds.has(p.id));
       const completed = ensureCompleteProfileItems(combined);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(completed));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(completed));
+      } catch {}
       return completed;
     }
   } catch (e) {
@@ -657,18 +653,97 @@ export function getProgrammedProfiles(): ProgrammedPrescriptionProfile[] {
 export function saveProgrammedProfiles(profiles: ProgrammedPrescriptionProfile[], deletedId?: string) {
   if (typeof window === 'undefined') return;
   try {
-    if (deletedId) {
-      const rawDeleted = localStorage.getItem(DELETED_KEY);
-      const deletedIds: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
-      if (!deletedIds.includes(deletedId)) {
-        deletedIds.push(deletedId);
-        localStorage.setItem(DELETED_KEY, JSON.stringify(deletedIds));
-      }
+    let deletedIds: string[] = [];
+    const rawDeleted = localStorage.getItem(DELETED_KEY);
+    if (rawDeleted) {
+      try {
+        deletedIds = JSON.parse(rawDeleted) || [];
+      } catch {}
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+    if (deletedId && !deletedIds.includes(deletedId)) {
+      deletedIds.push(deletedId);
+      try {
+        localStorage.setItem(DELETED_KEY, JSON.stringify(deletedIds));
+      } catch {}
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+    } catch {}
+    try {
+      const sanitizedProfiles = JSON.parse(JSON.stringify(profiles));
+      setDoc(doc(db, 'settings', 'programmedPrescriptions'), {
+        profiles: sanitizedProfiles,
+        deletedIds,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(() => {});
+    } catch {}
     window.dispatchEvent(new CustomEvent('mecura_programmed_prescriptions_updated'));
   } catch (e) {
     console.error('Erro ao salvar perfis programados:', e);
+  }
+}
+
+export function subscribeToProgrammedProfiles(
+  onUpdate: (profiles: ProgrammedPrescriptionProfile[]) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  try {
+    return onSnapshot(doc(db, 'settings', 'programmedPrescriptions'), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (!data) return;
+
+      if (data.doctorCustomModel && data.doctorCustomModel.id) {
+        try {
+          localStorage.setItem(DOCTOR_CUSTOM_MODEL_KEY, JSON.stringify(data.doctorCustomModel));
+        } catch {}
+      }
+
+      if (Array.isArray(data.deletedIds)) {
+        try {
+          localStorage.setItem(DELETED_KEY, JSON.stringify(data.deletedIds));
+        } catch {}
+      }
+
+      if (Array.isArray(data.profiles) && data.profiles.length > 0) {
+        const localProfiles = getProgrammedProfiles();
+        const mergedMap = new Map<string, ProgrammedPrescriptionProfile>();
+
+        // Put cloud profiles first, then merge any local items not in cloud so nothing is lost
+        data.profiles.forEach((cp: ProgrammedPrescriptionProfile) => {
+          if (cp && cp.id) mergedMap.set(cp.id, cp);
+        });
+        localProfiles.forEach((lp) => {
+          if (!lp || !lp.id) return;
+          if (!mergedMap.has(lp.id)) {
+            mergedMap.set(lp.id, lp);
+          } else {
+            const cloudProf = mergedMap.get(lp.id)!;
+            const cloudItemNames = new Set((cloudProf.items || []).map(i => (i.name || '').trim().toLowerCase()));
+            const extraLocalItems = (lp.items || []).filter(
+              li => li && li.name && !cloudItemNames.has(li.name.trim().toLowerCase())
+            );
+            if (extraLocalItems.length > 0) {
+              mergedMap.set(lp.id, {
+                ...cloudProf,
+                items: [...(cloudProf.items || []), ...extraLocalItems]
+              });
+            }
+          }
+        });
+
+        const delSet = new Set<string>(Array.isArray(data.deletedIds) ? data.deletedIds : []);
+        const finalProfiles = ensureCompleteProfileItems(
+          Array.from(mergedMap.values()).filter(p => !delSet.has(p.id))
+        );
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(finalProfiles));
+        } catch {}
+        onUpdate(finalProfiles);
+      }
+    }, () => {});
+  } catch {
+    return () => {};
   }
 }
 

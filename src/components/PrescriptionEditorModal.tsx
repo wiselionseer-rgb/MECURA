@@ -26,12 +26,12 @@ import {
   BookmarkCheck
 } from 'lucide-react';
 import { PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, SANTA_GAIA_PRODUCTS, ACAFLOR_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
+import { enrichMedicationDetails, NATIONAL_ASSOCIATION_PRODUCTS, ABECMED_PRODUCTS, ABRACE_PRODUCTS, SOUCANNABIS_PRODUCTS, SANTA_GAIA_PRODUCTS, ACAFLOR_PRODUCTS, PANGAIA_PRODUCTS, ABECMED_COMPANY_INFO, SOUCANNABIS_COMPANY_INFO, PANGAIA_COMPANY_INFO, cbdGuideData, CBDCategory, CBDProduct, AbecmedProduct, SouCannabisProduct, PangaiaProduct } from '../data/cbdGuide';
 import { FLOWERMED_PRODUCTS, FlowermedProduct } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS, FlowerExtractionProduct } from '../data/flowerExtractionsCatalog';
 import { GREENBUDZ_PRODUCTS, GreenBudzProduct } from '../data/greenbudzCatalog';
 import { useAdminStore } from '../store/useAdminStore';
-import { getBestCategoryIdForProduct, getCustomBulaData, applyCustomBulaToProduct, getDeletedProductNames } from '../utils/productCatalog';
+import { mergeProductCatalogs, subscribeToFirestoreCatalog, isCustomAddedProduct, getBestCategoryIdForProduct, getCustomBulaData, applyCustomBulaToProduct, getDeletedProductNames } from '../utils/productCatalog';
 import { ProductBulaModal } from './ProductBulaModal';
 import { ProgrammedPrescriptionsModal } from './ProgrammedPrescriptionsModal';
 import { 
@@ -335,10 +335,24 @@ export function PrescriptionEditorModal({
   // Modal state to open Bula directly from Prescription Editor or Library
   const [selectedBulaProduct, setSelectedBulaProduct] = useState<any | null>(null);
   const [selectedBulaTargetItemIndex, setSelectedBulaTargetItemIndex] = useState<number | null>(null);
+  const [cloudCategories, setCloudCategories] = useState<CBDCategory[]>([]);
 
-  // All catalog products merged from ALL categories, with useAdminStore + custom Bula overrides taking precedence!
+  useEffect(() => {
+    const unsub = subscribeToFirestoreCatalog((cats) => {
+      if (cats && cats.length > 0) {
+        setCloudCategories(cats);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const mergedCatalogCategories = useMemo(() => {
+    return mergeProductCatalogs(cbdGuideData, productCategories, cloudCategories);
+  }, [productCategories, cloudCategories, bulaVersion]);
+
+  // All catalog products merged from ALL categories, with custom/doctor-added products FIRST at the top!
   const allLibraryProducts = useMemo(() => {
-    const list: (CBDProduct & { categoryName?: string; sourceCatalog?: string })[] = [];
+    const list: (CBDProduct & { categoryName?: string; sourceCatalog?: string; isCustom?: boolean })[] = [];
     const seenNames = new Set<string>();
     const deletedSet = getDeletedProductNames();
 
@@ -350,13 +364,33 @@ export function PrescriptionEditorModal({
 
       if (!seenNames.has(key)) {
         seenNames.add(key);
-        list.push({ ...prod, categoryName: catName || 'Outros', sourceCatalog: source || 'Geral' });
+        const customFlag = isCustomAddedProduct(prod);
+        list.push({
+          ...prod,
+          categoryName: catName || 'Outros',
+          sourceCatalog: source || 'Geral',
+          ...(customFlag ? { isCustom: true } : {})
+        });
       }
     };
 
-    // 1. From useAdminStore productCategories FIRST (contains latest doctor edits & custom additions!)
-    if (productCategories && Array.isArray(productCategories)) {
-      for (const cat of productCategories) {
+    // 1. Put ALL custom / manually added products FIRST across all categories so they appear right at the top of the library!
+    if (mergedCatalogCategories && Array.isArray(mergedCatalogCategories)) {
+      for (const cat of mergedCatalogCategories) {
+        const cTitle = (cat as any).title || (cat as any).name || 'Painel Clínico';
+        if (cat.products && Array.isArray(cat.products)) {
+          for (const p of cat.products) {
+            if (isCustomAddedProduct(p)) {
+              addProd(p, cTitle, 'Cadastrado pelo Médico');
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Next, add remaining products from mergedCatalogCategories
+    if (mergedCatalogCategories && Array.isArray(mergedCatalogCategories)) {
+      for (const cat of mergedCatalogCategories) {
         const cTitle = (cat as any).title || (cat as any).name || 'Painel Clínico';
         if (cat.products && Array.isArray(cat.products)) {
           for (const p of cat.products) {
@@ -366,7 +400,7 @@ export function PrescriptionEditorModal({
       }
     }
 
-    // 2. From all categories in cbdGuideData (all base categories)
+    // 3. From all categories in cbdGuideData (all base categories)
     if (cbdGuideData && Array.isArray(cbdGuideData)) {
       for (const cat of cbdGuideData) {
         const cTitle = cat.title || cat.description?.split('.')[0] || 'Geral';
@@ -378,66 +412,65 @@ export function PrescriptionEditorModal({
       }
     }
 
-    // 3. From Pangaia Biopharmaceuticals Official Catalog (Importado — EUA / Anvisa RDC 660)
+    // 4. From Official Static Catalogs as fallback
     for (const p of PANGAIA_PRODUCTS) {
       addProd(p, 'Pangaia Biopharmaceuticals (Importado)', 'Pangaia');
     }
-
-    // 3b. From GreenBudzCBD Official Catalog (Importado — EUA / Anvisa RDC 660)
     for (const p of GREENBUDZ_PRODUCTS) {
       addProd(p, 'GreenBudzCBD (Importado)', 'GreenBudz');
     }
-
-    // 4. From SouCannabis Official National Catalog (Brasil)
     for (const p of SOUCANNABIS_PRODUCTS) {
       addProd(p, 'SouCannabis (Associação Nacional)', 'SouCannabis');
     }
-
-    // 5. From Flowermed Catalog (EUA)
     for (const p of FLOWERMED_PRODUCTS) {
       addProd(p, 'Linha Flowermed (EUA)', 'Flowermed');
     }
-
-    // 6. From Flower Extractions Catalog (14g)
     for (const p of FLOWER_EXTRACTIONS_PRODUCTS) {
       addProd(p, 'Flores & Extrações (14g)', 'Flores/Extrações');
     }
-
-    // 7. From National Association Catalog (Brasil)
     for (const p of NATIONAL_ASSOCIATION_PRODUCTS) {
       addProd(p, 'Associações Nacionais (Brasil)', 'Associação');
     }
-
-    // 8. From ABECMED Official National Catalog (Brasil)
     for (const p of ABECMED_PRODUCTS) {
       addProd(p, 'ABECMED (Associação Nacional)', 'ABECMED');
     }
-
-    // 9. From ABRACE Official National Catalog (Brasil)
     for (const p of ABRACE_PRODUCTS) {
       addProd(p, 'ABRACE Esperança (Associação Nacional)', 'ABRACE');
     }
-
-    // 10. From Santa Gaia Official National Catalog (Brasil)
     for (const p of SANTA_GAIA_PRODUCTS) {
       addProd(p, 'Associação Santa Gaia (Nacional)', 'Santa Gaia');
     }
-
-    // 11. From Acaflor Official National Catalog (Brasil)
     for (const p of ACAFLOR_PRODUCTS) {
       addProd(p, 'Associação Acaflor (Nacional)', 'Acaflor');
     }
 
     return list;
-  }, [productCategories, bulaVersion]);
+  }, [mergedCatalogCategories, bulaVersion]);
+
+  const customLibraryProducts = useMemo(() => {
+    return allLibraryProducts.filter(p => isCustomAddedProduct(p));
+  }, [allLibraryProducts]);
+
+  // Helper to get products in a specific merged category ID
+  const getCategoryProducts = (catId: string, fallbackProducts: CBDProduct[] = []): CBDProduct[] => {
+    const found = mergedCatalogCategories.find(c => c.id === catId);
+    if (found && Array.isArray(found.products) && found.products.length > 0) {
+      return found.products;
+    }
+    return fallbackProducts;
+  };
 
   // Dynamic filter for Library modal
   const filteredLibraryProducts = useMemo(() => {
     let result = allLibraryProducts;
 
     if (librarySelectedCategory !== 'all') {
-      if (librarySelectedCategory === 'pangaia') {
+      if (librarySelectedCategory === 'custom_added') {
+        result = result.filter(p => isCustomAddedProduct(p));
+      } else if (librarySelectedCategory === 'pangaia') {
+        const catSet = new Set(getCategoryProducts('pangaia_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p => 
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           (p.manufacturer || '').toLowerCase().includes('pangaia') || 
           (p.sourceCatalog || '').toLowerCase().includes('pangaia') || 
           (p.name || '').toLowerCase().includes('pangaia') ||
@@ -445,33 +478,45 @@ export function PrescriptionEditorModal({
           (p.name || '').toLowerCase().includes('táio')
         );
       } else if (librarySelectedCategory === 'greenbudz') {
+        const catSet = new Set(getCategoryProducts('greenbudz_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p => 
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           (p.manufacturer || '').toLowerCase().includes('greenbudz') || 
           (p.sourceCatalog || '').toLowerCase().includes('greenbudz') || 
           /greenbudz|drops by greenbud|calm vibe|chill vibe/i.test(p.name || '')
         );
       } else if (librarySelectedCategory === 'soucannabis') {
+        const catSet = new Set(getCategoryProducts('soucannabis_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p => 
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           (p.manufacturer || '').toLowerCase().includes('soucannabis') || 
           (p.sourceCatalog || '').toLowerCase().includes('soucannabis') || 
           (p.name || '').toLowerCase().includes('soucannabis')
         );
       } else if (librarySelectedCategory === 'santa_gaia' || librarySelectedCategory === 'santa_gaia_oficial') {
+        const catSet = new Set(getCategoryProducts('santa_gaia_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p =>
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           /santa\s*gaia|santagaia/i.test(`${p.manufacturer || ''} ${p.sourceCatalog || ''} ${p.name || ''}`)
         );
       } else if (librarySelectedCategory === 'acaflor' || librarySelectedCategory === 'acaflor_oficial') {
+        const catSet = new Set(getCategoryProducts('acaflor_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p =>
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           /acaflor|açaflor/i.test(`${p.manufacturer || ''} ${p.sourceCatalog || ''} ${p.name || ''}`)
         );
       } else if (librarySelectedCategory === 'abecmed') {
+        const catSet = new Set(getCategoryProducts('abecmed_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p => 
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           (p.manufacturer || '').toLowerCase().includes('abec') || 
           (p.sourceCatalog || '').toLowerCase().includes('abec') || 
           (p.name || '').toLowerCase().includes('abec')
         );
       } else if (librarySelectedCategory === 'abrace') {
+        const catSet = new Set(getCategoryProducts('abrace_oficial').map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p => 
+          catSet.has((p.name || '').trim().toLowerCase()) ||
           (p.manufacturer || '').toLowerCase().includes('abrace') || 
           (p.sourceCatalog || '').toLowerCase().includes('abrace') || 
           (p.name || '').toLowerCase().includes('abrace')
@@ -485,10 +530,15 @@ export function PrescriptionEditorModal({
           (p.manufacturer || '').toLowerCase().includes('abec') ||
           (p.manufacturer || '').toLowerCase().includes('abrace') ||
           (p.manufacturer || '').toLowerCase().includes('soucannabis') ||
-          /santa\s*gaia|acaflor|açaflor/i.test(`${p.manufacturer || ''} ${p.name || ''}`)
+          /santa\s*gaia|acaflor|açaflor|ascamed|sequoia/i.test(`${p.manufacturer || ''} ${p.name || ''}`)
         );
       } else if (librarySelectedCategory === 'flowermed') {
-        result = result.filter(p => (p.manufacturer || '').toLowerCase().includes('flowermed') || p.sourceCatalog === 'Flowermed');
+        const catSet = new Set(getCategoryProducts('flowermed_oficial').map(cp => cp.name.trim().toLowerCase()));
+        result = result.filter(p =>
+          catSet.has((p.name || '').trim().toLowerCase()) ||
+          (p.manufacturer || '').toLowerCase().includes('flowermed') ||
+          p.sourceCatalog === 'Flowermed'
+        );
       } else if (librarySelectedCategory === 'flores') {
         result = result.filter(p => /flor|in natura|extraç|budder|syringe/i.test(p.name || p.type || ''));
       } else if (librarySelectedCategory === 'oleos') {
@@ -496,11 +546,12 @@ export function PrescriptionEditorModal({
       } else if (librarySelectedCategory === 'topicos') {
         result = result.filter(p => /pomada|creme|tópico|pele/i.test(p.name || p.type || p.pharmaceuticalForm || ''));
       } else if (librarySelectedCategory.startsWith('brand_')) {
-        const targetCat = productCategories.find(c => c.id === librarySelectedCategory);
-        const brandNameLower = (((targetCat as any)?.name || targetCat?.title || '') as string).split('(')[0].trim().toLowerCase();
+        const targetCat = mergedCatalogCategories.find(c => c.id === librarySelectedCategory);
+        const brandNameLower = (((targetCat as any)?.name || targetCat?.title || '') as string).split('—')[0].split('(')[0].trim().toLowerCase();
         const catNames = new Set((targetCat?.products || []).map(cp => cp.name.trim().toLowerCase()));
         result = result.filter(p =>
           catNames.has((p.name || '').trim().toLowerCase()) ||
+          getBestCategoryIdForProduct(p.origin, p.manufacturer, p.name) === librarySelectedCategory ||
           (brandNameLower && (p.manufacturer || '').toLowerCase().includes(brandNameLower))
         );
       } else {
@@ -512,7 +563,7 @@ export function PrescriptionEditorModal({
       if (libraryOriginFilter === 'Nacional') {
         result = result.filter(p => 
           p.origin === 'Nacional' || 
-          /associação|associacao|abec|abrace|soucannabis|nacional|abrascorp|apepi|cultive/i.test(
+          /associação|associacao|abec|abrace|soucannabis|santa\s*gaia|acaflor|açaflor|ascamed|sequoia|nacional|abrascorp|apepi|cultive/i.test(
             `${p.manufacturer || ''} ${p.name || ''} ${p.categoryName || ''} ${p.sourceCatalog || ''}`
           )
         );
@@ -520,7 +571,7 @@ export function PrescriptionEditorModal({
         result = result.filter(p => 
           p.origin === 'Importado' || 
           (p.origin !== 'Nacional' && 
-           !/associação|associacao|abec|abrace|soucannabis|nacional|abrascorp|apepi|cultive/i.test(
+           !/associação|associacao|abec|abrace|soucannabis|santa\s*gaia|acaflor|açaflor|ascamed|sequoia|nacional|abrascorp|apepi|cultive/i.test(
              `${p.manufacturer || ''} ${p.name || ''} ${p.categoryName || ''} ${p.sourceCatalog || ''}`
            )) ||
           /pangaia|flowermed|flower|extraction|extração|greenbudz|folheto|14g|eua|importad/i.test(
@@ -542,11 +593,9 @@ export function PrescriptionEditorModal({
         (p.description && p.description.toLowerCase().includes(q)) ||
         (p.type && p.type.toLowerCase().includes(q))
       );
-
       if (textFiltered.length > 0) {
         return textFiltered;
       }
-
       // Smart fallback: search across all categories if active category/origin filter left 0 results
       return allLibraryProducts.filter(p => 
         (p.name && p.name.toLowerCase().includes(q)) ||
@@ -561,7 +610,7 @@ export function PrescriptionEditorModal({
     }
 
     return result;
-  }, [allLibraryProducts, librarySelectedCategory, libraryOriginFilter, librarySearchTerm]);
+  }, [allLibraryProducts, mergedCatalogCategories, librarySelectedCategory, libraryOriginFilter, librarySearchTerm]);
 
   // Auto-correct any Goma that might have been accidentally saved with sublingual or drops
   useEffect(() => {
@@ -893,55 +942,65 @@ export function PrescriptionEditorModal({
     setItems(prev => [...prev, newItem]);
   };
 
+  const findInLibraryOrFallback = (productName: string, fallbackArray: any[], defaultManufacturer: string, defaultOrigin: 'Nacional' | 'Importado') => {
+    const cleanTarget = productName.trim().toLowerCase();
+    const fromLibrary = allLibraryProducts.find(p => (p.name || '').trim().toLowerCase() === cleanTarget)
+      || allLibraryProducts.find(p => {
+        const pLower = (p.name || '').trim().toLowerCase();
+        return pLower.includes(cleanTarget) || cleanTarget.includes(pLower);
+      });
+    if (fromLibrary) return fromLibrary;
+    const fromStatic = fallbackArray.find(p => p.name === productName || productName.includes(p.name));
+    return fromStatic || { name: productName, manufacturer: defaultManufacturer, origin: defaultOrigin };
+  };
+
   const handleAddFlowermedItem = (productName: string) => {
-    const prod = FLOWERMED_PRODUCTS.find(p => p.name === productName);
-    const baseProd = prod || { name: productName, manufacturer: 'Linha Flowermed (EUA)', origin: 'Importado' };
+    const baseProd = findInLibraryOrFallback(productName, FLOWERMED_PRODUCTS, 'Linha Flowermed (EUA)', 'Importado');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddFlowerExtItem = (productName: string) => {
-    const prod = FLOWER_EXTRACTIONS_PRODUCTS.find(p => p.name === productName);
-    const baseProd = prod || { name: productName, manufacturer: 'Importado (Folheto Especial)', origin: 'Importado' };
+    const baseProd = findInLibraryOrFallback(productName, FLOWER_EXTRACTIONS_PRODUCTS, 'Importado (Folheto Especial)', 'Importado');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddNationalItem = (productName: string) => {
-    const pTarget = productName.toLowerCase().trim();
-    const prod = NATIONAL_ASSOCIATION_PRODUCTS.find(p => {
-      const pNameLower = p.name.toLowerCase();
-      return pNameLower === pTarget || pNameLower.includes(pTarget) || pTarget.includes(pNameLower);
-    });
-    const baseProd = prod || { name: productName, manufacturer: 'Associação Nacional (Brasil)', origin: 'Nacional' };
+    const baseProd = findInLibraryOrFallback(productName, NATIONAL_ASSOCIATION_PRODUCTS, 'Associação Nacional (Brasil)', 'Nacional');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddAbecmedItem = (productName: string) => {
-    const prod = ABECMED_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    const baseProd = prod || { name: productName, manufacturer: 'ABECMED (Associação Nacional)', origin: 'Nacional' };
+    const baseProd = findInLibraryOrFallback(productName, ABECMED_PRODUCTS, 'ABECMED (Associação Nacional)', 'Nacional');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddAbraceItem = (productName: string) => {
-    const prod = ABRACE_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    const baseProd = prod || { name: productName, manufacturer: 'ABRACE (Associação Nacional)', origin: 'Nacional' };
+    const baseProd = findInLibraryOrFallback(productName, ABRACE_PRODUCTS, 'ABRACE (Associação Nacional)', 'Nacional');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddSouCannabisItem = (productName: string) => {
-    const prod = SOUCANNABIS_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    const baseProd = prod || { name: productName, manufacturer: 'SouCannabis (Associação Nacional)', origin: 'Nacional' };
+    const baseProd = findInLibraryOrFallback(productName, SOUCANNABIS_PRODUCTS, 'SouCannabis (Associação Nacional)', 'Nacional');
+    handleSelectLibraryProduct(baseProd);
+  };
+
+  const handleAddSantaGaiaItem = (productName: string) => {
+    const baseProd = findInLibraryOrFallback(productName, SANTA_GAIA_PRODUCTS, 'Associação Santa Gaia (Nacional)', 'Nacional');
+    handleSelectLibraryProduct(baseProd);
+  };
+
+  const handleAddAcaflorItem = (productName: string) => {
+    const baseProd = findInLibraryOrFallback(productName, ACAFLOR_PRODUCTS, 'Associação Acaflor (Nacional)', 'Nacional');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddPangaiaItem = (productName: string) => {
-    const prod = PANGAIA_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    const baseProd = prod || { name: productName, manufacturer: 'Pangaia Biopharmaceuticals (Importado)', origin: 'Importado' };
+    const baseProd = findInLibraryOrFallback(productName, PANGAIA_PRODUCTS, 'Pangaia Biopharmaceuticals (Importado)', 'Importado');
     handleSelectLibraryProduct(baseProd);
   };
 
   const handleAddGreenBudzItem = (productName: string) => {
-    const prod = GREENBUDZ_PRODUCTS.find(p => p.name === productName || productName.includes(p.name));
-    const baseProd = prod || { name: productName, manufacturer: 'GreenBudzCBD (Importado EUA)', origin: 'Importado' };
+    const baseProd = findInLibraryOrFallback(productName, GREENBUDZ_PRODUCTS, 'GreenBudzCBD (Importado EUA)', 'Importado');
     handleSelectLibraryProduct(baseProd);
   };
 
@@ -1085,7 +1144,7 @@ export function PrescriptionEditorModal({
     setShowNewProductForm(false);
     setLibrarySelectedCategory('all');
     setLibraryOriginFilter('all');
-    setLibrarySearchTerm(cleanName);
+    setLibrarySearchTerm('');
 
     setIsSavedFeedback(true);
     const now = new Date();
@@ -1148,6 +1207,41 @@ export function PrescriptionEditorModal({
     });
   };
 
+  const registerCustomItemsInCatalog = (currentItems: PrescriptionItemData[]) => {
+    if (!addProduct || !Array.isArray(currentItems)) return;
+    const existingNames = new Set(allLibraryProducts.map(p => (p.name || '').trim().toLowerCase()));
+    currentItems.forEach(item => {
+      const cleanName = (item.name || '').trim();
+      if (!cleanName || cleanName.length < 3) return;
+      if (existingNames.has(cleanName.toLowerCase())) return;
+      existingNames.add(cleanName.toLowerCase());
+      try {
+        const originVal: 'Nacional' | 'Importado' = item.origin === 'Importado' ? 'Importado' : 'Nacional';
+        const brandVal = (item.brand || '').trim() || (originVal === 'Nacional' ? 'Associação Brasileira' : 'Importado');
+        const catId = getBestCategoryIdForProduct(originVal, brandVal, cleanName);
+        const dosageJoined = Array.isArray(item.dosage) ? item.dosage.filter(Boolean).join('\n') : '';
+        const prodData: CBDProduct = {
+          name: cleanName,
+          manufacturer: brandVal,
+          type: item.type || item.pharmaceuticalForm || 'Óleo',
+          concentration: item.concentration || '',
+          origin: originVal,
+          activeIngredients: item.activeIngredients || cleanName,
+          pharmaceuticalForm: item.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)',
+          quantity: item.quantity || '01 Frasco de 30 mL',
+          administrationRoute: item.administrationRoute || 'Via Sublingual / Oral',
+          usageInstructions: dosageJoined,
+          posologyDetails: dosageJoined,
+          description: item.description || `Medicamento canabinoide cadastrado pelo médico: ${cleanName}`,
+          isCustom: true,
+        } as any;
+        addProduct(catId, prodData);
+      } catch (e) {
+        console.warn('Could not auto-register custom item in catalog:', e);
+      }
+    });
+  };
+
   const buildCurrentData = () => ({
     patientName,
     birthDate,
@@ -1161,6 +1255,7 @@ export function PrescriptionEditorModal({
   });
 
   const handleDownload = () => {
+    registerCustomItemsInCatalog(items);
     syncToParent();
     const currentData = buildCurrentData();
     if (onSave) {
@@ -1176,6 +1271,7 @@ export function PrescriptionEditorModal({
 
   const handleSendToChatClick = async () => {
     if (!onSendToChat) return;
+    registerCustomItemsInCatalog(items);
     syncToParent();
     const currentData = buildCurrentData();
     if (onSave) {
@@ -1191,6 +1287,7 @@ export function PrescriptionEditorModal({
 
   const handleSendPreviewClick = async () => {
     if (!onSendPreviewToChat) return;
+    registerCustomItemsInCatalog(items);
     syncToParent();
     setIsSendingPreview(true);
     try {
@@ -1201,6 +1298,7 @@ export function PrescriptionEditorModal({
   };
 
   const handleSave = () => {
+    registerCustomItemsInCatalog(items);
     syncToParent();
     if (onSave) {
       onSave({
@@ -1228,6 +1326,7 @@ export function PrescriptionEditorModal({
   };
 
   const handleClose = () => {
+    registerCustomItemsInCatalog(items);
     syncToParent();
     if (onSave) {
       onSave({
@@ -1624,6 +1723,120 @@ export function PrescriptionEditorModal({
                         <Plus className="w-3.5 h-3.5" /> + Outro Importado
                       </button>
 
+                      {/* ⭐ Cadastrados Manualmente pelo Médico Quick Prescribe Dropdown */}
+                      {customLibraryProducts.length > 0 && (
+                        <div className="relative inline-block">
+                          <select
+                            id="select-add-custom-manual"
+                            defaultValue=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                const prod = allLibraryProducts.find(p => p.name === e.target.value);
+                                if (prod) {
+                                  handleSelectLibraryProduct(prod, null);
+                                }
+                                e.target.value = '';
+                              }
+                            }}
+                            className="px-2.5 py-1.5 bg-lime-500/20 border border-lime-400/50 text-lime-200 rounded-lg text-xs font-bold hover:bg-lime-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-lime-400 shadow-[0_0_12px_rgba(163,230,53,0.25)]"
+                          >
+                            <option value="" disabled className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              ⭐ + Cadastrados Manualmente ({customLibraryProducts.length})...
+                            </option>
+                            {customLibraryProducts.map((p, idx) => (
+                              <option key={`custom-opt-${idx}`} value={p.name} className="bg-[#0A0A0F] text-white">
+                                {p.name} ({p.manufacturer || p.origin || 'Personalizado'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* 🌱 Linha Santa Gaia Nacional Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-santa-gaia"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddSantaGaiaItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
+                            🌱 + Linha Santa Gaia Nacional ({getCategoryProducts('santa_gaia_oficial', SANTA_GAIA_PRODUCTS).length})...
+                          </option>
+                          {getCategoryProducts('santa_gaia_oficial', SANTA_GAIA_PRODUCTS).map((p, idx) => (
+                            <option key={`sg-opt-${idx}`} value={p.name} className="bg-[#0A0A0F] text-white">
+                              {p.name}{p.priceBRL ? ` • ${p.priceBRL}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* 🌿 Linha Acaflor Nacional Quick Prescribe Dropdown */}
+                      <div className="relative inline-block">
+                        <select
+                          id="select-add-acaflor"
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddAcaflorItem(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-green-500/20 border border-green-400/40 text-green-200 rounded-lg text-xs font-bold hover:bg-green-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-green-400 shadow-[0_0_12px_rgba(34,197,94,0.2)]"
+                        >
+                          <option value="" disabled className="bg-[#0A0A0F] text-green-300 font-bold">
+                            🌿 + Linha Acaflor Nacional ({getCategoryProducts('acaflor_oficial', ACAFLOR_PRODUCTS).length})...
+                          </option>
+                          {getCategoryProducts('acaflor_oficial', ACAFLOR_PRODUCTS).map((p, idx) => (
+                            <option key={`ac-opt-${idx}`} value={p.name} className="bg-[#0A0A0F] text-white">
+                              {p.name}{p.priceBRL ? ` • ${p.priceBRL}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Custom Brand Tabs (ASCAMED, Sequoia, etc.) Quick Prescribe Dropdowns */}
+                      {mergedCatalogCategories
+                        .filter(c => c.id.startsWith('brand_') && Array.isArray(c.products) && c.products.length > 0)
+                        .map(c => {
+                          const rawLabel = (((c as any).name || c.title || '') as string)
+                            .split('—')[0]
+                            .split('(')[0]
+                            .trim();
+                          return (
+                            <div key={`quick-brand-${c.id}`} className="relative inline-block">
+                              <select
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    const prod = allLibraryProducts.find(p => p.name === e.target.value) ||
+                                      (c.products || []).find(p => p.name === e.target.value);
+                                    if (prod) {
+                                      handleSelectLibraryProduct(prod, null);
+                                    }
+                                    e.target.value = '';
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 rounded-lg text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                              >
+                                <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
+                                  🏷️ + Linha {rawLabel} ({(c.products || []).length})...
+                                </option>
+                                {(c.products || []).map((p, idx) => (
+                                  <option key={`brand-opt-${c.id}-${idx}`} value={p.name} className="bg-[#0A0A0F] text-white">
+                                    {p.name}{p.priceBRL ? ` • ${p.priceBRL}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+
                       {/* Associação Nacional Quick Prescribe Dropdown */}
                       <div className="relative inline-block">
                         <select
@@ -1638,8 +1851,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 rounded-lg text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
-                            + Prescrever Linha Nacional (Associações)...
+                            + Prescrever Linha Nacional (Associações) ({getCategoryProducts('associacoes_nacionais', NATIONAL_ASSOCIATION_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('associacoes_nacionais', NATIONAL_ASSOCIATION_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('associacoes_nacionais', NATIONAL_ASSOCIATION_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`nat-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="🌟 LINHA ALTO CBD FULL SPECTRUM (5:1, 10:1, 20:1)" className="bg-[#0A0A0F] text-amber-300 font-bold">
                             <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (30 mg/mL — 900mg)">Alto CBD 5:1 THC - 30 mg/mL (900mg) - R$ 220</option>
                             <option value="ALTO CBD Full SPECTRUM CBD 5:1 THC - 30ml (60 mg/mL — 1800mg)">Alto CBD 5:1 THC - 60 mg/mL (1800mg) - R$ 290</option>
@@ -1692,8 +1916,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 rounded-lg text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-amber-300 font-bold">
-                            🟠 + Linha ABECMED Nacional...
+                            🟠 + Linha ABECMED Nacional ({getCategoryProducts('abecmed_oficial', ABECMED_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('abecmed_oficial', ABECMED_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('abecmed_oficial', ABECMED_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`abec-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="🟠 Óleo Rico em CBD (Laranja)" className="bg-[#0A0A0F] text-orange-400 font-bold">
                             <option value="Óleo ABEC CBD Full Spectrum 2% (20 mg/mL — 600 mg)">Laranja 2% (20 mg/mL — 600 mg / 30 mL)</option>
                             <option value="Óleo ABEC CBD Full Spectrum 5% (50 mg/mL — 1.500 mg)">Laranja 5% (50 mg/mL — 1.500 mg / 30 mL)</option>
@@ -1744,8 +1979,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
-                            🌿 + Linha ABRACE Nacional...
+                            🌿 + Linha ABRACE Nacional ({getCategoryProducts('abrace_oficial', ABRACE_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('abrace_oficial', ABRACE_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('abrace_oficial', ABRACE_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`abrace-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="🟠 Óleos de CBD (Laranja, Vermelho, Prata)" className="bg-[#0A0A0F] text-orange-400 font-bold">
                             <option value="Óleo Laranja CBD 20 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 20 mg/mL (30 mL)</option>
                             <option value="Óleo Laranja CBD 30 mg/mL — ABRACE (30 mL)">Óleo Laranja CBD 30 mg/mL (30 mL)</option>
@@ -1793,8 +2039,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-teal-500/20 border border-teal-400/40 text-teal-200 rounded-lg text-xs font-bold hover:bg-teal-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-teal-400 shadow-[0_0_12px_rgba(20,184,166,0.2)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-teal-300 font-bold">
-                            🌱 + Linha SouCannabis Nacional (HPLC)...
+                            🌱 + Linha SouCannabis Nacional (HPLC) ({getCategoryProducts('soucannabis_oficial', SOUCANNABIS_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('soucannabis_oficial', SOUCANNABIS_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('soucannabis_oficial', SOUCANNABIS_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`sou-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="🔵 Óleos Azuis (THC 5:1 — 2% a 20%)" className="bg-[#0A0A0F] text-blue-400 font-bold">
                             <option value="Óleo Azul SouCannabis THC 5:1 — 2% (10 mL)">Óleo Azul 2% (10 mL • R$ 120)</option>
                             <option value="Óleo Azul SouCannabis THC 5:1 — 2% (30 mL)">Óleo Azul 2% (30 mL • R$ 240)</option>
@@ -1912,8 +2169,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-indigo-300 font-bold">
-                            🌐 + Linha Pangaia Pharma (EUA • RDC 660)...
+                            🌐 + Linha Pangaia Pharma (EUA • RDC 660) ({getCategoryProducts('pangaia_oficial', PANGAIA_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('pangaia_oficial', PANGAIA_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('pangaia_oficial', PANGAIA_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`pang-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="💧 Linha Pharma — Óleos Sublinguais (30 mL • ~20 gotas/mL)" className="bg-[#0A0A0F] text-indigo-400 font-bold">
                             <option value="Óleo CBD Full Spectrum Pangaia 5% — 1500 mg (30 mL)">Óleo 5% • 1500 mg (2,5 mg/gota • R$ 489)</option>
                             <option value="Óleo CBD Full Spectrum Pangaia 10% — 3000 mg (30 mL)">Óleo 10% • 3000 mg (5,0 mg/gota • R$ 879 — Mais Prescrito)</option>
@@ -1965,8 +2233,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-sky-500/20 border border-sky-400/40 text-sky-200 rounded-lg text-xs font-bold hover:bg-sky-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.15)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-sky-300 font-bold">
-                            + Prescrever Linha Flowermed (EUA)...
+                            + Prescrever Linha Flowermed (EUA) ({getCategoryProducts('flowermed_oficial', FLOWERMED_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('flowermed_oficial', FLOWERMED_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('flowermed_oficial', FLOWERMED_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`flw-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="Linha Hemp Oil (Óleos 30mL)" className="bg-[#0A0A0F] text-white">
                             <option value="Full Spectrum Hemp Oil 3.000 mg">Flowermed Full Spectrum 3.000 mg (R$ 440)</option>
                             <option value="Full Spectrum Hemp Oil 6.000 mg">Flowermed Full Spectrum 6.000 mg (R$ 650)</option>
@@ -2008,8 +2287,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
-                            🌿 + Prescrever Linha GreenBudz (EUA)...
+                            🌿 + Prescrever Linha GreenBudz (EUA) ({getCategoryProducts('greenbudz_oficial', GREENBUDZ_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('greenbudz_oficial', GREENBUDZ_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('greenbudz_oficial', GREENBUDZ_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`gb-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="💧 Óleos Sublinguais de Alta Densidade" className="bg-[#0A0A0F] text-emerald-400 font-bold">
                             <option value="GreenBudz Calm Vibe Oil 6000mg • 200 mg/ml (30 mL)">GreenBudz Calm Vibe 6000mg • 200 mg/mL (30 mL • R$ 890)</option>
                             <option value="GreenBudz Full Balance Oil 3000mg • 100 mg/ml (30 mL)">GreenBudz Full Balance 3000mg • 100 mg/mL (30 mL • R$ 490)</option>
@@ -2044,8 +2334,19 @@ export function PrescriptionEditorModal({
                           className="px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
                         >
                           <option value="" disabled className="bg-[#0A0A0F] text-emerald-300 font-bold">
-                            + Prescrever Flores & Extrações (14g)...
+                            + Prescrever Flores & Extrações (14g) ({getCategoryProducts('flores_extracoes_oficial', FLOWER_EXTRACTIONS_PRODUCTS).length})...
                           </option>
+                          {getCategoryProducts('flores_extracoes_oficial', FLOWER_EXTRACTIONS_PRODUCTS)
+                            .filter(p => isCustomAddedProduct(p))
+                            .length > 0 && (
+                            <optgroup label="⭐ Cadastrados / Atualizados pelo Médico" className="bg-[#0A0A0F] text-lime-300 font-bold">
+                              {getCategoryProducts('flores_extracoes_oficial', FLOWER_EXTRACTIONS_PRODUCTS)
+                                .filter(p => isCustomAddedProduct(p))
+                                .map((p, idx) => (
+                                  <option key={`flext-cust-${idx}`} value={p.name}>{p.name}</option>
+                                ))}
+                            </optgroup>
+                          )}
                           <optgroup label="Flores In Natura CBD (14g • R$ 50/g)" className="bg-[#0A0A0F] text-white">
                             <option value="Flor In Natura Sour Lifter (CBD) 14g">Sour Lifter (CBD) 14g - Diurno (R$ 700)</option>
                             <option value="Flor In Natura Lemon Octane (CBD) 14g">Lemon Octane (CBD) 14g - Noturno (R$ 700)</option>
@@ -3352,21 +3653,27 @@ export function PrescriptionEditorModal({
                 <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto py-1">
                   {[
                     { id: 'all', label: `Todos (${allLibraryProducts.length})` },
-                    { id: 'pangaia', label: '🌐 Pangaia Pharma (EUA)' },
-                    { id: 'soucannabis', label: '🌱 SouCannabis (Nacional)' },
-                    { id: 'abrace', label: '🌿 ABRACE Esperança (Nacional)' },
-                    { id: 'abecmed', label: '🟠 ABECMED Oficial (Nacional)' },
+                    ...(customLibraryProducts.length > 0
+                      ? [{ id: 'custom_added', label: `⭐ Cadastrados Manualmente (${customLibraryProducts.length})` }]
+                      : []),
+                    { id: 'santa_gaia', label: `🌱 Santa Gaia (${getCategoryProducts('santa_gaia_oficial', SANTA_GAIA_PRODUCTS).length})` },
+                    { id: 'acaflor', label: `🌿 Acaflor (${getCategoryProducts('acaflor_oficial', ACAFLOR_PRODUCTS).length})` },
+                    { id: 'soucannabis', label: `🌱 SouCannabis (${getCategoryProducts('soucannabis_oficial', SOUCANNABIS_PRODUCTS).length})` },
+                    { id: 'pangaia', label: `🌐 Pangaia Pharma (${getCategoryProducts('pangaia_oficial', PANGAIA_PRODUCTS).length})` },
+                    { id: 'abrace', label: `🌿 ABRACE Esperança (${getCategoryProducts('abrace_oficial', ABRACE_PRODUCTS).length})` },
+                    { id: 'abecmed', label: `🟠 ABECMED Oficial (${getCategoryProducts('abecmed_oficial', ABECMED_PRODUCTS).length})` },
+                    { id: 'greenbudz', label: `💎 GreenBudzCBD (${getCategoryProducts('greenbudz_oficial', GREENBUDZ_PRODUCTS).length})` },
+                    { id: 'nacionais', label: `🇧🇷 Associações Nacionais (${getCategoryProducts('associacoes_nacionais', NATIONAL_ASSOCIATION_PRODUCTS).length})` },
+                    { id: 'flowermed', label: `🇺🇸 Linha Flowermed (${getCategoryProducts('flowermed_oficial', FLOWERMED_PRODUCTS).length})` },
                     { id: 'gomas', label: '🍬 Gomas & Comestíveis' },
-                    { id: 'nacionais', label: '🇧🇷 Associações Nacionais' },
-                    { id: 'flowermed', label: '🇺🇸 Linha Flowermed' },
                     { id: 'flores', label: '🌿 Flores & Extrações' },
                     { id: 'oleos', label: '💧 Óleos Sublinguais' },
                     { id: 'topicos', label: '🧴 Pomadas & Tópicos' },
-                    ...productCategories
-                      .filter(c => c.id.startsWith('brand_'))
+                    ...mergedCatalogCategories
+                      .filter(c => c.id.startsWith('brand_') && Array.isArray(c.products) && c.products.length > 0)
                       .map(c => ({
                         id: c.id,
-                        label: `🏷️ ${(((c as any).name || c.title || '') as string).split('(')[0].trim()} (${(c.products || []).length})`
+                        label: `🏷️ ${(((c as any).name || c.title || '') as string).split('—')[0].split('(')[0].trim()} (${(c.products || []).length})`
                       }))
                   ].map((cat, cIdx) => (
                     <button
