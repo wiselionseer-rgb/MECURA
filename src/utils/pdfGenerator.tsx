@@ -486,7 +486,7 @@ export const generatePrescriptionPDF = async (
   const docSpec = rawDocSpec.toLowerCase().includes('clínico geral') || rawDocSpec.toLowerCase().includes('clinico geral')
     ? rawDocSpec
     : `Clínico Geral • ${rawDocSpec}`;
-  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com";
+  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: guilhermetaveiradias@hotmail.com";
   const docAddressLine = "Primavera do Leste - MT • CEP 78850-000";
 
   // Check localStorage for saved prescription matching this patient if customItems are not directly provided
@@ -749,7 +749,7 @@ export const generatePrescriptionPDF = async (
           <div className="border-b border-[#94A3B8] mb-1" style={{ height: '0px' }} />
           <p className="text-[10.5px] font-bold text-[#0F172A] m-0" style={{ lineHeight: '1.2' }}>{docName}</p>
           <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, 'Clínico Geral')}</p>
-          <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
+          <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • guilhermetaveiradias@hotmail.com</p>
         </div>
       </div>
     </div>
@@ -1211,7 +1211,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
   const docSpec = rawDocSpec.toLowerCase().includes('clínico geral') || rawDocSpec.toLowerCase().includes('clinico geral')
     ? rawDocSpec
     : `Clínico Geral • ${rawDocSpec}`;
-  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com";
+  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: guilhermetaveiradias@hotmail.com";
   const docAddressLine = "Primavera do Leste - MT • CEP 78850-000";
 
   const isEvolutivo = Boolean(
@@ -1615,7 +1615,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
       </div>
       <div className="flex justify-between w-full text-[7.5px] text-[#94A3B8] font-medium mt-0.5">
         <span>Paciente: {sanitizedUserName}</span>
-        <span>Médico: {docName} ({docCrm} • Clínico Geral • +55 65 3190-0629)</span>
+        <span>Médico: {docName} ({docCrm} • Clínico Geral • +55 65 3190-0629 • guilhermetaveiradias@hotmail.com)</span>
         <span>Emissão: {emissionDateStr}</span>
       </div>
     </div>
@@ -1634,7 +1634,7 @@ export const generateMedicalReportPDF = async (userName: string, messages?: any,
           <div className="w-52 border-b border-[#94A3B8] mb-1" style={{ height: '0px' }}></div>
           <p className="text-[10.5px] font-bold text-[#1E1B4B] m-0" style={{ lineHeight: '1.2' }}>{docName}</p>
           <p className="text-[8.5px] text-[#475569] font-semibold m-0" style={{ marginTop: '1px', lineHeight: '1.2' }}>{formatDoctorCrmLine(docCrm, 'Clínico Geral')}</p>
-          <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
+          <p className="text-[7.5px] text-[#64748B] m-0" style={{ marginTop: '1px', lineHeight: '1.15' }}>+55 65 3190-0629 • guilhermetaveiradias@hotmail.com</p>
         </div>
       </div>
     </div>
@@ -1945,7 +1945,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
   const docSpec = rawDocSpec.toLowerCase().includes('clínico geral') || rawDocSpec.toLowerCase().includes('clinico geral')
     ? rawDocSpec
     : `Clínico Geral • ${rawDocSpec}`;
-  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com";
+  const docContactLine = "Tel: +55 65 3190-0629 • E-mail: guilhermetaveiradias@hotmail.com";
   const docAddressLine = "Primavera do Leste - MT • CEP 78850-000";
 
   const defaultParagraphs = [
@@ -2142,7 +2142,7 @@ export const generatePsychomotorReportPDF = async (userName: string, patientData
           <div style={{ borderBottom: '1.5px solid #1E1B4B', marginBottom: '5px', height: '14px' }}></div>
           <p style={{ margin: 0, fontSize: '11px', fontWeight: 800, color: '#1E1B4B' }}>{docName}</p>
           <p style={{ margin: '1px 0 0 0', fontSize: '9px', fontWeight: 600, color: '#475569' }}>{formatDoctorCrmLine(docCrm, 'Clínico Geral')}</p>
-          <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>+55 65 3190-0629 • Wiselionseer@gmail.com</p>
+          <p style={{ margin: '1px 0 0 0', fontSize: '8px', color: '#64748B' }}>+55 65 3190-0629 • guilhermetaveiradias@hotmail.com</p>
         </div>
       </div>
     </div>

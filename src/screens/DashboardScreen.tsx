@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import {  useState, useEffect } from 'react';
-import {  useStore } from '../store/useStore';
+import { useState, useEffect, useMemo } from 'react';
+import { useStore } from '../store/useStore';
 import {  useAdminStore } from '../store/useAdminStore';
 import {  auth, db } from '../firebase';
 import { addDoc, collection, setDoc, doc, getDoc } from 'firebase/firestore';
@@ -198,20 +198,25 @@ export function DashboardScreen() {
     }
   }, [isWaitingInQueue, myQueueEntry?.status, isConsultationFinished]);
 
-  // Patient has actual prescription ONLY when consultation is finished and not actively waiting or in consultation, OR has an approved pharmacy order
-  const hasActualPrescription = !!myApprovedPharmacyOrder || ((hasPaidConsultation || isFinishedConsultation) && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && (
-    isFinishedConsultation ||
-    (myQueueEntry?.status === 'finished' && messages.some(m => 
+  // Patient has actual prescription whenever doctor has issued a prescription/report/product or consultation is finished
+  const hasDoctorIssuedDocuments = useMemo(() => {
+    return Boolean((myQueueEntry as any)?.prescriptionData?.items?.length) || messages.some(m => 
       m.type === 'prescription' || 
       m.type === 'receita_previa' || 
       (m.type === 'product' && m.productData) ||
+      m.type === 'medical_report' ||
+      m.type === 'psychomotor_report' ||
+      m.type === 'agronomic_report' ||
+      m.type === 'psychological_report' ||
       (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
-    ))
-  ));
+    );
+  }, [messages, myQueueEntry]);
+
+  const hasActualPrescription = !!myApprovedPharmacyOrder || hasDoctorIssuedDocuments || ((hasPaidConsultation || isFinishedConsultation) && !isWaitingInQueue && !isDoctorCalling && myQueueEntry?.status !== 'waiting' && myQueueEntry?.status !== 'in-consultation' && isFinishedConsultation);
 
   // Sync messages and user payment status if user is logged in
   useEffect(() => {
-    const currentUid = auth.currentUser?.uid || patientId || localStorage.getItem('mecura_patientId');
+    const currentUid = myQueueEntry?.id || auth.currentUser?.uid || patientId || localStorage.getItem('mecura_patientId');
     if (currentUid) {
       const unsub = subscribeToMessages(currentUid);
       // Also check Firestore user document directly for payment persistence, identity, and triage answers restoration
@@ -362,6 +367,31 @@ export function DashboardScreen() {
         const patientUid = auth.currentUser?.uid || st.patientId || localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id') || ('paciente_' + Date.now());
         const patientName = auth.currentUser?.displayName || localStorage.getItem('mecura_patient_name') || userName || 'Paciente';
         const patientEmail = auth.currentUser?.email || st.userEmail || '';
+        const patientPhone = st.userPhone || '';
+        const patientCpf = st.userCpf || '';
+
+        const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
+        const referralCodeFallback = localStorage.getItem('mecura_referral_coupon_code');
+        const adminCoupons = useAdminStore.getState().coupons;
+        const couponToConsume =
+          (savedCouponStr ? (() => { try { return JSON.parse(savedCouponStr); } catch { return null; } })() : null) ||
+          (referralCodeFallback ? adminCoupons.find(c => c.code.trim().toUpperCase() === referralCodeFallback.trim().toUpperCase()) || null : null);
+
+        const isViaReferralLink =
+          localStorage.getItem('mecura_referral_via_link') === 'true' &&
+          Boolean(couponToConsume && (!referralCodeFallback || referralCodeFallback.trim().toUpperCase() === couponToConsume.code.trim().toUpperCase()));
+
+        let finalPaidValue = planPrice;
+        if (couponToConsume) {
+          if (couponToConsume.discountType === 'fixed') {
+            finalPaidValue = Math.max(0, planPrice - Number(couponToConsume.discount || 0));
+          } else {
+            finalPaidValue = Math.round(planPrice * (1 - Number(couponToConsume.discount || 0) / 100) * 100) / 100;
+          }
+        }
+        const commPct = Number(couponToConsume?.commissionPercentage || 0);
+        const commVal = commPct > 0 ? Number(((finalPaidValue * commPct) / 100).toFixed(2)) : 0;
+        const resolvedPaymentId = String(paymentId || `mp_${savedOffer}_${Date.now()}`);
 
         setSelectedOffer(savedOffer);
         setPagamentoConsulta(true);
@@ -399,7 +429,12 @@ export function DashboardScreen() {
               inQueue: true,
               isConsultationFinished: false,
               consultationActive: false,
-              lastPaymentDate: new Date().toISOString()
+              lastPaymentDate: new Date().toISOString(),
+              ...(couponToConsume ? {
+                usedCouponCode: couponToConsume.code,
+                affiliateName: couponToConsume.affiliateName || '',
+                viaReferralLink: isViaReferralLink
+              } : {})
             }, { merge: true });
           }
         } catch (e) {
@@ -407,10 +442,11 @@ export function DashboardScreen() {
         }
 
         try {
-          await addDoc(collection(db, 'payments'), {
-            mpId: paymentId || `mp_${savedOffer}_` + Date.now(),
+          await setDoc(doc(db, 'payments', resolvedPaymentId), {
+            mpId: resolvedPaymentId,
             type: planTitle,
-            value: planPrice,
+            value: finalPaidValue,
+            originalValue: planPrice,
             plan: savedOffer,
             selectedOffer: savedOffer,
             queueType: targetQueueType,
@@ -418,9 +454,21 @@ export function DashboardScreen() {
             isPremium,
             patientName: patientName || 'Paciente',
             patientEmail: patientEmail || '',
+            patientPhone: patientPhone || '',
+            patientCpf: patientCpf || '',
             patientId: patientUid || '',
+            status: 'approved',
+            ...(couponToConsume ? {
+              couponCode: couponToConsume.code,
+              couponId: couponToConsume.id,
+              couponDiscount: couponToConsume.discount,
+              affiliateName: couponToConsume.affiliateName || '',
+              commissionPercentage: commPct,
+              commissionValue: commVal,
+              viaReferralLink: isViaReferralLink
+            } : {}),
             date: new Date().toISOString()
-          });
+          }, { merge: true });
         } catch (e) {
           console.error("Erro ao registrar pagamento em payments:", e);
         }
@@ -429,8 +477,8 @@ export function DashboardScreen() {
           id: patientUid,
           patientName: patientName,
           email: patientEmail,
-          phone: st.userPhone || '',
-          cpf: st.userCpf || '',
+          phone: patientPhone,
+          cpf: patientCpf,
           birthDate: st.userBirthDate || '',
           answers: st.answers || {},
           isPremium,
@@ -446,14 +494,26 @@ export function DashboardScreen() {
         } as any);
 
         // Consume saved coupon if used
-        const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
-        if (savedCouponStr) {
+        if (couponToConsume) {
           try {
-            const couponToConsume = JSON.parse(savedCouponStr);
             const uid = patientUid || 'paciente_' + Date.now().toString(36);
             const uemail = patientEmail || undefined;
-            await useAdminStore.getState().useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail);
+            await useAdminStore.getState().useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
+              planName: planTitle,
+              planKey: savedOffer,
+              price: finalPaidValue,
+              originalPrice: planPrice,
+              discountApplied: Number((planPrice - finalPaidValue).toFixed(2)),
+              isPremium,
+              userName: patientName,
+              userPhone: patientPhone,
+              userCpf: patientCpf,
+              viaLink: isViaReferralLink,
+              paymentId: resolvedPaymentId
+            });
             localStorage.removeItem('mecura_applied_coupon');
+            localStorage.removeItem('mecura_referral_coupon_code');
+            localStorage.removeItem('mecura_referral_via_link');
           } catch (e) {
             console.error("Erro ao consumir cupom no retorno MP:", e);
           }
@@ -467,7 +527,7 @@ export function DashboardScreen() {
       };
       processSuccess();
     }
-  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, setSelectedOffer, joinQueue, navigate]);
+  }, [pagamento_consulta, setPagamentoConsulta, setPagamentoPremium, setSelectedOffer, joinQueue, navigate, userName]);
 
   const [showPremiumDetails, setShowPremiumDetails] = useState(false);
   const [activeSchedulers, setActiveSchedulers] = useState(Math.floor(Math.random() * (22 - 8 + 1)) + 8);

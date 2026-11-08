@@ -89,6 +89,59 @@ export function CheckoutScreen() {
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
+  // Auto-apply coupon from shareable referral link (/convite/BK, /c/BK, ?cupom= / mecura_referral_coupon_code / mecura_applied_coupon)
+  React.useEffect(() => {
+    if (appliedCoupon || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    let urlCode = params.get('cupom') || params.get('coupon') || params.get('ref') || params.get('afiliado');
+    const cleanMatch = (window.location.pathname || '').match(/^\/(?:c|convite|cupom|desconto|parceiro)\/([^/?#]+)(?:\/([^/?#]+))?/i);
+    if (cleanMatch && cleanMatch[1]) {
+      urlCode = decodeURIComponent(cleanMatch[1]);
+      if (cleanMatch[2]) {
+        const slug = decodeURIComponent(cleanMatch[2]).toLowerCase();
+        if (slug === 'essencial' || slug === 'basic') setSelectedOffer('basic');
+        else if (slug === 'vip' || slug === 'premium') setSelectedOffer('premium');
+        else if (slug === 'completo' || slug === 'complete' || slug === '360') setSelectedOffer('complete');
+        else if (slug === 'psicologo' || slug === 'psychologist') setSelectedOffer('psychologist');
+      }
+    }
+
+    const storedReferralCode = localStorage.getItem('mecura_referral_coupon_code');
+    const savedAppliedStr = localStorage.getItem('mecura_applied_coupon');
+
+    let candidateCode = (urlCode || storedReferralCode || '').trim().toUpperCase();
+    if (!candidateCode && savedAppliedStr) {
+      try {
+        const parsed = JSON.parse(savedAppliedStr);
+        if (parsed?.code) candidateCode = String(parsed.code).trim().toUpperCase();
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!candidateCode) return;
+
+    if (!couponCode) {
+      setCouponCode(candidateCode);
+    }
+
+    const matched = coupons.find(c => c.code.trim().toUpperCase() === candidateCode && c.active);
+    if (matched) {
+      const currentUserId = auth.currentUser?.uid;
+      const currentUserEmail = auth.currentUser?.email;
+      const localPatientId = localStorage.getItem('patient_id') || localStorage.getItem('mecura_patientId');
+      const identifiers = [currentUserId, currentUserEmail, localPatientId].filter(Boolean) as string[];
+
+      const isOverLimit = Boolean(matched.quantity && matched.quantity > 0 && (matched.usedCount || 0) >= matched.quantity);
+      const alreadyUsedByMe = Boolean(matched.usedBy && identifiers.some(id => matched.usedBy!.includes(id)));
+
+      if (!isOverLimit && !alreadyUsedByMe) {
+        setAppliedCoupon(matched);
+        localStorage.setItem('mecura_applied_coupon', JSON.stringify(matched));
+      }
+    }
+  }, [coupons, appliedCoupon, couponCode, setSelectedOffer]);
+
   const getOfferBasePrice = (offer: 'basic' | 'premium' | 'psychologist' | 'complete' | null) => {
     switch (offer) {
       case 'basic': return 49.90;
@@ -182,6 +235,9 @@ export function CheckoutScreen() {
     const title = offerTitles[selectedOffer || 'complete'] || 'Consulta Mecura';
     const isPrem = selectedOffer === 'premium' || selectedOffer === 'complete';
     const installments = selectedOffer === 'complete' ? 6 : (selectedOffer === 'premium' ? 5 : 3);
+    const isViaReferralLink = typeof window !== 'undefined' &&
+      localStorage.getItem('mecura_referral_via_link') === 'true' &&
+      (!appliedCoupon || (localStorage.getItem('mecura_referral_coupon_code') || '').trim().toUpperCase() === appliedCoupon.code.trim().toUpperCase());
 
     if (paymentMethod === 'pix') {
       try {
@@ -191,11 +247,17 @@ export function CheckoutScreen() {
           body: JSON.stringify({
             title,
             price: finalPrice,
-            email: auth.currentUser?.email || 'paciente@mecura.com',
+            originalPrice: basePrice,
+            email: auth.currentUser?.email || useStore.getState().userEmail || 'paciente@mecura.com',
             firstName: userName || 'Paciente',
             patientId: currentUserId,
             isPremium: isPrem,
-            plan: selectedOffer
+            plan: selectedOffer,
+            couponCode: appliedCoupon?.code || undefined,
+            couponId: appliedCoupon?.id || undefined,
+            affiliateName: appliedCoupon?.affiliateName || undefined,
+            commissionPercentage: appliedCoupon?.commissionPercentage || 0,
+            viaLink: isViaReferralLink
           })
         });
         
@@ -238,12 +300,18 @@ export function CheckoutScreen() {
           body: JSON.stringify({
             title,
             price: finalPrice,
+            originalPrice: basePrice,
             installments,
-            payerEmail: auth.currentUser?.email || 'paciente@mecura.com',
+            payerEmail: auth.currentUser?.email || useStore.getState().userEmail || 'paciente@mecura.com',
             payerName: userName || 'Paciente',
             patientId: currentUserId,
             isPremium: isPrem,
-            plan: selectedOffer
+            plan: selectedOffer,
+            couponCode: appliedCoupon?.code || undefined,
+            couponId: appliedCoupon?.id || undefined,
+            affiliateName: appliedCoupon?.affiliateName || undefined,
+            commissionPercentage: appliedCoupon?.commissionPercentage || 0,
+            viaLink: isViaReferralLink
           })
         });
 
@@ -304,9 +372,29 @@ export function CheckoutScreen() {
     const finalPlan = resolvedOffer;
     const allowDualChat = finalPlan === 'complete';
 
-    const patientUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : '') || ('paciente_' + Date.now());
-    const patientName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || 'Paciente';
-    const patientEmail = auth.currentUser?.email || useStore.getState().userEmail || '';
+    const st = useStore.getState();
+    const patientUid = auth.currentUser?.uid || st.patientId || (typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : '') || ('paciente_' + Date.now());
+    const patientName = auth.currentUser?.displayName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || userName || st.userName || 'Paciente';
+    const patientEmail = auth.currentUser?.email || st.userEmail || '';
+    const patientPhone = st.userPhone || '';
+    const patientCpf = st.userCpf || '';
+
+    const savedCouponStr = typeof window !== 'undefined' ? localStorage.getItem('mecura_applied_coupon') : null;
+    const referralCodeFallback = typeof window !== 'undefined' ? localStorage.getItem('mecura_referral_coupon_code') : null;
+    const couponToConsume: Coupon | null =
+      appliedCoupon ||
+      (savedCouponStr ? (() => { try { return JSON.parse(savedCouponStr); } catch { return null; } })() : null) ||
+      (referralCodeFallback ? coupons.find(c => c.code.trim().toUpperCase() === referralCodeFallback.trim().toUpperCase()) || null : null);
+
+    const isViaReferralLink = typeof window !== 'undefined' &&
+      localStorage.getItem('mecura_referral_via_link') === 'true' &&
+      Boolean(couponToConsume && (!referralCodeFallback || referralCodeFallback.trim().toUpperCase() === couponToConsume.code.trim().toUpperCase()));
+
+    const offerBaseVal = getOfferBasePrice(finalPlan);
+    const paidAmount = finalPrice !== undefined ? finalPrice : offerBaseVal;
+    const commPct = Number(couponToConsume?.commissionPercentage || 0);
+    const commVal = commPct > 0 ? Number(((paidAmount * commPct) / 100).toFixed(2)) : 0;
+    const resolvedPaymentId = String(mpIdCustom || pixData?.id || ('mp_' + finalPlan + '_' + Date.now()));
 
     setPagamentoPremium(isPrem);
     setPagamentoConsulta(true);
@@ -369,19 +457,25 @@ export function CheckoutScreen() {
           inQueue: true,
           isConsultationFinished: false,
           consultationActive: false,
-          lastPaymentDate: new Date().toISOString()
+          lastPaymentDate: new Date().toISOString(),
+          ...(couponToConsume ? {
+            usedCouponCode: couponToConsume.code,
+            affiliateName: couponToConsume.affiliateName || '',
+            viaReferralLink: isViaReferralLink
+          } : {})
         }, { merge: true });
       }
     } catch (e) {
       console.error("Erro ao atualizar documento do usuário:", e);
     }
 
-    // 2. Record payment in payments collection (no undefined values)
+    // 2. Record payment in payments collection (merge by ID so server + client never duplicate)
     try {
-      await addDoc(collection(db, 'payments'), {
-        mpId: mpIdCustom || pixData?.id || 'mp_' + finalPlan + '_' + Date.now(),
+      await setDoc(doc(db, 'payments', resolvedPaymentId), {
+        mpId: resolvedPaymentId,
         type: planTypeNames[finalPlan] || 'Consulta Médica',
-        value: finalPrice || getOfferBasePrice(finalPlan),
+        value: paidAmount,
+        originalValue: offerBaseVal,
         plan: finalPlan,
         selectedOffer: finalPlan,
         queueType: targetQueueType,
@@ -389,28 +483,49 @@ export function CheckoutScreen() {
         isPremium: isPrem,
         patientName: patientName || 'Paciente',
         patientEmail: patientEmail || '',
+        patientPhone: patientPhone || '',
+        patientCpf: patientCpf || '',
         patientId: patientUid || '',
         professional: professionalNames[finalPlan] || 'Dr. Guilherme T. Dias (CRM 17259)',
+        status: 'approved',
+        ...(couponToConsume ? {
+          couponCode: couponToConsume.code,
+          couponId: couponToConsume.id,
+          couponDiscount: couponToConsume.discount,
+          affiliateName: couponToConsume.affiliateName || '',
+          commissionPercentage: commPct,
+          commissionValue: commVal,
+          viaReferralLink: isViaReferralLink
+        } : {}),
         date: new Date().toISOString()
-      });
+      }, { merge: true });
     } catch (e) {
       console.error("Erro ao registrar pagamento em payments:", e);
     }
 
-    // 3. Consume coupon for this user
-    const savedCouponStr = localStorage.getItem('mecura_applied_coupon');
-    const couponToConsume = appliedCoupon || (savedCouponStr ? JSON.parse(savedCouponStr) : null);
-
+    // 3. Consume coupon for this user & record affiliate commission
     if (couponToConsume) {
       try {
         const uid = patientUid || 'paciente_' + Date.now().toString(36);
         const uemail = patientEmail || undefined;
         await useCoupon(couponToConsume.id || couponToConsume.code, uid, uemail, {
           planName: planTypeNames[finalPlan] || 'Consulta Mecura',
-          price: finalPrice || getOfferBasePrice(finalPlan),
-          isPremium: isPrem
+          planKey: finalPlan,
+          price: paidAmount,
+          originalPrice: offerBaseVal,
+          discountApplied: Number((offerBaseVal - paidAmount).toFixed(2)),
+          isPremium: isPrem,
+          userName: patientName,
+          userPhone: patientPhone,
+          userCpf: patientCpf,
+          viaLink: isViaReferralLink,
+          paymentId: resolvedPaymentId
         });
-        localStorage.removeItem('mecura_applied_coupon');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('mecura_applied_coupon');
+          localStorage.removeItem('mecura_referral_coupon_code');
+          localStorage.removeItem('mecura_referral_via_link');
+        }
       } catch (e) {
         console.error("Erro ao registrar uso do cupom:", e);
       }
@@ -418,13 +533,12 @@ export function CheckoutScreen() {
 
     // 4. Join waiting queue immediately
     try {
-      const st = useStore.getState();
       await joinQueue({
         id: patientUid,
         patientName: patientName,
         email: patientEmail,
-        phone: st.userPhone || '',
-        cpf: st.userCpf || '',
+        phone: patientPhone,
+        cpf: patientCpf,
         birthDate: st.userBirthDate || '',
         answers: st.answers || {},
         isPremium: isPrem,

@@ -1,4 +1,6 @@
 // Utility for reliable PDF download and mobile viewing/sharing
+import { db } from '../firebase';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 
 /**
  * Checks if a Blob is genuinely a PDF file by inspecting its magic bytes (%PDF-).
@@ -32,6 +34,148 @@ export function base64ToPdfBlob(dataUrl: string, contentType = 'application/pdf'
   } catch (err) {
     console.error("Erro ao converter base64 para Blob:", err);
     throw err;
+  }
+}
+
+/**
+ * Persists a base64 attachment to both /api/upload AND Firestore `stored_files` (with 600KB chunking)
+ * so that:
+ * 1) The returned attachment URL is tiny (< 100 bytes) and never causes active_consultations/messages writes to exceed Firestore's 1 MiB limit.
+ * 2) Even if /api/upload is unreachable or containers restart, the complete file is 100% recoverable from Firestore `stored_files`.
+ */
+export async function persistAttachmentToCloud(attachment: {
+  name?: string;
+  url?: string;
+  type?: string;
+  docType?: string;
+  title?: string;
+  fileId?: string;
+}): Promise<{
+  name: string;
+  url: string;
+  type: string;
+  docType?: string;
+  title?: string;
+  fileId?: string;
+}> {
+  const safeName = (attachment.name || 'Documento_Oficial.pdf').replace(/[^a-zA-Z0-9_.\-]/g, '_');
+  const mimeType = attachment.type || 'application/pdf';
+
+  if (!attachment.url || !attachment.url.startsWith('data:')) {
+    return {
+      ...attachment,
+      name: attachment.name || safeName,
+      url: attachment.url || '',
+      type: mimeType
+    };
+  }
+
+  const rawDataUrl = attachment.url;
+  const base64Data = rawDataUrl.includes(';base64,') ? rawDataUrl.split(';base64,')[1] : rawDataUrl;
+  const fileId = attachment.fileId || `${Date.now()}_${safeName}`;
+  let finalUrl = `/api/files/${fileId}`;
+
+  // 1. Try uploading via backend /api/upload
+  try {
+    const upRes = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: attachment.name || safeName,
+        data: rawDataUrl,
+        type: mimeType
+      })
+    });
+    const contentType = upRes.headers.get('content-type') || '';
+    if (upRes.ok && contentType.includes('application/json')) {
+      const upData = await upRes.json();
+      if (upData?.url) {
+        finalUrl = upData.url;
+      }
+    }
+  } catch (uploadErr) {
+    console.warn('[persistAttachmentToCloud] /api/upload indisponível, salvando diretamente no Firestore:', uploadErr);
+  }
+
+  // 2. Always persist in Firestore `stored_files/{targetFileId}` with 600KB chunking so it is 100% durable across devices
+  const targetFileId = finalUrl.startsWith('/api/files/')
+    ? finalUrl.replace('/api/files/', '').split('?')[0]
+    : fileId;
+
+  const CHUNK_SIZE = 600000;
+  try {
+    if (base64Data.length <= CHUNK_SIZE) {
+      await setDoc(doc(db, 'stored_files', targetFileId), {
+        filename: targetFileId,
+        originalName: attachment.name || safeName,
+        base64Data,
+        chunkCount: 0,
+        type: mimeType,
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      const chunks: string[] = [];
+      for (let i = 0; i < base64Data.length; i += CHUNK_SIZE) {
+        chunks.push(base64Data.slice(i, i + CHUNK_SIZE));
+      }
+      await setDoc(doc(db, 'stored_files', targetFileId), {
+        filename: targetFileId,
+        originalName: attachment.name || safeName,
+        chunkCount: chunks.length,
+        type: mimeType,
+        createdAt: new Date().toISOString()
+      });
+      await Promise.all(
+        chunks.map((chunk, idx) =>
+          setDoc(doc(db, 'stored_files', targetFileId, 'chunks', String(idx)), {
+            index: idx,
+            data: chunk
+          })
+        )
+      );
+    }
+  } catch (fsErr) {
+    console.warn('[persistAttachmentToCloud] Aviso ao gravar em stored_files:', fsErr);
+  }
+
+  return {
+    ...attachment,
+    name: attachment.name || safeName,
+    url: finalUrl,
+    fileId: targetFileId,
+    type: mimeType
+  };
+}
+
+/**
+ * Fetches a file Blob directly from Firestore `stored_files/{fileId}` (reassembling chunks if chunked).
+ */
+export async function fetchBlobFromFirestoreStoredFiles(fileId: string, defaultMime = 'application/pdf'): Promise<Blob | null> {
+  if (!fileId) return null;
+  try {
+    const cleanId = fileId.replace(/^\/api\/files\//, '').split('?')[0].trim();
+    if (!cleanId) return null;
+
+    const snap = await getDoc(doc(db, 'stored_files', cleanId));
+    if (!snap.exists()) return null;
+
+    const data = snap.data();
+    let fullBase64 = data?.base64Data || '';
+    if (!fullBase64 && data?.chunkCount && Number(data.chunkCount) > 0) {
+      const chunksSnap = await getDocs(collection(db, 'stored_files', cleanId, 'chunks'));
+      if (!chunksSnap.empty) {
+        const sorted = chunksSnap.docs
+          .map(d => d.data())
+          .sort((a, b) => Number(a.index || 0) - Number(b.index || 0));
+        fullBase64 = sorted.map(c => c.data || '').join('');
+      }
+    }
+
+    if (!fullBase64) return null;
+    return base64ToPdfBlob(fullBase64, data?.type || defaultMime);
+  } catch (err) {
+    console.warn('[fetchBlobFromFirestoreStoredFiles] Erro ao ler stored_files:', err);
+    return null;
   }
 }
 
@@ -96,70 +240,19 @@ export async function deliverPdfBlob(blob: Blob, fileName: string): Promise<bool
 }
 
 /**
- * Checks whether the doctor has saved updated content in localStorage for this report or prescription.
- * When true, dynamic generation should take precedence over a stale pre-edit attachment URL.
- */
-function hasSavedDoctorEdits(
-  attachment: { name?: string; url?: string; type?: string; docType?: string; title?: string } | undefined,
-  fileName: string
-): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const docType = (attachment?.docType || '').toLowerCase();
-    const lowerName = (attachment?.name || fileName || '').toLowerCase();
-    const isLaudo = docType.includes('laudo') || lowerName.includes('laudo_inicial') || lowerName.includes('laudo_evolutivo') || lowerName.includes('laudo_medico');
-    const isReceita = docType.includes('receita') || lowerName.includes('receita_');
-
-    if (isLaudo) {
-      const raw = localStorage.getItem('mecura_saved_reports_v2');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-          return true;
-        }
-      }
-    }
-    if (isReceita) {
-      const raw = localStorage.getItem('mecura_saved_prescriptions_v2');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-          return true;
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return false;
-}
-
-/**
  * Universal PDF attachment downloader:
- * - If the doctor has saved updated edits for a report/prescription in localStorage, generates fresh PDF via fallbackGenerator first
  * - Handles base64 data URLs by converting to binary Blob and checking PDF integrity
  * - Handles server URLs (/api/files/...) by fetching as binary Blob and checking PDF integrity
- * - Detects corrupted, empty, or HTML 404 responses and falls back to dynamic client-side generation
+ * - Handles Firestore `stored_files` fallback (including multi-chunk signed PDFs)
+ * - Falls back to dynamic client-side PDF generation when needed
  */
 export async function downloadOrGenerateAttachment(
-  attachment: { name?: string; url?: string; type?: string; docType?: string; title?: string } | undefined,
+  attachment: { name?: string; url?: string; type?: string; docType?: string; title?: string; fileId?: string } | undefined,
   fallbackGenerator?: () => Promise<Blob | void | null>,
   defaultFileName = 'Documento.pdf'
 ): Promise<void> {
   const fileName = attachment?.name || defaultFileName;
   let pdfBlob: Blob | null = null;
-
-  // Case 0: If doctor saved updated report/prescription in localStorage, generate fresh PDF first so edits are never stale
-  if (fallbackGenerator && hasSavedDoctorEdits(attachment, fileName)) {
-    try {
-      const generated = await fallbackGenerator();
-      if (generated instanceof Blob && (await isPdfBlob(generated))) {
-        pdfBlob = generated;
-      }
-    } catch (genErr) {
-      console.warn("[downloadOrGenerateAttachment] Erro ao gerar versão atualizada, usando anexo:", genErr);
-    }
-  }
 
   // Case 1: Attachment contains a valid Base64 data URL
   if (!pdfBlob && attachment?.url && attachment.url.startsWith('data:')) {
@@ -184,11 +277,22 @@ export async function downloadOrGenerateAttachment(
         if (await isPdfBlob(fetchedBlob)) {
           pdfBlob = new Blob([fetchedBlob], { type: 'application/pdf' });
         } else {
-          console.warn("[downloadOrGenerateAttachment] Resposta do servidor não é um PDF válido (provável HTML 404/500).");
+          console.warn("[downloadOrGenerateAttachment] Resposta do servidor não é um PDF válido, consultando Firestore stored_files.");
         }
       }
     } catch (e) {
       console.warn("[downloadOrGenerateAttachment] Erro ao buscar PDF do servidor:", e);
+    }
+  }
+
+  // Case 2.5: Direct Firestore `stored_files` lookup (supports chunked PDFs across any host/device)
+  if (!pdfBlob && (attachment?.fileId || (attachment?.url && attachment.url.includes('/api/files/')))) {
+    const targetFileId = attachment?.fileId || attachment?.url?.split('/api/files/')[1]?.split('?')[0] || '';
+    if (targetFileId) {
+      const fsBlob = await fetchBlobFromFirestoreStoredFiles(targetFileId, attachment?.type || 'application/pdf');
+      if (fsBlob && (await isPdfBlob(fsBlob))) {
+        pdfBlob = fsBlob;
+      }
     }
   }
 
@@ -213,6 +317,6 @@ export async function downloadOrGenerateAttachment(
   if (pdfBlob) {
     await deliverPdfBlob(pdfBlob, fileName);
   } else {
-    alert("Não foi possível abrir o arquivo PDF no momento. Por favor, solicite a reemissão do documento ao médico ou tente novamente.");
+    console.error("Não foi possível abrir o arquivo PDF no momento.");
   }
 }

@@ -83,19 +83,46 @@ async function startServer() {
       const buffer = Buffer.from(base64Data, 'base64');
       fs.writeFileSync(filePath, buffer);
 
-      // Also persist to Firestore if size <= 900KB so it survives container restarts/cloud run instances
-      if (buffer.length <= 900000) {
+      // Persist to Firestore (chunked if > 600KB so it never hits Firestore's 1 MiB document limit)
+      const CHUNK_SIZE = 600000;
+      if (base64Data.length <= CHUNK_SIZE) {
         try {
           await setDoc(doc(db, "stored_files", uniqueFileName), {
             filename: uniqueFileName,
             originalName: filename || uniqueFileName,
             base64Data: base64Data,
+            chunkCount: 0,
             type: type || 'application/pdf',
             size: buffer.length,
             createdAt: new Date().toISOString()
           });
         } catch (fsErr) {
           console.warn("[UPLOAD] Erro ao salvar no Firestore (continuando com arquivo local):", fsErr);
+        }
+      } else if (base64Data.length <= CHUNK_SIZE * 12) {
+        try {
+          const chunks: string[] = [];
+          for (let i = 0; i < base64Data.length; i += CHUNK_SIZE) {
+            chunks.push(base64Data.slice(i, i + CHUNK_SIZE));
+          }
+          await setDoc(doc(db, "stored_files", uniqueFileName), {
+            filename: uniqueFileName,
+            originalName: filename || uniqueFileName,
+            chunkCount: chunks.length,
+            type: type || 'application/pdf',
+            size: buffer.length,
+            createdAt: new Date().toISOString()
+          });
+          await Promise.all(
+            chunks.map((chunk, idx) =>
+              setDoc(doc(db, "stored_files", uniqueFileName, "chunks", String(idx)), {
+                index: idx,
+                data: chunk
+              })
+            )
+          );
+        } catch (fsErr) {
+          console.warn("[UPLOAD] Erro ao salvar arquivo em chunks no Firestore:", fsErr);
         }
       }
 
@@ -105,6 +132,7 @@ async function startServer() {
       res.json({
         success: true,
         url: fileUrl,
+        fileId: uniqueFileName,
         name: filename || uniqueFileName,
         size: buffer.length,
         type: type || 'application/pdf'
@@ -138,20 +166,32 @@ async function startServer() {
         return res.sendFile(filePath);
       }
 
-      // Fallback: Check Firestore stored_files collection
+      // Fallback: Check Firestore stored_files collection (including chunked files)
       try {
         const fileDoc = await getDoc(doc(db, "stored_files", safeFilename));
-        if (fileDoc.exists() && fileDoc.data()?.base64Data) {
+        if (fileDoc.exists()) {
           const fileData = fileDoc.data();
-          const buffer = Buffer.from(fileData.base64Data, 'base64');
-          // Cache to disk
-          try { fs.writeFileSync(filePath, buffer); } catch (_) {}
+          let fullBase64 = fileData?.base64Data || '';
+          if (!fullBase64 && fileData?.chunkCount && Number(fileData.chunkCount) > 0) {
+            const chunksSnap = await getDocs(collection(db, "stored_files", safeFilename, "chunks"));
+            if (!chunksSnap.empty) {
+              const sortedChunks = chunksSnap.docs
+                .map(d => d.data())
+                .sort((a, b) => Number(a.index || 0) - Number(b.index || 0));
+              fullBase64 = sortedChunks.map(c => c.data || '').join('');
+            }
+          }
+          if (fullBase64) {
+            const buffer = Buffer.from(fullBase64, 'base64');
+            // Cache to disk
+            try { fs.writeFileSync(filePath, buffer); } catch (_) {}
 
-          res.setHeader('Content-Type', fileData.type || contentType);
-          res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(safeFilename)}"`);
-          res.setHeader('Content-Length', buffer.length);
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          return res.send(buffer);
+            res.setHeader('Content-Type', fileData.type || contentType);
+            res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(safeFilename)}"`);
+            res.setHeader('Content-Length', buffer.length);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.send(buffer);
+          }
         }
       } catch (fsErr) {
         console.warn("[FILES] Erro ao consultar Firestore:", fsErr);
@@ -300,10 +340,19 @@ async function startServer() {
       const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : (payment.metadata?.patient_name || 'Paciente');
       const patientId = payment.external_reference || payment.metadata?.patient_id;
 
-      const paymentDoc = {
+      const metaCouponCode = payment.metadata?.coupon_code || '';
+      const metaCouponId = payment.metadata?.coupon_id || '';
+      const metaAffiliateName = payment.metadata?.affiliate_name || '';
+      const metaCommPct = Number(payment.metadata?.commission_percentage || 0);
+      const metaViaLink = Boolean(payment.metadata?.via_link);
+      const metaOrigPrice = Number(payment.metadata?.original_price || val);
+      const metaCommVal = metaCommPct > 0 ? Number(((val * metaCommPct) / 100).toFixed(2)) : 0;
+
+      const paymentDoc: Record<string, any> = {
         mpId: String(payment.id),
         type: typeLabel,
         value: val,
+        originalValue: metaOrigPrice,
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
@@ -314,7 +363,15 @@ async function startServer() {
         payerEmail: payerEmail || '',
         payerName: payerName || 'Paciente',
         patientId: patientId || '',
-        paymentMethod: payment.payment_method_id || 'pix'
+        paymentMethod: payment.payment_method_id || 'pix',
+        ...(metaCouponCode ? {
+          couponCode: metaCouponCode,
+          couponId: metaCouponId || metaCouponCode,
+          affiliateName: metaAffiliateName,
+          commissionPercentage: metaCommPct,
+          commissionValue: metaCommVal,
+          viaReferralLink: metaViaLink
+        } : {})
       };
 
       await setDoc(doc(db, "payments", String(payment.id)), paymentDoc, { merge: true });
@@ -412,8 +469,65 @@ async function startServer() {
         consultationActive: false,
         consultationStatus: 'waiting',
         lastPaymentId: String(payment.id),
-        lastPaymentDate: new Date().toISOString()
+        lastPaymentDate: new Date().toISOString(),
+        ...(metaCouponCode ? {
+          usedCouponCode: metaCouponCode,
+          affiliateName: metaAffiliateName,
+          viaReferralLink: metaViaLink
+        } : {})
       }, { merge: true });
+
+      // Se houve cupom utilizado no pagamento, garantir o registro em 'coupons' no servidor (evitando duplicidade por paymentId)
+      if (metaCouponCode || metaCouponId) {
+        try {
+          const couponsSnap = await getDocs(collection(db, "coupons"));
+          let couponDocId = metaCouponId;
+          let couponData: any = null;
+          couponsSnap.forEach(cDoc => {
+            const d = cDoc.data();
+            if (cDoc.id === metaCouponId || (d.code && String(d.code).trim().toUpperCase() === String(metaCouponCode).trim().toUpperCase())) {
+              couponDocId = cDoc.id;
+              couponData = d;
+            }
+          });
+          if (couponDocId && couponData) {
+            const existingLogs = Array.isArray(couponData.usageLogs) ? couponData.usageLogs : [];
+            const alreadyLogged = existingLogs.some((l: any) => l.paymentId && String(l.paymentId) === String(payment.id));
+            if (!alreadyLogged) {
+              const cPct = Number(couponData.commissionPercentage ?? metaCommPct ?? 0);
+              const cVal = cPct > 0 ? Number(((val * cPct) / 100).toFixed(2)) : 0;
+              const newUsageEntry = {
+                userId: targetPatientId,
+                userEmail: payerEmail || '',
+                userName: resolvedPatientName || 'Paciente',
+                userPhone: existingPhone || '',
+                userCpf: existingCpf || '',
+                planName: typeLabel,
+                planKey: resolvedPlan,
+                price: val,
+                originalPrice: metaOrigPrice,
+                discountApplied: Number(Math.max(0, metaOrigPrice - val).toFixed(2)),
+                commissionPercentage: cPct,
+                commissionValue: cVal,
+                commissionPaid: false,
+                viaLink: metaViaLink,
+                paymentId: String(payment.id),
+                usedAt: new Date().toISOString()
+              };
+              const primaryIdent = (payerEmail && payerEmail.includes('@')) ? payerEmail.trim() : targetPatientId;
+              const updatedUsedBy = Array.from(new Set([...(Array.isArray(couponData.usedBy) ? couponData.usedBy : []), primaryIdent]));
+              await setDoc(doc(db, "coupons", couponDocId), {
+                usedCount: (Number(couponData.usedCount) || 0) + 1,
+                usedBy: updatedUsedBy,
+                usageLogs: [...existingLogs, newUsageEntry],
+                lastUsedAt: new Date().toISOString()
+              }, { merge: true });
+            }
+          }
+        } catch (couponErr) {
+          console.warn("[PAYMENT PROCESS] Erro ao registrar cupom no servidor:", couponErr);
+        }
+      }
 
       // Atualizar também o server queue cache
       try {
@@ -1175,7 +1289,13 @@ async function startServer() {
             patient_id: patientId || '',
             patient_name: payerName || '',
             is_premium: resolvedIsPrem,
-            plan: resolvedPlan
+            plan: resolvedPlan,
+            coupon_code: req.body.couponCode || '',
+            coupon_id: req.body.couponId || '',
+            affiliate_name: req.body.affiliateName || '',
+            commission_percentage: Number(req.body.commissionPercentage || 0),
+            via_link: Boolean(req.body.viaLink),
+            original_price: Number(req.body.originalPrice || numPrice)
           },
           ...(isHttps ? {
             back_urls: {
@@ -1265,7 +1385,13 @@ async function startServer() {
             patient_id: patientId || '',
             patient_name: firstName || '',
             is_premium: resolvedIsPrem,
-            plan: resolvedPlan
+            plan: resolvedPlan,
+            coupon_code: req.body.couponCode || '',
+            coupon_id: req.body.couponId || '',
+            affiliate_name: req.body.affiliateName || '',
+            commission_percentage: Number(req.body.commissionPercentage || 0),
+            via_link: Boolean(req.body.viaLink),
+            original_price: Number(req.body.originalPrice || cleanPrice)
           },
           notification_url: (process.env.APP_URL || origin).startsWith('https://') ? `${process.env.APP_URL || origin}/api/webhook` : undefined,
         }

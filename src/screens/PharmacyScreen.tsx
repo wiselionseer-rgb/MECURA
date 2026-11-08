@@ -32,7 +32,7 @@ import { FLOWERMED_PRODUCTS } from '../data/flowermedCatalog';
 import { FLOWER_EXTRACTIONS_PRODUCTS } from '../data/flowerExtractionsCatalog';
 import { cbdGuideData } from '../data/cbdGuide';
 import { generatePrescriptionPDF } from '../utils/pdfGenerator';
-import { deliverPdfBlob } from '../utils/downloadHelper';
+import { deliverPdfBlob, downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
 function WhatsAppIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -48,11 +48,36 @@ const FIXED_IMPORT_TAX_BRL = 39.90;
 export function PharmacyScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { messages, userName, userEmail, userBirthDate, userCpf, userPhone, patientId, activeConsultationId, queue, exchangeRate, pagamento_consulta, isConsultationFinished, subscribeToMessages } = useStore();
+  const { messages, userName, userEmail, userBirthDate, userCpf, userPhone, patientId, activeConsultationId, queue, exchangeRate, pagamento_consulta, isConsultationFinished, subscribeToMessages, subscribeToQueue } = useStore();
   const { promotionsText, catalogUrl, catalogUrlNacional, setPromotionsText, pharmacyOrders, updatePharmacyOrderStatus } = useAdminStore();
   
-  const currentUid = auth.currentUser?.uid || (patientId && patientId !== 'doctor' ? patientId : '') || activeConsultationId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
+  useEffect(() => {
+    const unsubQ = subscribeToQueue();
+    return () => unsubQ();
+  }, [subscribeToQueue]);
+
+  const myQueueEntry = useMemo(() => {
+    const authUid = auth.currentUser?.uid;
+    const storedPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null;
+    const cleanEmail = (auth.currentUser?.email || userEmail || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_email') : '') || '').trim().toLowerCase();
+    const cleanCpf = (userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '').replace(/\D/g, '');
+    const cleanPhone = (userPhone || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_phone') : '') || '').replace(/\D/g, '');
+
+    return queue.find(p => {
+      if (authUid && (p.id === authUid || (p as any).uid === authUid || (p as any).patientId === authUid)) return true;
+      if (patientId && patientId !== 'doctor' && (p.id === patientId || (p as any).patientId === patientId)) return true;
+      if (activeConsultationId && p.id === activeConsultationId) return true;
+      if (storedPid && p.id === storedPid) return true;
+      if (cleanEmail && !cleanEmail.includes('sem-email') && p.email && p.email.trim().toLowerCase() === cleanEmail) return true;
+      if (cleanCpf.length >= 11 && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) return true;
+      if (cleanPhone.length >= 10 && p.phone && p.phone.replace(/\D/g, '') === cleanPhone) return true;
+      return false;
+    });
+  }, [queue, patientId, activeConsultationId, userEmail, userCpf, userPhone]);
+
+  const currentUid = myQueueEntry?.id || auth.currentUser?.uid || (patientId && patientId !== 'doctor' ? patientId : '') || activeConsultationId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
   const [directCloudOrder, setDirectCloudOrder] = useState<PharmacyPreparedOrder | null>(null);
+  const [cloudPrescriptionItems, setCloudPrescriptionItems] = useState<any[]>([]);
 
   useEffect(() => {
     if (!currentUid) return;
@@ -71,6 +96,9 @@ export function PharmacyScreen() {
         const uData = snap.data();
         if (uData?.approvedPharmacyOrder && Array.isArray(uData.approvedPharmacyOrder.items)) {
           setDirectCloudOrder(uData.approvedPharmacyOrder);
+        }
+        if (uData?.prescriptionData?.items && Array.isArray(uData.prescriptionData.items)) {
+          setCloudPrescriptionItems(uData.prescriptionData.items);
         }
       }
     }, () => {});
@@ -107,7 +135,6 @@ export function PharmacyScreen() {
   }, [pharmacyOrders, directCloudOrder, currentUid, userEmail, userCpf, userPhone, userName]);
 
   const hasApprovedOrder = !!(approvedOrder && approvedOrder.items && approvedOrder.items.length > 0);
-  const myQueueEntry = useMemo(() => queue.find(p => currentUid && p.id === currentUid), [queue, currentUid]);
 
   const hasPaidConsultation = !!(
     pagamento_consulta || 
@@ -116,6 +143,8 @@ export function PharmacyScreen() {
     myQueueEntry?.status === 'finished' ||
     myQueueEntry?.status === 'in-consultation' ||
     myQueueEntry?.status === 'waiting' ||
+    Boolean((myQueueEntry as any)?.prescriptionData?.items?.length) ||
+    cloudPrescriptionItems.length > 0 ||
     messages.some(m => m.type === 'product' || m.type === 'prescription' || m.type === 'receita_previa') ||
     (typeof window !== 'undefined' && (
       localStorage.getItem('mecura_pagamento') === 'true' ||
@@ -182,6 +211,31 @@ export function PharmacyScreen() {
             priceUSD: (it as any).priceUSD,
             priceBRL: (it as any).priceBRL,
             image: (it as any).image
+          });
+        });
+      }
+    }
+
+    // 3. Fallback to prescriptionData stored on queue entry or user document
+    if (collectedProds.length === 0) {
+      const fallbackItems =
+        ((myQueueEntry as any)?.prescriptionData?.items && Array.isArray((myQueueEntry as any).prescriptionData.items) && (myQueueEntry as any).prescriptionData.items.length > 0)
+          ? (myQueueEntry as any).prescriptionData.items
+          : cloudPrescriptionItems;
+      if (Array.isArray(fallbackItems) && fallbackItems.length > 0) {
+        fallbackItems.forEach((it: any, idx: number) => {
+          collectedProds.push({
+            id: `cloud-presc-${idx}`,
+            name: it.name,
+            brand: it.brand,
+            origin: it.origin,
+            type: it.type,
+            dosage: Array.isArray(it.dosage) ? it.dosage : [String(it.dosage || '')],
+            details: it.details,
+            description: it.description,
+            priceUSD: it.priceUSD,
+            priceBRL: it.priceBRL,
+            image: it.image
           });
         });
       }
@@ -330,7 +384,17 @@ export function PharmacyScreen() {
     });
 
     return rawItems;
-  }, [messages, exchangeRate, isConsultationFinished]);
+  }, [messages, myQueueEntry, cloudPrescriptionItems, exchangeRate, isConsultationFinished]);
+
+  const prescriptionMsg = useMemo(() => {
+    return messages.find(m =>
+      m.type === 'prescription' ||
+      m.docType === 'receita' ||
+      m.type === 'receita_previa' ||
+      (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
+    );
+  }, [messages]);
+  const hasPrescriptionAttached = Boolean(prescriptionMsg);
 
   const importedItems = prescriptionItems.filter(item => !item.isAssociacao);
   const associacaoItems = prescriptionItems.filter(item => item.isAssociacao);
@@ -587,16 +651,20 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
   const handleDownloadPrescription = async () => {
     setIsDownloadingPdf(true);
     try {
-      const pName = userName || 'Paciente';
-      const blob = await generatePrescriptionPDF(pName, messages, {
-        customPatientName: pName,
-        birthDate: userBirthDate,
-        cpf: userCpf,
-        returnBlob: true
-      }) as Blob;
-      if (blob) {
-        deliverPdfBlob(blob, `Receita_Medica_${pName.replace(/\s+/g, '_')}.pdf`);
-      }
+      const pName = userName || (myQueueEntry as any)?.patientName || 'Paciente';
+      await downloadOrGenerateAttachment(
+        prescriptionMsg?.attachment,
+        async () => {
+          return await generatePrescriptionPDF(pName, messages, {
+            customPatientName: pName,
+            birthDate: userBirthDate,
+            cpf: userCpf,
+            customItems: prescriptionItems.length > 0 ? prescriptionItems : undefined,
+            returnBlob: true
+          }) as Blob;
+        },
+        `Receita_Medica_${pName.replace(/\s+/g, '_')}.pdf`
+      );
     } catch (e) {
       console.error("Erro ao gerar receita:", e);
     } finally {
@@ -1203,8 +1271,39 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           </div>
         )}
 
+        {/* Card de Download Direto da Receita Médica Oficial quando o médico enviou PDF assinado */}
+        {hasPrescriptionAttached && (
+          <div className="bg-[#121A16] border border-emerald-500/30 rounded-[24px] p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+            <div className="flex items-center gap-3.5 text-left">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 text-emerald-400">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                  Documento Oficial Disponível
+                </span>
+                <h4 className="text-white font-bold text-sm">
+                  {prescriptionMsg?.attachment?.title || 'Receita Médica Digital Assinada (PDF)'}
+                </h4>
+                <p className="text-xs text-mecura-silver">
+                  Baixe o arquivo PDF oficial da sua prescrição médica.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadPrescription}
+              disabled={isDownloadingPdf}
+              className="w-full sm:w-auto px-5 py-3 bg-mecura-neon hover:bg-[#b5ff33] text-[#0A0A0F] font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(166,255,0,0.25)] transition-all cursor-pointer flex-shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span>{isDownloadingPdf ? 'Baixando PDF...' : 'Baixar Receita (PDF)'}</span>
+            </button>
+          </div>
+        )}
+
         {/* Empty state */}
-        {!hasApprovedOrder && !hasImportedItems && !hasAssociacaoItems && (
+        {!hasApprovedOrder && !hasImportedItems && !hasAssociacaoItems && !hasPrescriptionAttached && (
           <div className="bg-[#12121A] border border-mecura-elevated rounded-[24px] p-8 text-center space-y-4 shadow-xl">
             <div className="w-16 h-16 rounded-full bg-mecura-surface flex items-center justify-center mx-auto text-mecura-silver border border-white/5">
               <Package className="w-8 h-8 opacity-60" />

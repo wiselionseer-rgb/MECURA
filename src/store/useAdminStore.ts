@@ -26,8 +26,18 @@ export interface CouponUsageLog {
   userId?: string;
   userEmail?: string;
   userName?: string;
+  userPhone?: string;
+  userCpf?: string;
   planName?: string;
+  planKey?: string;
   price?: number;
+  originalPrice?: number;
+  discountApplied?: number;
+  commissionPercentage?: number;
+  commissionValue?: number;
+  commissionPaid?: boolean;
+  viaLink?: boolean;
+  paymentId?: string;
   usedAt?: string;
 }
 
@@ -42,6 +52,11 @@ export interface Coupon {
   usedBy?: string[];
   usageLogs?: CouponUsageLog[];
   ownerId?: string; // ID of the patient who owns this referral coupon
+  affiliateName?: string; // Nome do responsável / parceiro do cupom e link
+  affiliatePixOrPhone?: string; // WhatsApp ou Chave PIX do responsável
+  commissionPercentage?: number; // % de comissão para o responsável sobre o valor pago
+  linkClicks?: number; // Quantidade de acessos via link rastreável
+  targetPlan?: 'all' | 'basic' | 'premium' | 'complete' | 'psychologist';
 }
 
 export interface Notification {
@@ -113,11 +128,25 @@ interface AdminState {
   addCoupon: (coupon: Coupon) => Promise<void>;
   updateCoupon: (id: string, data: Partial<Coupon>) => Promise<void>;
   deleteCoupon: (id: string) => Promise<void>;
+  incrementCouponLinkClick: (code: string) => Promise<void>;
+  toggleCouponCommissionPaid: (couponId: string, logIndex: number) => Promise<void>;
   useCoupon: (
     id: string, 
     userId: string, 
     userEmail?: string, 
-    planDetails?: { planName?: string; price?: number; isPremium?: boolean }
+    planDetails?: {
+      planName?: string;
+      planKey?: string;
+      price?: number;
+      originalPrice?: number;
+      discountApplied?: number;
+      isPremium?: boolean;
+      userName?: string;
+      userPhone?: string;
+      userCpf?: string;
+      viaLink?: boolean;
+      paymentId?: string;
+    }
   ) => Promise<void>;
 
   notifications: Notification[];
@@ -174,11 +203,15 @@ export const useAdminStore = create<AdminState>()(
         }
       },
       updateCoupon: async (id, data) => {
+        const cleanData: Record<string, any> = {};
+        Object.entries(data).forEach(([k, v]) => {
+          if (v !== undefined) cleanData[k] = v;
+        });
         set((state) => ({
-          coupons: state.coupons.map((c) => (c.id === id ? { ...c, ...data } : c))
+          coupons: state.coupons.map((c) => (c.id === id ? { ...c, ...cleanData } : c))
         }));
         try {
-          await updateDoc(doc(db, 'coupons', id), data);
+          await setDoc(doc(db, 'coupons', id), cleanData, { merge: true });
         } catch (e) {
           console.warn("Erro ao atualizar cupom no Firestore:", e);
         }
@@ -193,16 +226,55 @@ export const useAdminStore = create<AdminState>()(
           console.warn("Erro ao excluir cupom no Firestore:", e);
         }
       },
+      incrementCouponLinkClick: async (code) => {
+        const cleanCode = (code || '').trim().toUpperCase();
+        if (!cleanCode) return;
+        const currentCoupons = useAdminStore.getState().coupons;
+        const target = currentCoupons.find(
+          c => c.code.trim().toUpperCase() === cleanCode || c.id.trim().toUpperCase() === cleanCode
+        );
+        if (!target) return;
+
+        set((state) => ({
+          coupons: state.coupons.map(c =>
+            c.id === target.id ? { ...c, linkClicks: (c.linkClicks || 0) + 1 } : c
+          )
+        }));
+
+        try {
+          await setDoc(doc(db, 'coupons', target.id), {
+            linkClicks: increment(1),
+            lastLinkClickAt: new Date().toISOString()
+          }, { merge: true });
+        } catch (e) {
+          console.warn("Erro ao incrementar clique do link de cupom:", e);
+        }
+      },
+      toggleCouponCommissionPaid: async (couponId, logIndex) => {
+        const currentCoupons = useAdminStore.getState().coupons;
+        const target = currentCoupons.find(c => c.id === couponId);
+        if (!target || !Array.isArray(target.usageLogs) || !target.usageLogs[logIndex]) return;
+
+        const updatedLogs = target.usageLogs.map((log, idx) =>
+          idx === logIndex ? { ...log, commissionPaid: !log.commissionPaid } : log
+        );
+
+        set((state) => ({
+          coupons: state.coupons.map(c =>
+            c.id === couponId ? { ...c, usageLogs: updatedLogs } : c
+          )
+        }));
+
+        try {
+          await setDoc(doc(db, 'coupons', couponId), {
+            usageLogs: updatedLogs
+          }, { merge: true });
+        } catch (e) {
+          console.warn("Erro ao atualizar status de comissão:", e);
+        }
+      },
       useCoupon: async (id, userId, userEmail, planDetails) => {
         const primaryIdent = (userEmail && userEmail.trim().includes('@')) ? userEmail.trim() : (userId || ('paciente_' + Date.now().toString(36)));
-
-        const newLog: CouponUsageLog = {
-          userId: userId || undefined,
-          userEmail: userEmail || undefined,
-          planName: planDetails?.isPremium ? 'Premium' : (planDetails?.planName || 'Essencial'),
-          price: planDetails?.price || (planDetails?.isPremium ? 249.90 : 49.90),
-          usedAt: new Date().toISOString()
-        };
 
         const currentCoupons = useAdminStore.getState().coupons;
         const target = currentCoupons.find(
@@ -210,6 +282,40 @@ export const useAdminStore = create<AdminState>()(
         );
         const resolvedId = target?.id || id;
         const resolvedCode = target?.code || id.toUpperCase();
+
+        // Check if this exact paymentId was already logged on this coupon to prevent duplicates
+        if (planDetails?.paymentId && target?.usageLogs?.some(l => l.paymentId && String(l.paymentId) === String(planDetails.paymentId))) {
+          return;
+        }
+
+        const paidPrice = planDetails?.price !== undefined ? Number(planDetails.price) : (planDetails?.isPremium ? 249.90 : 49.90);
+        const commPct = Number(target?.commissionPercentage || 0);
+        const commVal = commPct > 0 ? Number(((paidPrice * commPct) / 100).toFixed(2)) : 0;
+        const viaLinkFlag = planDetails?.viaLink !== undefined
+          ? Boolean(planDetails.viaLink)
+          : (typeof window !== 'undefined' && (
+              localStorage.getItem('mecura_referral_via_link') === 'true' &&
+              (localStorage.getItem('mecura_referral_coupon_code') || '').trim().toUpperCase() === resolvedCode.trim().toUpperCase()
+            ));
+
+        const newLog: CouponUsageLog = {
+          ...(userId ? { userId } : {}),
+          ...(userEmail ? { userEmail } : {}),
+          ...(planDetails?.userName ? { userName: planDetails.userName } : {}),
+          ...(planDetails?.userPhone ? { userPhone: planDetails.userPhone } : {}),
+          ...(planDetails?.userCpf ? { userCpf: planDetails.userCpf } : {}),
+          planName: planDetails?.planName || (planDetails?.isPremium ? 'Premium' : 'Essencial'),
+          ...(planDetails?.planKey ? { planKey: planDetails.planKey } : {}),
+          price: paidPrice,
+          ...(planDetails?.originalPrice !== undefined ? { originalPrice: Number(planDetails.originalPrice) } : {}),
+          ...(planDetails?.discountApplied !== undefined ? { discountApplied: Number(planDetails.discountApplied) } : {}),
+          commissionPercentage: commPct,
+          commissionValue: commVal,
+          commissionPaid: false,
+          viaLink: viaLinkFlag,
+          ...(planDetails?.paymentId ? { paymentId: String(planDetails.paymentId) } : {}),
+          usedAt: new Date().toISOString()
+        };
 
         set((state) => ({
           coupons: state.coupons.map((c) => {
@@ -658,7 +764,13 @@ if (typeof window !== 'undefined') {
           quantity: data.quantity !== undefined ? Number(data.quantity) : 0,
           usedCount: Number(data.usedCount) || 0,
           usedBy: Array.isArray(data.usedBy) ? data.usedBy : [],
+          usageLogs: Array.isArray(data.usageLogs) ? data.usageLogs : [],
           ownerId: data.ownerId || undefined,
+          affiliateName: data.affiliateName || undefined,
+          affiliatePixOrPhone: data.affiliatePixOrPhone || undefined,
+          commissionPercentage: data.commissionPercentage !== undefined ? Number(data.commissionPercentage) : undefined,
+          linkClicks: data.linkClicks !== undefined ? Number(data.linkClicks) : 0,
+          targetPlan: data.targetPlan || 'all',
         });
       });
 

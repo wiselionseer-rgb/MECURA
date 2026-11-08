@@ -45,6 +45,7 @@ export interface Message {
     type: string;
     docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
     title?: string;
+    fileId?: string;
   };
   adhdTestData?: {
     scorePercent: number;
@@ -245,12 +246,13 @@ interface AppState {
   clearTriage: () => void;
 }
 
-import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, updateDoc, getDocs, writeBatch, where } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useAdminStore } from './useAdminStore';
 import { playNotificationSound } from '../utils/sound';
 import { showNativeNotification, triggerBackgroundPush, triggerAdminBackgroundPush } from '../utils/notifications';
+import { persistAttachmentToCloud } from '../utils/downloadHelper';
 
 export const useStore = create<AppState>((set, get) => ({
   userName: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_name') || '') : '',
@@ -1421,13 +1423,8 @@ export const useStore = create<AppState>((set, get) => ({
               pagamento_consulta: true,
               pagamento_premium: isVipEntry,
               selectedOffer: myEntry.plan || myEntry.selectedOffer || state.selectedOffer || 'basic',
-              activeConsultationId: authUid || resolvedConsultationId
+              activeConsultationId: resolvedConsultationId || authUid
             });
-          }
-        } else {
-          // Patient is not currently in the queue
-          if (authUid && state.activeConsultationId && state.activeConsultationId !== authUid) {
-            set({ activeConsultationId: authUid, messages: [] });
           }
         }
       }
@@ -1823,39 +1820,20 @@ export const useStore = create<AppState>((set, get) => ({
       messages: [...state.messages, newMessage]
     }));
 
-    // 2. If attachment is a large base64 data URL, upload to server first so Firestore document stays tiny (< 2KB)
+    // 2. If attachment is a base64 data URL, persist to /api/upload AND Firestore stored_files (chunked) so message doc stays tiny (< 2KB)
     if (newMessage.attachment?.url && newMessage.attachment.url.startsWith('data:')) {
       try {
-        console.log("[addMessage] Uploading file to server endpoint /api/upload:", newMessage.attachment.name);
-        const upRes = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: newMessage.attachment.name,
-            data: newMessage.attachment.url,
-            type: newMessage.attachment.type || 'application/pdf'
-          })
-        });
-
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          if (upData.url) {
-            const updatedAtt = {
-              ...newMessage.attachment,
-              url: upData.url
-            };
-            newMessage = {
-              ...newMessage,
-              attachment: updatedAtt
-            };
-            set((s) => ({
-              messages: s.messages.map(m => m.id === uniqueId ? { ...m, attachment: updatedAtt } : m)
-            }));
-            console.log("[addMessage] File uploaded successfully to server. Permanent URL:", upData.url);
-          }
-        }
+        console.log("[addMessage] Persisting attachment via persistAttachmentToCloud:", newMessage.attachment.name);
+        const persistedAtt = (await persistAttachmentToCloud(newMessage.attachment)) as NonNullable<Message['attachment']>;
+        newMessage = {
+          ...newMessage,
+          attachment: persistedAtt
+        };
+        set((s) => ({
+          messages: s.messages.map(m => m.id === uniqueId ? { ...m, attachment: persistedAtt } : m)
+        }));
       } catch (uploadErr) {
-        console.warn("[addMessage] Failed to upload to /api/upload, proceeding with fallback:", uploadErr);
+        console.warn("[addMessage] Failed to persist attachment via persistAttachmentToCloud:", uploadErr);
       }
     }
 
@@ -1865,8 +1843,6 @@ export const useStore = create<AppState>((set, get) => ({
     
     if (consultationId) {
       try {
-        const messagesRef = collection(db, 'active_consultations', consultationId, 'messages');
-        
         // Remove undefined fields
         const sanitizeForFirestore = (obj: any): any => {
           if (obj === undefined) return null;
@@ -1889,48 +1865,126 @@ export const useStore = create<AppState>((set, get) => ({
           timestamp: newMessage.timestamp.toISOString()
         });
 
-        // Safeguard: Firestore documents have a strict 1,048,576 bytes (1 MiB) limit.
-        // If an attachment is still a huge base64 data URL (> 800KB), ensure it is safely uploaded or stored.
-        if (payload.attachment && payload.attachment.url && payload.attachment.url.startsWith('data:') && payload.attachment.url.length > 800000) {
-          console.warn("[addMessage] Large attachment detected (> 800KB). Persisting via API or stored_files.");
-          const fileId = `${Date.now()}_${(payload.attachment.name || 'documento.pdf').replace(/[^a-zA-Z0-9_\.-]/g, '_')}`;
-          
+        // Final safety check: never allow a >700KB data: URL inside the message doc (would fail Firestore's 1 MiB limit)
+        if (payload.attachment?.url && typeof payload.attachment.url === 'string' && payload.attachment.url.startsWith('data:') && payload.attachment.url.length > 700000) {
           try {
-            const upRes = await fetch('/api/upload', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                filename: payload.attachment.name || fileId,
-                data: payload.attachment.url,
-                type: payload.attachment.type || 'application/pdf'
-              })
-            });
-            if (upRes.ok) {
-              const upData = await upRes.json();
-              if (upData?.url) {
-                payload.attachment.url = upData.url;
-              }
-            } else {
-              // Direct Firestore stored_files fallback
-              const base64Data = payload.attachment.url.includes(';base64,')
-                ? payload.attachment.url.split(';base64,')[1]
-                : payload.attachment.url;
-              await setDoc(doc(db, "stored_files", fileId), {
-                filename: fileId,
-                originalName: payload.attachment.name || fileId,
-                base64Data: base64Data.substring(0, 800000),
-                type: payload.attachment.type || 'application/pdf',
-                createdAt: new Date().toISOString()
-              });
-              payload.attachment.url = `/api/files/${fileId}`;
-            }
+            const persistedAtt = await persistAttachmentToCloud(payload.attachment);
+            payload.attachment = sanitizeForFirestore(persistedAtt);
           } catch (e) {
-            console.error("[addMessage] Upload/store fallback:", e);
+            console.warn("[addMessage] Secondary persistAttachmentToCloud failed:", e);
+          }
+          if (payload.attachment?.url && payload.attachment.url.startsWith('data:') && payload.attachment.url.length > 700000) {
+            const fallbackFileId = (payload.attachment as any).fileId || `${Date.now()}_${(payload.attachment.name || 'documento.pdf').replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+            payload.attachment.url = `/api/files/${fallbackFileId}`;
+            (payload.attachment as any).fileId = fallbackFileId;
           }
         }
 
-        await setDoc(doc(messagesRef, newMessage.id), payload);
-        console.log("Message saved to active_consultations successfully.");
+        // Resolve all linked IDs for this patient (e.g. queue ID vs Firebase Auth UID vs patientId)
+        const targetIds = new Set<string>([consultationId]);
+        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
+        const matchedQueueEntry = state.queue.find(p => p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId);
+        const patientEmail = (matchedQueueEntry?.email || '').trim().toLowerCase();
+        const patientCpf = cleanDigits(matchedQueueEntry?.cpf);
+        const patientPhone = cleanDigits(matchedQueueEntry?.phone);
+
+        if (matchedQueueEntry) {
+          if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
+          if ((matchedQueueEntry as any).uid) targetIds.add((matchedQueueEntry as any).uid);
+          if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
+        }
+
+        state.queue.forEach(p => {
+          const pEmail = (p.email || '').trim().toLowerCase();
+          const pCpf = cleanDigits(p.cpf);
+          const pPhone = cleanDigits(p.phone);
+          const emailMatch = patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail;
+          const cpfMatch = patientCpf && patientCpf.length >= 11 && pCpf === patientCpf;
+          const phoneMatch = patientPhone && patientPhone.length >= 10 && pPhone === patientPhone;
+          if (emailMatch || cpfMatch || phoneMatch) {
+            if (p.id) targetIds.add(p.id);
+            if ((p as any).uid) targetIds.add((p as any).uid);
+            if ((p as any).patientId) targetIds.add((p as any).patientId);
+          }
+        });
+
+        // Also check Firestore users collection by email or cpf if doctor is sending a message/document
+        if (newMessage.sender === 'doctor' && (patientEmail || patientCpf)) {
+          try {
+            if (patientEmail && !patientEmail.includes('sem-email')) {
+              const uSnap = await getDocs(query(collection(db, 'users'), where('email', '==', patientEmail)));
+              uSnap.forEach(d => targetIds.add(d.id));
+            }
+            if (patientCpf && patientCpf.length >= 11 && matchedQueueEntry?.cpf) {
+              const uSnapCpf = await getDocs(query(collection(db, 'users'), where('cpf', '==', matchedQueueEntry.cpf)));
+              uSnapCpf.forEach(d => targetIds.add(d.id));
+            }
+          } catch (lookupErr) {
+            console.warn("[addMessage] User lookup warning:", lookupErr);
+          }
+        }
+
+        // Save message to active_consultations/{id}/messages/{newMessage.id} across all linked IDs
+        const saveMessageToTarget = async (targetId: string) => {
+          const messagesRef = collection(db, 'active_consultations', targetId, 'messages');
+          try {
+            await setDoc(doc(messagesRef, newMessage.id), payload);
+          } catch (writeErr) {
+            console.warn(`[addMessage] Primary setDoc failed for ${targetId}, retrying with stripped data URL:`, writeErr);
+            const safePayload = {
+              ...payload,
+              attachment: payload.attachment ? {
+                ...payload.attachment,
+                url: payload.attachment.url?.startsWith('data:')
+                  ? `/api/files/${(payload.attachment as any).fileId || 'documento.pdf'}`
+                  : payload.attachment.url
+              } : undefined
+            };
+            await setDoc(doc(messagesRef, newMessage.id), sanitizeForFirestore(safePayload));
+          }
+        };
+
+        await Promise.all(Array.from(targetIds).map(tid => saveMessageToTarget(tid)));
+        console.log("Message saved to active_consultations successfully for IDs:", Array.from(targetIds));
+
+        // If this message is an official document, prescription, or product from the doctor, also persist summary on active_consultations, queue, and users
+        const isOfficialDocOrProduct =
+          newMessage.sender === 'doctor' &&
+          (newMessage.type === 'prescription' ||
+           newMessage.type === 'receita_previa' ||
+           newMessage.type === 'product' ||
+           newMessage.type === 'medical_report' ||
+           newMessage.type === 'psychomotor_report' ||
+           newMessage.type === 'agronomic_report' ||
+           newMessage.type === 'psychological_report' ||
+           Boolean(newMessage.docType) ||
+           Boolean(newMessage.attachment));
+
+        if (isOfficialDocOrProduct) {
+          const docKey = newMessage.docType || newMessage.attachment?.docType || newMessage.type || 'documento';
+          const summaryUpdate: Record<string, any> = {
+            updatedAt: newMessage.timestamp.toISOString(),
+            [`issuedDocuments.${docKey}`]: payload
+          };
+          if (newMessage.receitaPreviaData?.items && newMessage.receitaPreviaData.items.length > 0) {
+            summaryUpdate.prescriptionData = sanitizeForFirestore({
+              patientName: newMessage.receitaPreviaData.patientName || matchedQueueEntry?.patientName || '',
+              doctorName: newMessage.receitaPreviaData.doctorName || 'Dr. Guilherme Taveira Dias',
+              doctorCrm: newMessage.receitaPreviaData.doctorCrm || 'CRM/MT 17259',
+              doctorSpecialty: newMessage.receitaPreviaData.doctorSpecialty || 'Clínico Geral • Medicina Endocanabinoide',
+              emissionDate: newMessage.receitaPreviaData.emissionDate || new Date().toLocaleDateString('pt-BR'),
+              items: newMessage.receitaPreviaData.items,
+              notes: newMessage.receitaPreviaData.notes || '',
+              updatedAt: newMessage.timestamp.toISOString()
+            });
+          }
+
+          await Promise.all(Array.from(targetIds).map(async (tid) => {
+            await setDoc(doc(db, 'active_consultations', tid), summaryUpdate, { merge: true }).catch(() => {});
+            await setDoc(doc(db, 'users', tid), summaryUpdate, { merge: true }).catch(() => {});
+            await updateDoc(doc(db, 'queue', tid), summaryUpdate).catch(() => {});
+          }));
+        }
         
         // Update queue document for WhatsApp-like behavior
         const queueRef = doc(db, 'queue', consultationId);
@@ -2036,13 +2090,22 @@ export const useStore = create<AppState>((set, get) => ({
   subscribeToMessages: (consultationId: string) => {
     if (!consultationId) return () => {};
 
+    const isProfessionalView = typeof window !== 'undefined' && (
+      window.location.pathname.includes('/doctor') ||
+      window.location.pathname.includes('/admin') ||
+      window.location.pathname.includes('/psychologist')
+    );
+
     const prevId = get().activeConsultationId;
     if (prevId !== consultationId) {
-      set({ activeConsultationId: consultationId, messages: [] });
+      if (isProfessionalView) {
+        set({ activeConsultationId: consultationId, messages: [] });
+      } else {
+        set({ activeConsultationId: consultationId });
+      }
     }
 
-    const parseDoc = (d: any): Message => {
-      const data = d.data();
+    const parseRawMessage = (id: string, data: any): Message => {
       let ts: Date;
       if (data.timestamp?.toDate && typeof data.timestamp.toDate === 'function') {
         ts = data.timestamp.toDate();
@@ -2053,72 +2116,361 @@ export const useStore = create<AppState>((set, get) => ({
       }
       if (isNaN(ts.getTime())) ts = new Date();
       return {
-        id: d.id,
+        id,
         ...data,
         timestamp: ts
       } as Message;
     };
 
-    const messagesCol = collection(db, 'active_consultations', consultationId, 'messages');
-    const q = query(messagesCol, orderBy('timestamp', 'asc'));
+    const parseDoc = (d: any): Message => parseRawMessage(d.id, d.data());
 
-    // 1. Direct one-time fetch to guarantee immediate history without waiting for onSnapshot
-    getDocs(q).then((snapshot) => {
-      if (!snapshot.empty) {
-        const msgs = snapshot.docs.map(parseDoc);
-        msgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        if (get().activeConsultationId === consultationId) {
-          set({ messages: msgs });
+    // Map of targetId -> Message[] so we can merge messages across all linked IDs for this patient
+    const messagesByTarget = new Map<string, Message[]>();
+    const synthesizedMessagesMap = new Map<string, Message>();
+    const activeUnsubscribes: Array<() => void> = [];
+    const subscribedIds = new Set<string>();
+    let isCancelled = false;
+
+    const rebuildAndPublishMessages = () => {
+      if (isCancelled) return;
+      const mergedMap = new Map<string, Message>();
+
+      messagesByTarget.forEach((msgs) => {
+        msgs.forEach((m) => {
+          mergedMap.set(m.id, m);
+        });
+      });
+
+      // Check if we already have real prescription/product/report messages before adding synthesized ones
+      const existingMsgs = Array.from(mergedMap.values());
+      const hasRealPrescriptionMsg = existingMsgs.some(m =>
+        m.type === 'prescription' || m.type === 'receita_previa' || m.docType === 'receita' || m.attachment?.docType === 'receita'
+      );
+      const hasRealProductMsg = existingMsgs.some(m => m.type === 'product' && m.productData);
+
+      synthesizedMessagesMap.forEach((synMsg, key) => {
+        if (key.startsWith('syn_presc_') && hasRealPrescriptionMsg) return;
+        if (key.startsWith('syn_prod_') && (hasRealProductMsg || hasRealPrescriptionMsg)) return;
+        if (!mergedMap.has(synMsg.id)) {
+          mergedMap.set(synMsg.id, synMsg);
         }
+      });
+
+      const allMsgs = Array.from(mergedMap.values());
+      allMsgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      // Never wipe existing messages in patient view if we haven't found any messages yet
+      if (allMsgs.length === 0 && !isProfessionalView && get().messages.length > 0) {
+        return;
       }
-    }).catch((err) => {
-      console.warn("Direct getDocs fetch for messages with orderBy failed, attempting fallback:", err);
-      getDocs(messagesCol).then((snapshot) => {
-        if (!snapshot.empty) {
-          const msgs = snapshot.docs.map(parseDoc);
-          msgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-          if (get().activeConsultationId === consultationId) {
-            set({ messages: msgs });
-          }
-        }
-      }).catch(console.error);
-    });
 
-    // 2. Real-time onSnapshot listener
-    return onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(parseDoc);
-      msgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-      
       const currentMessages = get().messages;
-      // Show notification if a new message is received from the doctor and the page is hidden (e.g. locked screen)
-      if (msgs.length > currentMessages.length && currentMessages.length > 0) {
-        const lastMsg = msgs[msgs.length - 1];
+      if (allMsgs.length > currentMessages.length && currentMessages.length > 0) {
+        const lastMsg = allMsgs[allMsgs.length - 1];
         if (lastMsg.sender === 'doctor') {
-          // Play sound for ALL new doctor messages
           import('../utils/sound').then(({ playNotificationSound }) => {
             playNotificationSound();
           });
-          
-          // Se o app estiver em segundo plano (outra aba ou minimizado), dispara a notificação nativa HTML5
-          // Ela trabalha em conjunto com o Push Server para garantir a exibição do alerta na tela do paciente
           if (typeof document !== 'undefined' && document.hidden) {
             import('../utils/notifications').then(({ showNativeNotification }) => {
               showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
             });
           } else if (lastMsg.text && lastMsg.text.includes('SUA VEZ CHEGOU')) {
-            // Força a exibição para a mensagem de alerta, mesmo se a tela não estiver minimizada
             import('../utils/notifications').then(({ showNativeNotification }) => {
               showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
             });
           }
         }
       }
-      
-      set({ messages: msgs });
-    }, (error) => {
-      console.error("Error subscribing to messages:", error);
-      handleFirestoreError(error, OperationType.GET, `active_consultations/${consultationId}/messages`);
-    });
+
+      set({ messages: allMsgs });
+    };
+
+    const inspectDocumentDataForSynthesizedMessages = (sourceId: string, docData: any) => {
+      if (!docData || isCancelled) return;
+      let changed = false;
+
+      // 1. Check issuedDocuments map saved by addMessage
+      if (docData.issuedDocuments && typeof docData.issuedDocuments === 'object') {
+        Object.entries(docData.issuedDocuments).forEach(([docKey, rawMsg]: [string, any]) => {
+          if (rawMsg && typeof rawMsg === 'object') {
+            const msgId = rawMsg.id || `issued_${sourceId}_${docKey}`;
+            const parsed = parseRawMessage(msgId, rawMsg);
+            synthesizedMessagesMap.set(msgId, parsed);
+            changed = true;
+          }
+        });
+      }
+
+      // 2. Check prescriptionData saved by handleSavePrescription / handleSendPrescriptionToChat
+      if (docData.prescriptionData && Array.isArray(docData.prescriptionData.items) && docData.prescriptionData.items.length > 0) {
+        const pd = docData.prescriptionData;
+        const ts = pd.updatedAt ? new Date(pd.updatedAt) : new Date();
+        const synPrescId = `syn_presc_${sourceId}`;
+        synthesizedMessagesMap.set(synPrescId, {
+          id: synPrescId,
+          sender: 'doctor',
+          type: 'prescription',
+          docType: 'receita',
+          text: `Receita Médica Oficial emitida por ${pd.doctorName || 'Dr. Guilherme Taveira Dias'} (${pd.doctorCrm || 'CRM/MT 17259'}) para ${pd.patientName || get().userName || 'Paciente'}.`,
+          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+          attachment: {
+            name: `Receita_Medica_${(pd.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
+            url: '#gerar-pdf-receita',
+            type: 'application/pdf',
+            docType: 'receita',
+            title: 'Receita Médica Oficial'
+          },
+          receitaPreviaData: {
+            doctorName: pd.doctorName || 'Dr. Guilherme Taveira Dias',
+            doctorCrm: pd.doctorCrm || 'CRM/MT 17259',
+            doctorSpecialty: pd.doctorSpecialty || 'Clínico Geral • Medicina Endocanabinoide',
+            patientName: pd.patientName || get().userName || 'Paciente',
+            emissionDate: pd.emissionDate || new Date().toLocaleDateString('pt-BR'),
+            items: pd.items,
+            notes: pd.notes || '',
+            status: 'confirmed'
+          }
+        });
+
+        pd.items.forEach((item: any, idx: number) => {
+          const synProdId = `syn_prod_${sourceId}_${idx}`;
+          synthesizedMessagesMap.set(synProdId, {
+            id: synProdId,
+            sender: 'doctor',
+            type: 'product',
+            timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+            productData: {
+              name: item.name,
+              brand: item.brand || 'Associação Nacional',
+              origin: item.origin || 'Nacional (Associação)',
+              type: item.type || 'Sublingual',
+              activeIngredients: item.activeIngredients || '',
+              concentration: item.concentration || '',
+              pharmaceuticalForm: item.pharmaceuticalForm || '',
+              quantity: item.quantity || '',
+              administrationRoute: item.administrationRoute || '',
+              dosage: Array.isArray(item.dosage) ? item.dosage : (item.dosage ? [String(item.dosage)] : []),
+              description: item.description || '',
+              details: Array.isArray(item.details) ? item.details : [
+                item.activeIngredients ? `Princípio Ativo: ${item.activeIngredients}` : '',
+                item.concentration ? `Concentração: ${item.concentration}` : '',
+                item.quantity ? `Quantidade: ${item.quantity}` : ''
+              ].filter(Boolean),
+              image: item.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=300&q=80',
+              priceBRL: item.priceBRL
+            }
+          });
+        });
+        changed = true;
+      }
+
+      // 3. Check medicalReportData
+      if (docData.medicalReportData && (docData.medicalReportData.clinicalHistory || docData.medicalReportData.cid || docData.medicalReportData.patientName)) {
+        const mr = docData.medicalReportData;
+        const ts = mr.updatedAt ? new Date(mr.updatedAt) : new Date();
+        const isEvolutivo = mr.reportType === 'evolutivo';
+        const dType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
+        const synMedId = `syn_medreport_${sourceId}_${dType}`;
+        synthesizedMessagesMap.set(synMedId, {
+          id: synMedId,
+          sender: 'doctor',
+          type: 'medical_report',
+          docType: dType,
+          text: `Laudo Médico ${isEvolutivo ? 'Evolutivo' : 'Inicial'} emitido por ${mr.doctorName || 'Dr. Guilherme Taveira Dias'}.`,
+          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+          attachment: {
+            name: `Laudo_Medico_${isEvolutivo ? 'Evolutivo' : 'Inicial'}_${(mr.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
+            url: '#gerar-pdf-laudo-medico',
+            type: 'application/pdf',
+            docType: dType,
+            title: isEvolutivo ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial'
+          }
+        });
+        changed = true;
+      }
+
+      // 4. Check psychomotorReportData
+      if (docData.psychomotorReportData && docData.psychomotorReportData.patientName) {
+        const pr = docData.psychomotorReportData;
+        const ts = pr.updatedAt ? new Date(pr.updatedAt) : new Date();
+        const synPsyId = `syn_psyreport_${sourceId}`;
+        synthesizedMessagesMap.set(synPsyId, {
+          id: synPsyId,
+          sender: 'doctor',
+          type: 'psychomotor_report',
+          docType: 'laudo_psicomotor',
+          text: `Laudo de Aptidão Física, Mental e Psicomotora emitido por ${pr.doctorName || 'Dr. Guilherme Taveira Dias'}.`,
+          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+          attachment: {
+            name: `Laudo_Aptidao_${(pr.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
+            url: '#gerar-pdf-laudo-aptidao',
+            type: 'application/pdf',
+            docType: 'laudo_psicomotor',
+            title: 'Laudo de Aptidão Física e Mental'
+          }
+        });
+        changed = true;
+      }
+
+      // 5. Check agronomicReportData
+      if (docData.agronomicReportData && docData.agronomicReportData.patientName) {
+        const ar = docData.agronomicReportData;
+        const ts = ar.updatedAt ? new Date(ar.updatedAt) : new Date();
+        const synAgroId = `syn_agroreport_${sourceId}`;
+        synthesizedMessagesMap.set(synAgroId, {
+          id: synAgroId,
+          sender: 'doctor',
+          type: 'agronomic_report',
+          docType: 'laudo_agronomico',
+          text: `Parecer Técnico Agronômico emitido por ${ar.engineerName || 'Eng. Agr. Wilian Dalenogare Pereira'}.`,
+          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+          attachment: {
+            name: `Parecer_Agronomico_${(ar.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
+            url: '#gerar-pdf-laudo-agronomico',
+            type: 'application/pdf',
+            docType: 'laudo_agronomico',
+            title: 'Parecer Técnico Agronômico'
+          }
+        });
+        changed = true;
+      }
+
+      if (changed) {
+        rebuildAndPublishMessages();
+      }
+    };
+
+    const subscribeSingleTarget = (targetId: string) => {
+      if (!targetId || subscribedIds.has(targetId) || isCancelled) return;
+      subscribedIds.add(targetId);
+
+      const messagesCol = collection(db, 'active_consultations', targetId, 'messages');
+      const q = query(messagesCol, orderBy('timestamp', 'asc'));
+
+      // Direct one-time fetch
+      getDocs(q).then((snapshot) => {
+        if (!snapshot.empty && !isCancelled) {
+          messagesByTarget.set(targetId, snapshot.docs.map(parseDoc));
+          rebuildAndPublishMessages();
+        }
+      }).catch(() => {
+        getDocs(messagesCol).then((snapshot) => {
+          if (!snapshot.empty && !isCancelled) {
+            messagesByTarget.set(targetId, snapshot.docs.map(parseDoc));
+            rebuildAndPublishMessages();
+          }
+        }).catch(() => {});
+      });
+
+      // Real-time listener on messages subcollection
+      const unsubMsgs = onSnapshot(q, (snapshot) => {
+        if (isCancelled) return;
+        messagesByTarget.set(targetId, snapshot.docs.map(parseDoc));
+        rebuildAndPublishMessages();
+      }, (error) => {
+        console.warn(`Error subscribing to messages for ${targetId}:`, error);
+      });
+      activeUnsubscribes.push(unsubMsgs);
+
+      // Real-time listener on active_consultations/{targetId} parent doc + queue/{targetId} + users/{targetId}
+      const unsubActiveDoc = onSnapshot(doc(db, 'active_consultations', targetId), (snap) => {
+        if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
+      }, () => {});
+      activeUnsubscribes.push(unsubActiveDoc);
+
+      const unsubQueueDoc = onSnapshot(doc(db, 'queue', targetId), (snap) => {
+        if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
+      }, () => {});
+      activeUnsubscribes.push(unsubQueueDoc);
+
+      const unsubUserDoc = onSnapshot(doc(db, 'users', targetId), (snap) => {
+        if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
+      }, () => {});
+      activeUnsubscribes.push(unsubUserDoc);
+    };
+
+    // Subscribe to primary consultationId immediately
+    subscribeSingleTarget(consultationId);
+
+    // Discover and subscribe to all linked patient IDs
+    const state = get();
+    const cleanDigits = (v?: string) => (v || '').replace(/\D/g, '');
+
+    if (!isProfessionalView) {
+      const authUid = auth.currentUser?.uid;
+      const storedPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null;
+      if (authUid) subscribeSingleTarget(authUid);
+      if (state.patientId) subscribeSingleTarget(state.patientId);
+      if (storedPid) subscribeSingleTarget(storedPid);
+
+      const myEmail = (auth.currentUser?.email || state.userEmail || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_email') : '') || '').trim().toLowerCase();
+      const myCpf = cleanDigits(state.userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '');
+      const myPhone = cleanDigits(state.userPhone || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_phone') : '') || '');
+
+      state.queue.forEach(p => {
+        const pEmail = (p.email || '').trim().toLowerCase();
+        const pCpf = cleanDigits(p.cpf);
+        const pPhone = cleanDigits(p.phone);
+        const idMatch = p.id === consultationId || p.id === authUid || p.id === state.patientId || p.id === storedPid;
+        const emailMatch = myEmail && !myEmail.includes('sem-email') && pEmail === myEmail;
+        const cpfMatch = myCpf && myCpf.length >= 11 && pCpf === myCpf;
+        const phoneMatch = myPhone && myPhone.length >= 10 && pPhone === myPhone;
+        if (idMatch || emailMatch || cpfMatch || phoneMatch) {
+          if (p.id) subscribeSingleTarget(p.id);
+          if ((p as any).uid) subscribeSingleTarget((p as any).uid);
+          if ((p as any).patientId) subscribeSingleTarget((p as any).patientId);
+        }
+      });
+
+      // Also query Firestore queue & users by email / cpf for any historical consultation IDs
+      if (myEmail && !myEmail.includes('sem-email')) {
+        getDocs(query(collection(db, 'queue'), where('email', '==', myEmail))).then(snap => {
+          snap.forEach(d => {
+            subscribeSingleTarget(d.id);
+            inspectDocumentDataForSynthesizedMessages(d.id, d.data());
+          });
+        }).catch(() => {});
+        getDocs(query(collection(db, 'users'), where('email', '==', myEmail))).then(snap => {
+          snap.forEach(d => {
+            subscribeSingleTarget(d.id);
+            inspectDocumentDataForSynthesizedMessages(d.id, d.data());
+          });
+        }).catch(() => {});
+      }
+      if (myCpf && myCpf.length >= 11) {
+        const rawCpf = state.userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '';
+        if (rawCpf) {
+          getDocs(query(collection(db, 'queue'), where('cpf', '==', rawCpf))).then(snap => {
+            snap.forEach(d => {
+              subscribeSingleTarget(d.id);
+              inspectDocumentDataForSynthesizedMessages(d.id, d.data());
+            });
+          }).catch(() => {});
+        }
+      }
+    } else {
+      // Professional view: also subscribe to any linked IDs for the selected patient in state.queue
+      const targetEntry = state.queue.find(p => p.id === consultationId);
+      if (targetEntry) {
+        if ((targetEntry as any).uid) subscribeSingleTarget((targetEntry as any).uid);
+        if ((targetEntry as any).patientId) subscribeSingleTarget((targetEntry as any).patientId);
+        const tEmail = (targetEntry.email || '').trim().toLowerCase();
+        const tCpf = cleanDigits(targetEntry.cpf);
+        state.queue.forEach(p => {
+          const pEmail = (p.email || '').trim().toLowerCase();
+          const pCpf = cleanDigits(p.cpf);
+          if ((tEmail && !tEmail.includes('sem-email') && pEmail === tEmail) || (tCpf && tCpf.length >= 11 && pCpf === tCpf)) {
+            if (p.id) subscribeSingleTarget(p.id);
+          }
+        });
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+      activeUnsubscribes.forEach(unsub => unsub());
+    };
   },
   setMessages: (messages) => set({ messages }),
 

@@ -209,6 +209,38 @@ export function QueueScreen() {
       return;
     }
 
+    // Safeguard: if patient just paid and arrived at /queue, ensure they are actively in the waiting queue
+    if (isRecentlyApproved && (!myQueueEntry || myQueueEntry.status === 'finished')) {
+      const st = useStore.getState();
+      const uid = currentUserId || st.patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || ('paciente_' + Date.now());
+      const syncKey = `mecura_queue_synced_${approvedAtRaw}`;
+      if (typeof window !== 'undefined' && !sessionStorage.getItem(syncKey)) {
+        sessionStorage.setItem(syncKey, 'true');
+        const activePlan = (st.selectedOffer || (typeof window !== 'undefined' ? localStorage.getItem('last_offer') : null) || 'basic') as 'basic' | 'premium' | 'psychologist' | 'complete';
+        const isPremPlan = activePlan === 'premium' || activePlan === 'complete' || st.pagamento_premium;
+        const qType = activePlan === 'psychologist' ? 'psychologist' : 'doctor';
+        st.joinQueue({
+          id: uid,
+          patientName: st.userName || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_name') : '') || 'Paciente',
+          email: auth.currentUser?.email || st.userEmail || '',
+          phone: st.userPhone || '',
+          cpf: st.userCpf || '',
+          birthDate: st.userBirthDate || '',
+          answers: st.answers || {},
+          isPremium: isPremPlan,
+          plan: activePlan,
+          queueType: qType,
+          allowDualChat: activePlan === 'complete',
+          selectedOffer: activePlan,
+          freshPayment: true,
+          pagamento_consulta: true,
+          pagamento_premium: isPremPlan,
+          hasPaid: true,
+          isPaid: true
+        } as any).catch(() => {});
+      }
+    }
+
     const hasLocalPayment = typeof window !== 'undefined' && (
       localStorage.getItem('mecura_pagamento') === 'true' || isRecentlyApproved
     );
@@ -252,7 +284,7 @@ export function QueueScreen() {
         navigate('/checkout');
       }
     }
-  }, [pagamento_consulta, isConsultationFinished, myQueueEntry?.status, (myQueueEntry as any)?.pagamento_consulta, currentUserId, navigate]);
+  }, [pagamento_consulta, isConsultationFinished, myQueueEntry, currentUserId, navigate]);
 
   // Direct listener to the user's specific queue & user document for instant real-time response
   useEffect(() => {

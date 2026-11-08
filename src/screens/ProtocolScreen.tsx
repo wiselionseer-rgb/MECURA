@@ -26,15 +26,40 @@ import { auth } from '../firebase';
 export function ProtocolScreen() {
   const navigate = useNavigate();
   const { 
-    userName, userCpf, userBirthDate, answers, messages, 
+    userName, userEmail, userPhone, userCpf, userBirthDate, answers, messages, 
     consultationHistory, isConsultationFinished, pagamento_consulta,
-    patientId, activeConsultationId, queue, subscribeToMessages
+    patientId, activeConsultationId, queue, subscribeToMessages, subscribeToQueue
   } = useStore();
 
   const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
   const [downloadAllProgress, setDownloadAllProgress] = useState(false);
 
+  useEffect(() => {
+    const unsubQueue = subscribeToQueue();
+    return () => unsubQueue();
+  }, [subscribeToQueue]);
+
+  const myQueueEntry = useMemo(() => {
+    const authUid = auth.currentUser?.uid;
+    const storedPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null;
+    const cleanEmail = (auth.currentUser?.email || userEmail || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_email') : '') || '').trim().toLowerCase();
+    const cleanCpf = (userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '').replace(/\D/g, '');
+    const cleanPhone = (userPhone || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_phone') : '') || '').replace(/\D/g, '');
+
+    return queue.find(p => {
+      if (authUid && (p.id === authUid || (p as any).uid === authUid || (p as any).patientId === authUid)) return true;
+      if (patientId && patientId !== 'doctor' && (p.id === patientId || (p as any).patientId === patientId)) return true;
+      if (activeConsultationId && p.id === activeConsultationId) return true;
+      if (storedPid && p.id === storedPid) return true;
+      if (cleanEmail && !cleanEmail.includes('sem-email') && p.email && p.email.trim().toLowerCase() === cleanEmail) return true;
+      if (cleanCpf.length >= 11 && p.cpf && p.cpf.replace(/\D/g, '') === cleanCpf) return true;
+      if (cleanPhone.length >= 10 && p.phone && p.phone.replace(/\D/g, '') === cleanPhone) return true;
+      return false;
+    });
+  }, [queue, patientId, activeConsultationId, userEmail, userCpf, userPhone]);
+
   const effectivePatientId =
+    myQueueEntry?.id ||
     auth.currentUser?.uid ||
     (patientId && patientId !== 'doctor' ? patientId : null) ||
     activeConsultationId ||
@@ -48,17 +73,14 @@ export function ProtocolScreen() {
     }
   }, [effectivePatientId, subscribeToMessages]);
 
-  const myQueueEntry = useMemo(() => {
-    return queue.find(p => effectivePatientId && p.id === effectivePatientId);
-  }, [queue, effectivePatientId]);
-
   const hasPaidConsultation = !!(
     pagamento_consulta || 
     isConsultationFinished ||
     myQueueEntry?.status === 'finished' ||
     myQueueEntry?.status === 'in-consultation' ||
     myQueueEntry?.status === 'waiting' ||
-    messages.some(m => m.sender === 'doctor' || m.type === 'prescription' || m.type === 'product') ||
+    Boolean((myQueueEntry as any)?.prescriptionData?.items?.length) ||
+    messages.some(m => m.sender === 'doctor' || m.type === 'prescription' || m.type === 'product' || m.type === 'receita_previa') ||
     (typeof window !== 'undefined' && (
       localStorage.getItem('mecura_pagamento') === 'true' ||
       localStorage.getItem('mecura_consultation_finished') === 'true'
@@ -69,13 +91,13 @@ export function ProtocolScreen() {
   const hasDoctorPrescription = useMemo(() => {
     if (!hasPaidConsultation) return false;
 
-    return messages.some(m => 
+    return Boolean((myQueueEntry as any)?.prescriptionData?.items?.length) || messages.some(m => 
       m.type === 'prescription' || 
       m.type === 'receita_previa' || 
       (m.type === 'product' && m.productData) ||
       (m.attachment && (m.attachment.docType === 'receita' || m.attachment.name?.toLowerCase().includes('receita')))
     ) || ((isConsultationFinished || myQueueEntry?.status === 'finished') && messages.some(m => m.sender === 'doctor'));
-  }, [messages, isConsultationFinished, myQueueEntry?.status, hasPaidConsultation]);
+  }, [messages, isConsultationFinished, myQueueEntry, hasPaidConsultation]);
 
   useEffect(() => {
     if (!hasPaidConsultation) {
@@ -83,7 +105,7 @@ export function ProtocolScreen() {
     }
   }, [hasPaidConsultation, navigate]);
 
-  // Extract prescribed items from messages, falling back to empty if consultation not done yet
+  // Extract prescribed items from messages, falling back to queue prescriptionData if needed
   const prescriptionItems = useMemo(() => {
     if (!hasPaidConsultation || !hasDoctorPrescription) {
       return [];
@@ -91,8 +113,14 @@ export function ProtocolScreen() {
 
     // Check for receita_previa or prescription with receitaPreviaData first
     const previaMsg = messages.find(m => (m.type === 'receita_previa' || m.type === 'prescription') && m.receitaPreviaData?.items?.length);
-    if (previaMsg && previaMsg.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0) {
-      return previaMsg.receitaPreviaData.items.map(item => {
+    const itemsSource = (previaMsg?.receitaPreviaData?.items && previaMsg.receitaPreviaData.items.length > 0)
+      ? previaMsg.receitaPreviaData.items
+      : ((myQueueEntry as any)?.prescriptionData?.items && Array.isArray((myQueueEntry as any).prescriptionData.items) && (myQueueEntry as any).prescriptionData.items.length > 0)
+      ? (myQueueEntry as any).prescriptionData.items
+      : null;
+
+    if (itemsSource && itemsSource.length > 0) {
+      return itemsSource.map((item: any) => {
         const enriched = enrichMedicationDetails(
           item.name,
           item.brand || 'GreenBudz',
@@ -149,7 +177,7 @@ export function ProtocolScreen() {
 
     // Patient has not been prescribed any specific products yet
     return [];
-  }, [messages, hasDoctorPrescription, hasPaidConsultation]);
+  }, [messages, myQueueEntry, hasDoctorPrescription, hasPaidConsultation]);
 
   // Find prescription/medical report messages with attachments
   const prescriptionMsg = useMemo(() => {
@@ -731,6 +759,7 @@ export function ProtocolScreen() {
                 </div>
                 <p className="text-[13px] font-bold text-white">Dr. Guilherme Taveira Dias</p>
                 <p className="text-[10px] text-[#8A8A9E]">CRM/MT 17259 • Clínico Geral</p>
+                <p className="text-[9.5px] text-[#8A8A9E]/80 truncate">guilhermetaveiradias@hotmail.com</p>
                 <p className="text-[9.5px] text-[#8A8A9E]/80 truncate">Primavera do Leste - MT • +55 65 3190-0629</p>
               </div>
 

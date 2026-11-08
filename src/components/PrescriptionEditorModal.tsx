@@ -95,7 +95,17 @@ interface PrescriptionEditorModalProps {
     items: PrescriptionItemData[];
     notes: string;
   }) => Promise<void>;
-  onSendPreviewToChat?: () => Promise<void>;
+  onSendPreviewToChat?: (currentData?: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => Promise<void>;
 }
 
 export function PrescriptionEditorModal({
@@ -128,7 +138,7 @@ export function PrescriptionEditorModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSendingToChat, setIsSendingToChat] = useState(false);
   const [isSendingPreview, setIsSendingPreview] = useState(false);
-  const [sendProductsToChat, setSendProductsToChat] = useState(false);
+  const [sendProductsToChat, setSendProductsToChat] = useState(true);
   const [isSavedFeedback, setIsSavedFeedback] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
@@ -1289,9 +1299,13 @@ export function PrescriptionEditorModal({
     if (!onSendPreviewToChat) return;
     registerCustomItemsInCatalog(items);
     syncToParent();
+    const currentData = buildCurrentData();
+    if (onSave) {
+      onSave(currentData);
+    }
     setIsSendingPreview(true);
     try {
-      await onSendPreviewToChat();
+      await onSendPreviewToChat(currentData);
     } finally {
       setIsSendingPreview(false);
     }
@@ -3334,7 +3348,7 @@ export function PrescriptionEditorModal({
                             <p className="text-xs text-slate-600 font-semibold mt-0.5">
                               {doctorCrm} • {doctorSpecialty.toLowerCase().includes('clínico geral') || doctorSpecialty.toLowerCase().includes('clinico geral') ? doctorSpecialty : `Clínico Geral • ${doctorSpecialty}`}
                             </p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Tel: +55 65 3190-0629 • E-mail: guilhermetaveiradias@hotmail.com</p>
                             <p className="text-[10px] text-slate-500">Primavera do Leste - MT • CEP 78850-000</p>
                           </div>
                         </div>
@@ -3455,7 +3469,7 @@ export function PrescriptionEditorModal({
                       <div className="pt-8 border-t border-slate-200 mt-auto flex justify-between items-end">
                         <div className="text-[10px] text-slate-500 space-y-0.5">
                           <p>Data de Emissão: <strong>{emissionDate}</strong> • Local: <strong>Primavera do Leste - MT (CEP 78850-000)</strong></p>
-                          <p className="text-slate-600 font-medium">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                          <p className="text-slate-600 font-medium">Tel: +55 65 3190-0629 • E-mail: guilhermetaveiradias@hotmail.com</p>
                           <p className="text-[9px] text-slate-400">Conforme RDC Anvisa nº 327/2019 e RDC nº 660/2022</p>
                         </div>
 
@@ -3463,7 +3477,7 @@ export function PrescriptionEditorModal({
                           <div className="border-b border-slate-400 mb-2" />
                           <p className="text-xs font-bold text-slate-900">{doctorName}</p>
                           <p className="text-[10px] text-slate-600 font-semibold mt-0.5">{doctorCrm} • Clínico Geral</p>
-                          <p className="text-[9px] text-slate-500 mt-0.5">+55 65 3190-0629 • Wiselionseer@gmail.com</p>
+                          <p className="text-[9px] text-slate-500 mt-0.5">+55 65 3190-0629 • guilhermetaveiradias@hotmail.com</p>
                         </div>
                       </div>
                     </div>

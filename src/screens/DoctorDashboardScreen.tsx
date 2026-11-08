@@ -949,6 +949,11 @@ export function DoctorDashboardScreen() {
           lastPrescriptionUpdated: new Date().toISOString()
         }, { merge: true });
 
+        await setDoc(doc(db, 'users', targetPatientId), {
+          prescriptionData: savedData,
+          lastPrescriptionUpdated: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+
         // Update any existing receita_previa message in Firestore active_consultations
         const currentMsgs = useStore.getState().messages;
         const previaMsgs = currentMsgs.filter(m => m.type === 'receita_previa');
@@ -2466,7 +2471,7 @@ export function DoctorDashboardScreen() {
   const handleSendAttachment = async (customAttachment = pendingAttachment) => {
     if (!customAttachment || isSendingAttachment) return;
 
-    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Por favor, selecione um paciente na fila antes de enviar o documento.");
       return;
@@ -2499,7 +2504,16 @@ export function DoctorDashboardScreen() {
         }
       }
 
-      const docType = finalAttachment.docType || 'receita';
+      const lowerFileName = (finalAttachment.name || '').toLowerCase();
+      let docType = finalAttachment.docType || 'receita';
+      if (!finalAttachment.docType) {
+        if (lowerFileName.includes('agronom')) docType = 'laudo_agronomico';
+        else if (lowerFileName.includes('aptid') || lowerFileName.includes('psicomotor')) docType = 'laudo_psicomotor';
+        else if (lowerFileName.includes('evolutivo')) docType = 'laudo_evolutivo';
+        else if (lowerFileName.includes('laudo')) docType = 'laudo_inicial';
+        else docType = 'receita';
+      }
+
       let messageType: 'prescription' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'document' = 'document';
       let defaultTitle = 'Documento';
 
@@ -2520,11 +2534,44 @@ export function DoctorDashboardScreen() {
         defaultTitle = 'Parecer Técnico Agronômico';
       }
 
+      // If sending a prescription PDF (e.g. signed via ITI Gov.br), include the patient's prescribed medications so PharmacyScreen and ProtocolScreen display them!
+      let attachedReceitaData: any = undefined;
+      if (docType === 'receita') {
+        const qEntry = queue.find(p => p.id === targetPatientId) || currentPatient;
+        const pName = prescPatientName || qEntry?.patientName || (qEntry as any)?.name || 'Paciente';
+        const prescKey = getPatientReportKey(targetPatientId, pName);
+        const savedPresc = loadSavedPrescription(prescKey, pName, targetPatientId);
+        const resolvedItems: PrescriptionItemData[] =
+          (prescItemsRef.current && prescItemsRef.current.length > 0)
+            ? prescItemsRef.current
+            : (prescItems && prescItems.length > 0)
+            ? prescItems
+            : (savedPresc?.items && Array.isArray(savedPresc.items) && savedPresc.items.length > 0)
+            ? savedPresc.items
+            : ((qEntry as any)?.prescriptionData?.items && Array.isArray((qEntry as any).prescriptionData.items))
+            ? (qEntry as any).prescriptionData.items
+            : [];
+
+        if (resolvedItems.length > 0) {
+          attachedReceitaData = {
+            patientName: savedPresc?.patientName || pName,
+            emissionDate: savedPresc?.emissionDate || prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+            doctorName: savedPresc?.doctorName || prescDoctorName || 'Dr. Guilherme Taveira Dias',
+            doctorCrm: savedPresc?.doctorCrm || prescDoctorCrm || 'CRM/MT 17259',
+            doctorSpecialty: savedPresc?.doctorSpecialty || prescDoctorSpecialty || 'Clínico Geral • Medicina Canabinoide',
+            items: resolvedItems,
+            notes: savedPresc?.notes || prescNotes || '',
+            status: 'confirmed'
+          };
+        }
+      }
+
       await addMessage({
         sender: 'doctor',
         type: messageType,
         docType: docType,
-        text: inputText.trim() || undefined,
+        text: inputText.trim() || (docType === 'receita' ? `📋 **Receita Médica Digital Assinada**\n\nPrescrição médica oficial assinada digitalmente disponibilizada para download.` : undefined),
+        receitaPreviaData: attachedReceitaData,
         attachment: {
           ...finalAttachment,
           docType: docType,
@@ -2533,8 +2580,10 @@ export function DoctorDashboardScreen() {
       }, targetPatientId);
 
       try {
+        const existingQueueEntry = queue.find(p => p.id === targetPatientId);
+        const nextStatus = existingQueueEntry?.status === 'finished' ? 'finished' : 'in-consultation';
         await updateDoc(doc(db, 'queue', targetPatientId), {
-          status: 'in-consultation',
+          status: nextStatus,
           lastMessageAt: new Date().toISOString(),
           lastMessageText: defaultTitle,
           hasUnread: true
@@ -3131,23 +3180,35 @@ export function DoctorDashboardScreen() {
     setShowPrescriptionEditorModal(true);
   };
 
-  const handleSendReceitaPrevia = async () => {
-    const targetPatientId = currentPatient?.id || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+  const handleSendReceitaPrevia = async (overrideData?: {
+    patientName: string;
+    birthDate: string;
+    cpf: string;
+    emissionDate: string;
+    doctorName: string;
+    doctorCrm: string;
+    doctorSpecialty: string;
+    items: PrescriptionItemData[];
+    notes: string;
+  }) => {
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Nenhum paciente selecionado para envio da receita prévia.");
       return;
     }
 
-    const itemsToSend = prescItems.length > 0 ? prescItems : [];
+    const itemsToSend = overrideData?.items && overrideData.items.length > 0
+      ? overrideData.items
+      : (prescItemsRef.current.length > 0 ? prescItemsRef.current : prescItems);
     if (itemsToSend.length === 0) {
       showActionToast("Adicione pelo menos um medicamento à receita antes de enviar.");
       return;
     }
 
-    const patientAnswers = currentPatient?.answers || answers;
-    const pName = prescPatientName || currentPatient?.patientName || userName || 'Paciente';
+    const pName = overrideData?.patientName || prescPatientName || currentPatient?.patientName || userName || 'Paciente';
     const defaultNotesToAdd = '- Administrar com alimentos gordurosos (preferência, não obrigatório) - podendo aumentar em até 5x a absorção.\n- Se observado sonolência durante o dia após a administração do medicamento, reduzir em 1/3 a dose da manhã e à noite permanecer normal conforme a prescrição.\n- Preferencialmente tomar canabidiol 2 horas antes ou depois do uso de medicamentos contínuos.';
-    const finalNotes = prescNotes.trim() || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
+    const rawNotes = overrideData?.notes !== undefined ? overrideData.notes : prescNotes;
+    const finalNotes = rawNotes.trim() || ('Manter o frasco ao abrigo de luz e calor excessivo. Uso contínuo sob titulação gradual.\n' + defaultNotesToAdd);
 
     try {
       await addMessage({
@@ -3155,11 +3216,11 @@ export function DoctorDashboardScreen() {
         type: 'receita_previa',
         text: `Olá ${pName}! Preparei a sua receita médica prévia com o protocolo de tratamento individualizado. Por favor, confira os medicamentos, a composição e as posologias abaixo e clique em "Confirmar e Aceitar Receita" para validarmos seu tratamento.`,
         receitaPreviaData: {
-          doctorName: prescDoctorName || 'Dr. Guilherme Taveira Dias',
-          doctorCrm: prescDoctorCrm || 'CRM/MT 17259',
-          doctorSpecialty: prescDoctorSpecialty || 'Especialista em Medicina Canabinoide',
+          doctorName: (overrideData?.doctorName || prescDoctorName) || 'Dr. Guilherme Taveira Dias',
+          doctorCrm: (overrideData?.doctorCrm || prescDoctorCrm) || 'CRM/MT 17259',
+          doctorSpecialty: (overrideData?.doctorSpecialty || prescDoctorSpecialty) || 'Especialista em Medicina Canabinoide',
           patientName: pName,
-          emissionDate: prescEmissionDate || format(new Date(), 'dd/MM/yyyy'),
+          emissionDate: (overrideData?.emissionDate || prescEmissionDate) || format(new Date(), 'dd/MM/yyyy'),
           items: itemsToSend.map(item => {
             const enriched = enrichMedicationDetails(item.name, item.brand, item.origin, item.type);
             return {
@@ -3187,9 +3248,11 @@ export function DoctorDashboardScreen() {
       } as any, targetPatientId);
 
       if (targetPatientId) {
+        const existingQueueEntry = queue.find(p => p.id === targetPatientId);
+        const nextStatus = existingQueueEntry?.status === 'finished' ? 'finished' : 'in-consultation';
         try {
           await updateDoc(doc(db, 'queue', targetPatientId), {
-            status: 'in-consultation',
+            status: nextStatus,
             lastMessageAt: new Date().toISOString(),
             lastMessageText: 'Receita Prévia Enviada',
             hasUnread: true
@@ -3198,7 +3261,7 @@ export function DoctorDashboardScreen() {
           console.warn("Could not update queue status for receita previa:", err);
         }
         useStore.setState((state) => ({
-          queue: state.queue.map(p => p.id === targetPatientId ? { ...p, status: 'in-consultation', hasUnread: true } : p)
+          queue: state.queue.map(p => p.id === targetPatientId ? { ...p, status: nextStatus, hasUnread: true } : p)
         }));
       }
 
@@ -3265,9 +3328,9 @@ export function DoctorDashboardScreen() {
     items: PrescriptionItemData[];
     notes: string;
   }) => {
-    const targetPatientId = currentPatient?.id || standaloneTargetPatientId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
-      alert("Nenhum paciente selecionado para envio da receita.");
+      showActionToast("Nenhum paciente selecionado para envio da receita.");
       return;
     }
 
@@ -3427,10 +3490,12 @@ export function DoctorDashboardScreen() {
         }
       }, targetPatientId);
 
-      // 4. Atualizar fila do paciente
+      // 4. Atualizar fila do paciente (preservando status finished caso já finalizado)
       try {
+        const existingQueueEntry = queue.find(p => p.id === targetPatientId);
+        const nextStatus = existingQueueEntry?.status === 'finished' ? 'finished' : 'in-consultation';
         await updateDoc(doc(db, 'queue', targetPatientId), {
-          status: 'in-consultation',
+          status: nextStatus,
           lastMessageAt: new Date().toISOString(),
           lastMessageText: 'Receita Médica Digital Emitida',
           hasUnread: true
@@ -3877,7 +3942,7 @@ export function DoctorDashboardScreen() {
   };
 
   const handleSendPsychomotorReportToChat = async () => {
-    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Nenhum paciente selecionado para envio do laudo psicomotor.");
       return;
@@ -3945,8 +4010,10 @@ export function DoctorDashboardScreen() {
       }, targetPatientId);
 
       try {
+        const existingQueueEntry = queue.find(p => p.id === targetPatientId);
+        const nextStatus = existingQueueEntry?.status === 'finished' ? 'finished' : 'in-consultation';
         await updateDoc(doc(db, 'queue', targetPatientId), {
-          status: 'in-consultation',
+          status: nextStatus,
           lastMessageAt: new Date().toISOString(),
           lastMessageText: 'Laudo Psicomotor Emitido',
           hasUnread: true
@@ -4207,7 +4274,7 @@ export function DoctorDashboardScreen() {
     targetPlants: number;
     agronomicText: string;
   }) => {
-    const targetPatientId = currentPatient?.id || standaloneTargetPatientId || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Nenhum paciente selecionado para envio do parecer agronômico.");
       return;
@@ -4297,8 +4364,10 @@ export function DoctorDashboardScreen() {
       }, targetPatientId);
 
       try {
+        const existingQueueEntry = queue.find(p => p.id === targetPatientId);
+        const nextStatus = existingQueueEntry?.status === 'finished' ? 'finished' : 'in-consultation';
         await updateDoc(doc(db, 'queue', targetPatientId), {
-          status: 'in-consultation',
+          status: nextStatus,
           lastMessageAt: new Date().toISOString(),
           lastMessageText: 'Parecer Agronômico Emitido',
           hasUnread: true
@@ -4392,7 +4461,7 @@ export function DoctorDashboardScreen() {
     doctorCrm: string;
     doctorSpecialty: string;
   }) => {
-    const targetPatientId = currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
       showActionToast("Nenhum paciente selecionado para envio do laudo médico.");
       return;
@@ -4491,8 +4560,10 @@ export function DoctorDashboardScreen() {
       }, targetPatientId);
 
       try {
+        const existingQueueEntry = queue.find(p => p.id === targetPatientId);
+        const nextStatus = existingQueueEntry?.status === 'finished' ? 'finished' : 'in-consultation';
         await updateDoc(doc(db, 'queue', targetPatientId), {
-          status: 'in-consultation',
+          status: nextStatus,
           lastMessageAt: new Date().toISOString(),
           lastMessageText: isEvolutivo ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial',
           hasUnread: true

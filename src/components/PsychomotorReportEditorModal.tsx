@@ -362,7 +362,7 @@ export function PsychomotorReportEditorModal({
                       <p className="text-xs text-[#475569] font-semibold m-0">
                         {doctorCrm} • {doctorSpecialty.toLowerCase().includes('clínico geral') || doctorSpecialty.toLowerCase().includes('clinico geral') ? doctorSpecialty : `Clínico Geral • ${doctorSpecialty}`}
                       </p>
-                      <p className="text-[10px] text-[#64748B] m-0">Tel: +55 65 3190-0629 • E-mail: Wiselionseer@gmail.com</p>
+                      <p className="text-[10px] text-[#64748B] m-0">Tel: +55 65 3190-0629 • E-mail: guilhermetaveiradias@hotmail.com</p>
                       <p className="text-[10px] text-[#64748B] m-0">Primavera do Leste - MT • CEP 78850-000</p>
                     </div>
                   </div>
@@ -401,7 +401,7 @@ export function PsychomotorReportEditorModal({
                       <div className="w-52 h-0 border-b border-[#CBD5E1] mb-2"></div>
                       <p className="text-sm font-bold text-[#1E1B4B]">{doctorName}</p>
                       <p className="text-xs text-[#475569] font-semibold">{doctorCrm} • Clínico Geral</p>
-                      <p className="text-[11px] text-[#64748B] mb-4">+55 65 3190-0629 • Wiselionseer@gmail.com • Primavera do Leste - MT (78850-000)</p>
+                      <p className="text-[11px] text-[#64748B] mb-4">+55 65 3190-0629 • guilhermetaveiradias@hotmail.com • Primavera do Leste - MT (78850-000)</p>
                       <div className="flex justify-between w-full text-[10px] text-[#94A3B8] font-semibold">
                         <span>{emissionDate}</span>
                         <span>Válido em todo o território nacional</span>

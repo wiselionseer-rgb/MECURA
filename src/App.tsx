@@ -37,9 +37,75 @@ import { auth, db } from './firebase';
 import { subscribeToBackgroundNotifications } from './utils/notifications';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useAdminStore } from './store/useAdminStore';
 
 export default function App() {
-  const { subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates, subscribeToQueue } = useStore();
+  const { subscribeToExchangeRate, subscribeToAppointments, subscribeToBlockedDates, subscribeToQueue, setSelectedOffer } = useStore();
+  const coupons = useAdminStore((s) => s.coupons);
+
+  // Helper to extract coupon and plan from clean paths (/c/BK, /convite/BK, /cupom/BK) or query params
+  const extractReferralFromLocation = () => {
+    if (typeof window === 'undefined') return { code: null as string | null, plan: null as string | null };
+    const params = new URLSearchParams(window.location.search);
+    let rawCoupon = params.get('cupom') || params.get('coupon') || params.get('ref') || params.get('afiliado');
+    let rawPlan = params.get('plano') || params.get('plan');
+
+    const path = window.location.pathname || '';
+    const cleanMatch = path.match(/^\/(?:c|convite|cupom|desconto|parceiro)\/([^/?#]+)(?:\/([^/?#]+))?/i);
+    if (cleanMatch && cleanMatch[1]) {
+      rawCoupon = decodeURIComponent(cleanMatch[1]);
+      if (cleanMatch[2]) {
+        const slug = decodeURIComponent(cleanMatch[2]).toLowerCase();
+        if (slug === 'essencial' || slug === 'basic') rawPlan = 'basic';
+        else if (slug === 'vip' || slug === 'premium') rawPlan = 'premium';
+        else if (slug === 'completo' || slug === 'complete' || slug === '360') rawPlan = 'complete';
+        else if (slug === 'psicologo' || slug === 'psychologist') rawPlan = 'psychologist';
+      }
+    }
+    return { code: rawCoupon, plan: rawPlan };
+  };
+
+  // Capture shareable coupon/affiliate link parameters (/c/CODIGO, /convite/CODIGO or ?cupom=CODIGO)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const { code: rawCoupon, plan: rawPlan } = extractReferralFromLocation();
+
+    if (rawPlan && ['basic', 'premium', 'complete', 'psychologist'].includes(rawPlan)) {
+      setSelectedOffer(rawPlan as 'basic' | 'premium' | 'complete' | 'psychologist');
+      localStorage.setItem('last_offer', rawPlan);
+    }
+
+    if (rawCoupon && rawCoupon.trim()) {
+      const cleanCode = rawCoupon.trim().toUpperCase();
+      localStorage.setItem('mecura_referral_coupon_code', cleanCode);
+      localStorage.setItem('mecura_referral_via_link', 'true');
+      localStorage.setItem('mecura_referral_captured_at', new Date().toISOString());
+    }
+  }, [setSelectedOffer]);
+
+  // Increment linkClicks once per session when the coupon list is available
+  useEffect(() => {
+    if (typeof window === 'undefined' || !coupons || coupons.length === 0) return;
+    const { code: urlCoupon } = extractReferralFromLocation();
+    const trackedCode = (urlCoupon || localStorage.getItem('mecura_referral_coupon_code') || '').trim().toUpperCase();
+    const isViaLink = Boolean(urlCoupon) || localStorage.getItem('mecura_referral_via_link') === 'true';
+
+    if (!trackedCode || !isViaLink) return;
+
+    const matched = coupons.find(c => c.code.trim().toUpperCase() === trackedCode);
+    if (!matched) return;
+
+    // Also pre-populate mecura_applied_coupon if active so checkout has it ready immediately
+    if (matched.active) {
+      localStorage.setItem('mecura_applied_coupon', JSON.stringify(matched));
+    }
+
+    const sessionClickKey = `mecura_coupon_click_counted_${trackedCode}`;
+    if (!sessionStorage.getItem(sessionClickKey)) {
+      sessionStorage.setItem(sessionClickKey, 'true');
+      useAdminStore.getState().incrementCouponLinkClick(trackedCode);
+    }
+  }, [coupons]);
 
   useEffect(() => {
     let unsubscribeUserDoc: (() => void) | null = null;
@@ -351,6 +417,15 @@ export default function App() {
             <Route path="/privacy" element={<LegalScreen />} />
             <Route path="/privacidade" element={<LegalScreen />} />
             <Route path="/termos" element={<LegalScreen />} />
+            {/* Clean Shareable Coupon / Affiliate Routes */}
+            <Route path="/c/:couponCode" element={<WelcomeScreen />} />
+            <Route path="/c/:couponCode/:planSlug" element={<CheckoutScreen />} />
+            <Route path="/convite/:couponCode" element={<WelcomeScreen />} />
+            <Route path="/convite/:couponCode/:planSlug" element={<CheckoutScreen />} />
+            <Route path="/cupom/:couponCode" element={<WelcomeScreen />} />
+            <Route path="/cupom/:couponCode/:planSlug" element={<CheckoutScreen />} />
+            <Route path="/desconto/:couponCode" element={<WelcomeScreen />} />
+            <Route path="/desconto/:couponCode/:planSlug" element={<CheckoutScreen />} />
           </Route>
 
           {/* Full Screen Routes */}

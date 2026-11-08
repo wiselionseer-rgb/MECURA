@@ -28,7 +28,7 @@ import {
   Paperclip,
   Bot,
   User,
-  X, Key, AlertTriangle, Search
+  X, Key, AlertTriangle, Search, Link2, Copy, Share2, DollarSign
 , Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
@@ -240,6 +240,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     addCoupon,
     updateCoupon,
     deleteCoupon,
+    toggleCouponCommissionPaid,
     notifications,
     addNotification,
     deleteNotification,
@@ -314,6 +315,11 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           usageLogs: Array.isArray(d.usageLogs) ? d.usageLogs : [],
           lastUsedAt: d.lastUsedAt || undefined,
           ownerId: d.ownerId || undefined,
+          affiliateName: d.affiliateName || undefined,
+          affiliatePixOrPhone: d.affiliatePixOrPhone || undefined,
+          commissionPercentage: d.commissionPercentage !== undefined ? Number(d.commissionPercentage) : undefined,
+          linkClicks: d.linkClicks !== undefined ? Number(d.linkClicks) : 0,
+          targetPlan: d.targetPlan || 'all',
         });
       });
       useAdminStore.setState({ coupons: list });
@@ -327,6 +333,109 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   };
 
   const [expandedCoupons, setExpandedCoupons] = useState<Record<string, boolean>>({});
+  const [copiedCouponKey, setCopiedCouponKey] = useState<string | null>(null);
+  const [couponLinkDestMap, setCouponLinkDestMap] = useState<Record<string, string>>({});
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
+  const [confirmDeleteCouponId, setConfirmDeleteCouponId] = useState<string | null>(null);
+
+  const [shareDomain, setShareDomain] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mecura_official_share_domain');
+      if (saved && saved.trim()) return saved.trim().replace(/\/+$/, '');
+      const currentOrigin = window.location.origin;
+      // Se estiver no link temporário de preview (ais-dev / ais-pre / localhost), usa o domínio oficial por padrão
+      if (
+        currentOrigin.includes('ais-dev-') ||
+        currentOrigin.includes('ais-pre-') ||
+        currentOrigin.includes('localhost') ||
+        currentOrigin.includes('.run.app')
+      ) {
+        return INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com';
+      }
+      return currentOrigin;
+    }
+    return INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com';
+  });
+
+  const [sharePathPrefix, setSharePathPrefix] = useState<'convite' | 'c' | 'cupom'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mecura_share_path_prefix');
+      if (saved === 'convite' || saved === 'c' || saved === 'cupom') return saved;
+    }
+    return 'convite';
+  });
+
+  useEffect(() => {
+    try {
+      const unsub = onSnapshot(doc(db, 'settings', 'adminSettings'), (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.officialShareDomain && typeof d.officialShareDomain === 'string') {
+            const clean = d.officialShareDomain.trim().replace(/\/+$/, '');
+            setShareDomain(clean);
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_official_share_domain', clean);
+          }
+          if (d.sharePathPrefix && (d.sharePathPrefix === 'convite' || d.sharePathPrefix === 'c' || d.sharePathPrefix === 'cupom')) {
+            setSharePathPrefix(d.sharePathPrefix);
+            if (typeof window !== 'undefined') localStorage.setItem('mecura_share_path_prefix', d.sharePathPrefix);
+          }
+        }
+      });
+      return () => unsub();
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleSaveShareDomain = async (newDomain: string, newPrefix: 'convite' | 'c' | 'cupom' = sharePathPrefix) => {
+    let clean = (newDomain || '').trim().replace(/\/+$/, '');
+    if (!clean) {
+      clean = INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com';
+    }
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = 'https://' + clean;
+    }
+    setShareDomain(clean);
+    setSharePathPrefix(newPrefix);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mecura_official_share_domain', clean);
+      localStorage.setItem('mecura_share_path_prefix', newPrefix);
+    }
+    try {
+      await setDoc(doc(db, 'settings', 'adminSettings'), {
+        officialShareDomain: clean,
+        sharePathPrefix: newPrefix,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      showToast('Domínio oficial e formato dos links atualizados!');
+    } catch {
+      showToast('Domínio salvo localmente!');
+    }
+  };
+
+  const buildShareableCouponUrl = useCallback((coupon: any, destOverride?: string) => {
+    const base = (shareDomain || INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com').replace(/\/+$/, '');
+    const code = encodeURIComponent((coupon.code || '').trim().toUpperCase());
+    const dest = destOverride || couponLinkDestMap[coupon.id] || coupon.targetPlan || 'all';
+    const prefix = sharePathPrefix || 'convite';
+
+    if (dest === 'checkout') {
+      return `${base}/${prefix}/${code}/planos`;
+    }
+    if (dest === 'basic') {
+      return `${base}/${prefix}/${code}/essencial`;
+    }
+    if (dest === 'premium') {
+      return `${base}/${prefix}/${code}/vip`;
+    }
+    if (dest === 'complete') {
+      return `${base}/${prefix}/${code}/completo`;
+    }
+    if (dest === 'psychologist') {
+      return `${base}/${prefix}/${code}/psicologo`;
+    }
+    return `${base}/${prefix}/${code}`;
+  }, [couponLinkDestMap, shareDomain, sharePathPrefix]);
 
   const resolveCouponUsers = useCallback((coupon: any) => {
     const map = new Map<string, {
@@ -337,11 +446,19 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       planName: string;
       price: number;
       usedAt: string;
+      viaLink: boolean;
+      commissionPercentage: number;
+      commissionValue: number;
+      commissionPaid: boolean;
+      logIndex?: number;
     }>();
+
+    const defaultCommPct = Number(coupon.commissionPercentage || 0);
+    const couponCodeUpper = (coupon.code || '').trim().toUpperCase();
 
     // 1. Process usageLogs if available
     if (Array.isArray(coupon.usageLogs) && coupon.usageLogs.length > 0) {
-      coupon.usageLogs.forEach((log: any) => {
+      coupon.usageLogs.forEach((log: any, idx: number) => {
         if (!log) return;
         const cleanEmail = (log.userEmail || '').trim().toLowerCase();
 
@@ -351,12 +468,15 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
         );
 
         const matchedPayment = payments.find(pay =>
+          (log.paymentId && String(pay.mpId || pay.id) === String(log.paymentId)) ||
           (log.userId && pay.patientId === log.userId) ||
           (cleanEmail && pay.payerEmail && pay.payerEmail.trim().toLowerCase() === cleanEmail)
         );
 
         const isPrem = !!(
           log.planName?.toLowerCase().includes('premium') ||
+          log.planName?.toLowerCase().includes('vip') ||
+          log.planName?.toLowerCase().includes('completo') ||
           (log.price && log.price >= 150) ||
           matchedPatient?.isPremium ||
           matchedPatient?.tier === 'Premium' ||
@@ -366,14 +486,20 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           (matchedPayment?.value && Number(matchedPayment.value) >= 150)
         );
 
-        const pName = matchedPatient?.name || matchedPayment?.payerName || log.userName || 'Paciente';
-        const pEmail = matchedPatient?.email || matchedPayment?.payerEmail || log.userEmail || 'N/A';
-        const pPhone = matchedPatient?.phone || 'N/A';
-        const price = log.price || (isPrem ? 249.90 : 49.90);
-        const planName = isPrem ? 'Premium (VIP)' : 'Essencial';
+        const pName = log.userName || matchedPatient?.name || matchedPayment?.patientName || matchedPayment?.payerName || 'Paciente';
+        const pEmail = log.userEmail || matchedPatient?.email || matchedPayment?.patientEmail || matchedPayment?.payerEmail || 'Sem e-mail';
+        const pPhone = log.userPhone || matchedPatient?.phone || matchedPayment?.patientPhone || 'N/A';
+        const price = log.price !== undefined ? Number(log.price) : (matchedPayment?.value ? Number(matchedPayment.value) : (isPrem ? 249.90 : 49.90));
+        const planName = log.planName || (isPrem ? 'Premium (VIP)' : 'Essencial');
         const usedAt = log.usedAt || matchedPayment?.date || matchedPatient?.createdAt || coupon.lastUsedAt || '';
+        const viaLink = Boolean(log.viaLink ?? matchedPayment?.viaReferralLink ?? matchedPatient?.viaReferralLink);
+        const commPct = Number(log.commissionPercentage ?? defaultCommPct);
+        const commVal = log.commissionValue !== undefined && Number(log.commissionValue) > 0 && commPct === Number(log.commissionPercentage)
+          ? Number(log.commissionValue)
+          : Number(((price * defaultCommPct) / 100).toFixed(2));
+        const commissionPaid = Boolean(log.commissionPaid);
 
-        const key = matchedPatient?.id || (pEmail !== 'N/A' ? pEmail : (log.userId || `log_${Math.random()}`));
+        const key = (log.paymentId ? `pay_${log.paymentId}` : null) || matchedPatient?.id || (pEmail !== 'Sem e-mail' ? pEmail : (log.userId || `log_${idx}`));
         map.set(key, {
           patientId: key,
           name: pName,
@@ -381,7 +507,12 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
           phone: pPhone,
           planName,
           price,
-          usedAt
+          usedAt,
+          viaLink,
+          commissionPercentage: defaultCommPct || commPct,
+          commissionValue: commVal,
+          commissionPaid,
+          logIndex: idx
         });
       });
     }
@@ -399,12 +530,16 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
 
         const matchedPayment = payments.find(pay => 
           (pay.patientId && pay.patientId === ident) ||
-          (cleanIdent && pay.payerEmail && pay.payerEmail.trim().toLowerCase() === cleanIdent)
+          (cleanIdent && (pay.payerEmail || pay.patientEmail) && (pay.payerEmail || pay.patientEmail).trim().toLowerCase() === cleanIdent)
         );
 
-        const key = matchedPatient ? matchedPatient.id : (cleanIdent.includes('@') ? cleanIdent : ident);
+        const alreadyInMap = Array.from(map.values()).some(existing =>
+          (matchedPatient && existing.patientId === matchedPatient.id) ||
+          (cleanIdent.includes('@') && existing.email.toLowerCase() === cleanIdent) ||
+          existing.patientId === ident
+        );
 
-        if (!map.has(key)) {
+        if (!alreadyInMap) {
           const isPrem = !!(
             matchedPatient?.isPremium || 
             matchedPatient?.tier === 'Premium' || 
@@ -415,13 +550,16 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
             (matchedPayment?.value && Number(matchedPayment.value) >= 150)
           );
 
-          const pName = matchedPatient?.name || matchedPayment?.payerName || (cleanIdent.includes('@') ? cleanIdent.split('@')[0] : 'Paciente');
-          const pEmail = matchedPatient?.email || matchedPayment?.payerEmail || (cleanIdent.includes('@') ? ident : 'Sem e-mail');
-          const pPhone = matchedPatient?.phone || 'N/A';
-          const price = matchedPayment?.value ? Number(matchedPayment.value) : (isPrem ? 249.90 : 49.90);
+          const pName = matchedPatient?.name || matchedPayment?.patientName || matchedPayment?.payerName || (cleanIdent.includes('@') ? cleanIdent.split('@')[0] : 'Paciente');
+          const pEmail = matchedPatient?.email || matchedPayment?.patientEmail || matchedPayment?.payerEmail || (cleanIdent.includes('@') ? ident : 'Sem e-mail');
+          const pPhone = matchedPatient?.phone || matchedPayment?.patientPhone || 'N/A';
+          const price = matchedPayment?.value !== undefined ? Number(matchedPayment.value) : (isPrem ? 249.90 : 49.90);
           const planName = isPrem ? 'Premium (VIP)' : 'Essencial';
           const usedAt = matchedPayment?.date || matchedPatient?.createdAt || coupon.lastUsedAt || '';
+          const viaLink = Boolean(matchedPayment?.viaReferralLink ?? matchedPatient?.viaReferralLink);
+          const commVal = Number(((price * defaultCommPct) / 100).toFixed(2));
 
+          const key = matchedPatient ? matchedPatient.id : (cleanIdent.includes('@') ? cleanIdent : ident);
           map.set(key, {
             patientId: key,
             name: pName,
@@ -429,7 +567,41 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
             phone: pPhone,
             planName,
             price,
-            usedAt
+            usedAt,
+            viaLink,
+            commissionPercentage: defaultCommPct,
+            commissionValue: commVal,
+            commissionPaid: false
+          });
+        }
+      });
+    }
+
+    // 3. Also check payments collection for any payment explicitly tagged with this couponCode
+    if (couponCodeUpper) {
+      payments.forEach((pay) => {
+        if (!pay.couponCode || String(pay.couponCode).trim().toUpperCase() !== couponCodeUpper) return;
+        const payKey = `pay_${pay.mpId || pay.id}`;
+        const payEmail = (pay.patientEmail || pay.payerEmail || '').trim().toLowerCase();
+        const alreadyExists = map.has(payKey) || Array.from(map.values()).some(u =>
+          (payEmail && u.email.toLowerCase() === payEmail) ||
+          (pay.patientId && u.patientId === pay.patientId)
+        );
+        if (!alreadyExists) {
+          const price = Number(pay.value || 49.90);
+          const commVal = Number(((price * defaultCommPct) / 100).toFixed(2));
+          map.set(payKey, {
+            patientId: pay.patientId || payKey,
+            name: pay.patientName || pay.payerName || 'Paciente',
+            email: pay.patientEmail || pay.payerEmail || 'Sem e-mail',
+            phone: pay.patientPhone || 'N/A',
+            planName: pay.type || (pay.isPremium ? 'Premium (VIP)' : 'Essencial'),
+            price,
+            usedAt: pay.date || '',
+            viaLink: Boolean(pay.viaReferralLink),
+            commissionPercentage: defaultCommPct,
+            commissionValue: commVal,
+            commissionPaid: false
           });
         }
       });
@@ -510,7 +682,15 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [newPassword, setNewPassword] = useState('');
   const [showAgenda, setShowAgenda] = useState<string | null>(null);
   const [showAddCoupon, setShowAddCoupon] = useState(false);
-  const [couponForm, setCouponForm] = useState({ code: '', discount: 10, quantity: 0 });
+  const [couponForm, setCouponForm] = useState({
+    code: '',
+    discount: 10,
+    quantity: 0,
+    affiliateName: '',
+    affiliatePixOrPhone: '',
+    commissionPercentage: 10,
+    targetPlan: 'all' as 'all' | 'basic' | 'premium' | 'complete' | 'psychologist'
+  });
   const [showSendNotification, setShowSendNotification] = useState(false);
   const [notificationForm, setNotificationForm] = useState({ title: '', message: '' });
 
@@ -817,29 +997,85 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     }
   };
 
+  const handleOpenCreateCoupon = () => {
+    setEditingCouponId(null);
+    setCouponForm({
+      code: '',
+      discount: 10,
+      quantity: 0,
+      affiliateName: '',
+      affiliatePixOrPhone: '',
+      commissionPercentage: 10,
+      targetPlan: 'all'
+    });
+    setShowAddCoupon(true);
+  };
+
+  const handleOpenEditCoupon = (coupon: any) => {
+    setEditingCouponId(coupon.id);
+    setCouponForm({
+      code: coupon.code || '',
+      discount: Number(coupon.discount) || 10,
+      quantity: Number(coupon.quantity) || 0,
+      affiliateName: coupon.affiliateName || '',
+      affiliatePixOrPhone: coupon.affiliatePixOrPhone || '',
+      commissionPercentage: coupon.commissionPercentage !== undefined ? Number(coupon.commissionPercentage) : 10,
+      targetPlan: coupon.targetPlan || 'all'
+    });
+    setShowAddCoupon(true);
+  };
+
   const handleAddCoupon = async () => {
     if (!couponForm.code.trim()) {
-      alert("Por favor, digite o código do cupom!");
+      showToast("Por favor, digite o código do cupom!");
       return;
     }
-    const cleanCode = couponForm.code.trim().toUpperCase();
+    const cleanCode = couponForm.code.trim().toUpperCase().replace(/\s+/g, '');
     try {
-      await addCoupon({ 
-        id: 'coupon_' + Date.now(), 
-        code: cleanCode,
-        active: true, 
-        usedCount: 0, 
-        usedBy: [], 
-        discount: Math.min(100, Math.max(1, Number(couponForm.discount) || 10)),
-        discountType: 'percentage',
-        quantity: Number(couponForm.quantity) || 0
-      });
+      if (editingCouponId) {
+        await updateCoupon(editingCouponId, {
+          code: cleanCode,
+          discount: Math.min(100, Math.max(1, Number(couponForm.discount) || 10)),
+          quantity: Number(couponForm.quantity) || 0,
+          affiliateName: couponForm.affiliateName.trim(),
+          affiliatePixOrPhone: couponForm.affiliatePixOrPhone.trim(),
+          commissionPercentage: Math.min(100, Math.max(0, Number(couponForm.commissionPercentage) || 0)),
+          targetPlan: couponForm.targetPlan || 'all'
+        });
+        showToast(`Cupom ${cleanCode} e dados de comissão/link atualizados com sucesso!`);
+      } else {
+        await addCoupon({ 
+          id: 'coupon_' + Date.now(), 
+          code: cleanCode,
+          active: true, 
+          usedCount: 0, 
+          usedBy: [], 
+          usageLogs: [],
+          linkClicks: 0,
+          discount: Math.min(100, Math.max(1, Number(couponForm.discount) || 10)),
+          discountType: 'percentage',
+          quantity: Number(couponForm.quantity) || 0,
+          affiliateName: couponForm.affiliateName.trim(),
+          affiliatePixOrPhone: couponForm.affiliatePixOrPhone.trim(),
+          commissionPercentage: Math.min(100, Math.max(0, Number(couponForm.commissionPercentage) || 0)),
+          targetPlan: couponForm.targetPlan || 'all'
+        });
+        showToast(`Cupom ${cleanCode} e link rastreável criados com sucesso!`);
+      }
       setShowAddCoupon(false);
-      setCouponForm({ code: '', discount: 10, quantity: 0 });
-      showToast(`Cupom ${cleanCode} criado e salvo com sucesso no banco de dados!`);
+      setEditingCouponId(null);
+      setCouponForm({
+        code: '',
+        discount: 10,
+        quantity: 0,
+        affiliateName: '',
+        affiliatePixOrPhone: '',
+        commissionPercentage: 10,
+        targetPlan: 'all'
+      });
     } catch (e: any) {
-      console.error("Erro ao adicionar cupom:", e);
-      alert("Erro ao salvar cupom: " + (e?.message || 'Tente novamente'));
+      console.error("Erro ao salvar cupom:", e);
+      showToast("Erro ao salvar cupom: " + (e?.message || 'Tente novamente'));
     }
   };
 
@@ -1941,10 +2177,10 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <Ticket className="w-6 h-6 text-mecura-neon" /> Cupons de Desconto
+                  <Ticket className="w-6 h-6 text-mecura-neon" /> Cupons de Desconto & Links Rastreáveis
                 </h2>
                 <p className="text-xs text-[#8A8A9E] mt-0.5">
-                  Gerencie e acompanhe o uso dos cupons com detalhamento dos clientes e planos contratados (Essencial R$ 49,90 vs Premium R$ 249,90).
+                  Links limpos e amigáveis com o seu domínio oficial (ex: <code className="text-mecura-neon">{shareDomain}/{sharePathPrefix}/BK</code>) para máxima confiança na divulgação.
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -1957,18 +2193,117 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isRefreshingCoupons ? 'animate-spin text-mecura-neon' : ''}`} />
                   {isRefreshingCoupons ? 'Atualizando...' : 'Atualizar Lista'}
                 </Button>
-                <Button onClick={() => setShowAddCoupon(true)} className="bg-mecura-neon text-black font-bold hover:bg-mecura-neon/90">
-                  <Plus className="w-4 h-4 mr-2" /> Novo Cupom
+                <Button onClick={handleOpenCreateCoupon} className="bg-mecura-neon text-black font-bold hover:bg-mecura-neon/90">
+                  <Plus className="w-4 h-4 mr-2" /> Novo Cupom + Link
                 </Button>
               </div>
             </div>
+
+            {/* Configuração do Domínio Oficial para Links Amigáveis */}
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon shrink-0">
+                  <Link2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-white block">
+                    Domínio Oficial & Formato Amigável dos Links de Divulgação
+                  </span>
+                  <span className="text-[11px] text-[#8A8A9E]">
+                    Personalize o endereço do seu site para que o link fique limpo e profissional (sem códigos estranhos ou parâmetros <code className="text-white/70">?cupom=</code>).
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input
+                  type="text"
+                  value={shareDomain}
+                  onChange={(e) => setShareDomain(e.target.value)}
+                  placeholder="https://instmecura.sementesagrada.com"
+                  className="bg-[#0A0A0F] border border-[#2B2B3D] rounded-xl px-3 py-2 text-xs text-white font-mono min-w-[240px] focus:outline-none focus:border-mecura-neon"
+                />
+                <select
+                  value={sharePathPrefix}
+                  onChange={(e) => {
+                    const nextPrefix = e.target.value as 'convite' | 'c' | 'cupom';
+                    handleSaveShareDomain(shareDomain, nextPrefix);
+                  }}
+                  className="bg-[#0A0A0F] border border-[#2B2B3D] rounded-xl px-3 py-2 text-xs text-mecura-neon font-bold focus:outline-none focus:border-mecura-neon"
+                >
+                  <option value="convite">/convite/CODIGO</option>
+                  <option value="cupom">/cupom/CODIGO</option>
+                  <option value="c">/c/CODIGO (Curto)</option>
+                </select>
+                <button
+                  onClick={() => handleSaveShareDomain(shareDomain, sharePathPrefix)}
+                  className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold border border-white/15 cursor-pointer shrink-0 transition-colors"
+                >
+                  Salvar Domínio
+                </button>
+              </div>
+            </div>
+
+            {/* Resumo Geral de Rastreabilidade & Comissões */}
+            {coupons.length > 0 && (() => {
+              let totalClicksAll = 0;
+              let totalConversionsAll = 0;
+              let totalRevenueAll = 0;
+              let totalCommissionAll = 0;
+              let pendingCommissionAll = 0;
+
+              coupons.forEach((c) => {
+                const usersList = resolveCouponUsers(c);
+                const cCount = usersList.length > 0 ? usersList.length : (c.usedCount || 0);
+                totalClicksAll += Number(c.linkClicks || 0);
+                totalConversionsAll += cCount;
+                usersList.forEach((u) => {
+                  totalRevenueAll += Number(u.price || 0);
+                  totalCommissionAll += Number(u.commissionValue || 0);
+                  if (!u.commissionPaid) {
+                    pendingCommissionAll += Number(u.commissionValue || 0);
+                  }
+                });
+              });
+
+              return (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-[#161622] border border-[#262636] rounded-2xl p-4">
+                    <span className="text-[11px] uppercase tracking-wider text-[#8A8A9E] font-semibold">Cliques nos Links</span>
+                    <p className="text-2xl font-black text-white mt-1">{totalClicksAll}</p>
+                    <span className="text-[11px] text-mecura-neon">Acessos rastreados via link</span>
+                  </div>
+                  <div className="bg-[#161622] border border-[#262636] rounded-2xl p-4">
+                    <span className="text-[11px] uppercase tracking-wider text-[#8A8A9E] font-semibold">Vendas com Cupom/Link</span>
+                    <p className="text-2xl font-black text-mecura-neon mt-1">{totalConversionsAll}</p>
+                    <span className="text-[11px] text-[#8A8A9E]">Pacientes convertidos</span>
+                  </div>
+                  <div className="bg-[#161622] border border-[#262636] rounded-2xl p-4">
+                    <span className="text-[11px] uppercase tracking-wider text-[#8A8A9E] font-semibold">Receita Rastreada</span>
+                    <p className="text-2xl font-black text-white mt-1">
+                      R$ {totalRevenueAll.toFixed(2).replace('.', ',')}
+                    </p>
+                    <span className="text-[11px] text-[#8A8A9E]">Soma dos planos pagos</span>
+                  </div>
+                  <div className="bg-[#161622] border border-mecura-neon/30 rounded-2xl p-4">
+                    <span className="text-[11px] uppercase tracking-wider text-mecura-neon font-bold">Comissões a Pagar</span>
+                    <p className="text-2xl font-black text-mecura-neon mt-1">
+                      R$ {pendingCommissionAll.toFixed(2).replace('.', ',')}
+                    </p>
+                    <span className="text-[11px] text-[#8A8A9E]">
+                      Total acumulado: R$ {totalCommissionAll.toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="grid gap-4">
               {coupons.length === 0 ? (
                 <div className="bg-[#161622] border border-[#262636] p-10 rounded-2xl text-center text-[#8A8A9E]">
                   <Ticket className="w-10 h-10 mx-auto mb-3 opacity-40 text-mecura-neon" />
                   <p className="text-base font-semibold text-white">Nenhum cupom cadastrado ainda</p>
-                  <p className="text-xs mt-1">Clique em "+ Novo Cupom" para criar o primeiro cupom da plataforma.</p>
+                  <p className="text-xs mt-1">Clique em "+ Novo Cupom + Link" para criar o primeiro cupom e gerar o link rastreável.</p>
                 </div>
               ) : (
                 coupons.map((coupon, idx) => {
@@ -1978,17 +2313,29 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   const isExpanded = !!expandedCoupons[coupon.id];
                   const displayedUsers = isExpanded ? resolvedUsers : resolvedUsers.slice(0, 3);
 
+                  const shareUrl = buildShareableCouponUrl(coupon);
+                  const totalCouponRevenue = resolvedUsers.reduce((acc, u) => acc + Number(u.price || 0), 0);
+                  const commPct = Number(coupon.commissionPercentage || 0);
+                  const totalCouponCommission = resolvedUsers.reduce((acc, u) => acc + Number(u.commissionValue || 0), 0);
+                  const pendingCouponCommission = resolvedUsers
+                    .filter(u => !u.commissionPaid)
+                    .reduce((acc, u) => acc + Number(u.commissionValue || 0), 0);
+                  const paidCouponCommission = Math.max(0, totalCouponCommission - pendingCouponCommission);
+
                   return (
                     <div key={`admin-coupon-${coupon.id || idx}-${idx}`} className="bg-[#161622] border border-[#262636] p-6 rounded-2xl flex flex-col gap-4 shadow-xl">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                         <div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-3">
                             <h3 className="font-black text-2xl uppercase tracking-wider text-mecura-neon">{coupon.code}</h3>
                             {realCount > 0 && (
                               <span className="px-3 py-1 rounded-full text-xs font-black bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30 inline-flex items-center gap-1 shadow-[0_0_10px_rgba(166,255,0,0.2)]">
                                 ⚡ {realCount} {realCount === 1 ? 'uso registrado' : 'usos registrados'}
                               </span>
                             )}
+                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30 inline-flex items-center gap-1">
+                              🔗 {coupon.linkClicks || 0} {(coupon.linkClicks || 0) === 1 ? 'clique no link' : 'cliques no link'}
+                            </span>
                             {isMaxReached && (
                               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                                 Limite Atingido
@@ -1997,10 +2344,11 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                           </div>
                           
                           <p className="text-[#8A8A9E] text-sm mt-1">
-                            {coupon.discount}% de Desconto {coupon.ownerId ? `(Indicador / Indicação: ${coupon.ownerId})` : ''}
+                            <strong className="text-white">{coupon.discount}% de Desconto</strong> para o paciente
+                            {commPct > 0 ? ` • Comissão do Responsável: ${commPct}% por venda` : ''}
                           </p>
 
-                          <div className="flex items-center gap-3 mt-2 text-xs text-[#8A8A9E]">
+                          <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-[#8A8A9E]">
                             <span>
                               Usados: <strong className="text-white">{realCount}</strong> / {coupon.quantity ? coupon.quantity : 'Ilimitado (1x por cliente)'}
                             </span>
@@ -2009,10 +2357,23 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                                 • Restam: <strong className="text-mecura-neon">{Math.max(0, coupon.quantity - realCount)}</strong>
                               </span>
                             )}
+                            <span className="text-[11px] text-white/80 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-lg">
+                              👤 Responsável: <strong className="text-mecura-neon">{coupon.affiliateName || 'Não definido'}</strong>
+                              {coupon.affiliatePixOrPhone ? ` (${coupon.affiliatePixOrPhone})` : ''}
+                            </span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <button
+                            onClick={() => handleOpenEditCoupon(coupon)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-white border border-white/15 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Editar responsável, porcentagem de comissão e cupom"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-mecura-neon" />
+                            <span>Configurar Responsável / Comissão</span>
+                          </button>
+
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${coupon.active ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
                             {coupon.active ? 'Ativo' : 'Inativo'}
                           </span>
@@ -2021,23 +2382,149 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                               await updateCoupon(coupon.id, { active: !coupon.active });
                               showToast(coupon.active ? `Cupom ${coupon.code} desativado.` : `Cupom ${coupon.code} ativado com sucesso!`);
                             }} 
-                            className="text-[#8A8A9E] hover:text-white transition-colors cursor-pointer"
+                            className="text-[#8A8A9E] hover:text-white transition-colors cursor-pointer p-1"
                             title={coupon.active ? "Desativar cupom" : "Ativar cupom"}
                           >
                             {coupon.active ? <XCircle className="w-5 h-5 text-amber-400 hover:text-amber-300"/> : <CheckCircle className="w-5 h-5 text-green-400 hover:text-green-300"/>}
                           </button>
-                          <button 
-                            onClick={async () => {
-                              if (confirm(`Tem certeza que deseja excluir o cupom ${coupon.code}?`)) {
-                                await deleteCoupon(coupon.id);
-                                showToast(`Cupom ${coupon.code} excluído com sucesso.`);
-                              }
-                            }} 
-                            className="text-[#8A8A9E] hover:text-red-400 transition-colors cursor-pointer"
-                            title="Excluir cupom"
+
+                          {confirmDeleteCouponId === coupon.id ? (
+                            <div className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/30 px-2.5 py-1 rounded-xl">
+                              <button
+                                onClick={async () => {
+                                  await deleteCoupon(coupon.id);
+                                  setConfirmDeleteCouponId(null);
+                                  showToast(`Cupom ${coupon.code} excluído com sucesso.`);
+                                }}
+                                className="text-xs font-bold text-red-400 hover:text-red-300 cursor-pointer"
+                              >
+                                Confirmar
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteCouponId(null)}
+                                className="text-xs text-[#8A8A9E] hover:text-white cursor-pointer ml-1"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <button 
+                              onClick={() => setConfirmDeleteCouponId(coupon.id)} 
+                              className="text-[#8A8A9E] hover:text-red-400 transition-colors cursor-pointer p-1"
+                              title="Excluir cupom"
+                            >
+                              <Trash2 className="w-5 h-5"/>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* GERADOR DE LINK RASTREÁVEL PARA DIVULGAÇÃO + PAINEL DE COMISSÃO */}
+                      <div className="bg-[#0F0F17] border border-[#262636] rounded-xl p-4 space-y-3">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Link2 className="w-4 h-4 text-mecura-neon shrink-0" />
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">
+                              Gerador de Link Rastreável (Aplica o cupom {coupon.code} automaticamente)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-[#8A8A9E]">Destino do link:</span>
+                            <select
+                              value={couponLinkDestMap[coupon.id] || coupon.targetPlan || 'all'}
+                              onChange={(e) => setCouponLinkDestMap(prev => ({ ...prev, [coupon.id]: e.target.value }))}
+                              className="bg-[#161622] border border-[#2B2B3D] rounded-lg px-2.5 py-1 text-xs text-white font-semibold focus:outline-none focus:border-mecura-neon"
+                            >
+                              <option value="all">Início / Triagem Completa (Recomendado)</option>
+                              <option value="checkout">Checkout Geral de Planos</option>
+                              <option value="basic">Checkout Direto — Consulta Essencial (R$ 49,90)</option>
+                              <option value="premium">Checkout Direto — VIP + Laudo HC (R$ 249,90)</option>
+                              <option value="complete">Checkout Direto — Plano Completo 360° (R$ 387,00)</option>
+                              <option value="psychologist">Checkout Direto — Psicólogo + Laudo (R$ 150,00)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <div className="flex-1 bg-[#161622] border border-[#2B2B3D] rounded-xl px-3.5 py-2.5 text-xs font-mono text-mecura-neon select-all overflow-x-auto whitespace-nowrap">
+                            {shareUrl}
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(shareUrl);
+                              setCopiedCouponKey(`url_${coupon.id}`);
+                              showToast(`Link rastreável do cupom ${coupon.code} copiado!`);
+                              setTimeout(() => setCopiedCouponKey(null), 2500);
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-mecura-neon text-black font-bold text-xs hover:bg-mecura-neon/90 transition-all inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                           >
-                            <Trash2 className="w-5 h-5"/>
+                            {copiedCouponKey === `url_${coupon.id}` ? (
+                              <>
+                                <Check className="w-4 h-4" />
+                                <span>Link Copiado!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4" />
+                                <span>Copiar Link</span>
+                              </>
+                            )}
                           </button>
+                          <button
+                            onClick={() => {
+                              const msg = `🌿 Realize sua consulta médica canábica na Mecura com ${coupon.discount}% de desconto usando o cupom *${coupon.code}*!\n\n👉 Acesse pelo link com desconto automático:\n${shareUrl}`;
+                              navigator.clipboard.writeText(msg);
+                              setCopiedCouponKey(`msg_${coupon.id}`);
+                              showToast(`Mensagem de divulgação + link do cupom ${coupon.code} copiada!`);
+                              setTimeout(() => setCopiedCouponKey(null), 2500);
+                            }}
+                            className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/15 font-semibold text-xs transition-all inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-mecura-neon" />
+                            <span>{copiedCouponKey === `msg_${coupon.id}` ? 'Texto Copiado!' : 'Copiar Texto p/ WhatsApp'}</span>
+                          </button>
+                        </div>
+
+                        {/* Métricas de Rastreabilidade e Comissão do Responsável */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-white/5 text-xs">
+                          <div className="bg-[#161622] border border-[#262636] rounded-lg p-2.5">
+                            <span className="text-[10px] uppercase text-[#8A8A9E] block">Responsável / Afiliado</span>
+                            <strong className="text-white text-xs truncate block mt-0.5">
+                              {coupon.affiliateName || 'Não definido'}
+                            </strong>
+                            {coupon.affiliatePixOrPhone && (
+                              <span className="text-[10px] text-[#8A8A9E] block truncate">PIX/Tel: {coupon.affiliatePixOrPhone}</span>
+                            )}
+                          </div>
+                          <div className="bg-[#161622] border border-[#262636] rounded-lg p-2.5">
+                            <span className="text-[10px] uppercase text-[#8A8A9E] block">Conversão do Link</span>
+                            <strong className="text-white text-xs block mt-0.5">
+                              {coupon.linkClicks || 0} cliques → {realCount} vendas
+                            </strong>
+                            <span className="text-[10px] text-sky-400">
+                              Faturamento: R$ {totalCouponRevenue.toFixed(2).replace('.', ',')}
+                            </span>
+                          </div>
+                          <div className="bg-[#161622] border border-mecura-neon/25 rounded-lg p-2.5">
+                            <span className="text-[10px] uppercase text-mecura-neon font-bold block">
+                              Comissão a Pagar ({commPct}%)
+                            </span>
+                            <strong className="text-mecura-neon text-sm font-black block mt-0.5">
+                              R$ {pendingCouponCommission.toFixed(2).replace('.', ',')}
+                            </strong>
+                            <span className="text-[10px] text-[#8A8A9E]">
+                              Pendente de repasse
+                            </span>
+                          </div>
+                          <div className="bg-[#161622] border border-[#262636] rounded-lg p-2.5">
+                            <span className="text-[10px] uppercase text-[#8A8A9E] block">Comissão Já Paga / Total</span>
+                            <strong className="text-emerald-400 text-xs block mt-0.5">
+                              Pago: R$ {paidCouponCommission.toFixed(2).replace('.', ',')}
+                            </strong>
+                            <span className="text-[10px] text-[#8A8A9E]">
+                              Total: R$ {totalCouponCommission.toFixed(2).replace('.', ',')}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -2047,7 +2534,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                           <div className="flex justify-between items-center text-xs text-white font-bold">
                             <span className="flex items-center gap-2 text-white/90">
                               <UserCircle className="w-4 h-4 text-mecura-neon" />
-                              Pacientes que utilizaram este cupom ({resolvedUsers.length}):
+                              Pacientes rastreados neste cupom/link ({resolvedUsers.length}):
                             </span>
                             {resolvedUsers.length > 3 && (
                               <button 
@@ -2067,7 +2554,16 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                                     {u.name ? u.name.charAt(0).toUpperCase() : 'P'}
                                   </div>
                                   <div className="flex flex-col gap-0.5">
-                                    <span className="font-bold text-white text-sm">{u.name}</span>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-bold text-white text-sm">{u.name}</span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                        u.viaLink
+                                          ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                                          : 'bg-white/5 text-[#A0A0B0] border-white/10'
+                                      }`}>
+                                        {u.viaLink ? '🔗 Via Link Rastreável' : '🎟️ Cupom'}
+                                      </span>
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[#8A8A9E] text-[11px]">
                                       <span>📧 {u.email}</span>
                                       {u.phone && u.phone !== 'N/A' && <span>📱 {u.phone}</span>}
@@ -2084,6 +2580,32 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                                   }`}>
                                     {u.price >= 150 || u.planName.includes('Premium') ? '👑' : '⚡'} R$ {u.price.toFixed(2).replace('.', ',')} ({u.planName})
                                   </span>
+
+                                  {/* Badge de Comissão Gerada */}
+                                  {(commPct > 0 || u.commissionValue > 0) && (
+                                    <button
+                                      onClick={() => {
+                                        if (u.logIndex !== undefined) {
+                                          toggleCouponCommissionPaid(coupon.id, u.logIndex);
+                                          showToast(u.commissionPaid ? 'Comissão marcada como pendente.' : 'Comissão marcada como PAGA!');
+                                        } else {
+                                          showToast('Sincronize ou edite a comissão do cupom para atualizar registros antigos.');
+                                        }
+                                      }}
+                                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border inline-flex items-center gap-1 cursor-pointer transition-colors ${
+                                        u.commissionPaid
+                                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                          : 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                                      }`}
+                                      title="Clique para alternar entre Comissão Paga e Pendente"
+                                    >
+                                      <DollarSign className="w-3 h-3" />
+                                      <span>Comissão: R$ {u.commissionValue.toFixed(2).replace('.', ',')}</span>
+                                      <span className="ml-0.5 text-[10px] opacity-90">
+                                        ({u.commissionPaid ? '✅ Paga' : '⏳ Pendente'})
+                                      </span>
+                                    </button>
+                                  )}
 
                                   {/* Data do Uso */}
                                   {u.usedAt && (
@@ -2910,50 +3432,119 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
       )}
 
       {showAddCoupon && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
-          <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold mb-4 text-white">Criar Novo Cupom</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 overflow-y-auto">
+          <div className="bg-[#161622] border border-[#262636] rounded-3xl p-6 w-full max-w-lg my-8">
+            <h3 className="text-xl font-bold mb-1 text-white">
+              {editingCouponId ? 'Editar Cupom, Link & Comissão' : 'Criar Novo Cupom + Link Rastreável'}
+            </h3>
+            <p className="text-xs text-[#8A8A9E] mb-4">
+              Configure o código, o responsável pela divulgação e a porcentagem de comissão sobre cada venda realizada.
+            </p>
             
-            <label className="text-xs text-[#8A8A9E] mb-1 block">Código do Cupom (ex: MECURA20)</label>
-            <input 
-              type="text" 
-              placeholder="Ex: MECURA20" 
-              value={couponForm.code} 
-              onChange={e => setCouponForm({...couponForm, code: e.target.value.toUpperCase()})} 
-              className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-3 text-white uppercase font-bold tracking-wider" 
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-xs text-[#8A8A9E] mb-1 block">Código do Cupom (ex: BARATAO)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: BARATAO" 
+                  value={couponForm.code} 
+                  onChange={e => setCouponForm({...couponForm, code: e.target.value.toUpperCase().replace(/\s+/g, '')})} 
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 text-white uppercase font-bold tracking-wider" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#8A8A9E] mb-1 block">Desconto p/ Paciente (%)</label>
+                <input 
+                  type="number" 
+                  placeholder="Ex: 10" 
+                  min="1" 
+                  max="100" 
+                  value={couponForm.discount} 
+                  onChange={e => setCouponForm({...couponForm, discount: Number(e.target.value)})} 
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 text-white font-semibold" 
+                />
+              </div>
+            </div>
 
-            <label className="text-xs text-[#8A8A9E] mb-1 block">Porcentagem de Desconto (%)</label>
-            <input 
-              type="number" 
-              placeholder="Ex: 50" 
-              min="1" 
-              max="100" 
-              value={couponForm.discount} 
-              onChange={e => setCouponForm({...couponForm, discount: Number(e.target.value)})} 
-              className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-3 text-white font-semibold" 
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-xs text-[#8A8A9E] mb-1 block">Nome do Responsável / Parceiro</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: João Afiliado / Influencer" 
+                  value={couponForm.affiliateName} 
+                  onChange={e => setCouponForm({...couponForm, affiliateName: e.target.value})} 
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 text-white" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#8A8A9E] mb-1 block">WhatsApp ou Chave PIX do Responsável</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: (11) 99999-9999 ou CPF/PIX" 
+                  value={couponForm.affiliatePixOrPhone} 
+                  onChange={e => setCouponForm({...couponForm, affiliatePixOrPhone: e.target.value})} 
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 text-white" 
+                />
+              </div>
+            </div>
 
-            <label className="text-xs text-[#8A8A9E] mb-1 block">Limite Total de Usos (0 = Ilimitado para novos clientes)</label>
-            <input 
-              type="number" 
-              placeholder="0 para ilimitado" 
-              min="0" 
-              value={couponForm.quantity} 
-              onChange={e => setCouponForm({...couponForm, quantity: Number(e.target.value)})} 
-              className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 mb-4 text-white" 
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-xs text-mecura-neon font-bold mb-1 block">Comissão do Responsável (%)</label>
+                <input 
+                  type="number" 
+                  placeholder="Ex: 15" 
+                  min="0" 
+                  max="100" 
+                  value={couponForm.commissionPercentage} 
+                  onChange={e => setCouponForm({...couponForm, commissionPercentage: Number(e.target.value)})} 
+                  className="w-full bg-[#0A0A0F] border border-mecura-neon/40 rounded-xl px-4 py-2 text-mecura-neon font-bold" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#8A8A9E] mb-1 block">Limite de Usos (0 = Ilimitado)</label>
+                <input 
+                  type="number" 
+                  placeholder="0 para ilimitado" 
+                  min="0" 
+                  value={couponForm.quantity} 
+                  onChange={e => setCouponForm({...couponForm, quantity: Number(e.target.value)})} 
+                  className="w-full bg-[#0A0A0F] border border-[#262636] rounded-xl px-4 py-2 text-white" 
+                />
+              </div>
+            </div>
+
+            {couponForm.code.trim() && (
+              <div className="bg-[#0A0A0F] border border-mecura-neon/30 rounded-xl p-3 mb-4 text-xs">
+                <span className="text-[11px] text-[#8A8A9E] block mb-1">🔗 Link Limpo e Rastreável que será gerado:</span>
+                <code className="text-mecura-neon font-mono break-all">
+                  {(shareDomain || INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com').replace(/\/+$/, '')}/{sharePathPrefix}/{couponForm.code.trim().toUpperCase()}
+                </code>
+              </div>
+            )}
 
             <div className="bg-[#0A0A0F]/60 border border-[#262636] rounded-xl p-3 mb-5 text-xs text-[#8A8A9E] flex items-start gap-2">
               <span className="text-mecura-neon font-bold text-sm">🔒</span>
               <p>
-                <strong className="text-white">Uso Único por Cliente:</strong> Cada paciente só conseguirá utilizar este cupom <strong>1 vez</strong>. Outros pacientes poderão utilizá-lo normalmente até atingir o limite configurado (ou sem limite se for 0).
+                <strong className="text-white">Rastreabilidade Total:</strong> Quando o paciente entra pelo link acima, o sistema registra o clique, aplica o cupom <strong>{couponForm.code || '...'}</strong> automaticamente no checkout e calcula a comissão de <strong>{couponForm.commissionPercentage || 0}%</strong> para o responsável assim que o pagamento é confirmado.
               </p>
             </div>
 
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAddCoupon(false)}>Cancelar</Button>
-              <Button className="flex-1 bg-mecura-neon text-black font-bold hover:bg-mecura-neon/90" onClick={handleAddCoupon}>Salvar Cupom</Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowAddCoupon(false);
+                  setEditingCouponId(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button className="flex-1 bg-mecura-neon text-black font-bold hover:bg-mecura-neon/90" onClick={handleAddCoupon}>
+                {editingCouponId ? 'Salvar Alterações' : 'Criar Cupom e Gerar Link'}
+              </Button>
             </div>
           </div>
         </div>
