@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Download, Eye, Edit3, User, Sprout, Send, Copy, Check, Save, RefreshCw } from 'lucide-react';
+import { syncAgronomicTextWithParameters } from '../utils/clinicalReportGenerator';
 
 interface AgronomicReportEditorModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ interface AgronomicReportEditorModalProps {
     dailyDoseMg: number;
     targetPlants: number;
     agronomicText: string;
+    prescribedProducts?: string;
   }) => void;
   onSendToChat?: (overrideData?: {
     patientName: string;
@@ -46,6 +48,7 @@ interface AgronomicReportEditorModalProps {
     dailyDoseMg: number;
     targetPlants: number;
     agronomicText: string;
+    prescribedProducts?: string;
   }) => void;
   onSave?: (savedData: any) => void;
   isSendingToChat?: boolean;
@@ -85,7 +88,7 @@ export function AgronomicReportEditorModal({
   const [isSavedFeedback, setIsSavedFeedback] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
 
-  // Local state for smooth lag-free editing
+  // Local state for smooth lag-free editing without parent re-render overwrites
   const [patientName, setPatientName] = useState(propPatientName);
   const [cpf, setCpf] = useState(propCpf);
   const [emissionDate, setEmissionDate] = useState(propEmissionDate);
@@ -97,10 +100,16 @@ export function AgronomicReportEditorModal({
   const [dailyDoseMg, setDailyDoseMg] = useState(propDailyDoseMg);
   const [targetPlants, setTargetPlants] = useState(propTargetPlants);
   const [agronomicText, setAgronomicText] = useState(propAgronomicText);
+  const [localPrescribedProducts, setLocalPrescribedProducts] = useState(prescribedProducts);
 
-  // Sync from props on open or when parent resets from triage
+  const wasOpenRef = useRef(false);
+  const lastPatientRef = useRef(propPatientName);
+
+  // Only initialize from props when modal transitions from closed -> open, or when switching patients
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && (!wasOpenRef.current || lastPatientRef.current !== propPatientName)) {
+      wasOpenRef.current = true;
+      lastPatientRef.current = propPatientName;
       setPatientName(propPatientName);
       setCpf(propCpf);
       setEmissionDate(propEmissionDate);
@@ -111,9 +120,73 @@ export function AgronomicReportEditorModal({
       setDiagnosis(propDiagnosis);
       setDailyDoseMg(propDailyDoseMg);
       setTargetPlants(propTargetPlants);
-      setAgronomicText(propAgronomicText);
+      const syncedInitialText = syncAgronomicTextWithParameters(propAgronomicText, {
+        patientName: propPatientName,
+        cpf: propCpf,
+        diagnosis: propDiagnosis,
+        dailyDoseMg: propDailyDoseMg,
+        targetPlants: propTargetPlants,
+        prescribedProducts
+      });
+      setAgronomicText(syncedInitialText);
+      setLocalPrescribedProducts(prescribedProducts);
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, propPatientName, propCpf, propDiagnosis, propDailyDoseMg, propTargetPlants, propAgronomicText]);
+  }, [isOpen, propPatientName, propCpf, propEmissionDate, propAgronomistName, propAgronomistCrea, propDiagnosis, propDailyDoseMg, propTargetPlants, propAgronomicText, prescribedProducts]);
+
+  // Handlers that keep dailyDoseMg, targetPlants, diagnosis, and agronomicText synchronized
+  const handleDailyDoseChange = (newDoseRaw: number) => {
+    const newDose = Math.max(0, Number(newDoseRaw) || 0);
+    setDailyDoseMg(newDose);
+    if (newDose > 0) {
+      const annualGrams = (newDose * 365) / 1000;
+      const dryMarginKg = ((annualGrams / 0.10) / 1000) * 1.3038;
+      const autoPlants = Math.max(6, Math.round((dryMarginKg * 1000) / 150));
+      setTargetPlants(autoPlants);
+      setAgronomicText(prev =>
+        syncAgronomicTextWithParameters(prev, {
+          patientName,
+          cpf,
+          diagnosis,
+          dailyDoseMg: newDose,
+          targetPlants: autoPlants,
+          prescribedProducts: localPrescribedProducts
+        })
+      );
+    }
+  };
+
+  const handleTargetPlantsChange = (newPlantsRaw: number) => {
+    const newPlants = Math.max(0, Number(newPlantsRaw) || 0);
+    setTargetPlants(newPlants);
+    if (newPlants > 0) {
+      setAgronomicText(prev =>
+        syncAgronomicTextWithParameters(prev, {
+          patientName,
+          cpf,
+          diagnosis,
+          dailyDoseMg,
+          targetPlants: newPlants,
+          prescribedProducts: localPrescribedProducts
+        })
+      );
+    }
+  };
+
+  const handleDiagnosisChange = (newDiag: string) => {
+    setDiagnosis(newDiag);
+    setAgronomicText(prev =>
+      syncAgronomicTextWithParameters(prev, {
+        patientName,
+        cpf,
+        diagnosis: newDiag,
+        dailyDoseMg,
+        targetPlants,
+        prescribedProducts: localPrescribedProducts
+      })
+    );
+  };
 
   const syncToParent = () => {
     propSetPatientName(patientName);
@@ -131,7 +204,7 @@ export function AgronomicReportEditorModal({
     if (!isOpen) return;
     const timer = setTimeout(() => {
       syncToParent();
-    }, 400);
+    }, 600);
     return () => clearTimeout(timer);
   }, [isOpen, patientName, cpf, emissionDate, agronomistName, agronomistCrea, diagnosis, dailyDoseMg, targetPlants, agronomicText]);
 
@@ -144,9 +217,22 @@ export function AgronomicReportEditorModal({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, syncToParent]);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  const buildCurrentPayload = () => ({
+    patientName,
+    cpf,
+    emissionDate,
+    agronomistName,
+    agronomistCrea,
+    diagnosis,
+    dailyDoseMg,
+    targetPlants,
+    agronomicText,
+    prescribedProducts: localPrescribedProducts
+  });
 
   const handleClose = () => {
     syncToParent();
@@ -155,23 +241,21 @@ export function AgronomicReportEditorModal({
 
   const handleDownloadAction = () => {
     syncToParent();
-    handleDownload();
+    const payload = buildCurrentPayload();
+    if (onSave) {
+      onSave(payload);
+    }
+    handleDownload(payload);
   };
 
   const handleSendToChatAction = async () => {
     if (!onSendToChat) return;
     syncToParent();
-    await onSendToChat({
-      patientName,
-      cpf,
-      emissionDate,
-      agronomistName,
-      agronomistCrea,
-      diagnosis,
-      dailyDoseMg,
-      targetPlants,
-      agronomicText
-    });
+    const payload = buildCurrentPayload();
+    if (onSave) {
+      onSave(payload);
+    }
+    await onSendToChat(payload);
   };
 
   // Math metrics based on pericial agronomic standards
@@ -195,23 +279,13 @@ export function AgronomicReportEditorModal({
   const wetFlowerKgStr = wetFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   // Rendimento médio por planta no cultivo indoor (paciente): 100g a 150g de flores secas por ciclo de 120 dias
-  const plantsPerCycle = Math.round(targetPlants / 4) || 40;
-  const seedsNeeded = Math.round(targetPlants * 1.3038) || 206;
+  const plantsPerCycle = Math.max(1, Math.round(targetPlants / 4));
+  const seedsNeeded = Math.max(1, Math.round(targetPlants * 1.3038));
 
-  const handleDownload = () => {
+  const handleDownload = (payloadOverride?: ReturnType<typeof buildCurrentPayload>) => {
     setIsGenerating(true);
     try {
-      onDownloadPDF({
-        patientName,
-        cpf,
-        emissionDate,
-        agronomistName,
-        agronomistCrea,
-        diagnosis,
-        dailyDoseMg,
-        targetPlants,
-        agronomicText
-      });
+      onDownloadPDF(payloadOverride || buildCurrentPayload());
     } finally {
       setTimeout(() => setIsGenerating(false), 800);
     }
@@ -235,7 +309,7 @@ O autocultivo artesanal é a única via exequível para assegurar a continuidade
 
 3. Anamnese da Triagem, Prescrição Médica e Demanda Terapêutica Individual:
 ${agronomicText}
-${prescribedProducts ? `\nProtocolo de Preparações Artesanais Prescritas:\n${prescribedProducts}\n` : ''}
+${localPrescribedProducts ? `\nProtocolo de Preparações Artesanais Prescritas:\n${localPrescribedProducts}\n` : ''}
 4. Dosimetria Farmacológica e Consumo Anual Estimado:
 No caso do(a) paciente, a condição clínica de ${diagnosis} demanda consumo diário de ${dailyDoseMg}mg/dia de substância ativa (equivalente a ${annualGrams}g anuais de fitocanabinoides em formulações artesanais integrais).
 Extrapolando o uso para intervalos mensais e anuais, temos que o paciente vai necessitar:
@@ -259,18 +333,9 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
 
   const handleSaveChanges = () => {
     syncToParent();
+    const payload = buildCurrentPayload();
     if (onSave) {
-      onSave({
-        patientName,
-        cpf,
-        emissionDate,
-        agronomistName,
-        agronomistCrea,
-        diagnosis,
-        dailyDoseMg,
-        targetPlants,
-        agronomicText
-      });
+      onSave(payload);
     }
     setIsSavedFeedback(true);
     const now = new Date();
@@ -348,19 +413,37 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                   onClick={() => {
                     const refreshed = onResetFromTriage();
                     if (refreshed) {
-                      if (refreshed.patientName) setPatientName(refreshed.patientName);
-                      if (refreshed.cpf) setCpf(refreshed.cpf);
-                      if (refreshed.diagnosis) setDiagnosis(refreshed.diagnosis);
-                      if (refreshed.dailyDoseMg) setDailyDoseMg(refreshed.dailyDoseMg);
-                      if (refreshed.targetPlants) setTargetPlants(refreshed.targetPlants);
-                      if (refreshed.agronomicText) setAgronomicText(refreshed.agronomicText);
+                      const nextName = refreshed.patientName || patientName;
+                      const nextCpf = refreshed.cpf || cpf;
+                      const nextDiag = refreshed.diagnosis || diagnosis;
+                      const nextDose = refreshed.dailyDoseMg || dailyDoseMg;
+                      const nextPlants = refreshed.targetPlants || targetPlants;
+                      const nextPresc = refreshed.prescribedProducts !== undefined ? refreshed.prescribedProducts : localPrescribedProducts;
+                      setPatientName(nextName);
+                      setCpf(nextCpf);
+                      setDiagnosis(nextDiag);
+                      setDailyDoseMg(nextDose);
+                      setTargetPlants(nextPlants);
+                      setLocalPrescribedProducts(nextPresc);
+                      if (refreshed.agronomicText) {
+                        setAgronomicText(
+                          syncAgronomicTextWithParameters(refreshed.agronomicText, {
+                            patientName: nextName,
+                            cpf: nextCpf,
+                            diagnosis: nextDiag,
+                            dailyDoseMg: nextDose,
+                            targetPlants: nextPlants,
+                            prescribedProducts: nextPresc
+                          })
+                        );
+                      }
                     }
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-mecura-surface hover:bg-mecura-surface-light border border-emerald-500/40 text-emerald-300 transition-all cursor-pointer"
-                  title="Recarregar dados e síntese da triagem deste paciente"
+                  title="Sincronizar dados da triagem e medicamentos prescritos deste paciente"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">Recarregar da Triagem</span>
+                  <span className="hidden md:inline">Sincronizar Triagem & Prescrição</span>
                 </button>
               )}
 
@@ -391,7 +474,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
               {/* Botão de Fechar / Sair sem Enviar com X bem visível */}
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition-all shadow-sm group cursor-pointer"
                 title="Fechar e sair sem enviar o laudo para o paciente"
                 aria-label="Fechar laudo sem enviar"
@@ -448,7 +531,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                         <input
                           type="text"
                           value={diagnosis}
-                          onChange={(e) => setDiagnosis(e.target.value)}
+                          onChange={(e) => handleDiagnosisChange(e.target.value)}
                           className="w-full bg-[#0D0D12] text-sm text-white font-semibold border border-mecura-elevated rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500/50"
                         />
                       </div>
@@ -479,6 +562,12 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                           className="w-full bg-[#0D0D12] text-sm text-white font-semibold border border-mecura-elevated rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500/50"
                         />
                       </div>
+                      {lastSavedTime && (
+                        <div className="pt-2 text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Última alteração salva às {lastSavedTime}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -504,14 +593,14 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                         <div className="flex gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setDailyDoseMg(5900)}
+                            onClick={() => handleDailyDoseChange(5900)}
                             className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold hover:bg-emerald-500/30"
                           >
                             5.900 mg (Padrão HC)
                           </button>
                           <button
                             type="button"
-                            onClick={() => setDailyDoseMg(3000)}
+                            onClick={() => handleDailyDoseChange(3000)}
                             className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-mecura-silver font-semibold hover:bg-white/10"
                           >
                             3.000 mg
@@ -521,9 +610,9 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                       <input
                         type="number"
                         min="10"
-                        step="100"
+                        step="50"
                         value={dailyDoseMg}
-                        onChange={(e) => setDailyDoseMg(Number(e.target.value) || 0)}
+                        onChange={(e) => handleDailyDoseChange(Number(e.target.value) || 0)}
                         className="w-full bg-[#12121A] text-sm text-emerald-400 font-bold border border-mecura-elevated rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
                       />
                       <p className="text-[10px] text-mecura-silver mt-1">
@@ -539,14 +628,14 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                         <div className="flex gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setTargetPlants(158)}
+                            onClick={() => handleTargetPlantsChange(158)}
                             className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold hover:bg-emerald-500/30"
                           >
                             158 (Padrão HC)
                           </button>
                           <button
                             type="button"
-                            onClick={() => setTargetPlants(40)}
+                            onClick={() => handleTargetPlantsChange(40)}
                             className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-mecura-silver font-semibold hover:bg-white/10"
                           >
                             40 un.
@@ -556,9 +645,9 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                       <input
                         type="number"
                         min="3"
-                        max="300"
+                        max="500"
                         value={targetPlants}
-                        onChange={(e) => setTargetPlants(Number(e.target.value) || 0)}
+                        onChange={(e) => handleTargetPlantsChange(Number(e.target.value) || 0)}
                         className="w-full bg-[#12121A] text-sm text-emerald-400 font-bold border border-mecura-elevated rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
                       />
                       <p className="text-[10px] text-mecura-silver mt-1">
@@ -597,11 +686,31 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                   </div>
                 </div>
 
+                {/* Protocolo Prescrito Vinculado (Editável) */}
+                <div className="bg-[#0A0A0F]/50 rounded-xl border border-emerald-500/20 p-4 sm:p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                      Protocolo de Medicamentos Prescritos & Triagem Vinculado ao Cálculo
+                    </h4>
+                    <span className="text-[10px] text-mecura-silver">
+                      Sincronizado com a prescrição médica e triagem do paciente (editável)
+                    </span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={localPrescribedProducts}
+                    onChange={(e) => setLocalPrescribedProducts(e.target.value)}
+                    placeholder="Medicamentos prescritos na receita médica e preparações artesanais correspondentes..."
+                    className="w-full bg-[#0D0D12] text-xs text-emerald-200/90 border border-mecura-elevated rounded-lg p-3 focus:outline-none focus:border-emerald-500/50 leading-relaxed font-mono"
+                  />
+                </div>
+
                 {/* Justificativa Técnica Editável */}
                 <div className="bg-[#0A0A0F]/50 rounded-xl border border-mecura-elevated p-4 sm:p-5">
                   <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-2 flex items-center justify-between">
                     <span>Síntese da Triagem Clínica, Quimiotipo & Texto Técnico do Caso</span>
                     <button
+                      type="button"
                       onClick={handleCopy}
                       className="text-emerald-400 hover:text-emerald-300 text-xs font-semibold flex items-center gap-1"
                     >
@@ -716,13 +825,13 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                         ))}
                       </div>
                     )}
-                    {prescribedProducts && (
+                    {localPrescribedProducts && (
                       <div className="bg-emerald-50/70 border border-emerald-200 rounded p-2 mb-2">
                         <p className="text-[9px] font-extrabold text-emerald-800 uppercase mb-0.5">
                           Protocolo Prescrito Vinculado ao Dimensionamento:
                         </p>
                         <p className="text-[10px] text-emerald-950 whitespace-pre-line">
-                          {prescribedProducts}
+                          {localPrescribedProducts}
                         </p>
                       </div>
                     )}

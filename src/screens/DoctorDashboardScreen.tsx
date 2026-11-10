@@ -105,7 +105,7 @@ import { ProgrammedPrescriptionProfile, getProgrammedProfiles, getDoctorCustomMo
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { generatePersonalizedClinicalReport, buildAgronomicArtisanalMedications } from '../utils/clinicalReportGenerator';
+import { generatePersonalizedClinicalReport, buildAgronomicArtisanalMedications, syncAgronomicTextWithParameters } from '../utils/clinicalReportGenerator';
 import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
 const calculateAge = (birthDateStr?: string) => {
@@ -593,6 +593,7 @@ export function DoctorDashboardScreen() {
   const [agronomicDailyDoseMg, setAgronomicDailyDoseMg] = useState(5900);
   const [agronomicTargetPlants, setAgronomicTargetPlants] = useState(158);
   const [agronomicText, setAgronomicText] = useState('');
+  const [agronomicPrescribedProducts, setAgronomicPrescribedProducts] = useState('');
 
   // Medical Report (Laudo Médico) Editor & Preview States
   const [showMedicalReportEditorModal, setShowMedicalReportEditorModal] = useState(false);
@@ -719,6 +720,7 @@ export function DoctorDashboardScreen() {
     dailyDoseMg: number;
     targetPlants: number;
     agronomicText: string;
+    prescribedProducts?: string;
   }) => {
     const targetId = standaloneTargetPatientId || currentPatient?.id || null;
     const key = getPatientReportKey(targetId, savedData.patientName || agronomicPatientName);
@@ -732,6 +734,9 @@ export function DoctorDashboardScreen() {
     setAgronomicDailyDoseMg(savedData.dailyDoseMg);
     setAgronomicTargetPlants(savedData.targetPlants);
     setAgronomicText(savedData.agronomicText);
+    if (savedData.prescribedProducts !== undefined) {
+      setAgronomicPrescribedProducts(savedData.prescribedProducts);
+    }
 
     const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId;
     if (targetPatientId) {
@@ -1143,23 +1148,8 @@ export function DoctorDashboardScreen() {
         customNotes: docData.notes
       });
 
-      if (pId && (currentPatient?.id === pId || activeConsultationId === pId)) {
-        await addMessage({
-          text: `📋 Receita Médica Digital Oficial emitida para ${pName} (${profile.name}). O documento em PDF assinado com QR Code e certificação digital está pronto para download.`,
-          sender: 'doctor',
-          type: 'prescription',
-          attachment: {
-            title: `Receita Médica Digital - ${profile.name}`,
-            name: `Receita_Digital_${pName.replace(/\s+/g, '_')}.pdf`,
-            url: '#',
-            type: 'application/pdf',
-            docType: 'receita'
-          }
-        }, pId);
-      }
-
       setShowProgrammedPrescriptionModal(false);
-      showActionToast(`✓ Receita de ${pName} para "${profile.name}" emitida com sucesso!`);
+      showActionToast(`✓ PDF da receita de ${pName} ("${profile.name}") gerado com sucesso!`);
     } catch (err: any) {
       console.error("Erro ao emitir receita:", err);
       showActionToast(`Erro ao emitir receita: ${err?.message || 'Tente novamente'}`);
@@ -1424,16 +1414,37 @@ export function DoctorDashboardScreen() {
       answers: patientAnswers
     }, 'inicial');
 
+    const defaults = buildTriageAgronomicDefaults(patientData.id || null);
     const patientKey = getPatientReportKey(patientData.id, pName);
     const rawSaved = loadSavedReport(patientKey, 'agronomico', pName, patientData.id);
     let validSaved = rawSaved;
-    if (rawSaved?.agronomicText && pName && pName.toLowerCase() !== 'paciente' && !rawSaved.agronomicText.toLowerCase().includes(pName.toLowerCase())) {
-      validSaved = null;
+    if (rawSaved?.agronomicText && pName && pName.toLowerCase() !== 'paciente') {
+      const savedName = (rawSaved.patientName || '').trim().toLowerCase();
+      if (savedName && savedName !== 'paciente' && savedName !== pName.toLowerCase()) {
+        validSaved = null;
+      }
     }
 
-    const hcCalc = patientAnswers?.hcPlantCalculator;
-    setAgronomicPatientName(validSaved?.patientName || pName);
-    setAgronomicCpf(validSaved?.cpf || pCpf);
+    const finalName = validSaved?.patientName || pName;
+    const finalCpf = validSaved?.cpf || pCpf;
+    const finalDiagnosis = validSaved?.diagnosis || patientData.diagnosis || defaults.defaultDiagnosis || personalized.agronomic.diagnosis;
+    const finalDailyDose = validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg || personalized.agronomic.dailyDoseMg;
+    const finalTargetPlants = validSaved?.targetPlants || defaults.defaultTargetPlants || personalized.agronomic.targetPlants;
+    const finalPrescribed = validSaved?.prescribedProducts || defaults.prescribedProductsStr;
+    const finalAgroText = syncAgronomicTextWithParameters(
+      validSaved?.agronomicText || defaults.defaultAgronomicText || personalized.agronomic.text,
+      {
+        patientName: finalName,
+        cpf: finalCpf,
+        diagnosis: finalDiagnosis,
+        dailyDoseMg: finalDailyDose,
+        targetPlants: finalTargetPlants,
+        prescribedProducts: finalPrescribed
+      }
+    );
+
+    setAgronomicPatientName(finalName);
+    setAgronomicCpf(finalCpf);
     setAgronomicEmissionDate(validSaved?.emissionDate || patientData.emissionDate || new Date().toLocaleDateString('pt-BR'));
     setAgronomicName(validSaved?.agronomistName || 'Wilian Dalenogare Pereira');
     setAgronomicCrea(
@@ -1441,10 +1452,11 @@ export function DoctorDashboardScreen() {
         ? validSaved.agronomistCrea
         : 'CREA-BA Nº 052193520-2'
     );
-    setAgronomicDiagnosis(validSaved?.diagnosis || patientData.diagnosis || personalized.agronomic.diagnosis);
-    setAgronomicDailyDoseMg(validSaved?.dailyDoseMg || (hcCalc?.dailyDoseMg ? Number(hcCalc.dailyDoseMg) : personalized.agronomic.dailyDoseMg));
-    setAgronomicTargetPlants(validSaved?.targetPlants || (hcCalc?.annualPlants ? Number(hcCalc.annualPlants) : personalized.agronomic.targetPlants));
-    setAgronomicText(validSaved?.agronomicText || personalized.agronomic.text);
+    setAgronomicDiagnosis(finalDiagnosis);
+    setAgronomicDailyDoseMg(finalDailyDose);
+    setAgronomicTargetPlants(finalTargetPlants);
+    setAgronomicText(finalAgroText);
+    setAgronomicPrescribedProducts(finalPrescribed);
     setShowAgronomicReportEditorModal(true);
   };
 
@@ -2624,7 +2636,7 @@ export function DoctorDashboardScreen() {
 
   const handleRemoveDoctorMessage = async (messageId: string, label?: string) => {
     try {
-      const pId = currentPatient?.id;
+      const pId = currentPatient?.id || standaloneTargetPatientId || activeConsultationId || undefined;
       console.log("Removing doctor message:", messageId, "label:", label, "patientId:", pId);
       
       const targetMsg = messages.find(m => m.id === messageId);
@@ -2641,28 +2653,30 @@ export function DoctorDashboardScreen() {
         ? label
         : (targetMsg?.productData?.name || null);
 
-        if (prodName) {
-          const cleanName = prodName.toLowerCase().trim();
-          setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== cleanName));
-          const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== cleanName);
-          setPrescItems(updated);
-          handleSavePrescription({
-            patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
-            birthDate: prescBirthDate,
-            cpf: prescCpf,
-            emissionDate: prescEmissionDate,
-            doctorName: prescDoctorName,
-            doctorCrm: prescDoctorCrm,
-            doctorSpecialty: prescDoctorSpecialty,
-            items: updated,
-            notes: prescNotes
-          });
-          showActionToast(`✓ "${prodName}" excluído da receita e alteração salva.`);
-        }
+      if (prodName) {
+        const cleanName = prodName.toLowerCase().trim();
+        setAddedMedications(prev => prev.filter(name => name.toLowerCase() !== cleanName));
+        const updated = prescItems.filter(p => p.name.toLowerCase().trim() !== cleanName);
+        prescItemsRef.current = updated;
+        setPrescItems(updated);
+        handleSavePrescription({
+          patientName: prescPatientName || currentPatient?.patientName || userName || 'Paciente',
+          birthDate: prescBirthDate,
+          cpf: prescCpf,
+          emissionDate: prescEmissionDate,
+          doctorName: prescDoctorName,
+          doctorCrm: prescDoctorCrm,
+          doctorSpecialty: prescDoctorSpecialty,
+          items: updated,
+          notes: prescNotes
+        });
+      }
 
       await deleteMessage(messageId, pId);
+      showActionToast(`✓ Mensagem/documento removido do chat com sucesso.`);
     } catch (err) {
       console.error("Error removing doctor message:", err);
+      showActionToast("Erro ao remover mensagem do chat.");
     }
   };
 
@@ -2670,10 +2684,13 @@ export function DoctorDashboardScreen() {
 
   const handleClearAllPrescriptions = async () => {
     try {
-      const pId = currentPatient?.id;
+      const pId = currentPatient?.id || standaloneTargetPatientId || activeConsultationId || undefined;
       console.log("Clearing all prescriptions for patientId:", pId);
       await clearPrescriptionMessages(pId);
       setAddedMedications([]);
+      prescItemsRef.current = [];
+      setPrescItems([]);
+      showActionToast("✓ Todas as prescrições do chat foram removidas.");
     } catch (err) {
       console.error("Error clearing all prescriptions:", err);
     }
@@ -4127,11 +4144,58 @@ export function DoctorDashboardScreen() {
 
     const prescKey = getPatientReportKey(resolvedId, pName);
     const savedPresc = loadSavedPrescription(prescKey, pName, resolvedId);
-    const activePrescItems = prescItems.length > 0 ? prescItems : (savedPresc?.items && Array.isArray(savedPresc.items) ? savedPresc.items : []);
+
+    // Gather prescribed medications from all sources (active editor ref/state, saved prescription, queue/patient doc, and chat messages)
+    const collectedItems: PrescriptionItemData[] = [];
+    const seenMedNames = new Set<string>();
+    const addMedItem = (it: any) => {
+      if (!it || !it.name) return;
+      const clean = String(it.name).toLowerCase().trim();
+      if (!clean || seenMedNames.has(clean)) return;
+      seenMedNames.add(clean);
+      collectedItems.push({
+        name: it.name,
+        brand: it.brand || 'Associação Brasileira',
+        origin: it.origin || 'Nacional',
+        type: it.type || '',
+        activeIngredients: it.activeIngredients || '',
+        concentration: it.concentration || '',
+        pharmaceuticalForm: it.pharmaceuticalForm || '',
+        quantity: it.quantity || '',
+        administrationRoute: it.administrationRoute || '',
+        dosage: Array.isArray(it.dosage) ? it.dosage : (it.dosage ? [String(it.dosage)] : [])
+      });
+    };
+
+    const isTargetCurrent = !resolvedId || currentPatient?.id === resolvedId;
+    if (isTargetCurrent) {
+      (prescItemsRef.current.length > 0 ? prescItemsRef.current : prescItems).forEach(addMedItem);
+    }
+    if (savedPresc?.items && Array.isArray(savedPresc.items)) {
+      savedPresc.items.forEach(addMedItem);
+    }
+    if ((qPatient as any)?.prescriptionData?.items && Array.isArray((qPatient as any).prescriptionData.items)) {
+      (qPatient as any).prescriptionData.items.forEach(addMedItem);
+    }
+    if (isTargetCurrent && (currentPatient as any)?.prescriptionData?.items && Array.isArray((currentPatient as any).prescriptionData.items)) {
+      (currentPatient as any).prescriptionData.items.forEach(addMedItem);
+    }
+    if (isTargetCurrent && Array.isArray(messages)) {
+      messages.forEach((m: any) => {
+        if (m.type === 'product' && m.productData) {
+          addMedItem(m.productData);
+        } else if (m.type === 'receita_previa' && Array.isArray(m.receitaPreviaData?.items)) {
+          m.receitaPreviaData.items.forEach(addMedItem);
+        } else if (m.type === 'prescription' && Array.isArray(m.attachment?.customItems)) {
+          m.attachment.customItems.forEach(addMedItem);
+        }
+      });
+    }
+
     const hcCalc = patientAnswers?.hcPlantCalculator;
 
     const artisanalAnalysis = buildAgronomicArtisanalMedications(
-      activePrescItems,
+      collectedItems,
       personalized.clinicalCondition,
       hcCalc
     );
@@ -4139,6 +4203,15 @@ export function DoctorDashboardScreen() {
     const prescribedProductsStr = artisanalAnalysis.prescribedArtisanalText;
     const defaultDailyDoseMg = artisanalAnalysis.totalDailyDoseMg;
     const defaultTargetPlants = artisanalAnalysis.calculatedPlants;
+
+    const syncedDefaultText = syncAgronomicTextWithParameters(personalized.agronomic.text, {
+      patientName: pName,
+      cpf: pCpf,
+      diagnosis: personalized.agronomic.diagnosis,
+      dailyDoseMg: defaultDailyDoseMg,
+      targetPlants: defaultTargetPlants,
+      prescribedProducts: prescribedProductsStr
+    });
 
     return {
       resolvedId,
@@ -4150,7 +4223,7 @@ export function DoctorDashboardScreen() {
       defaultDiagnosis: personalized.agronomic.diagnosis,
       defaultDailyDoseMg,
       defaultTargetPlants,
-      defaultAgronomicText: personalized.agronomic.text
+      defaultAgronomicText: syncedDefaultText
     };
   };
 
@@ -4162,6 +4235,7 @@ export function DoctorDashboardScreen() {
     setAgronomicDailyDoseMg(defaults.defaultDailyDoseMg);
     setAgronomicTargetPlants(defaults.defaultTargetPlants);
     setAgronomicText(defaults.defaultAgronomicText);
+    setAgronomicPrescribedProducts(defaults.prescribedProductsStr);
 
     const patientKey = getPatientReportKey(defaults.resolvedId, defaults.pName);
     saveReportToStorage(patientKey, 'agronomico', {
@@ -4173,17 +4247,19 @@ export function DoctorDashboardScreen() {
       diagnosis: defaults.defaultDiagnosis,
       dailyDoseMg: defaults.defaultDailyDoseMg,
       targetPlants: defaults.defaultTargetPlants,
-      agronomicText: defaults.defaultAgronomicText
+      agronomicText: defaults.defaultAgronomicText,
+      prescribedProducts: defaults.prescribedProductsStr
     }, defaults.resolvedId);
 
-    showActionToast('✓ Dados da triagem do paciente carregados no Parecer Agronômico!');
+    showActionToast('✓ Parecer Agronômico sincronizado com a Triagem e Prescrição do paciente!');
     return {
       patientName: defaults.pName,
       cpf: defaults.pCpf,
       diagnosis: defaults.defaultDiagnosis,
       dailyDoseMg: defaults.defaultDailyDoseMg,
       targetPlants: defaults.defaultTargetPlants,
-      agronomicText: defaults.defaultAgronomicText
+      agronomicText: defaults.defaultAgronomicText,
+      prescribedProducts: defaults.prescribedProductsStr
     };
   };
 
@@ -4195,10 +4271,8 @@ export function DoctorDashboardScreen() {
 
     let validSaved = rawSaved;
     if (rawSaved?.agronomicText && defaults.pName && defaults.pName.toLowerCase() !== 'paciente') {
-      if (!rawSaved.agronomicText.toLowerCase().includes(defaults.pName.toLowerCase())) {
-        validSaved = null;
-      }
-      if (validSaved && defaults.patientAnswers?.hcPlantCalculator?.annualPlants && Number(validSaved.targetPlants) !== Number(defaults.patientAnswers.hcPlantCalculator.annualPlants)) {
+      const savedPatientName = (rawSaved.patientName || '').trim().toLowerCase();
+      if (savedPatientName && savedPatientName !== 'paciente' && savedPatientName !== defaults.pName.toLowerCase()) {
         validSaved = null;
       }
     }
@@ -4207,8 +4281,26 @@ export function DoctorDashboardScreen() {
       validSaved = null;
     }
 
-    setAgronomicPatientName(validSaved?.patientName || defaults.pName);
-    setAgronomicCpf(validSaved?.cpf || defaults.pCpf);
+    const finalName = validSaved?.patientName || defaults.pName;
+    const finalCpf = validSaved?.cpf || defaults.pCpf;
+    const finalDiagnosis = validSaved?.diagnosis || defaults.defaultDiagnosis;
+    const finalDailyDose = validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg;
+    const finalTargetPlants = validSaved?.targetPlants || defaults.defaultTargetPlants;
+    const finalPrescribed = validSaved?.prescribedProducts || defaults.prescribedProductsStr;
+    const finalAgroText = syncAgronomicTextWithParameters(
+      validSaved?.agronomicText || defaults.defaultAgronomicText,
+      {
+        patientName: finalName,
+        cpf: finalCpf,
+        diagnosis: finalDiagnosis,
+        dailyDoseMg: finalDailyDose,
+        targetPlants: finalTargetPlants,
+        prescribedProducts: finalPrescribed
+      }
+    );
+
+    setAgronomicPatientName(finalName);
+    setAgronomicCpf(finalCpf);
     setAgronomicEmissionDate(validSaved?.emissionDate || new Date().toLocaleDateString('pt-BR'));
     setAgronomicName(validSaved?.agronomistName || 'Wilian Dalenogare Pereira');
     setAgronomicCrea(
@@ -4216,10 +4308,11 @@ export function DoctorDashboardScreen() {
         ? validSaved.agronomistCrea
         : 'CREA-BA Nº 052193520-2'
     );
-    setAgronomicDiagnosis(validSaved?.diagnosis || defaults.defaultDiagnosis);
-    setAgronomicDailyDoseMg(validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg);
-    setAgronomicTargetPlants(validSaved?.targetPlants || defaults.defaultTargetPlants);
-    setAgronomicText(validSaved?.agronomicText || defaults.defaultAgronomicText);
+    setAgronomicDiagnosis(finalDiagnosis);
+    setAgronomicDailyDoseMg(finalDailyDose);
+    setAgronomicTargetPlants(finalTargetPlants);
+    setAgronomicText(finalAgroText);
+    setAgronomicPrescribedProducts(finalPrescribed);
     setShowAgronomicReportEditorModal(true);
   };
 
@@ -4233,6 +4326,7 @@ export function DoctorDashboardScreen() {
     dailyDoseMg: number;
     targetPlants: number;
     agronomicText: string;
+    prescribedProducts?: string;
   }) => {
     const defaults = buildTriageAgronomicDefaults();
     const finalName = overrideData?.patientName || agronomicPatientName || defaults.pName;
@@ -4243,7 +4337,32 @@ export function DoctorDashboardScreen() {
     const finalDiagnosis = overrideData?.diagnosis || agronomicDiagnosis || defaults.defaultDiagnosis;
     const finalDailyDose = overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg;
     const finalTargetPlants = overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants;
-    const finalText = overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText;
+    const finalPrescribed = overrideData?.prescribedProducts ?? agronomicPrescribedProducts ?? defaults.prescribedProductsStr;
+    const finalText = syncAgronomicTextWithParameters(
+      overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText,
+      {
+        patientName: finalName,
+        cpf: finalCpf,
+        diagnosis: finalDiagnosis,
+        dailyDoseMg: finalDailyDose,
+        targetPlants: finalTargetPlants,
+        prescribedProducts: finalPrescribed
+      }
+    );
+
+    const patientKey = getPatientReportKey(defaults.resolvedId, finalName);
+    saveReportToStorage(patientKey, 'agronomico', {
+      patientName: finalName,
+      cpf: finalCpf,
+      emissionDate: finalEmission,
+      agronomistName: finalAgronomist,
+      agronomistCrea: finalCrea,
+      diagnosis: finalDiagnosis,
+      dailyDoseMg: finalDailyDose,
+      targetPlants: finalTargetPlants,
+      agronomicText: finalText,
+      prescribedProducts: finalPrescribed
+    }, defaults.resolvedId);
 
     generateAgronomicReportPDF(finalName, {
       patientId: defaults.resolvedId || undefined,
@@ -4254,7 +4373,7 @@ export function DoctorDashboardScreen() {
       agronomistName: finalAgronomist,
       agronomistCrea: finalCrea,
       diagnosis: finalDiagnosis,
-      prescribedProducts: defaults.prescribedProductsStr,
+      prescribedProducts: finalPrescribed,
       dailyDoseMg: finalDailyDose,
       targetPlants: finalTargetPlants,
       customText: finalText,
@@ -4273,6 +4392,7 @@ export function DoctorDashboardScreen() {
     dailyDoseMg: number;
     targetPlants: number;
     agronomicText: string;
+    prescribedProducts?: string;
   }) => {
     const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
     if (!targetPatientId) {
@@ -4292,7 +4412,32 @@ export function DoctorDashboardScreen() {
       const finalDiagnosis = overrideData?.diagnosis || agronomicDiagnosis || defaults.defaultDiagnosis;
       const finalDailyDose = overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg;
       const finalTargetPlants = overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants;
-      const finalText = overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText;
+      const finalPrescribed = overrideData?.prescribedProducts ?? agronomicPrescribedProducts ?? defaults.prescribedProductsStr;
+      const finalText = syncAgronomicTextWithParameters(
+        overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText,
+        {
+          patientName: finalName,
+          cpf: finalCpf,
+          diagnosis: finalDiagnosis,
+          dailyDoseMg: finalDailyDose,
+          targetPlants: finalTargetPlants,
+          prescribedProducts: finalPrescribed
+        }
+      );
+
+      const patientKey = getPatientReportKey(targetPatientId, finalName);
+      saveReportToStorage(patientKey, 'agronomico', {
+        patientName: finalName,
+        cpf: finalCpf,
+        emissionDate: finalEmission,
+        agronomistName: finalAgronomist,
+        agronomistCrea: finalCrea,
+        diagnosis: finalDiagnosis,
+        dailyDoseMg: finalDailyDose,
+        targetPlants: finalTargetPlants,
+        agronomicText: finalText,
+        prescribedProducts: finalPrescribed
+      }, targetPatientId);
 
       const annualGrams = ((finalDailyDose * 365) / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
       const dryFlowerMargin = (((finalDailyDose * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
@@ -4309,7 +4454,7 @@ export function DoctorDashboardScreen() {
         agronomistName: finalAgronomist,
         agronomistCrea: finalCrea,
         diagnosis: finalDiagnosis,
-        prescribedProducts: defaults.prescribedProductsStr,
+        prescribedProducts: finalPrescribed,
         dailyDoseMg: finalDailyDose,
         targetPlants: finalTargetPlants,
         customText: finalText,
@@ -11248,7 +11393,7 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         setTargetPlants={setAgronomicTargetPlants}
         agronomicText={agronomicText}
         setAgronomicText={setAgronomicText}
-        prescribedProducts={prescItems.length > 0 ? prescItems.map((it, idx) => `${idx + 1}. ${it.name} (${it.brand || 'Associação'} - ${it.origin || 'Nacional'})`).join('\n') : ''}
+        prescribedProducts={agronomicPrescribedProducts}
         onResetFromTriage={handleResetAgronomicReportFromTriage}
         onDownloadPDF={handleDownloadAgronomicReportFromEditor}
         onSendToChat={handleSendAgronomicReportToChat}

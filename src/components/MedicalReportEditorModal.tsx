@@ -154,9 +154,15 @@ export function MedicalReportEditorModal({
   const [localTreatmentPlan, setLocalTreatmentPlan] = useState(treatmentPlan);
   const [localMonitoring, setLocalMonitoring] = useState(monitoring);
 
+  const wasOpenRef = React.useRef(false);
+  const lastReportKeyRef = React.useRef(`${reportType}_${patientName}`);
+
   // Keep local state in sync when modal opens, reportType changes, or patient changes
   useEffect(() => {
-    if (isOpen) {
+    const currentKey = `${reportType}_${patientName}`;
+    if (isOpen && (!wasOpenRef.current || lastReportKeyRef.current !== currentKey)) {
+      wasOpenRef.current = true;
+      lastReportKeyRef.current = currentKey;
       setLocalPatientName(patientName);
       setLocalBirthDate(birthDate);
       setLocalCpf(cpf);
@@ -168,8 +174,10 @@ export function MedicalReportEditorModal({
       setLocalRationale(rationale);
       setLocalTreatmentPlan(treatmentPlan);
       setLocalMonitoring(monitoring);
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, reportType, patientName, cpf, birthDate, diagnosis, rationale, treatmentPlan, monitoring]);
+  }, [isOpen, reportType, patientName, cpf, birthDate, emissionDate, doctorName, doctorCrm, doctorSpecialty, diagnosis, rationale, treatmentPlan, monitoring]);
 
   // Synchronize all edited fields back to parent
   const syncToParent = () => {

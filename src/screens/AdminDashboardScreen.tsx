@@ -28,8 +28,9 @@ import {
   Paperclip,
   Bot,
   User,
-  X, Key, AlertTriangle, Search, Link2, Copy, Share2, DollarSign
+  X, Key, AlertTriangle, Search, Link2, Copy, Share2, DollarSign, QrCode
 , Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog, syncCatalogToFirestore } from '../utils/productCatalog';
@@ -341,20 +342,21 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [shareDomain, setShareDomain] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mecura_official_share_domain');
-      if (saved && saved.trim()) return saved.trim().replace(/\/+$/, '');
+      if (saved && saved.trim() && !saved.includes('instmecura.sementesagrada.com')) {
+        return saved.trim().replace(/\/+$/, '');
+      }
       const currentOrigin = window.location.origin;
-      // Se estiver no link temporário de preview (ais-dev / ais-pre / localhost), usa o domínio oficial por padrão
       if (
         currentOrigin.includes('ais-dev-') ||
         currentOrigin.includes('ais-pre-') ||
         currentOrigin.includes('localhost') ||
         currentOrigin.includes('.run.app')
       ) {
-        return INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com';
+        return 'https://mecura.sementesagrada.com';
       }
       return currentOrigin;
     }
-    return INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com';
+    return 'https://mecura.sementesagrada.com';
   });
 
   const [sharePathPrefix, setSharePathPrefix] = useState<'convite' | 'c' | 'cupom'>(() => {
@@ -365,12 +367,137 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     return 'convite';
   });
 
+  const [siteQrDataUrl, setSiteQrDataUrl] = useState<string>('/qrcode-mecura.png');
+
+  useEffect(() => {
+    const targetSiteUrl = `${(shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '')}/`;
+    QRCode.toDataURL(targetSiteUrl, {
+      width: 600,
+      margin: 2,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#0A0A0F', light: '#FFFFFF' }
+    })
+      .then((dataUrl) => setSiteQrDataUrl(dataUrl))
+      .catch(() => setSiteQrDataUrl('/qrcode-mecura.png'));
+  }, [shareDomain]);
+
+  const handleDownloadQrCodePng = async (targetUrl: string, fileName = 'QRCode_Mecura_Site.png') => {
+    try {
+      const dataUrl = await QRCode.toDataURL(targetUrl, {
+        width: 1024,
+        margin: 2,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#0A0A0F', light: '#FFFFFF' }
+      });
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('QR Code em alta resolução (1024px) baixado com sucesso!');
+    } catch (err) {
+      console.error('Erro ao baixar QR Code:', err);
+      showToast('Erro ao gerar QR Code.');
+    }
+  };
+
+  const handleDownloadQrCodeBrandedCard = async (
+    targetUrl: string,
+    subtitleLabel = 'Acesse o App Oficial • Consulta Médica Online',
+    fileName = 'Card_QRCode_Mecura.png'
+  ) => {
+    try {
+      const qrDataUrl = await QRCode.toDataURL(targetUrl, {
+        width: 720,
+        margin: 2,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#0A0A0F', light: '#FFFFFF' }
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1350;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Background
+      const grad = ctx.createLinearGradient(0, 0, 1080, 1350);
+      grad.addColorStop(0, '#0A0A0F');
+      grad.addColorStop(0.5, '#121814');
+      grad.addColorStop(1, '#0A0A0F');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1080, 1350);
+
+      // Neon border frame
+      ctx.strokeStyle = 'rgba(166, 255, 0, 0.45)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(48, 48, 984, 1254);
+
+      // Header Brand
+      ctx.fillStyle = '#A6FF00';
+      ctx.font = '900 68px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('MECURA', 540, 165);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '700 28px sans-serif';
+      ctx.fillText('TELEMEDICINA & SAÚDE INTEGRATIVA CANABINOIDE', 540, 215);
+
+      ctx.fillStyle = '#A0A0B8';
+      ctx.font = '600 24px sans-serif';
+      ctx.fillText(subtitleLabel, 540, 265);
+
+      // White rounded box for QR Code
+      const boxX = 180;
+      const boxY = 320;
+      const boxSize = 720;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxSize, boxSize, 36);
+      ctx.fill();
+
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = (e) => reject(e);
+        img.src = qrDataUrl;
+      });
+      ctx.drawImage(img, boxX + 30, boxY + 30, boxSize - 60, boxSize - 60);
+
+      // Footer instruction & URL
+      ctx.fillStyle = '#A6FF00';
+      ctx.font = '800 32px sans-serif';
+      ctx.fillText('APONTE A CÂMERA DO CELULAR PARA ACESSAR', 540, 1125);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '700 30px monospace';
+      ctx.fillText(targetUrl.replace(/^https?:\/\//, ''), 540, 1185);
+
+      ctx.fillStyle = '#8A8A9E';
+      ctx.font = '500 22px sans-serif';
+      ctx.fillText('Consulta Médica • Receita Digital • Acompanhamento e Salvo-Conduto', 540, 1245);
+
+      const finalUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = finalUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Arte oficial com QR Code baixada com sucesso!');
+    } catch (err) {
+      console.error('Erro ao gerar card QR Code:', err);
+      showToast('Erro ao gerar card do QR Code.');
+    }
+  };
+
   useEffect(() => {
     try {
       const unsub = onSnapshot(doc(db, 'settings', 'adminSettings'), (snap) => {
         if (snap.exists()) {
           const d = snap.data();
-          if (d.officialShareDomain && typeof d.officialShareDomain === 'string') {
+          if (d.officialShareDomain && typeof d.officialShareDomain === 'string' && !d.officialShareDomain.includes('instmecura.sementesagrada.com')) {
             const clean = d.officialShareDomain.trim().replace(/\/+$/, '');
             setShareDomain(clean);
             if (typeof window !== 'undefined') localStorage.setItem('mecura_official_share_domain', clean);
@@ -390,7 +517,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const handleSaveShareDomain = async (newDomain: string, newPrefix: 'convite' | 'c' | 'cupom' = sharePathPrefix) => {
     let clean = (newDomain || '').trim().replace(/\/+$/, '');
     if (!clean) {
-      clean = INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com';
+      clean = 'https://mecura.sementesagrada.com';
     }
     if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
       clean = 'https://' + clean;
@@ -414,7 +541,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   };
 
   const buildShareableCouponUrl = useCallback((coupon: any, destOverride?: string) => {
-    const base = (shareDomain || INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com').replace(/\/+$/, '');
+    const base = (shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '');
     const code = encodeURIComponent((coupon.code || '').trim().toUpperCase());
     const dest = destOverride || couponLinkDestMap[coupon.id] || coupon.targetPlan || 'all';
     const prefix = sharePathPrefix || 'convite';
@@ -1283,6 +1410,58 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                 <RefreshCw className={`w-4 h-4 ${isSyncingMpPayments ? 'animate-spin' : ''}`} />
                 {isSyncingMpPayments ? 'Sincronizando...' : 'Sincronizar Mercado Pago'}
               </button>
+            </div>
+
+            {/* Card Oficial de QR Code do Site / App */}
+            <div className="bg-gradient-to-r from-[#161622] via-[#131d16] to-[#161622] border border-mecura-neon/35 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-5 shadow-lg">
+              <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                <div className="bg-white p-2.5 rounded-2xl shadow-md shrink-0">
+                  <img
+                    src={siteQrDataUrl}
+                    alt="QR Code Mecura"
+                    className="w-28 h-28 object-contain"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-mecura-neon/15 border border-mecura-neon/30 text-mecura-neon text-[10px] font-black uppercase tracking-wider">
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>QR Code Oficial do Site / App</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white">
+                    {(shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '')}/
+                  </h3>
+                  <p className="text-xs text-[#8A8A9E] max-w-md">
+                    Escaneie diretamente na tela ou baixe em alta resolução (1024px) para materiais impressos, receituários, cartões, WhatsApp e Instagram.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full md:w-auto shrink-0">
+                <button
+                  onClick={() =>
+                    handleDownloadQrCodePng(
+                      `${(shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '')}/`,
+                      'QRCode_Mecura_Oficial_1024px.png'
+                    )
+                  }
+                  className="px-4 py-2.5 rounded-xl bg-mecura-neon text-black font-extrabold text-xs hover:bg-mecura-neon/90 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(166,255,0,0.25)]"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Baixar QR Code (PNG 1024px)</span>
+                </button>
+                <button
+                  onClick={() =>
+                    handleDownloadQrCodeBrandedCard(
+                      `${(shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '')}/`,
+                      'Acesse o Site & App Oficial • Consulta Médica Online',
+                      'Arte_QRCode_Mecura_Instagram_Impressao.png'
+                    )
+                  }
+                  className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/15 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4 text-mecura-neon" />
+                  <span>Baixar Card Pronto p/ Divulgação</span>
+                </button>
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -2220,7 +2399,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   type="text"
                   value={shareDomain}
                   onChange={(e) => setShareDomain(e.target.value)}
-                  placeholder="https://instmecura.sementesagrada.com"
+                  placeholder="https://mecura.sementesagrada.com"
                   className="bg-[#0A0A0F] border border-[#2B2B3D] rounded-xl px-3 py-2 text-xs text-white font-mono min-w-[240px] focus:outline-none focus:border-mecura-neon"
                 />
                 <select
@@ -2240,6 +2419,19 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                   className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold border border-white/15 cursor-pointer shrink-0 transition-colors"
                 >
                   Salvar Domínio
+                </button>
+                <button
+                  onClick={() =>
+                    handleDownloadQrCodePng(
+                      `${(shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '')}/`,
+                      'QRCode_Mecura_Oficial_1024px.png'
+                    )
+                  }
+                  className="px-3.5 py-2 rounded-xl bg-mecura-neon/15 hover:bg-mecura-neon/25 text-mecura-neon text-xs font-bold border border-mecura-neon/35 cursor-pointer shrink-0 transition-colors inline-flex items-center gap-1.5"
+                  title="Baixar QR Code oficial do site"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>QR Code do Site</span>
                 </button>
               </div>
             </div>
@@ -2482,6 +2674,20 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
                           >
                             <Share2 className="w-3.5 h-3.5 text-mecura-neon" />
                             <span>{copiedCouponKey === `msg_${coupon.id}` ? 'Texto Copiado!' : 'Copiar Texto p/ WhatsApp'}</span>
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDownloadQrCodeBrandedCard(
+                                shareUrl,
+                                `Cupom ${coupon.code} • ${coupon.discount}% de Desconto Automático`,
+                                `QRCode_Cupom_${coupon.code}.png`
+                              )
+                            }
+                            className="px-3.5 py-2.5 rounded-xl bg-mecura-neon/15 hover:bg-mecura-neon/25 text-mecura-neon border border-mecura-neon/30 font-bold text-xs transition-all inline-flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                            title="Baixar Arte com QR Code deste cupom"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Baixar QR Code</span>
                           </button>
                         </div>
 
@@ -3519,7 +3725,7 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               <div className="bg-[#0A0A0F] border border-mecura-neon/30 rounded-xl p-3 mb-4 text-xs">
                 <span className="text-[11px] text-[#8A8A9E] block mb-1">🔗 Link Limpo e Rastreável que será gerado:</span>
                 <code className="text-mecura-neon font-mono break-all">
-                  {(shareDomain || INSTITUTIONAL_INFO.website || 'https://instmecura.sementesagrada.com').replace(/\/+$/, '')}/{sharePathPrefix}/{couponForm.code.trim().toUpperCase()}
+                  {(shareDomain || 'https://mecura.sementesagrada.com').replace(/\/+$/, '')}/{sharePathPrefix}/{couponForm.code.trim().toUpperCase()}
                 </code>
               </div>
             )}

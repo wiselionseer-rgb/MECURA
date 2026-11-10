@@ -670,7 +670,7 @@ export function buildAgronomicArtisanalMedications(
   let hasResins = false;
 
   effectiveItems.forEach((it) => {
-    const combinedStr = `${it.name} ${it.type || ''} ${it.pharmaceuticalForm || ''} ${it.administrationRoute || ''} ${(it.dosage || []).join(' ')}`.toLowerCase();
+    const combinedStr = `${it.name} ${it.type || ''} ${it.pharmaceuticalForm || ''} ${it.concentration || ''} ${it.quantity || ''} ${it.administrationRoute || ''} ${(it.dosage || []).join(' ')}`.toLowerCase();
 
     let category: 'oleo' | 'flor' | 'pomada' | 'extracao' = 'oleo';
     let categoryLabel = 'Óleo Artesanal em Gotas';
@@ -678,72 +678,85 @@ export function buildAgronomicArtisanalMedications(
     let form = it.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)';
     let route = it.administrationRoute || 'Via Sublingual / Oral';
     let posology = (it.dosage && it.dosage.length > 0) ? it.dosage.join(' ') : 'Conforme orientação médica e titulação individual.';
-    let estimatedDailyMg = 60;
+    let estimatedDailyMg = 500;
     let dryFlowerGramsDaily = 0;
+
+    // Extract quantity multiplier if multiple bottles/packages per month are prescribed
+    const pkgMatch = combinedStr.match(/(\d+)\s*(?:embalagens|frascos|unidades|potes|pacotes)/i);
+    const pkgMultiplier = pkgMatch ? Math.min(6, Math.max(1, parseInt(pkgMatch[1], 10))) : 1;
 
     if (/flor|infloresc|erva|in natura|buds|vaporiz|inala/i.test(combinedStr)) {
       category = 'flor';
       categoryLabel = 'Inflorescências / Flores Secas para Vaporização';
       hasFlowers = true;
-      artisanalName = 'Inflorescências / Flores Secas Medicinais in natura (Autocultivo Doméstico para Vaporização Terapêutica)';
+      artisanalName = `${it.name} — Inflorescências / Flores Secas Medicinais in natura (Autocultivo Doméstico)`;
       form = 'Flores Secas Curadas para Inalação';
       route = 'Via Inalatória (Vaporizador Térmico Medicinal sem Combustão)';
 
-      const gramMatch = combinedStr.match(/(\d+(?:[.,]\d+)?)\s*(?:g|gramas?)\b/i);
-      let grams = gramMatch ? parseFloat(gramMatch[1].replace(',', '.')) : 1.0;
-      if (grams <= 0 || grams > 5) grams = 1.0;
+      const gramMatch = (posology || combinedStr).match(/(\d+(?:[.,]\d+)?)\s*(?:g|gramas?)\b/i);
+      let grams = gramMatch ? parseFloat(gramMatch[1].replace(',', '.')) : 1.5;
+      if (grams > 5) {
+        // e.g. "10g" or "14g" package -> estimate daily usage from package size * multiplier / 30 days
+        grams = Number(((grams * pkgMultiplier) / 15).toFixed(2));
+      }
+      if (grams <= 0 || grams > 10) grams = 1.5;
       dryFlowerGramsDaily = grams;
-      estimatedDailyMg = Math.round(grams * 100);
+      // 1g of dry flower at 10-15% cannabinoid content = ~150mg to 300mg raw cannabinoid demand for vaporization
+      estimatedDailyMg = Math.round(grams * 350);
     } else if (/pomada|creme|b[aá]lsamo|t[oó]pico|gel|lo[cç][aã]o/i.test(combinedStr)) {
       category = 'pomada';
       categoryLabel = 'Pomada / Bálsamo Medicinal Artesanal';
       hasTopicals = true;
-      artisanalName = 'Pomada / Bálsamo Fitoterápico Artesanal (Manipulação Tópica Doméstica a partir de Biomassa Infundida)';
+      artisanalName = `${it.name} — Pomada / Bálsamo Fitoterápico Artesanal (Manipulação Tópica Doméstica)`;
       form = 'Pomada Dérmica Artesanal';
       route = 'Via Tópica Local';
-      estimatedDailyMg = 40;
-      dryFlowerGramsDaily = 0.5;
-    } else if (/resina|rso|feco|pasta|concentrado|extra[cç][aã]o/i.test(combinedStr)) {
+      estimatedDailyMg = 250 * pkgMultiplier;
+      dryFlowerGramsDaily = Number((estimatedDailyMg / 100).toFixed(2));
+    } else if (/resina|rso|feco|pasta|concentrado|extra[cç][aã]o|gelo seco|rosin|hash/i.test(combinedStr)) {
       category = 'extracao';
       categoryLabel = 'Extrato Concentrado / Resina Artesanal';
       hasResins = true;
-      artisanalName = 'Extrato Concentrado / Resina Medicinal Artesanal (Extração Caseira Integral - RSO / FECO)';
+      artisanalName = `${it.name} — Extrato Concentrado / Resina Medicinal Artesanal (Extração Caseira Integral)`;
       form = 'Extrato Concentrado em Pasta/Resina';
-      route = 'Via Sublingual / Oral';
-      estimatedDailyMg = 150;
-      dryFlowerGramsDaily = Number((estimatedDailyMg / (100 * 0.8)).toFixed(2));
+      route = it.administrationRoute || 'Via Sublingual / Oral ou Vaporização';
+      estimatedDailyMg = 600 * Math.min(2, pkgMultiplier);
+      dryFlowerGramsDaily = Number((estimatedDailyMg / 100).toFixed(2));
     } else {
       category = 'oleo';
       categoryLabel = 'Óleo Artesanal Integral (Full Spectrum)';
       hasOils = true;
-      artisanalName = 'Óleo / Extrato Oleoso Artesanal Integral (Full Spectrum) CBD/THC — Preparação Doméstica Caseira';
-      form = 'Solução Oleosa Sublingual (Gotas)';
-      route = 'Via Sublingual / Oral';
+      artisanalName = `${it.name} — Óleo / Extrato Oleoso Artesanal Integral (Preparação Doméstica Caseira)`;
+      form = it.pharmaceuticalForm || 'Solução Oleosa Sublingual (Gotas)';
+      route = it.administrationRoute || 'Via Sublingual / Oral';
 
       let mgPerMl = 100;
-      const concMatch = (it.concentration || combinedStr).match(/(\d+)\s*mg\s*\/?\s*(?:(\d+)\s*ml|ml)?/i);
+      const concMatch = (it.concentration || combinedStr).match(/(\d+(?:[.,]\d+)?)\s*mg\s*\/?\s*(?:(\d+)\s*ml|ml)?/i);
       if (concMatch) {
-        const totalMg = parseInt(concMatch[1], 10);
-        const totalMl = concMatch[2] ? parseInt(concMatch[2], 10) : 30;
-        mgPerMl = totalMl > 0 ? totalMg / totalMl : 100;
+        const rawMg = parseFloat(concMatch[1].replace('.', '').replace(',', '.'));
+        const totalMl = concMatch[2] ? parseInt(concMatch[2], 10) : (rawMg >= 1000 ? 30 : 1);
+        mgPerMl = totalMl > 0 ? rawMg / totalMl : 100;
       }
+      if (mgPerMl < 20 || mgPerMl > 600) mgPerMl = 100;
 
-      const dropMultMatch = combinedStr.match(/(\d+)\s*gotas?.*?(\d+)\s*x/i);
-      const singleDropMatch = combinedStr.match(/(\d+)\s*gotas?/i);
-      let totalDrops = 20;
+      const dropMultMatch = posology.match(/(\d+)\s*(?:a\s*(\d+)\s*)?gotas?.*?(\d+)\s*(?:x|vezes)/i);
+      const singleDropMatch = posology.match(/(\d+)\s*(?:a\s*(\d+)\s*)?gotas?/i);
+      let totalDrops = 30;
       if (dropMultMatch) {
-        totalDrops = parseInt(dropMultMatch[1], 10) * parseInt(dropMultMatch[2], 10);
+        const baseDrops = dropMultMatch[2] ? parseInt(dropMultMatch[2], 10) : parseInt(dropMultMatch[1], 10);
+        totalDrops = baseDrops * parseInt(dropMultMatch[3], 10);
       } else if (singleDropMatch) {
-        totalDrops = parseInt(singleDropMatch[1], 10);
-        if (combinedStr.includes('2 vezes') || combinedStr.includes('2x')) totalDrops *= 2;
-        if (combinedStr.includes('3 vezes') || combinedStr.includes('3x')) totalDrops *= 3;
+        const baseDrops = singleDropMatch[2] ? parseInt(singleDropMatch[2], 10) : parseInt(singleDropMatch[1], 10);
+        totalDrops = baseDrops;
+        if (/manh[aã].*noite|2\s*vezes|2x|12\/12/i.test(posology)) totalDrops *= 2;
+        if (/manh[aã].*tarde.*noite|3\s*vezes|3x|8\/8/i.test(posology)) totalDrops *= 3;
       }
-      if (totalDrops <= 0 || totalDrops > 100) totalDrops = 20;
+      if (totalDrops <= 0 || totalDrops > 150) totalDrops = 30;
 
-      const dailyMl = totalDrops / 25;
-      estimatedDailyMg = Math.round(dailyMl * mgPerMl);
-      if (estimatedDailyMg < 20) estimatedDailyMg = 60;
-      dryFlowerGramsDaily = Number((estimatedDailyMg / 80).toFixed(2));
+      // Artisanal extraction efficiency factor (home maceration requires ~4x raw biomass vs isolated pharmaceutical standard)
+      const dailyMl = totalDrops / 20;
+      const pureMg = Math.round(dailyMl * mgPerMl);
+      estimatedDailyMg = Math.max(400, Math.round(pureMg * 4));
+      dryFlowerGramsDaily = Number((estimatedDailyMg / 100).toFixed(2));
     }
 
     sumDailyMg += estimatedDailyMg;
@@ -763,22 +776,23 @@ export function buildAgronomicArtisanalMedications(
   });
 
   let finalDailyDoseMg = sumDailyMg;
-  if (hcCalcOverride?.dailyDoseMg && Number(hcCalcOverride.dailyDoseMg) > 0) {
+  if (hcCalcOverride?.dailyDoseMg && Number(hcCalcOverride.dailyDoseMg) > 0 && (!items || items.length === 0)) {
     finalDailyDoseMg = Number(hcCalcOverride.dailyDoseMg);
-  } else if (finalDailyDoseMg < 120) {
-    finalDailyDoseMg = Math.max(120, finalDailyDoseMg);
+  } else if (finalDailyDoseMg < 500) {
+    finalDailyDoseMg = Math.max(500, finalDailyDoseMg);
   }
 
+  // Exact unified pericial math formula used across Modal and PDF:
   const annualExtractGrams = (finalDailyDoseMg * 365) / 1000;
-  const dryFlowerKgBase = (annualExtractGrams / (0.10 * 0.80)) / 1000;
-  const dryFlowerMarginKgAnnual = dryFlowerKgBase * 1.3038;
-  const wetFlowerKgAnnual = dryFlowerMarginKgAnnual / 0.25;
+  const dryFlowerKgBase = Number(((annualExtractGrams / 0.10) / 1000).toFixed(3));
+  const dryFlowerMarginKgAnnual = Number((dryFlowerKgBase * 1.3038).toFixed(3));
+  const wetFlowerKgAnnual = Number((dryFlowerMarginKgAnnual / 0.30).toFixed(3));
 
-  let calculatedPlants = Math.max(16, Math.ceil((dryFlowerMarginKgAnnual * 1000) / 100));
-  if (hcCalcOverride?.annualPlants && Number(hcCalcOverride.annualPlants) > 0) {
+  let calculatedPlants = Math.max(12, Math.round((dryFlowerMarginKgAnnual * 1000) / 150));
+  if (hcCalcOverride?.annualPlants && Number(hcCalcOverride.annualPlants) > 0 && (!items || items.length === 0)) {
     calculatedPlants = Number(hcCalcOverride.annualPlants);
   }
-  const plantsPerCycle = Math.max(4, Math.round(calculatedPlants / 4));
+  const plantsPerCycle = Math.max(3, Math.round(calculatedPlants / 4));
   const seedsNeeded = Math.round(calculatedPlants * 1.3038);
 
   const prescribedArtisanalText = parsedArtisanalList.map((item, idx) => {
@@ -786,7 +800,7 @@ export function buildAgronomicArtisanalMedications(
 • Categoria: ${item.categoryLabel} (${item.pharmaceuticalForm})
 • Via de Administração: ${item.route}
 • Posologia Médica Oficial: ${item.posology}
-• Finalidade no Cultivo: Extração e manipulação artesanal caseira (~${item.estimatedDailyMg} mg/dia de fitocanabinoides ativos).`;
+• Demanda no Cultivo Doméstico: ~${item.estimatedDailyMg} mg/dia de extrato bruto integral (~${item.estimatedDryFlowerGramsDaily}g de flor seca/dia).`;
   }).join('\n\n');
 
   return {
@@ -806,3 +820,72 @@ export function buildAgronomicArtisanalMedications(
     hasResins
   };
 }
+
+/**
+ * Synchronizes numeric references (mg/dia, g/ano, plantas, plantas/ciclo, sementes)
+ * and diagnosis/prescribed items inside the editable agronomic report text so manual edits
+ * to dailyDoseMg or targetPlants immediately update the text body.
+ */
+export function syncAgronomicTextWithParameters(
+  text: string,
+  params: {
+    patientName?: string;
+    cpf?: string;
+    diagnosis?: string;
+    dailyDoseMg: number;
+    targetPlants: number;
+    prescribedProducts?: string;
+  }
+): string {
+  if (!text) return text;
+  const dose = Math.max(0, Number(params.dailyDoseMg) || 0);
+  const plants = Math.max(1, Number(params.targetPlants) || 1);
+  const annualGramsStr = ((dose * 365) / 1000).toLocaleString('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  });
+  const perCycle = Math.max(1, Math.round(plants / 4));
+  const seeds = Math.round(plants * 1.3038);
+
+  let updated = text;
+
+  // Replace daily dose e.g. "demanda diária estimada de 1450 mg/dia" or "2400 mg/dia"
+  updated = updated.replace(
+    /(demanda\s+di[aá]ria\s+estimada\s+de\s+)[\d.,]+(\s*mg\/dia)/gi,
+    `$1${dose}$2`
+  );
+
+  // Replace annual grams e.g. "(876.0 g de fitocanabinoides ativos/ano)" or "(529,3 g de fitocanabinoides ativos/ano)"
+  updated = updated.replace(
+    /\([\d.,]+\s*g\s+de\s+fitocanabinoides\s+ativos\/ano\)/gi,
+    `(${annualGramsStr} g de fitocanabinoides ativos/ano)`
+  );
+
+  // Replace annual plants e.g. "cultivo anual de 80 plantas fêmeas adultas"
+  updated = updated.replace(
+    /(cultivo\s+anual\s+de\s+)\d+(\s+plantas\s+f[êe]meas\s+adultas)/gi,
+    `$1${plants}$2`
+  );
+
+  // Replace plants per cycle e.g. "(20 plantas por ciclo produtivo"
+  updated = updated.replace(
+    /\(\d+(\s+plantas\s+por\s+ciclo\s+produtivo)/gi,
+    `(${perCycle}$1`
+  );
+
+  // Replace feminized seeds e.g. "partindo de 104 sementes feminizadas"
+  updated = updated.replace(
+    /(partindo\s+de\s+)\d+(\s+sementes\s+feminizadas)/gi,
+    `$1${seeds}$2`
+  );
+
+  if (params.diagnosis && params.diagnosis.trim()) {
+    updated = updated.replace(
+      /(diagnosticado\(a\)\s+com\s+)[^.]+(\.)/i,
+      `$1${params.diagnosis.trim()}$2`
+    );
+  }
+
+  return updated;
+}
+

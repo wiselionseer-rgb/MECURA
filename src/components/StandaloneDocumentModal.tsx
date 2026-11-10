@@ -85,7 +85,7 @@ export function StandaloneDocumentModal({
   const [doctorCrm, setDoctorCrm] = useState('CRM/MT 17259');
   const [doctorSpecialty, setDoctorSpecialty] = useState('Clínico Geral • Medicina Canabinoide');
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState('');
-  const [autoAttachToChat, setAutoAttachToChat] = useState(true);
+  const [autoAttachToChat, setAutoAttachToChat] = useState(false);
 
   // Quick Action feedback
   const [isGeneratingDirect, setIsGeneratingDirect] = useState(false);

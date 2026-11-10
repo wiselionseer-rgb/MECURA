@@ -35,7 +35,7 @@ export const INSTITUTIONAL_INFO: InstitutionalData = {
   supportPhone: '+55 (66) 99628-0883',
   supportWhatsapp: '5566996280883',
   supportEmail: 'contato@institutomecura.com',
-  website: 'https://instmecura.sementesagrada.com',
+  website: 'https://mecura.sementesagrada.com',
   address: 'Brasil • Atendimento e Telemedicina em Âmbito Nacional',
   lastUpdated: 'Setembro de 2026'
 };

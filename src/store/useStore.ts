@@ -2020,6 +2020,23 @@ export const useStore = create<AppState>((set, get) => ({
   
   deleteMessage: async (messageId: string, customConsultationId?: string) => {
     const state = get();
+    const targetMsg = state.messages.find(m => m.id === messageId);
+
+    // Record deleted message ID so real-time listeners or multi-ID merges never resurrect it
+    try {
+      if (typeof window !== 'undefined') {
+        const rawDel = localStorage.getItem('mecura_deleted_msg_ids');
+        const arr: string[] = rawDel ? JSON.parse(rawDel) : [];
+        if (!arr.includes(messageId)) {
+          arr.push(messageId);
+          if (arr.length > 300) arr.splice(0, arr.length - 300);
+          localStorage.setItem('mecura_deleted_msg_ids', JSON.stringify(arr));
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+
     set((s) => ({
       messages: s.messages.filter(m => m.id !== messageId)
     }));
@@ -2028,8 +2045,94 @@ export const useStore = create<AppState>((set, get) => ({
     console.log("deleteMessage called. id:", messageId, "consultationId:", consultationId);
     if (consultationId) {
       try {
-        await deleteDoc(doc(db, 'active_consultations', consultationId, 'messages', messageId));
-        console.log("Message deleted from Firestore:", messageId);
+        // Resolve all linked IDs for this patient so copies across queue ID / auth UID / patientId are all deleted
+        const targetIds = new Set<string>([consultationId]);
+        if (state.activeConsultationId) targetIds.add(state.activeConsultationId);
+        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
+        const matchedQueueEntry = state.queue.find(p =>
+          p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId
+        );
+        const patientEmail = (matchedQueueEntry?.email || '').trim().toLowerCase();
+        const patientCpf = cleanDigits(matchedQueueEntry?.cpf);
+        const patientPhone = cleanDigits(matchedQueueEntry?.phone);
+
+        if (matchedQueueEntry) {
+          if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
+          if ((matchedQueueEntry as any).uid) targetIds.add((matchedQueueEntry as any).uid);
+          if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
+        }
+
+        state.queue.forEach(p => {
+          const pEmail = (p.email || '').trim().toLowerCase();
+          const pCpf = cleanDigits(p.cpf);
+          const pPhone = cleanDigits(p.phone);
+          const emailMatch = patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail;
+          const cpfMatch = patientCpf && patientCpf.length >= 11 && pCpf === patientCpf;
+          const phoneMatch = patientPhone && patientPhone.length >= 10 && pPhone === patientPhone;
+          if (emailMatch || cpfMatch || phoneMatch) {
+            if (p.id) targetIds.add(p.id);
+            if ((p as any).uid) targetIds.add((p as any).uid);
+            if ((p as any).patientId) targetIds.add((p as any).patientId);
+          }
+        });
+
+        if (patientEmail && !patientEmail.includes('sem-email')) {
+          try {
+            const uSnap = await getDocs(query(collection(db, 'users'), where('email', '==', patientEmail)));
+            uSnap.forEach(d => targetIds.add(d.id));
+          } catch {
+            // ignore
+          }
+        }
+
+        // Delete the message from active_consultations/{tid}/messages/{messageId} across all linked IDs
+        await Promise.all(
+          Array.from(targetIds).map(tid =>
+            deleteDoc(doc(db, 'active_consultations', tid, 'messages', messageId)).catch(() => {})
+          )
+        );
+
+        // Also clean up any matching issuedDocuments / report summary on parent documents so it is never re-synthesized
+        const docKey = targetMsg?.docType || targetMsg?.attachment?.docType || targetMsg?.type;
+        const cleanupPayload: Record<string, any> = {};
+        if (docKey) {
+          cleanupPayload[`issuedDocuments.${docKey}`] = null;
+        }
+        if (targetMsg?.type) {
+          cleanupPayload[`issuedDocuments.${targetMsg.type}`] = null;
+        }
+        if (messageId.startsWith('syn_medreport_') || targetMsg?.type === 'medical_report' || docKey === 'laudo_inicial' || docKey === 'laudo_evolutivo') {
+          cleanupPayload['issuedDocuments.laudo_inicial'] = null;
+          cleanupPayload['issuedDocuments.laudo_evolutivo'] = null;
+          cleanupPayload['issuedDocuments.medical_report'] = null;
+          cleanupPayload.medicalReportData = null;
+        }
+        if (messageId.startsWith('syn_psyreport_') || targetMsg?.type === 'psychomotor_report' || docKey === 'laudo_psicomotor') {
+          cleanupPayload['issuedDocuments.laudo_psicomotor'] = null;
+          cleanupPayload['issuedDocuments.psychomotor_report'] = null;
+          cleanupPayload.psychomotorReportData = null;
+        }
+        if (messageId.startsWith('syn_agroreport_') || targetMsg?.type === 'agronomic_report' || docKey === 'laudo_agronomico') {
+          cleanupPayload['issuedDocuments.laudo_agronomico'] = null;
+          cleanupPayload['issuedDocuments.agronomic_report'] = null;
+          cleanupPayload.agronomicReportData = null;
+        }
+        if (messageId.startsWith('syn_presc_') || targetMsg?.type === 'prescription' || docKey === 'receita') {
+          cleanupPayload['issuedDocuments.receita'] = null;
+          cleanupPayload['issuedDocuments.prescription'] = null;
+        }
+
+        if (Object.keys(cleanupPayload).length > 0) {
+          await Promise.all(
+            Array.from(targetIds).map(async (tid) => {
+              await updateDoc(doc(db, 'active_consultations', tid), cleanupPayload).catch(() => {});
+              await updateDoc(doc(db, 'queue', tid), cleanupPayload).catch(() => {});
+              await updateDoc(doc(db, 'users', tid), cleanupPayload).catch(() => {});
+            })
+          );
+        }
+
+        console.log("Message deleted from Firestore across all linked IDs:", messageId, Array.from(targetIds));
       } catch (error) {
         console.error("Error deleting message from Firestore:", error);
       }
@@ -2042,18 +2145,82 @@ export const useStore = create<AppState>((set, get) => ({
       .filter(m => m.type === 'product' || m.type === 'prescription' || m.type === 'prescription_notes' || m.type === 'receita_previa')
       .map(m => m.id);
 
+    try {
+      if (typeof window !== 'undefined' && prescriptionMsgIds.length > 0) {
+        const rawDel = localStorage.getItem('mecura_deleted_msg_ids');
+        const arr: string[] = rawDel ? JSON.parse(rawDel) : [];
+        prescriptionMsgIds.forEach(id => {
+          if (!arr.includes(id)) arr.push(id);
+        });
+        if (arr.length > 300) arr.splice(0, arr.length - 300);
+        localStorage.setItem('mecura_deleted_msg_ids', JSON.stringify(arr));
+      }
+    } catch {
+      // ignore
+    }
+
     set((s) => ({
       messages: s.messages.filter(m => m.type !== 'product' && m.type !== 'prescription' && m.type !== 'prescription_notes' && m.type !== 'receita_previa')
     }));
 
     const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
     console.log("clearPrescriptionMessages called. consultationId:", consultationId, "ids:", prescriptionMsgIds);
-    if (consultationId && prescriptionMsgIds.length > 0) {
+    if (consultationId) {
       try {
-        await Promise.all(
-          prescriptionMsgIds.map(id => deleteDoc(doc(db, 'active_consultations', consultationId, 'messages', id)))
+        const targetIds = new Set<string>([consultationId]);
+        if (state.activeConsultationId) targetIds.add(state.activeConsultationId);
+        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
+        const matchedQueueEntry = state.queue.find(p =>
+          p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId
         );
-        console.log("Prescription messages cleared from Firestore");
+        const patientEmail = (matchedQueueEntry?.email || '').trim().toLowerCase();
+        const patientCpf = cleanDigits(matchedQueueEntry?.cpf);
+        const patientPhone = cleanDigits(matchedQueueEntry?.phone);
+
+        if (matchedQueueEntry) {
+          if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
+          if ((matchedQueueEntry as any).uid) targetIds.add((matchedQueueEntry as any).uid);
+          if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
+        }
+
+        state.queue.forEach(p => {
+          const pEmail = (p.email || '').trim().toLowerCase();
+          const pCpf = cleanDigits(p.cpf);
+          const pPhone = cleanDigits(p.phone);
+          const emailMatch = patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail;
+          const cpfMatch = patientCpf && patientCpf.length >= 11 && pCpf === patientCpf;
+          const phoneMatch = patientPhone && patientPhone.length >= 10 && pPhone === patientPhone;
+          if (emailMatch || cpfMatch || phoneMatch) {
+            if (p.id) targetIds.add(p.id);
+            if ((p as any).uid) targetIds.add((p as any).uid);
+            if ((p as any).patientId) targetIds.add((p as any).patientId);
+          }
+        });
+
+        if (prescriptionMsgIds.length > 0) {
+          await Promise.all(
+            Array.from(targetIds).flatMap(tid =>
+              prescriptionMsgIds.map(id =>
+                deleteDoc(doc(db, 'active_consultations', tid, 'messages', id)).catch(() => {})
+              )
+            )
+          );
+        }
+
+        const clearPayload: Record<string, any> = {
+          'issuedDocuments.receita': null,
+          'issuedDocuments.prescription': null,
+          'issuedDocuments.product': null,
+          'issuedDocuments.receita_previa': null
+        };
+        await Promise.all(
+          Array.from(targetIds).map(async (tid) => {
+            await updateDoc(doc(db, 'active_consultations', tid), clearPayload).catch(() => {});
+            await updateDoc(doc(db, 'queue', tid), clearPayload).catch(() => {});
+            await updateDoc(doc(db, 'users', tid), clearPayload).catch(() => {});
+          })
+        );
+        console.log("Prescription messages cleared from Firestore across all linked IDs");
       } catch (error) {
         console.error("Error clearing prescription messages from Firestore:", error);
       }
@@ -2131,30 +2298,39 @@ export const useStore = create<AppState>((set, get) => ({
     const subscribedIds = new Set<string>();
     let isCancelled = false;
 
+    const getDeletedIdsSet = (): Set<string> => {
+      try {
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem('mecura_deleted_msg_ids');
+          if (raw) return new Set<string>(JSON.parse(raw));
+        }
+      } catch {
+        // ignore
+      }
+      return new Set<string>();
+    };
+
     const rebuildAndPublishMessages = () => {
       if (isCancelled) return;
+      const deletedSet = getDeletedIdsSet();
       const mergedMap = new Map<string, Message>();
 
       messagesByTarget.forEach((msgs) => {
         msgs.forEach((m) => {
-          mergedMap.set(m.id, m);
+          if (!deletedSet.has(m.id)) {
+            mergedMap.set(m.id, m);
+          }
         });
       });
 
-      // Check if we already have real prescription/product/report messages before adding synthesized ones
-      const existingMsgs = Array.from(mergedMap.values());
-      const hasRealPrescriptionMsg = existingMsgs.some(m =>
-        m.type === 'prescription' || m.type === 'receita_previa' || m.docType === 'receita' || m.attachment?.docType === 'receita'
-      );
-      const hasRealProductMsg = existingMsgs.some(m => m.type === 'product' && m.productData);
-
-      synthesizedMessagesMap.forEach((synMsg, key) => {
-        if (key.startsWith('syn_presc_') && hasRealPrescriptionMsg) return;
-        if (key.startsWith('syn_prod_') && (hasRealProductMsg || hasRealPrescriptionMsg)) return;
-        if (!mergedMap.has(synMsg.id)) {
-          mergedMap.set(synMsg.id, synMsg);
-        }
-      });
+      // Only use issuedDocuments fallback in patient view when no real message with that ID exists and it wasn't deleted
+      if (!isProfessionalView) {
+        synthesizedMessagesMap.forEach((synMsg) => {
+          if (!deletedSet.has(synMsg.id) && !mergedMap.has(synMsg.id)) {
+            mergedMap.set(synMsg.id, synMsg);
+          }
+        });
+      }
 
       const allMsgs = Array.from(mergedMap.values());
       allMsgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
@@ -2187,153 +2363,23 @@ export const useStore = create<AppState>((set, get) => ({
     };
 
     const inspectDocumentDataForSynthesizedMessages = (sourceId: string, docData: any) => {
-      if (!docData || isCancelled) return;
+      if (!docData || isCancelled || isProfessionalView) return;
       let changed = false;
+      const deletedSet = getDeletedIdsSet();
 
-      // 1. Check issuedDocuments map saved by addMessage
+      // Only check issuedDocuments map (explicitly sent via addMessage in chat), NEVER draft editor fields
       if (docData.issuedDocuments && typeof docData.issuedDocuments === 'object') {
         Object.entries(docData.issuedDocuments).forEach(([docKey, rawMsg]: [string, any]) => {
-          if (rawMsg && typeof rawMsg === 'object') {
-            const msgId = rawMsg.id || `issued_${sourceId}_${docKey}`;
+          const msgId = rawMsg?.id || `issued_${sourceId}_${docKey}`;
+          if (rawMsg && typeof rawMsg === 'object' && !deletedSet.has(msgId)) {
             const parsed = parseRawMessage(msgId, rawMsg);
             synthesizedMessagesMap.set(msgId, parsed);
             changed = true;
+          } else if (!rawMsg && synthesizedMessagesMap.has(msgId)) {
+            synthesizedMessagesMap.delete(msgId);
+            changed = true;
           }
         });
-      }
-
-      // 2. Check prescriptionData saved by handleSavePrescription / handleSendPrescriptionToChat
-      if (docData.prescriptionData && Array.isArray(docData.prescriptionData.items) && docData.prescriptionData.items.length > 0) {
-        const pd = docData.prescriptionData;
-        const ts = pd.updatedAt ? new Date(pd.updatedAt) : new Date();
-        const synPrescId = `syn_presc_${sourceId}`;
-        synthesizedMessagesMap.set(synPrescId, {
-          id: synPrescId,
-          sender: 'doctor',
-          type: 'prescription',
-          docType: 'receita',
-          text: `Receita Médica Oficial emitida por ${pd.doctorName || 'Dr. Guilherme Taveira Dias'} (${pd.doctorCrm || 'CRM/MT 17259'}) para ${pd.patientName || get().userName || 'Paciente'}.`,
-          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
-          attachment: {
-            name: `Receita_Medica_${(pd.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
-            url: '#gerar-pdf-receita',
-            type: 'application/pdf',
-            docType: 'receita',
-            title: 'Receita Médica Oficial'
-          },
-          receitaPreviaData: {
-            doctorName: pd.doctorName || 'Dr. Guilherme Taveira Dias',
-            doctorCrm: pd.doctorCrm || 'CRM/MT 17259',
-            doctorSpecialty: pd.doctorSpecialty || 'Clínico Geral • Medicina Endocanabinoide',
-            patientName: pd.patientName || get().userName || 'Paciente',
-            emissionDate: pd.emissionDate || new Date().toLocaleDateString('pt-BR'),
-            items: pd.items,
-            notes: pd.notes || '',
-            status: 'confirmed'
-          }
-        });
-
-        pd.items.forEach((item: any, idx: number) => {
-          const synProdId = `syn_prod_${sourceId}_${idx}`;
-          synthesizedMessagesMap.set(synProdId, {
-            id: synProdId,
-            sender: 'doctor',
-            type: 'product',
-            timestamp: isNaN(ts.getTime()) ? new Date() : ts,
-            productData: {
-              name: item.name,
-              brand: item.brand || 'Associação Nacional',
-              origin: item.origin || 'Nacional (Associação)',
-              type: item.type || 'Sublingual',
-              activeIngredients: item.activeIngredients || '',
-              concentration: item.concentration || '',
-              pharmaceuticalForm: item.pharmaceuticalForm || '',
-              quantity: item.quantity || '',
-              administrationRoute: item.administrationRoute || '',
-              dosage: Array.isArray(item.dosage) ? item.dosage : (item.dosage ? [String(item.dosage)] : []),
-              description: item.description || '',
-              details: Array.isArray(item.details) ? item.details : [
-                item.activeIngredients ? `Princípio Ativo: ${item.activeIngredients}` : '',
-                item.concentration ? `Concentração: ${item.concentration}` : '',
-                item.quantity ? `Quantidade: ${item.quantity}` : ''
-              ].filter(Boolean),
-              image: item.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=300&q=80',
-              priceBRL: item.priceBRL
-            }
-          });
-        });
-        changed = true;
-      }
-
-      // 3. Check medicalReportData
-      if (docData.medicalReportData && (docData.medicalReportData.clinicalHistory || docData.medicalReportData.cid || docData.medicalReportData.patientName)) {
-        const mr = docData.medicalReportData;
-        const ts = mr.updatedAt ? new Date(mr.updatedAt) : new Date();
-        const isEvolutivo = mr.reportType === 'evolutivo';
-        const dType = isEvolutivo ? 'laudo_evolutivo' : 'laudo_inicial';
-        const synMedId = `syn_medreport_${sourceId}_${dType}`;
-        synthesizedMessagesMap.set(synMedId, {
-          id: synMedId,
-          sender: 'doctor',
-          type: 'medical_report',
-          docType: dType,
-          text: `Laudo Médico ${isEvolutivo ? 'Evolutivo' : 'Inicial'} emitido por ${mr.doctorName || 'Dr. Guilherme Taveira Dias'}.`,
-          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
-          attachment: {
-            name: `Laudo_Medico_${isEvolutivo ? 'Evolutivo' : 'Inicial'}_${(mr.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
-            url: '#gerar-pdf-laudo-medico',
-            type: 'application/pdf',
-            docType: dType,
-            title: isEvolutivo ? 'Laudo Médico Evolutivo' : 'Laudo Médico Inicial'
-          }
-        });
-        changed = true;
-      }
-
-      // 4. Check psychomotorReportData
-      if (docData.psychomotorReportData && docData.psychomotorReportData.patientName) {
-        const pr = docData.psychomotorReportData;
-        const ts = pr.updatedAt ? new Date(pr.updatedAt) : new Date();
-        const synPsyId = `syn_psyreport_${sourceId}`;
-        synthesizedMessagesMap.set(synPsyId, {
-          id: synPsyId,
-          sender: 'doctor',
-          type: 'psychomotor_report',
-          docType: 'laudo_psicomotor',
-          text: `Laudo de Aptidão Física, Mental e Psicomotora emitido por ${pr.doctorName || 'Dr. Guilherme Taveira Dias'}.`,
-          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
-          attachment: {
-            name: `Laudo_Aptidao_${(pr.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
-            url: '#gerar-pdf-laudo-aptidao',
-            type: 'application/pdf',
-            docType: 'laudo_psicomotor',
-            title: 'Laudo de Aptidão Física e Mental'
-          }
-        });
-        changed = true;
-      }
-
-      // 5. Check agronomicReportData
-      if (docData.agronomicReportData && docData.agronomicReportData.patientName) {
-        const ar = docData.agronomicReportData;
-        const ts = ar.updatedAt ? new Date(ar.updatedAt) : new Date();
-        const synAgroId = `syn_agroreport_${sourceId}`;
-        synthesizedMessagesMap.set(synAgroId, {
-          id: synAgroId,
-          sender: 'doctor',
-          type: 'agronomic_report',
-          docType: 'laudo_agronomico',
-          text: `Parecer Técnico Agronômico emitido por ${ar.engineerName || 'Eng. Agr. Wilian Dalenogare Pereira'}.`,
-          timestamp: isNaN(ts.getTime()) ? new Date() : ts,
-          attachment: {
-            name: `Parecer_Agronomico_${(ar.patientName || 'Paciente').replace(/\s+/g, '_')}.pdf`,
-            url: '#gerar-pdf-laudo-agronomico',
-            type: 'application/pdf',
-            docType: 'laudo_agronomico',
-            title: 'Parecer Técnico Agronômico'
-          }
-        });
-        changed = true;
       }
 
       if (changed) {
