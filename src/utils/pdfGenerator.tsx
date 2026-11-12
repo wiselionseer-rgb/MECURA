@@ -2849,8 +2849,27 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   // Importação estimada de sementes feminizadas com taxa de segurança de 30%
   const seedsNeeded = agronomicData?.seedsNeeded || Math.round(targetPlants * 1.3038) || 206;
 
-  // Parse customAgroText into modular chunks to prevent massive single-block page breaks
-  const agroCustomSections: { title?: string; paragraphs: string[] }[] = [];
+  // Helper to split any long paragraph into smaller sentence chunks so a single paragraph never overflows a page
+  const splitLongParagraph = (text: string, maxChars = 650): string[] => {
+    const trimmed = text.trim();
+    if (trimmed.length <= maxChars) return [trimmed];
+    const sentences = trimmed.split(/(?<=[.!?])\s+/);
+    const chunks: string[] = [];
+    let current = '';
+    for (const s of sentences) {
+      if (current && (current.length + 1 + s.length) > maxChars) {
+        chunks.push(current.trim());
+        current = s;
+      } else {
+        current = current ? `${current} ${s}` : s;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks.length > 0 ? chunks : [trimmed];
+  };
+
+  // Parse customAgroText into granular blocks so each paragraph/section paginates cleanly without clipping
+  const agroCustomBlocks: { title?: string; paragraph: string }[] = [];
   if (customAgroText) {
     const majorParts = customAgroText.split(/\n\s*(?=(?:1\.|2\.|3\.)\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/);
     if (majorParts.length > 1) {
@@ -2859,30 +2878,43 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
         if (lines.length > 0) {
           const firstLine = lines[0];
           if (/^(?:1\.|2\.|3\.)\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(firstLine)) {
-            agroCustomSections.push({
-              title: firstLine,
-              paragraphs: lines.slice(1)
-            });
+            const bodyLines = lines.slice(1).flatMap(l => splitLongParagraph(l));
+            if (bodyLines.length > 0) {
+              bodyLines.forEach((p, idx) => {
+                agroCustomBlocks.push({
+                  title: idx === 0 ? firstLine : undefined,
+                  paragraph: p
+                });
+              });
+            } else {
+              agroCustomBlocks.push({ title: firstLine, paragraph: '' });
+            }
           } else {
-            agroCustomSections.push({
-              paragraphs: lines
+            lines.flatMap(l => splitLongParagraph(l)).forEach(p => {
+              agroCustomBlocks.push({ paragraph: p });
             });
           }
         }
       });
     } else {
-      const rawParas = customAgroText.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
-      if (rawParas.length > 1) {
-        rawParas.forEach(p => {
-          agroCustomSections.push({
-            paragraphs: p.split('\n').map(l => l.trim()).filter(Boolean)
-          });
-        });
-      } else {
-        agroCustomSections.push({
-          paragraphs: customAgroText.split('\n').map(l => l.trim()).filter(Boolean)
-        });
-      }
+      const rawParas = customAgroText.split(/\n+/).map(p => p.trim()).filter(Boolean);
+      rawParas.flatMap(p => splitLongParagraph(p)).forEach(p => {
+        agroCustomBlocks.push({ paragraph: p });
+      });
+    }
+  }
+
+  // Split prescribedProductsText into individual medication blocks so 5, 9, or 15 items paginate cleanly across pages without ever clipping at the footer
+  const prescribedItemChunks: string[] = [];
+  if (prescribedProductsText) {
+    const rawItems = prescribedProductsText
+      .split(/\n\s*\n+|\n(?=\d+[\.\)]\s)/)
+      .map(chunk => chunk.trim())
+      .filter(Boolean);
+    if (rawItems.length > 0) {
+      prescribedItemChunks.push(...rawItems);
+    } else {
+      prescribedItemChunks.push(prescribedProductsText.trim());
     }
   }
 
@@ -2968,36 +3000,38 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
         </div>
       )
     },
-    ...agroCustomSections.map((sec, sIdx) => ({
+    ...agroCustomBlocks.map((sec, sIdx) => ({
       id: `sec-3-custom-${sIdx}`,
       render: () => (
-        <div style={{ backgroundColor: '#F8FAFC', borderLeft: '3px solid #059669', borderTop: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0', borderRadius: '4px', padding: '6px 10px', fontSize: '9.8px', lineHeight: '1.45', textAlign: 'justify', color: '#1E293B' }}>
+        <div style={{ backgroundColor: '#F8FAFC', borderLeft: '3px solid #059669', borderTop: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0', borderRadius: '4px', padding: '6px 10px', fontSize: '9.8px', lineHeight: '1.44', textAlign: 'justify', color: '#1E293B' }}>
           {sec.title && (
-            <p style={{ margin: '0 0 3px 0', fontSize: '9.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.2px' }}>
+            <p style={{ margin: sec.paragraph ? '0 0 3px 0' : 0, fontSize: '9.5px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.2px' }}>
               {sec.title}
             </p>
           )}
-          {sec.paragraphs.map((para, pIdx) => (
-            <p key={pIdx} style={{ margin: pIdx === 0 && !sec.title ? 0 : '3px 0 0 0' }}>
-              {para}
+          {sec.paragraph && (
+            <p style={{ margin: 0 }}>
+              {sec.paragraph}
             </p>
-          ))}
+          )}
         </div>
       )
     })),
-    ...(prescribedProductsText ? [{
-      id: 'sec-3-presc',
+    ...prescribedItemChunks.map((itemText, pIdx) => ({
+      id: `sec-3-presc-item-${pIdx}`,
       render: () => (
-        <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '4px', padding: '6px 10px' }}>
-          <p style={{ margin: '0 0 2px 0', fontSize: '8.8px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase' }}>
-            Protocolo Prescrito Vinculado ao Dimensionamento (Preparações Artesanais):
-          </p>
-          <p style={{ margin: 0, fontSize: '9.5px', color: '#064E3B', whiteSpace: 'pre-line' }}>
-            {prescribedProductsText}
+        <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderLeft: '3px solid #059669', borderRadius: '4px', padding: '5px 10px' }}>
+          {pIdx === 0 && (
+            <p style={{ margin: '0 0 3px 0', fontSize: '8.8px', fontWeight: '800', color: '#065F46', textTransform: 'uppercase', borderBottom: '1px solid #BBF7D0', paddingBottom: '2px' }}>
+              Protocolo Prescrito Vinculado ao Dimensionamento (Preparações Artesanais):
+            </p>
+          )}
+          <p style={{ margin: 0, fontSize: '9.3px', lineHeight: '1.4', color: '#064E3B', whiteSpace: 'pre-line' }}>
+            {itemText}
           </p>
         </div>
       )
-    }] : []),
+    })),
     {
       id: 'sec-3-concl',
       render: () => (
@@ -3278,13 +3312,14 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
       );
       await new Promise(resolve => setTimeout(resolve, 600));
     } else {
-      // Real DOM measurement pass so pages pack tightly without blank spaces
+      // Real DOM measurement pass so pages pack tightly without clipping or footer overlap
+      const GAP = 10;
       const MeasurePass = () => (
-        <div style={{ width: '794px', padding: '30px 40px', boxSizing: 'border-box', backgroundColor: '#FFFFFF', fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif' }}>
+        <div style={{ width: '794px', padding: '28px 40px', boxSizing: 'border-box', backgroundColor: '#FFFFFF', fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontSize: '11px', lineHeight: '1.5' }}>
           <div id="agro-measure-h-first">{renderAgroHeader(false)}</div>
           <div id="agro-measure-h-cont">{renderAgroHeader(true)}</div>
           <div id="agro-measure-sig">{renderAgroSignature()}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
             {agroBlocks.map((b, idx) => (
               <div key={`agro-measure-${b.id || idx}-${idx}`} data-agro-idx={idx}>{b.render()}</div>
             ))}
@@ -3295,14 +3330,15 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
       root.render(<MeasurePass />);
       await new Promise(resolve => setTimeout(resolve, 250));
 
-      const hFirst = container.querySelector<HTMLElement>('#agro-measure-h-first')?.offsetHeight || 135;
-      const hCont = container.querySelector<HTMLElement>('#agro-measure-h-cont')?.offsetHeight || 42;
-      const sigH = container.querySelector<HTMLElement>('#agro-measure-sig')?.offsetHeight || 82;
+      // Account for header marginBottom (12px) and signature marginTop (14px) plus safety buffer
+      const hFirst = (container.querySelector<HTMLElement>('#agro-measure-h-first')?.offsetHeight || 135) + 16;
+      const hCont = (container.querySelector<HTMLElement>('#agro-measure-h-cont')?.offsetHeight || 42) + 16;
+      const sigH = (container.querySelector<HTMLElement>('#agro-measure-sig')?.offsetHeight || 82) + 22;
       const blockEls = Array.from(container.querySelectorAll<HTMLElement>('[data-agro-idx]'));
-      const blockHeights = blockEls.map(el => el.offsetHeight);
+      const blockHeights = blockEls.map(el => el.offsetHeight + 2);
 
-      const USABLE_PAGE_H = 1120 - 60 - 26;
-      const GAP = 11;
+      // Page is 1120px tall; 56px top/bottom padding + 58px reserved for footer and breathing room = 1006px usable
+      const USABLE_PAGE_H = 1120 - 56 - 58;
 
       const pages: AgroBlock[][] = [];
       let cursor = 0;
@@ -3317,7 +3353,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
           const h = blockHeights[cursor] || 70;
           const g = pageBlocks.length > 0 ? GAP : 0;
           const isLast = cursor === agroBlocks.length - 1;
-          const extraSig = isLast ? sigH + 14 : 0;
+          const extraSig = isLast ? sigH : 0;
 
           if (pageBlocks.length > 0 && usedH + g + h + extraSig > availH) {
             break;
@@ -3347,9 +3383,10 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
                 style={{
                   width: '794px',
                   height: '1120px',
+                  minHeight: '1120px',
                   maxHeight: '1120px',
                   overflow: 'hidden',
-                  padding: '30px 40px',
+                  padding: '28px 40px 22px 40px',
                   boxSizing: 'border-box',
                   position: 'relative',
                   display: 'flex',
@@ -3358,7 +3395,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
                   backgroundColor: '#FFFFFF'
                 }}
               >
-                <div style={{ paddingBottom: '35px' }}>
+                <div style={{ flex: 1, overflow: 'hidden', paddingBottom: '10px' }}>
                   {renderAgroHeader(pIdx > 0)}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: `${GAP}px` }}>
                     {pageBlocks.map((b, bIdx) => (
@@ -3368,7 +3405,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
                   {isLastPage && renderAgroSignature()}
                 </div>
 
-                <div style={{ position: 'absolute', bottom: '20px', left: '40px', right: '40px', borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B' }}>
+                <div style={{ flexShrink: 0, marginTop: '8px', borderTop: '1px solid #E2E8F0', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8.5px', color: '#64748B', backgroundColor: '#FFFFFF' }}>
                   <span>Mecura • Assessoria Pericial em Fitotecnia & Autocultivo Medicinal</span>
                   <span style={{ fontWeight: '700', color: '#0F172A' }}>Parecer Técnico — Página {pIdx + 1} de {pages.length}</span>
                   <span>Documento para Instrução de Habeas Corpus Preventivo</span>
