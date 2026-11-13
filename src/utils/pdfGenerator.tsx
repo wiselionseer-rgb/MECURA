@@ -7,7 +7,11 @@ import { format } from 'date-fns';
 import { Message, useStore } from '../store/useStore';
 import { enrichMedicationDetails } from '../data/cbdGuide';
 import { deliverPdfBlob } from './downloadHelper';
-import { generatePersonalizedClinicalReport } from './clinicalReportGenerator';
+import {
+  generatePersonalizedClinicalReport,
+  syncAgronomicTextWithParameters,
+  syncPrescribedProductsWithDailyDose
+} from './clinicalReportGenerator';
 
 export interface PrescriptionItemData {
   name: string;
@@ -2816,9 +2820,33 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   }, 'inicial');
 
   const diagnosis = agronomicData?.diagnosis || personalized.agronomic.diagnosis;
-  const dailyMg = agronomicData?.dailyDoseMg || personalized.agronomic.dailyDoseMg || 5000;
-  const customAgroText = (agronomicData?.customText || personalized.agronomic.text || '').trim();
-  const prescribedProductsText = (agronomicData?.prescribedProducts || '').trim();
+
+  // Determine dailyMg and targetPlants
+  const dailyMg = Number(agronomicData?.dailyDoseMg || personalized.agronomic.dailyDoseMg || 1764);
+  const rawAnnualGrams = (dailyMg * 365) / 1000;
+  const rawDryMarginKg = ((rawAnnualGrams / 0.10) / 1000) * 1.3038;
+  const rawCalculatedPlants = Math.max(6, Math.ceil(Math.round((rawDryMarginKg * 1000) / 150) / 3) * 3);
+
+  const targetPlants = Number(agronomicData?.targetPlants || personalized.agronomic.targetPlants || rawCalculatedPlants || 120);
+
+  // Divisão em 3 momentos de colheita ao longo do ano (ciclos de 120 dias)
+  const plantsPerCycle = agronomicData?.plantsPerCycle || Math.max(1, Math.ceil(targetPlants / 3));
+
+  // Importação estimada de sementes feminizadas com 30% de taxa de perda/erro
+  const seedsNeeded = agronomicData?.seedsNeeded || Math.round(targetPlants * 1.3038);
+
+  const rawPrescribedProductsText = (agronomicData?.prescribedProducts || '').trim();
+  const prescribedProductsText = syncPrescribedProductsWithDailyDose(rawPrescribedProductsText, dailyMg);
+
+  const rawCustomAgroText = (agronomicData?.customText || personalized.agronomic.text || '').trim();
+  const customAgroText = syncAgronomicTextWithParameters(rawCustomAgroText, {
+    patientName: sanitizedUserName,
+    cpf: patientCpf,
+    diagnosis,
+    dailyDoseMg: dailyMg,
+    targetPlants,
+    prescribedProducts: prescribedProductsText
+  });
 
   // Technical calculations based on agronomic standards
   const monthlyMg = Math.round(dailyMg * 31);
@@ -2838,16 +2866,6 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   // Perda de umidade na secagem: as inflorescências perdem entre 70% a 80% do peso em água
   const wetFlowerKgBase = Number((dryFlowerMarginKgBase / 0.30).toFixed(3));
   const wetFlowerKgStr = agronomicData?.wetFlowerKg || wetFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-
-  // Rendimento médio por planta no cultivo indoor (paciente): 100g a 150g de flores secas por ciclo de 120 dias
-  const calculatedPlants = Math.round((dryFlowerMarginKgBase * 1000) / 150);
-  const targetPlants = agronomicData?.targetPlants || personalized.agronomic.targetPlants || calculatedPlants || 158;
-
-  // Divisão em 3 momentos de colheita ao longo do ano
-  const plantsPerCycle = agronomicData?.plantsPerCycle || Math.round(targetPlants / 4) || 40;
-
-  // Importação estimada de sementes feminizadas com taxa de segurança de 30%
-  const seedsNeeded = agronomicData?.seedsNeeded || Math.round(targetPlants * 1.3038) || 206;
 
   // Helper to split any long paragraph into smaller sentence chunks so a single paragraph never overflows a page
   const splitLongParagraph = (text: string, maxChars = 650): string[] => {
@@ -3142,7 +3160,7 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
               </tr>
               <tr>
                 <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px' }}>Plantas em Floração por Ciclo & Sementes Anuais</td>
-                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>3 colheitas/ano • +30% margem germinativa</td>
+                <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'center' }}>3 colheitas/ano • +30% de taxa de perda/erro</td>
                 <td style={{ border: '1px solid #CBD5E1', padding: '4px 8px', textAlign: 'right', fontWeight: 'bold', color: '#065F46' }}>{plantsPerCycle} plantas/ciclo • {seedsNeeded} sementes</td>
               </tr>
             </tbody>

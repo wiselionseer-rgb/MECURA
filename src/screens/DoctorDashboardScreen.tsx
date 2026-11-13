@@ -106,7 +106,7 @@ import { ProgrammedPrescriptionProfile, getProgrammedProfiles, getDoctorCustomMo
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 
 import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, generateTclePDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
-import { generatePersonalizedClinicalReport, buildAgronomicArtisanalMedications, syncAgronomicTextWithParameters } from '../utils/clinicalReportGenerator';
+import { generatePersonalizedClinicalReport, buildAgronomicArtisanalMedications, syncAgronomicTextWithParameters, syncPrescribedProductsWithDailyDose } from '../utils/clinicalReportGenerator';
 import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
 const calculateAge = (birthDateStr?: string) => {
@@ -1444,9 +1444,11 @@ export function DoctorDashboardScreen() {
     const finalName = validSaved?.patientName || pName;
     const finalCpf = validSaved?.cpf || pCpf;
     const finalDiagnosis = validSaved?.diagnosis || patientData.diagnosis || defaults.defaultDiagnosis || personalized.agronomic.diagnosis;
-    const finalDailyDose = validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg || personalized.agronomic.dailyDoseMg;
-    const finalTargetPlants = validSaved?.targetPlants || defaults.defaultTargetPlants || personalized.agronomic.targetPlants;
-    const finalPrescribed = validSaved?.prescribedProducts || defaults.prescribedProductsStr;
+    const finalTargetPlants = Number(validSaved?.targetPlants || defaults.defaultTargetPlants || personalized.agronomic.targetPlants || 120);
+    const finalDailyDose = Number(validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg || personalized.agronomic.dailyDoseMg || 1764);
+
+    const basePrescribed = defaults.prescribedProductsStr || validSaved?.prescribedProducts || '';
+    const finalPrescribed = syncPrescribedProductsWithDailyDose(basePrescribed, finalDailyDose);
     const finalAgroText = syncAgronomicTextWithParameters(
       validSaved?.agronomicText || defaults.defaultAgronomicText || personalized.agronomic.text,
       {
@@ -4436,28 +4438,37 @@ export function DoctorDashboardScreen() {
     };
 
     const isTargetCurrent = !resolvedId || currentPatient?.id === resolvedId;
-    if (isTargetCurrent) {
-      (prescItemsRef.current.length > 0 ? prescItemsRef.current : prescItems).forEach(addMedItem);
-    }
-    if (savedPresc?.items && Array.isArray(savedPresc.items)) {
+    const activeEditorItems = isTargetCurrent
+      ? (prescItemsRef.current.length > 0 ? prescItemsRef.current : prescItems)
+      : [];
+
+    if (activeEditorItems.length > 0) {
+      activeEditorItems.forEach(addMedItem);
+    } else if (savedPresc?.items && Array.isArray(savedPresc.items) && savedPresc.items.length > 0) {
       savedPresc.items.forEach(addMedItem);
-    }
-    if ((qPatient as any)?.prescriptionData?.items && Array.isArray((qPatient as any).prescriptionData.items)) {
+    } else if ((qPatient as any)?.prescriptionData?.items && Array.isArray((qPatient as any).prescriptionData.items) && (qPatient as any).prescriptionData.items.length > 0) {
       (qPatient as any).prescriptionData.items.forEach(addMedItem);
-    }
-    if (isTargetCurrent && (currentPatient as any)?.prescriptionData?.items && Array.isArray((currentPatient as any).prescriptionData.items)) {
+    } else if (isTargetCurrent && (currentPatient as any)?.prescriptionData?.items && Array.isArray((currentPatient as any).prescriptionData.items) && (currentPatient as any).prescriptionData.items.length > 0) {
       (currentPatient as any).prescriptionData.items.forEach(addMedItem);
-    }
-    if (isTargetCurrent && Array.isArray(messages)) {
-      messages.forEach((m: any) => {
-        if (m.type === 'product' && m.productData) {
-          addMedItem(m.productData);
-        } else if (m.type === 'receita_previa' && Array.isArray(m.receitaPreviaData?.items)) {
-          m.receitaPreviaData.items.forEach(addMedItem);
-        } else if (m.type === 'prescription' && Array.isArray(m.attachment?.customItems)) {
-          m.attachment.customItems.forEach(addMedItem);
-        }
-      });
+    } else if (isTargetCurrent && Array.isArray(messages)) {
+      // Fall back to latest prescription or product messages in chat
+      const revMessages = [...messages].reverse();
+      const latestPrescMsg: any = revMessages.find((m: any) =>
+        (m.type === 'prescription' && Array.isArray(m.attachment?.customItems) && m.attachment.customItems.length > 0) ||
+        (m.type === 'receita_previa' && Array.isArray(m.receitaPreviaData?.items) && m.receitaPreviaData.items.length > 0)
+      );
+      if (latestPrescMsg) {
+        const itemsList = latestPrescMsg.type === 'prescription'
+          ? latestPrescMsg.attachment.customItems
+          : latestPrescMsg.receitaPreviaData.items;
+        itemsList.forEach(addMedItem);
+      } else {
+        messages.forEach((m: any) => {
+          if (m.type === 'product' && m.productData) {
+            addMedItem(m.productData);
+          }
+        });
+      }
     }
 
     const hcCalc = patientAnswers?.hcPlantCalculator;
@@ -4552,9 +4563,13 @@ export function DoctorDashboardScreen() {
     const finalName = validSaved?.patientName || defaults.pName;
     const finalCpf = validSaved?.cpf || defaults.pCpf;
     const finalDiagnosis = validSaved?.diagnosis || defaults.defaultDiagnosis;
-    const finalDailyDose = validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg;
-    const finalTargetPlants = validSaved?.targetPlants || defaults.defaultTargetPlants;
-    const finalPrescribed = validSaved?.prescribedProducts || defaults.prescribedProductsStr;
+    const finalTargetPlants = Number(validSaved?.targetPlants || defaults.defaultTargetPlants || 120);
+    const finalDailyDose = Number(validSaved?.dailyDoseMg || defaults.defaultDailyDoseMg || 1764);
+
+    // Always use freshly classified prescription items from defaults if available, synced with finalDailyDose
+    const basePrescribed = defaults.prescribedProductsStr || validSaved?.prescribedProducts || '';
+    const finalPrescribed = syncPrescribedProductsWithDailyDose(basePrescribed, finalDailyDose);
+
     const finalAgroText = syncAgronomicTextWithParameters(
       validSaved?.agronomicText || defaults.defaultAgronomicText,
       {
@@ -4603,9 +4618,11 @@ export function DoctorDashboardScreen() {
     const finalAgronomist = overrideData?.agronomistName || agronomicName;
     const finalCrea = overrideData?.agronomistCrea || agronomicCrea;
     const finalDiagnosis = overrideData?.diagnosis || agronomicDiagnosis || defaults.defaultDiagnosis;
-    const finalDailyDose = overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg;
-    const finalTargetPlants = overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants;
-    const finalPrescribed = overrideData?.prescribedProducts ?? agronomicPrescribedProducts ?? defaults.prescribedProductsStr;
+    const finalTargetPlants = Number(overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants || 120);
+    const finalDailyDose = Number(overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg || 1764);
+
+    const rawPrescribed = overrideData?.prescribedProducts ?? agronomicPrescribedProducts ?? defaults.prescribedProductsStr;
+    const finalPrescribed = syncPrescribedProductsWithDailyDose(rawPrescribed, finalDailyDose);
     const finalText = syncAgronomicTextWithParameters(
       overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText,
       {
@@ -4678,9 +4695,11 @@ export function DoctorDashboardScreen() {
       const finalAgronomist = overrideData?.agronomistName || agronomicName;
       const finalCrea = overrideData?.agronomistCrea || agronomicCrea;
       const finalDiagnosis = overrideData?.diagnosis || agronomicDiagnosis || defaults.defaultDiagnosis;
-      const finalDailyDose = overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg;
-      const finalTargetPlants = overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants;
-      const finalPrescribed = overrideData?.prescribedProducts ?? agronomicPrescribedProducts ?? defaults.prescribedProductsStr;
+      const finalTargetPlants = Number(overrideData?.targetPlants || agronomicTargetPlants || defaults.defaultTargetPlants || 120);
+      const finalDailyDose = Number(overrideData?.dailyDoseMg || agronomicDailyDoseMg || defaults.defaultDailyDoseMg || 1764);
+
+      const rawPrescribed = overrideData?.prescribedProducts ?? agronomicPrescribedProducts ?? defaults.prescribedProductsStr;
+      const finalPrescribed = syncPrescribedProductsWithDailyDose(rawPrescribed, finalDailyDose);
       const finalText = syncAgronomicTextWithParameters(
         overrideData?.agronomicText || agronomicText || defaults.defaultAgronomicText,
         {
@@ -4711,7 +4730,7 @@ export function DoctorDashboardScreen() {
       const dryFlowerMargin = (((finalDailyDose * 365 / 1000) / 0.10 / 1000) * 1.3038).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const wetFlower = (((((finalDailyDose * 365 / 1000) / 0.10 / 1000) * 1.3038) / 0.30)).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const seeds = Math.round(finalTargetPlants * 1.3038);
-      const perCycle = Math.round(finalTargetPlants / 4);
+      const perCycle = Math.max(1, Math.ceil(finalTargetPlants / 3));
 
       const pdfBlob = await generateAgronomicReportPDF(finalName, {
         patientId: targetPatientId,
@@ -4766,7 +4785,7 @@ export function DoctorDashboardScreen() {
         sender: 'doctor',
         type: 'agronomic_report',
         docType: 'laudo_agronomico',
-        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${finalName}\n- **CPF:** ${finalCpf}\n- **Consultor e Eng. Agrônomo:** ${finalAgronomist} (${finalCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* para produção e extração artesanal própria de fitofármacos (GACP / CF/88 Art. 196)\n- **Patologias / CIDs:** ${finalDiagnosis}\n- **Demanda Farmacológica:** ${finalDailyDose} mg/dia de substâncias ativas em formulações artesanais integrais (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem de segurança agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80% na secagem/cura)\n- **Dimensionamento Autorizado:** ${finalTargetPlants} plantas anuais (${perCycle} a 40 plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades com taxa germinativa\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
+        text: `🌱 **Parecer Técnico Agronômico Emitido (Salvo-Conduto / HC)**\n\n- **Paciente:** ${finalName}\n- **CPF:** ${finalCpf}\n- **Consultor e Eng. Agrônomo:** ${finalAgronomist} (${finalCrea})\n- **Indicações Técnicas:** Cultivo pessoal de *Cannabis sativa L.* para produção e extração artesanal própria de fitofármacos (GACP / CF/88 Art. 196)\n- **Patologias / CIDs:** ${finalDiagnosis}\n- **Demanda Farmacológica:** ${finalDailyDose} mg/dia de substâncias ativas em formulações artesanais integrais (~${annualGrams}g de canabinoides/ano)\n- **Biomassa Seca Requerida:** ~${dryFlowerMargin} kg flores secas/ano (com 30% de margem de segurança agronômica)\n- **Biomassa Fresca (Flores Molhadas):** ~${wetFlower} kg colhidas/ano (perda hídrica 70-80% na secagem/cura)\n- **Dimensionamento Autorizado:** ${finalTargetPlants} plantas anuais (${perCycle} plantas por ciclo em floração, 3 safras/ano)\n- **Propágulos / Sementes Feminizadas:** ${seeds} unidades (+30% de taxa de perda/erro)\n\nO Parecer Pericial oficial de 3 páginas para instrução de ação de Habeas Corpus Preventivo em PDF está disponível para download.`,
         attachment: {
           name: fileName,
           url: fileUrl || '',

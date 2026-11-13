@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Download, Eye, Edit3, User, Sprout, Send, Copy, Check, Save, RefreshCw } from 'lucide-react';
-import { syncAgronomicTextWithParameters } from '../utils/clinicalReportGenerator';
+import { syncAgronomicTextWithParameters, syncPrescribedProductsWithDailyDose } from '../utils/clinicalReportGenerator';
 
 interface AgronomicReportEditorModalProps {
   isOpen: boolean;
@@ -105,6 +105,13 @@ export function AgronomicReportEditorModal({
   const wasOpenRef = useRef(false);
   const lastPatientRef = useRef(propPatientName);
 
+  const computePlantsFromDose = (dose: number) => {
+    const annualGrams = (dose * 365) / 1000;
+    const dryMarginKg = ((annualGrams / 0.10) / 1000) * 1.3038;
+    const rawPlants = Math.max(6, Math.round((dryMarginKg * 1000) / 150));
+    return Math.ceil(rawPlants / 3) * 3;
+  };
+
   // Only initialize from props when modal transitions from closed -> open, or when switching patients
   useEffect(() => {
     if (isOpen && (!wasOpenRef.current || lastPatientRef.current !== propPatientName)) {
@@ -118,32 +125,38 @@ export function AgronomicReportEditorModal({
         /172\.?458|CREA-PR/i.test(propAgronomistCrea || '') ? 'CREA-BA Nº 052193520-2' : (propAgronomistCrea || 'CREA-BA Nº 052193520-2')
       );
       setDiagnosis(propDiagnosis);
-      setDailyDoseMg(propDailyDoseMg);
-      setTargetPlants(propTargetPlants);
+
+      const initialPlants = Math.max(3, Number(propTargetPlants) || 120);
+      const initialDose = Math.max(10, Number(propDailyDoseMg) || 1764);
+
+      setDailyDoseMg(initialDose);
+      setTargetPlants(initialPlants);
+      const syncedPrescribed = syncPrescribedProductsWithDailyDose(prescribedProducts, initialDose);
+      setLocalPrescribedProducts(syncedPrescribed);
+
       const syncedInitialText = syncAgronomicTextWithParameters(propAgronomicText, {
         patientName: propPatientName,
         cpf: propCpf,
         diagnosis: propDiagnosis,
-        dailyDoseMg: propDailyDoseMg,
-        targetPlants: propTargetPlants,
-        prescribedProducts
+        dailyDoseMg: initialDose,
+        targetPlants: initialPlants,
+        prescribedProducts: syncedPrescribed
       });
       setAgronomicText(syncedInitialText);
-      setLocalPrescribedProducts(prescribedProducts);
     } else if (!isOpen) {
       wasOpenRef.current = false;
     }
   }, [isOpen, propPatientName, propCpf, propEmissionDate, propAgronomistName, propAgronomistCrea, propDiagnosis, propDailyDoseMg, propTargetPlants, propAgronomicText, prescribedProducts]);
 
-  // Handlers that keep dailyDoseMg, targetPlants, diagnosis, and agronomicText synchronized
+  // Handlers that keep dailyDoseMg, targetPlants, diagnosis, prescribedProducts, and agronomicText synchronized
   const handleDailyDoseChange = (newDoseRaw: number) => {
     const newDose = Math.max(0, Number(newDoseRaw) || 0);
     setDailyDoseMg(newDose);
     if (newDose > 0) {
-      const annualGrams = (newDose * 365) / 1000;
-      const dryMarginKg = ((annualGrams / 0.10) / 1000) * 1.3038;
-      const autoPlants = Math.max(6, Math.round((dryMarginKg * 1000) / 150));
+      const autoPlants = computePlantsFromDose(newDose);
       setTargetPlants(autoPlants);
+      const updatedPresc = syncPrescribedProductsWithDailyDose(localPrescribedProducts, newDose);
+      setLocalPrescribedProducts(updatedPresc);
       setAgronomicText(prev =>
         syncAgronomicTextWithParameters(prev, {
           patientName,
@@ -151,7 +164,7 @@ export function AgronomicReportEditorModal({
           diagnosis,
           dailyDoseMg: newDose,
           targetPlants: autoPlants,
-          prescribedProducts: localPrescribedProducts
+          prescribedProducts: updatedPresc
         })
       );
     }
@@ -278,8 +291,8 @@ export function AgronomicReportEditorModal({
   const wetFlowerKgBase = Number((dryFlowerMarginKgBase / 0.30).toFixed(3)); // ex: 79.319 kg
   const wetFlowerKgStr = wetFlowerKgBase.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
-  // Rendimento médio por planta no cultivo indoor (paciente): 100g a 150g de flores secas por ciclo de 120 dias
-  const plantsPerCycle = Math.max(1, Math.round(targetPlants / 4));
+  // Rendimento médio por planta no cultivo indoor (paciente): 100g a 150g de flores secas por ciclo de 120 dias (3 ciclos/ano)
+  const plantsPerCycle = Math.max(1, Math.ceil(targetPlants / 3));
   const seedsNeeded = Math.max(1, Math.round(targetPlants * 1.3038));
 
   const handleDownload = (payloadOverride?: ReturnType<typeof buildCurrentPayload>) => {
@@ -322,7 +335,7 @@ A cada 100g de inflorescências secas com teor médio fitoquímico de 10% obtêm
 Para suprir ${annualGrams}g anuais, o paciente necessita produzir ${dryFlowerKgStr}kg de flores secas básicas anuais.
 Aplicando a taxa de segurança agronômica de 30% contra perdas naturais (pragas, fungos e oscilações climáticas), o cultivo é dimensionado para ${dryFlowerMarginKgStr}kg de flores secas anuais.
 Considerando a perda hídrica de 70% a 80% na secagem e cura lenta, estima-se a necessidade de colher ${wetFlowerKgStr}kg de flores molhadas (frescas) por ano.
-Para produzir essa biomassa, o dimensionamento indica ${targetPlants} plantas em floração por ano, demandando ${seedsNeeded} sementes feminizadas com margem germinativa de segurança.
+Para produzir essa biomassa, o dimensionamento indica ${targetPlants} plantas em floração por ano, demandando ${seedsNeeded} sementes feminizadas com 30% de taxa de perda/erro.
 
 6. Designer de Cultivo e Ciclo Rotativo:
 Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias ou 4 meses), mantendo entre ${plantsPerCycle} plantas em floração por ciclo rotativo, sob regime controlado de iluminação LED, controle de temperatura/umidade, filtragem de ar por carvão ativado e estrita observância das normas GACP da OMS.`;
@@ -628,17 +641,24 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                         <div className="flex gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handleTargetPlantsChange(158)}
+                            onClick={() => handleTargetPlantsChange(120)}
                             className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold hover:bg-emerald-500/30"
                           >
-                            158 (Padrão HC)
+                            120 (40/ciclo)
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleTargetPlantsChange(40)}
+                            onClick={() => handleTargetPlantsChange(159)}
                             className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-mecura-silver font-semibold hover:bg-white/10"
                           >
-                            40 un.
+                            159 (53/ciclo)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTargetPlantsChange(60)}
+                            className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-mecura-silver font-semibold hover:bg-white/10"
+                          >
+                            60 (20/ciclo)
                           </button>
                         </div>
                       </div>
@@ -948,7 +968,7 @@ Divisão do cultivo em 3 momentos de colheita ao longo do ano (ciclo de 120 dias
                         </tr>
                         <tr className="bg-slate-50">
                           <td className="border border-slate-300 p-1.5">Sementes Feminizadas Importadas</td>
-                          <td className="border border-slate-300 p-1.5 text-center">30% taxa de segurança</td>
+                          <td className="border border-slate-300 p-1.5 text-center">+30% de taxa de perda/erro</td>
                           <td className="border border-slate-300 p-1.5 text-right font-bold text-emerald-800">{seedsNeeded} unidades</td>
                         </tr>
                       </tbody>
