@@ -152,11 +152,6 @@ export function PharmacyScreen() {
     ))
   );
 
-  useEffect(() => {
-    if (promotionsText.includes('Desconto progressivo por volume')) {
-      setPromotionsText('🔥 PROMOÇÕES ATIVAS 🔥\n\n• Drops Day&Night: 15% OFF (NIGHTSHADE + FORMULA ONE).\n• Combo para Dormir bem: Compre 2x óleos Deep Vibe e ganhe uma NIGHTSHADE.\n• Combo para ser Produtivo: Compre 2x óleos Super Vibe e ganhe uma FORMULA ONE.\n• Linha vibe na sua rotina: 15% OFF no combo SUPER e DEEP vibe.\n• Foco mental com THCV: 15% OFF no SLIM VIBE.\n• Formula de 40 Servings: Leve outra de 10 Servings com 50% OFF.\n• 2x Formulas da mesma Strain: Leve a segunda com 20% OFF (10 ou 40 Servings).\n• 2x Dried Formula da Strain BM: De 40 servings, leve a segunda com 30% OFF.');
-    }
-  }, [promotionsText, setPromotionsText]);
   const [step, setStep] = useState<1 | 2>(1);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   
@@ -951,56 +946,6 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           </motion.div>
         )}
 
-        {(promotionsText || catalogUrl) && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-gradient-to-br from-[#1A2E05] via-[#121A0A] to-[#0A0A0F] border border-mecura-neon/40 rounded-[24px] p-6 mb-8 relative overflow-hidden shadow-[0_0_40px_rgba(166,255,0,0.15)]"
-          >
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-4 border-b border-mecura-neon/20 pb-4">
-                <h4 className="text-mecura-neon font-black text-xl flex items-center gap-2 uppercase tracking-wide">
-                  <Sparkles className="w-6 h-6 animate-pulse text-mecura-neon" />
-                  Ofertas Especiais
-                </h4>
-                <div className="px-4 py-1.5 bg-mecura-neon text-[#0A0A0F] rounded-full font-black text-xs tracking-widest shadow-[0_0_15px_rgba(166,255,0,0.5)]">
-                  ATIVAS AGORA
-                </div>
-              </div>
-              
-              {promotionsText && (
-                <div className="mb-6 space-y-2 text-sm text-mecura-pearl">
-                  {promotionsText.split('\n').map((line, index) => (
-                    <div key={index} className="leading-relaxed">{line}</div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-3">
-                <a 
-                  href={'https://drive.google.com/file/d/1X5dDlzrVQ5bENVFd8He96OB-TT39gA8Z/preview'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-3 w-full bg-mecura-neon text-[#0A0A0F] px-6 py-3.5 rounded-xl font-black text-[14px] uppercase tracking-wider hover:bg-[#b5ff33] transition-colors shadow-[0_0_20px_rgba(166,255,0,0.3)]"
-                >
-                  <Gift className="w-5 h-5" />
-                  <span>VER CATÁLOGO PRODUTOS VIA INALADA</span>
-                </a>
-                
-                <a 
-                  href={'https://drive.google.com/file/d/1RkfK1c76aaiyLnSeVxSsFif8WAEi3aU_/preview'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-3 w-full bg-mecura-pearl text-[#0A0A0F] px-6 py-3.5 rounded-xl font-black text-[14px] uppercase tracking-wider hover:bg-white transition-colors"
-                >
-                  <Gift className="w-5 h-5" />
-                  <span>VER CATÁLOGO PRODUTOS VIA ORAL</span>
-                </a>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
         {/* 1. SEÇÃO DE PRODUTOS IMPORTADOS (Somente se não houver pedido aprovado substituindo ou para complementar) */}
         {!hasApprovedOrder && hasImportedItems && (
           <div className="space-y-4">
@@ -1060,7 +1005,7 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-mecura-neon uppercase tracking-wider mb-1 block">
-                          {item.brand || 'GreenBudzCBD'}
+                          {item.brand || 'Importado Oficial'}
                         </span>
                         <h4 className={`font-bold text-[15px] leading-tight ${isZeroed ? 'text-white/60 line-through' : 'text-white'}`}>
                           {item.name}
@@ -1524,10 +1469,10 @@ Olá! Gostaria de confirmar a solicitação do meu pedido de medicamentos prescr
           </button>
           <div className="text-center">
             <h1 className="font-serif font-bold text-base tracking-wide">
-              {hasApprovedOrder ? 'Seu Pedido Aprovado' : hasImportedItems ? 'Farmácia GreenBudz' : 'Prescrição Médica'}
+              {hasApprovedOrder ? 'Seu Pedido Aprovado' : 'Prescrição Médica'}
             </h1>
             <span className="text-[10px] text-mecura-neon font-medium block">
-              {hasApprovedOrder ? 'Pronto para Solicitação no WhatsApp' : hasImportedItems ? 'Vendido e entregue por GreenBudz' : 'Dispensação & Acompanhamento'}
+              {hasApprovedOrder ? 'Pronto para Solicitação no WhatsApp' : 'Medicamentos Prescritos na Consulta'}
             </span>
           </div>
           <button

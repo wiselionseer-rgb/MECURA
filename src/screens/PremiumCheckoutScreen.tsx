@@ -943,18 +943,18 @@ export function PremiumCheckoutScreen() {
                 </div>
               </div>
 
-              {/* Item 7: Farmácia GreenBudz */}
+              {/* Item 7: Farmácia Oficial */}
               <div className="bg-[#12121A] border border-[#A6FF00]/25 rounded-2xl p-3.5 flex items-start gap-3.5 hover:border-[#A6FF00]/50 transition-all">
                 <div className="w-10 h-10 rounded-xl bg-[#1A1A26] border border-[#A6FF00]/30 flex items-center justify-center shrink-0 text-[#A6FF00] shadow-[0_0_10px_rgba(166,255,0,0.15)]">
                   <Pill className="w-5 h-5" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-0.5">
-                    <h4 className="text-sm font-bold text-white">Acesso com Desconto na GreenBudz</h4>
+                    <h4 className="text-sm font-bold text-white">Acesso com Desconto na Farmácia Oficial</h4>
                     <span className="text-[9px] font-bold text-[#A6FF00] bg-[#A6FF00]/10 px-1.5 py-0.5 rounded">Preços Exclusivos</span>
                   </div>
                   <p className="text-xs text-[#8A8A9E] leading-relaxed">
-                    Descontos especiais e prioridade no envio dos medicamentos e suplementos prescritos na farmácia parceira oficial.
+                    Descontos especiais e prioridade no envio dos medicamentos e suplementos prescritos na sua consulta médica.
                   </p>
                 </div>
               </div>

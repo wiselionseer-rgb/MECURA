@@ -1312,13 +1312,13 @@ export function DashboardScreen() {
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[9px] font-bold text-mecura-neon/90 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-mecura-neon animate-pulse" />
-                  Catálogo Oficial
+                  Receita Médica
                 </span>
                 <ArrowUpRight className="w-3.5 h-3.5 text-[#8A8A9E] opacity-0 group-hover:opacity-100 group-hover:text-mecura-neon transition-all -translate-x-1 group-hover:translate-x-0" />
               </div>
 
-              <h4 className="text-[14px] font-bold text-white mb-1 tracking-tight group-hover:text-mecura-neon transition-colors">Farmácia GreenBudz</h4>
-              <p className="text-[11px] text-[#8A8A9E] leading-tight">Medicamentos e suplementos prescritos.</p>
+              <h4 className="text-[14px] font-bold text-white mb-1 tracking-tight group-hover:text-mecura-neon transition-colors">Farmácia Oficial</h4>
+              <p className="text-[11px] text-[#8A8A9E] leading-tight">Apenas medicamentos prescritos na sua consulta.</p>
             </motion.button>
 
             {/* Card 2: Premium */}
@@ -1633,7 +1633,7 @@ export function DashboardScreen() {
 
             {/* Content List - Scrollable */}
             <div className="overflow-y-auto py-2.5 space-y-2.5 flex-1 pr-1 custom-scrollbar relative z-10">
-              {/* Item 1: Farmácia GreenBudz */}
+              {/* Item 1: Farmácia Oficial */}
               <div 
                 onClick={() => openHighlightRoute('/pharmacy')}
                 className="p-3.5 rounded-[18px] bg-[#161622] hover:bg-[#1A1A28] border border-white/5 hover:border-mecura-neon/40 transition-all cursor-pointer group flex items-start gap-3 shadow-sm hover:shadow-[0_0_20px_rgba(166,255,0,0.12)]"
@@ -1644,13 +1644,13 @@ export function DashboardScreen() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="text-[9px] font-bold uppercase tracking-wider text-mecura-neon bg-mecura-neon/10 px-2 py-0.5 rounded-full border border-mecura-neon/20">
-                      Medicamentos & Flores
+                      Prescrição Médica
                     </span>
                     <ArrowUpRight className="w-3.5 h-3.5 text-[#8A8A9E] group-hover:text-mecura-neon group-hover:translate-x-0.5 transition-all" />
                   </div>
-                  <h4 className="text-[13px] font-bold text-white group-hover:text-mecura-neon transition-colors truncate">Farmácia GreenBudz</h4>
+                  <h4 className="text-[13px] font-bold text-white group-hover:text-mecura-neon transition-colors truncate">Farmácia Oficial</h4>
                   <p className="text-[11px] text-[#8A8A9E] mt-0.5 leading-snug line-clamp-2">
-                    Acesso exclusivo ao catálogo completo com desconto especial em medicamentos e flores.
+                    Acesso exclusivo aos medicamentos prescritos individualmente pelo médico na sua consulta.
                   </p>
                 </div>
               </div>
