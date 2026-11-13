@@ -13,7 +13,8 @@ import {
   generateMedicalReportPDF, 
   generatePsychomotorReportPDF, 
   generateAgronomicReportPDF,
-  generatePsychologicalReportPDF
+  generatePsychologicalReportPDF,
+  generateTclePDF
 } from '../utils/pdfGenerator';
 import { deliverPdfBlob, downloadOrGenerateAttachment } from '../utils/downloadHelper';
 import { enrichMedicationDetails } from '../data/cbdGuide';
@@ -245,6 +246,21 @@ export function ProtocolScreen() {
     );
   }, [messages]);
 
+  const tcleDocumentMsg = useMemo(() => {
+    return (
+      [...messages].reverse().find(m =>
+        m.type === 'tcle_document' ||
+        m.docType === 'tcle' ||
+        (m.attachment && (
+          m.attachment.docType === 'tcle' ||
+          m.attachment.name?.toLowerCase().includes('tcle') ||
+          m.attachment.name?.toLowerCase().includes('termo_consentimento')
+        ))
+      ) ||
+      [...messages].reverse().find(m => m.type === 'tcle_consent' && m.tcleData?.status === 'accepted')
+    );
+  }, [messages]);
+
   // Other custom attachments sent by doctor/psychologist
   const otherCustomDocs = useMemo(() => {
     return messages.filter(m => 
@@ -255,13 +271,17 @@ export function ProtocolScreen() {
       m.attachment !== psychomotorReportMsg?.attachment &&
       m.attachment !== agronomicReportMsg?.attachment &&
       m.attachment !== psychologicalReportMsg?.attachment &&
+      m.attachment !== tcleDocumentMsg?.attachment &&
       m.type !== 'prescription' &&
       m.type !== 'medical_report' &&
       m.type !== 'psychomotor_report' &&
       m.type !== 'agronomic_report' &&
-      m.type !== 'psychological_report'
+      m.type !== 'psychological_report' &&
+      m.type !== 'tcle_document' &&
+      m.type !== 'tcle_consent' &&
+      m.docType !== 'tcle'
     );
-  }, [messages, prescriptionMsg, initialMedicalReportMsg, evolutiveMedicalReportMsg, psychomotorReportMsg, agronomicReportMsg, psychologicalReportMsg]);
+  }, [messages, prescriptionMsg, initialMedicalReportMsg, evolutiveMedicalReportMsg, psychomotorReportMsg, agronomicReportMsg, psychologicalReportMsg, tcleDocumentMsg]);
 
   const hasPrescriptionAttached = !!prescriptionMsg;
   const hasInitialReportAttached = !!initialMedicalReportMsg;
@@ -269,6 +289,7 @@ export function ProtocolScreen() {
   const hasPsychomotorAttached = !!psychomotorReportMsg;
   const hasAgronomicAttached = !!agronomicReportMsg;
   const hasPsychologicalAttached = !!psychologicalReportMsg || !!(answers?.laudoPsicologico || answers?.hasPsychologicalReport);
+  const hasTcleAttached = !!tcleDocumentMsg;
 
   const totalAvailableDocs = 
     (hasPrescriptionAttached ? 1 : 0) + 
@@ -277,6 +298,7 @@ export function ProtocolScreen() {
     (hasPsychomotorAttached ? 1 : 0) + 
     (hasAgronomicAttached ? 1 : 0) + 
     (hasPsychologicalAttached ? 1 : 0) + 
+    (hasTcleAttached ? 1 : 0) + 
     otherCustomDocs.length;
 
   // Patient metadata
@@ -539,6 +561,52 @@ export function ProtocolScreen() {
     }
   };
 
+  // Handler for downloading TCLE
+  const handleDownloadTcleReport = async () => {
+    if (!hasTcleAttached) {
+      return;
+    }
+    setDownloadingDoc('tcle');
+    try {
+      const tData = tcleDocumentMsg?.tcleData;
+      const fallbackTcle = async () => {
+        const blob = await generateTclePDF(tData?.patientName || displayName, {
+          customPatientName: tData?.patientName || displayName,
+          cpf: tData?.cpf || displayCpf,
+          birthDate: tData?.birthDate || displayBirthDate,
+          emissionDate: tData?.emissionDate || format(new Date(), 'dd/MM/yyyy'),
+          diagnosis: tData?.diagnosis || objectives,
+          doctorName: tData?.doctorName || 'DR GUILHERME TAVEIRA DIAS',
+          doctorCrm: tData?.doctorCrm || 'CRM/MT 17259',
+          legalRepresentativeName: tData?.legalRepresentativeName,
+          legalRepresentativeCpf: tData?.legalRepresentativeCpf,
+          patientSignature: tData?.patientSignature || tData?.patientName || displayName,
+          acceptedAt: tData?.acceptedAt,
+          status: tData?.status || 'accepted',
+          returnBlob: true
+        });
+        return blob as Blob;
+      };
+
+      if (tcleDocumentMsg?.attachment) {
+        await downloadOrGenerateAttachment(
+          tcleDocumentMsg.attachment,
+          fallbackTcle,
+          `TCLE_Termo_Consentimento_${displayName.replace(/\s+/g, '_')}.pdf`
+        );
+      } else {
+        const blob = await fallbackTcle();
+        if (blob instanceof Blob) {
+          await deliverPdfBlob(blob, `TCLE_Termo_Consentimento_${displayName.replace(/\s+/g, '_')}.pdf`);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao baixar TCLE:', err);
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
   // Handler for custom document download
   const handleDownloadCustomAttachment = async (attachment: any, idx: number) => {
     setDownloadingDoc(`custom-${idx}`);
@@ -585,6 +653,10 @@ export function ProtocolScreen() {
       }
       if (hasPsychologicalAttached) {
         await handleDownloadPsychologicalReport();
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (hasTcleAttached) {
+        await handleDownloadTcleReport();
         await new Promise(r => setTimeout(r, 600));
       }
       for (let i = 0; i < otherCustomDocs.length; i++) {
@@ -1035,6 +1107,46 @@ export function ProtocolScreen() {
                 title={hasPsychologicalAttached ? "Baixar Laudo Psicológico" : "Este documento não foi anexado pelo psicólogo nesta consulta"}
               >
                 {hasPsychologicalAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* 7. Termo de Consentimento (TCLE) Card */}
+            <div className={`border rounded-2xl p-4 flex items-center justify-between transition-all ${
+              hasTcleAttached 
+                ? 'bg-[#12121A] border-cyan-500/30 hover:border-cyan-500 shadow-[0_4px_20px_rgba(6,182,212,0.06)]' 
+                : 'bg-[#0E0E14] border-white/5 opacity-75'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  hasTcleAttached 
+                    ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-400' 
+                    : 'bg-white/5 border-white/10 text-[#8A8A9E]'
+                }`}>
+                  <FileCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-white flex items-center gap-1.5">
+                    Termo de Consentimento (TCLE)
+                    {!hasTcleAttached && <Lock className="w-3 h-3 text-amber-400/80" />}
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A9E]">
+                    {hasTcleAttached 
+                      ? 'Termo Preenchido & Assinado' 
+                      : 'Não emitido pelo médico'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleDownloadTcleReport}
+                disabled={downloadingDoc === 'tcle' || !hasTcleAttached}
+                className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                  hasTcleAttached 
+                    ? 'bg-[#1A1A28] hover:bg-cyan-400 hover:text-[#0A0A0F] text-white border-white/10 cursor-pointer shadow-sm' 
+                    : 'bg-white/5 text-[#8A8A9E]/60 border-white/5 cursor-not-allowed'
+                }`}
+                title={hasTcleAttached ? "Baixar Termo de Consentimento (TCLE) Preenchido" : "Este documento não foi emitido pelo médico nesta consulta"}
+              >
+                {hasTcleAttached ? <Download className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
               </button>
             </div>
 

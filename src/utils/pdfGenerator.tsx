@@ -3475,3 +3475,496 @@ export const generateAgronomicReportPDF = async (userName: string, agronomicData
   }
 };
 
+export interface TcleReportData {
+  customPatientName?: string;
+  cpf?: string;
+  birthDate?: string;
+  emissionDate?: string;
+  diagnosis?: string;
+  doctorName?: string;
+  doctorCrm?: string;
+  legalRepresentativeName?: string;
+  legalRepresentativeCpf?: string;
+  legalRepresentativeSignature?: string;
+  patientSignature?: string;
+  acceptedAt?: string;
+  status?: 'pending_signature' | 'accepted';
+  returnBlob?: boolean;
+}
+
+export const generateTclePDF = async (
+  userName: string,
+  tcleData?: TcleReportData
+) => {
+  const rawName = (tcleData?.customPatientName || userName || 'Paciente').trim();
+  const sanitizedUserName = rawName.toLowerCase() === 'paciente' && userName && userName.toLowerCase() !== 'paciente'
+    ? userName.trim()
+    : rawName;
+
+  const cpfText = tcleData?.cpf && tcleData.cpf !== 'Não informado' ? tcleData.cpf : '';
+  const birthDateText = tcleData?.birthDate && tcleData.birthDate !== 'Não informada' ? tcleData.birthDate : '';
+  const emissionDateText = tcleData?.emissionDate || format(new Date(), 'dd/MM/yyyy');
+  const doctorNameText = (tcleData?.doctorName || 'DR GUILHERME TAVEIRA DIAS').toUpperCase();
+  const doctorCrmText = tcleData?.doctorCrm || 'CRM/MT 17259';
+  const diagnosisText = (tcleData?.diagnosis || 'Quadro clínico avaliado em consulta médica com indicação terapêutica de derivados da Cannabis medicinal.').trim();
+  const patientSigText = (tcleData?.patientSignature || sanitizedUserName).trim();
+  const acceptedAtText = tcleData?.acceptedAt || '';
+  const legalRepName = (tcleData?.legalRepresentativeName || '').trim();
+  const legalRepCpf = (tcleData?.legalRepresentativeCpf || '').trim();
+  const legalRepSig = (tcleData?.legalRepresentativeSignature || legalRepName).trim();
+
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '794px';
+  container.style.backgroundColor = '#FFFFFF';
+  container.style.color = '#000000';
+  container.style.zIndex = '-9999';
+  container.style.pointerEvents = 'none';
+  document.body.appendChild(container);
+
+  const root = createRoot(container);
+
+  const pageStyle: React.CSSProperties = {
+    width: '794px',
+    height: '1122px',
+    minHeight: '1122px',
+    maxHeight: '1122px',
+    boxSizing: 'border-box',
+    padding: '54px 68px 46px 68px',
+    backgroundColor: '#FFFFFF',
+    color: '#111111',
+    fontFamily: '"Calibri", "Segoe UI", Arial, sans-serif',
+    fontSize: '13.5px',
+    lineHeight: '1.65',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    position: 'relative',
+    overflow: 'hidden'
+  };
+
+  const bulletItemStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'flex-start',
+    textAlign: 'justify',
+    marginBottom: '12px'
+  };
+
+  const renderPageFooter = (pageNum: number) => (
+    <div style={{ width: '100%', marginTop: '16px', flexShrink: 0 }}>
+      <div style={{ textAlign: 'right', fontSize: '13px', color: '#111111', marginBottom: '18px' }}>
+        {pageNum}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', fontSize: '13.5px', color: '#111111' }}>
+        <span>Ciente:</span>
+        <div
+          style={{
+            borderBottom: '1px solid #111111',
+            minWidth: '250px',
+            paddingBottom: '2px',
+            paddingLeft: '6px',
+            fontWeight: 600,
+            fontStyle: 'italic',
+            color: '#0F172A'
+          }}
+        >
+          {patientSigText}
+          {acceptedAtText ? (
+            <span style={{ fontSize: '10px', fontWeight: 400, fontStyle: 'normal', color: '#475569', marginLeft: '8px' }}>
+              (Aceito digitalmente em {acceptedAtText})
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+
+  try {
+    const TclePdfDocument = () => (
+      <div style={{ width: '794px', backgroundColor: '#FFFFFF' }}>
+        {/* PAGE 1 */}
+        <div className="tcle-pdf-page" style={pageStyle}>
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{ fontSize: '15.5px', fontWeight: 700, color: '#000000', marginBottom: '8px' }}>
+                Termo de Consentimento Livre e Esclarecido
+              </div>
+              <div style={{ fontSize: '13.5px', fontWeight: 400, color: '#111111' }}>
+                Utilização dos derivados da Cannabis para fins exclusivamente medicinais / terapêuticos
+              </div>
+            </div>
+
+            {/* 4-row Table matching TCLE.pdf */}
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                marginBottom: '26px',
+                fontSize: '13.5px'
+              }}
+            >
+              <tbody>
+                <tr>
+                  <td style={{ border: '1px solid #222222', padding: '5px 8px', width: '61%' }}>
+                    <span>Paciente: </span>
+                    <strong style={{ fontWeight: 700 }}>{sanitizedUserName}</strong>
+                  </td>
+                  <td style={{ border: '1px solid #222222', padding: '5px 8px', width: '39%' }}>
+                    <span>Data: </span>
+                    <strong style={{ fontWeight: 700 }}>{emissionDateText}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #222222', padding: '5px 8px' }}>
+                    <span>CPF: </span>
+                    <strong style={{ fontWeight: 700 }}>{cpfText}</strong>
+                  </td>
+                  <td style={{ border: '1px solid #222222', padding: '5px 8px' }}>
+                    <span>Data de Nascimento: </span>
+                    <strong style={{ fontWeight: 700 }}>{birthDateText}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={2} style={{ border: '1px solid #222222', padding: '5px 8px', height: '27px' }}>
+                    <span style={{ fontSize: '12px', color: '#334155' }}>
+                      Médico Assistente: <strong>{doctorNameText}, {doctorCrmText}</strong> • E-mail: guilhermetaveiradias@hotmail.com
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={2} style={{ border: '1px solid #222222', padding: '5px 8px', height: '27px' }}>
+                    <span style={{ fontSize: '12px', color: '#334155' }}>
+                      Status do Consentimento:{' '}
+                      <strong>
+                        {tcleData?.status === 'accepted' || acceptedAtText
+                          ? `Lido e Aceito pelo Paciente (${acceptedAtText || emissionDateText})`
+                          : `Termo Emitido em Consulta (${emissionDateText})`}
+                      </strong>
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p style={{ textAlign: 'justify', marginBottom: '20px' }}>
+              Após detalhada avaliação e investigação diagnóstica realizada em seu paciente, o mesmo foi devidamente informado sobre as possíveis opções de tratar sua enfermidade (doença), e aceitou, através de sua liberdade de escolha, o plano terapêutico à base de Cannabis, concordando com seu médico,{' '}
+              <span style={{ fontVariant: 'small-caps' }}>{doctorNameText}</span>, {doctorCrmText}.
+            </p>
+
+            <p style={{ textAlign: 'justify', marginBottom: '22px' }}>
+              <strong style={{ fontWeight: 700 }}>VOCÊ SABE O QUE É O CONSENTIMENTO INFORMADO?</strong> É o processo pelo qual você dá permissão ou recusa a participar como paciente em um procedimento.
+            </p>
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', textAlign: 'justify', marginBottom: '16px' }}>
+              <span style={{ width: '36px', flexShrink: 0 }}>1.</span>
+              <div style={{ flex: 1 }}>
+                <span>Durante as consultas, foi-se verificado a seguinte enfermidade/condição em minha pessoa: </span>
+                <strong style={{ fontWeight: 700, textDecoration: 'underline' }}>{diagnosisText}</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', textAlign: 'justify', marginBottom: '16px' }}>
+              <span style={{ width: '36px', flexShrink: 0 }}>2.</span>
+              <div style={{ flex: 1 }}>
+                O médico assistente esclareceu e me informou sobre os pontos positivos e negativos e sobre as consequências em interromper o tratamento sem comunicar a médico.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', textAlign: 'justify', marginBottom: '16px' }}>
+              <span style={{ width: '36px', flexShrink: 0 }}>3.</span>
+              <div style={{ flex: 1 }}>
+                O médico assistente tirou todas as dúvidas sobre os seguintes pontos:
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                As possibilidades terapêuticas adequadas foram adotadas anteriormente e, esta proposta de tratamento que estou escolhendo, que consiste na utilização de produtos derivados da Cannabis com fins medicinais, é viável por estarem esgotadas ou por serem ineficazes as opções terapêuticas disponíveis no mercado brasileiro, bem como, a possibilidade de benefícios a minha saúde sem a ocorrência de efeitos colaterais agressivos.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Alguns estudos científicos sugerem que este produto a base de Cannabis pode vir a melhorar os sintomas que venho apresentando, sendo necessário e indispensável o cumprimento efetivo do plano terapêutico devidamente esclarecido durante a consulta médica.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Fui igualmente informado(a) e devidamente esclarecido(a) de que, a exemplo de quaisquer outros procedimentos / medicamentos / terapias médicas que podem agravar minha saúde, o produto de Cannabis também não tem esta isenção.
+              </div>
+            </div>
+          </div>
+
+          {renderPageFooter(1)}
+        </div>
+
+        {/* PAGE 2 */}
+        <div className="tcle-pdf-page" style={pageStyle}>
+          <div>
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Podem existir efeitos colaterais indesejáveis, os mais conhecidos, até o momento, são: sonolência, tontura, boca seca, diminuição da pressão arterial, euforia, visão turva, cefaleia (dor de cabeça), sensação de fadiga ou fraqueza, distúrbios do sono, náusea, diarreia, vômito em excesso, taquicardia, no entanto, efeitos em prazo mais longo ainda não foram adequadamente estudados.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Além disso, o produto de Cannabis pode interferir com certas medicações, o que pode diminuir a eficiência dos mesmos ou aumentar seus possíveis efeitos adversos e me responsabilizo por descrever as medicações em uso e comunicar a médica caso haja alteração. Comprometo-me também a não me automedicar durante meu tratamento.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Estou ciente que devo agir com a máxima cautela nas orientações médicas caso eu possua histórico de AVC hemorrágico ou isquêmico, seja idoso ou debilitado, arritmias (fibrilação atrial), faça uso de hipotensores, anticoagulantes, antiplaquetários, benzodiazepinicos, opióides, antidepressivos e barbitúricos.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Estou ciente que durante o tratamento podem surgir complicações de diferentes naturezas, como possíveis efeitos adversos ainda não descritos na literatura médica ou reações alérgicas inesperadas.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Estou ciente de que o THC, um dos canabinóides presentes em alguns produtos à base de Cannabis, pode ser detectado em exames toxicológicos ou exames antidoping, podendo esta presença gerar repercussões negativas frente aos órgãos responsáveis, tanto em questões laborais, questões de direção de veículos automotivos, quanto em questões esportivas.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Quanto a viagens internacionais, estou ciente também de que existem países que não autorizam a entrada com os produtos derivados de Cannabis e devo informar a médica meus planos de viagens e não sair do país sem orientação da mesma.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Fui informado (a) que o produto de Cannabis ainda não é registrado como medicamento, mas que segue o estabelecido pela ANVISA através da autorização de importação (RDC nº 660/2022) e que seu uso está sendo feito em caráter excepcional, devido à ausência de resposta satisfatória de minha doença às outras medicações disponíveis no mercado nacional.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Estou ciente que o presente termo não é suficiente para esclarecer todas as possibilidades acerca do tratamento proposto podendo ser feitas complementações posteriores.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Estou ciente que a utilização do produto indicado tem caráter personalíssimo e intransferível, devendo ser utilizado exclusivamente conforme a prescrição e orientação da médica.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                A equipe médica não se responsabiliza pelo mau uso do produto.
+              </div>
+            </div>
+          </div>
+
+          {renderPageFooter(2)}
+        </div>
+
+        {/* PAGE 3 */}
+        <div className="tcle-pdf-page" style={pageStyle}>
+          <div>
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Também fui informado que o médico responsável poderá responder as minhas dúvidas, pelo site ou Whatsapp, quando necessário, em dias e horários úteis/comerciais, enquanto estiver em acompanhamento, ou através do agendamento de uma nova consulta médica.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Sou igualmente sabedor que, apesar do empenho do meu médico, não existe garantia absoluta no resultado dos derivados da Cannabis com relação à melhora dos sintomas da minha doença.
+              </div>
+            </div>
+
+            <div style={{ ...bulletItemStyle, marginBottom: '24px' }}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Por fim, estou ciente que, em caso de Urgência/Emergência, devo imediatamente suspender a medicação, procurar a unidade de pronto atendimento mais próxima e avisar a equipe médica.
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '12px', fontWeight: 400 }}>
+              EM CASOS DE GESTAÇÃO:
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                Estou ciente também, se for sexo biológico feminino, que no momento não desejo gestar e não amamento, e que tomarei as medidas necessárias para prevenção de gestação durante meu tratamento uma vez que estou ciente de que não há segurança dos produtos derivados de cannabis na gestação e amamentação.
+              </div>
+            </div>
+
+            <div style={bulletItemStyle}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                É de responsabilidade minha comunicar a equipe médica em caso de gestação inesperada (ficar grávida), devendo o uso do medicamento ser interrompido, caso o médico ache necessário.
+              </div>
+            </div>
+
+            <div style={{ ...bulletItemStyle, marginBottom: '28px' }}>
+              <span style={{ width: '36px', flexShrink: 0 }}>•</span>
+              <div style={{ flex: 1 }}>
+                As medicações à base de Cannabis atravessam a barreira placentária, gerando repercussões no feto, e aumentam risco de desfechos desfavoráveis na gestação (os mais comuns: parto prematuro, restrição de crescimento e malformações fetais).
+              </div>
+            </div>
+
+            <p style={{ textAlign: 'justify', marginBottom: '36px' }}>
+              Sendo assim, mais uma vez declaro que li, compreendi e aceito livremente todas as colocações do presente Termo de Consentimento Livre e Esclarecido e, através de decisão conjunta, estou disposto (a) a iniciar sem qualquer sujeição/constrangimento o uso compassivo do plano terapêutico proposto pela médica.
+            </p>
+
+            {/* Signature & Date Line */}
+            <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '32px', fontSize: '13.5px' }}>
+              <span>Assinatura:</span>
+              <div
+                style={{
+                  borderBottom: '1px solid #111111',
+                  flex: 1,
+                  marginLeft: '4px',
+                  marginRight: '8px',
+                  paddingLeft: '8px',
+                  paddingBottom: '2px',
+                  fontWeight: 700,
+                  fontStyle: 'italic'
+                }}
+              >
+                {patientSigText}
+              </div>
+              <span>|Data: </span>
+              <div
+                style={{
+                  borderBottom: '1px solid #111111',
+                  width: '210px',
+                  marginLeft: '4px',
+                  paddingLeft: '8px',
+                  paddingBottom: '2px',
+                  fontWeight: 700
+                }}
+              >
+                {emissionDateText}
+              </div>
+            </div>
+
+            {/* Minor or incapacitated representative section */}
+            <div
+              style={{
+                fontStyle: 'italic',
+                textDecoration: 'underline',
+                marginBottom: '26px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                width: '100%'
+              }}
+            >
+              <span>Para o caso de menor de idade ou incapaz:</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '28px', fontSize: '13.5px' }}>
+              <span>Nome do representante legal: </span>
+              <div
+                style={{
+                  borderBottom: '1px solid #111111',
+                  flex: 1,
+                  marginLeft: '6px',
+                  paddingLeft: '8px',
+                  paddingBottom: '2px',
+                  fontWeight: 600
+                }}
+              >
+                {legalRepName}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', fontSize: '13.5px' }}>
+              <span>RG ou CPF: </span>
+              <div
+                style={{
+                  borderBottom: '1px solid #111111',
+                  flex: 1,
+                  marginLeft: '6px',
+                  marginRight: '8px',
+                  paddingLeft: '8px',
+                  paddingBottom: '2px',
+                  fontWeight: 600
+                }}
+              >
+                {legalRepCpf}
+              </div>
+              <span>| Assinatura:</span>
+              <div
+                style={{
+                  borderBottom: '1px solid #111111',
+                  width: '230px',
+                  marginLeft: '4px',
+                  paddingLeft: '8px',
+                  paddingBottom: '2px',
+                  fontWeight: 600,
+                  fontStyle: 'italic'
+                }}
+              >
+                {legalRepSig}
+              </div>
+            </div>
+          </div>
+
+          {renderPageFooter(3)}
+        </div>
+      </div>
+    );
+
+    root.render(<TclePdfDocument />);
+    await new Promise(resolve => setTimeout(resolve, 450));
+
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait'
+    });
+
+    const pageElements = container.querySelectorAll<HTMLElement>('.tcle-pdf-page');
+    for (let i = 0; i < pageElements.length; i++) {
+      const pageEl = pageElements[i];
+      const canvas = await safeHtml2Canvas(pageEl);
+      const imgData = canvas.toDataURL('image/jpeg', 0.9);
+      if (i > 0) {
+        pdf.addPage('a4', 'portrait');
+      }
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    }
+
+    const filename = `TCLE_Termo_Consentimento_${sanitizedUserName.replace(/\s+/g, '_')}.pdf`;
+    const resultBlob = pdf.output('blob');
+    if (!tcleData?.returnBlob) {
+      await deliverPdfBlob(resultBlob, filename);
+    }
+    return resultBlob;
+  } finally {
+    root.unmount();
+    if (container.parentNode) {
+      document.body.removeChild(container);
+    }
+  }
+};
+
+

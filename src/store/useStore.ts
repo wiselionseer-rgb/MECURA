@@ -37,15 +37,29 @@ export interface Message {
   isQueueTransfer?: boolean;
   targetQueueType?: 'doctor' | 'psychologist';
   timestamp: Date;
-  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'psychological_report' | 'document' | 'adhd_test_card' | 'autism_test_card';
-  docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
+  type?: 'text' | 'prescription' | 'product' | 'prescription_notes' | 'receita_previa' | 'acompanhamento_card' | 'acompanhamento_options' | 'payment_success' | 'medical_report' | 'psychomotor_report' | 'agronomic_report' | 'psychological_report' | 'tcle_consent' | 'tcle_document' | 'document' | 'adhd_test_card' | 'autism_test_card';
+  docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'tcle' | 'documento';
   attachment?: {
     name: string;
     url: string;
     type: string;
-    docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'documento';
+    docType?: 'receita' | 'laudo_inicial' | 'laudo_evolutivo' | 'laudo_psicomotor' | 'laudo_agronomico' | 'laudo_psicologico' | 'tcle' | 'documento';
     title?: string;
     fileId?: string;
+  };
+  tcleData?: {
+    patientName: string;
+    cpf: string;
+    birthDate: string;
+    emissionDate: string;
+    diagnosis: string;
+    doctorName: string;
+    doctorCrm: string;
+    legalRepresentativeName?: string;
+    legalRepresentativeCpf?: string;
+    status: 'pending_signature' | 'accepted';
+    acceptedAt?: string;
+    patientSignature?: string;
   };
   adhdTestData?: {
     scorePercent: number;
@@ -233,6 +247,7 @@ interface AppState {
   deleteMessage: (messageId: string, customConsultationId?: string) => Promise<void>;
   clearPrescriptionMessages: (customConsultationId?: string) => Promise<void>;
   confirmReceitaPrevia: (messageId: string, customConsultationId?: string) => Promise<void>;
+  confirmTcleConsent: (messageId: string, customConsultationId?: string) => Promise<void>;
   setMessages: (messages: Message[]) => void;
   subscribeToMessages: (consultationId: string) => () => void;
 
@@ -1957,6 +1972,7 @@ export const useStore = create<AppState>((set, get) => ({
            newMessage.type === 'psychomotor_report' ||
            newMessage.type === 'agronomic_report' ||
            newMessage.type === 'psychological_report' ||
+           newMessage.type === 'tcle_document' ||
            Boolean(newMessage.docType) ||
            Boolean(newMessage.attachment));
 
@@ -2121,6 +2137,10 @@ export const useStore = create<AppState>((set, get) => ({
           cleanupPayload['issuedDocuments.receita'] = null;
           cleanupPayload['issuedDocuments.prescription'] = null;
         }
+        if (targetMsg?.type === 'tcle_document' || docKey === 'tcle') {
+          cleanupPayload['issuedDocuments.tcle'] = null;
+          cleanupPayload['issuedDocuments.tcle_document'] = null;
+        }
 
         if (Object.keys(cleanupPayload).length > 0) {
           await Promise.all(
@@ -2250,6 +2270,89 @@ export const useStore = create<AppState>((set, get) => ({
         });
       } catch (error) {
         console.error("Error confirming receita previa in Firestore:", error);
+      }
+    }
+  },
+
+  confirmTcleConsent: async (messageId: string, customConsultationId?: string) => {
+    const state = get();
+    const targetMsg = state.messages.find(m => m.id === messageId);
+    const acceptedAtStr = new Date().toLocaleString('pt-BR');
+    const patientSig = (state.userName || targetMsg?.tcleData?.patientName || 'Paciente').trim();
+
+    set((s) => ({
+      messages: s.messages.map(m => m.id === messageId ? {
+        ...m,
+        tcleData: m.tcleData ? {
+          ...m.tcleData,
+          status: 'accepted',
+          acceptedAt: acceptedAtStr,
+          patientSignature: patientSig
+        } : undefined
+      } : m)
+    }));
+
+    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    if (consultationId) {
+      try {
+        const targetIds = new Set<string>([consultationId]);
+        if (state.activeConsultationId) targetIds.add(state.activeConsultationId);
+        if (state.patientId) targetIds.add(state.patientId);
+        if (auth.currentUser?.uid) targetIds.add(auth.currentUser.uid);
+
+        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
+        const matchedQueueEntry = state.queue.find(p =>
+          p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId
+        );
+        if (matchedQueueEntry) {
+          if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
+          if ((matchedQueueEntry as any).uid) targetIds.add((matchedQueueEntry as any).uid);
+          if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
+        }
+
+        const patientEmail = (matchedQueueEntry?.email || state.userEmail || '').trim().toLowerCase();
+        const patientCpf = cleanDigits(matchedQueueEntry?.cpf || state.userCpf || targetMsg?.tcleData?.cpf);
+        state.queue.forEach(p => {
+          const pEmail = (p.email || '').trim().toLowerCase();
+          const pCpf = cleanDigits(p.cpf);
+          if ((patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail) || (patientCpf && patientCpf.length >= 11 && pCpf === patientCpf)) {
+            if (p.id) targetIds.add(p.id);
+            if ((p as any).uid) targetIds.add((p as any).uid);
+            if ((p as any).patientId) targetIds.add((p as any).patientId);
+          }
+        });
+
+        await Promise.all(
+          Array.from(targetIds).map(tid =>
+            updateDoc(doc(db, 'active_consultations', tid, 'messages', messageId), {
+              'tcleData.status': 'accepted',
+              'tcleData.acceptedAt': acceptedAtStr,
+              'tcleData.patientSignature': patientSig
+            }).catch(() => {})
+          )
+        );
+
+        const tcleSummary = {
+          tcleConsent: {
+            status: 'accepted',
+            acceptedAt: acceptedAtStr,
+            patientSignature: patientSig,
+            patientName: targetMsg?.tcleData?.patientName || patientSig,
+            cpf: targetMsg?.tcleData?.cpf || state.userCpf || '',
+            birthDate: targetMsg?.tcleData?.birthDate || state.userBirthDate || '',
+            diagnosis: targetMsg?.tcleData?.diagnosis || ''
+          }
+        };
+
+        await Promise.all(
+          Array.from(targetIds).map(async (tid) => {
+            await setDoc(doc(db, 'active_consultations', tid), tcleSummary, { merge: true }).catch(() => {});
+            await setDoc(doc(db, 'users', tid), tcleSummary, { merge: true }).catch(() => {});
+            await updateDoc(doc(db, 'queue', tid), tcleSummary).catch(() => {});
+          })
+        );
+      } catch (error) {
+        console.error("Error confirming TCLE consent in Firestore:", error);
       }
     }
   },

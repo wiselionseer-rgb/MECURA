@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Send, FileText, FileCheck, Sprout, Paperclip, CheckCheck, Download, ChevronLeft, ChevronRight, ShoppingCart, User, Eye, PlusCircle, CheckCircle, Droplets, MessageCircle, Star, Check, ShieldCheck, ArrowRight, Sparkles, Clock, Brain, ClipboardList, RotateCcw, X, Stethoscope } from 'lucide-react';
 import { ADHD_QUESTIONS, AUTISM_QUESTIONS, FREQUENCY_OPTIONS } from '../components/tools/NeurodivergentTestsCard';
 import { format } from 'date-fns';
-import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, generatePsychologicalReportPDF } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, generatePsychologicalReportPDF, generateTclePDF } from '../utils/pdfGenerator';
 import { downloadOrGenerateAttachment, deliverPdfBlob } from '../utils/downloadHelper';
 import { requestNotificationPermission, subscribeToBackgroundNotifications } from '../utils/notifications';
 
@@ -75,13 +75,15 @@ export function ChatScreen() {
     messages, addMessage, setMessages, consultationActive, resetConsultation, 
     setSelectedOffer, selectedOffer, exchangeRate, activeConsultationId, subscribeToMessages, 
     subscribeToQueue, patientId, isConsultationFinished, pagamento_consulta, queue, inQueue,
-    userPhone, userEmail, confirmReceitaPrevia
+    userPhone, userEmail, confirmReceitaPrevia, confirmTcleConsent
   } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatStage, setChatStage] = useState<'initial' | 'prescribing' | 'finished'>('initial');
   const [prevMessageCount, setPrevMessageCount] = useState(0);
   const [isConfirmingPrevia, setIsConfirmingPrevia] = useState(false);
+  const [isConfirmingTcle, setIsConfirmingTcle] = useState<string | null>(null);
+  const [expandedTcleIds, setExpandedTcleIds] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const patientFileInputRef = useRef<HTMLInputElement>(null);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -456,6 +458,7 @@ export function ChatScreen() {
         msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' ? `Laudo_Psicomotor_${cleanName}.pdf` :
         msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' ? `Parecer_Agronomico_${cleanName}.pdf` :
         msg.type === 'psychological_report' || msg.docType === 'laudo_psicologico' ? `Laudo_Psicologico_${cleanName}.pdf` :
+        msg.type === 'tcle_document' || msg.type === 'tcle_consent' || msg.docType === 'tcle' ? `TCLE_Termo_Consentimento_${cleanName}.pdf` :
         msg.attachment?.name || 'Documento.pdf';
 
       const fallbackGen = async (): Promise<Blob | null> => {
@@ -464,6 +467,7 @@ export function ChatScreen() {
         const isPsico = msg.type === 'psychomotor_report' || msg.docType === 'laudo_psicomotor' || msg.attachment?.docType === 'laudo_psicomotor' || msg.attachment?.name?.toLowerCase().includes('psicomotor');
         const isAgro = msg.type === 'agronomic_report' || msg.docType === 'laudo_agronomico' || msg.attachment?.docType === 'laudo_agronomico' || msg.attachment?.name?.toLowerCase().includes('agronomico');
         const isPsychology = msg.type === 'psychological_report' || msg.docType === 'laudo_psicologico' || msg.attachment?.docType === 'laudo_psicologico' || msg.attachment?.name?.toLowerCase().includes('psicolog');
+        const isTcle = msg.type === 'tcle_document' || msg.type === 'tcle_consent' || msg.docType === 'tcle' || msg.attachment?.docType === 'tcle' || msg.attachment?.name?.toLowerCase().includes('tcle') || msg.attachment?.name?.toLowerCase().includes('termo_consentimento');
 
         if (isPresc) {
           const b = await generatePrescriptionPDF(userName, messages, {
@@ -511,6 +515,24 @@ export function ChatScreen() {
             customPatientName: userName,
             birthDate: userBirthDate || (answers && answers.birthDate),
             cpf: userCpf || (answers && answers.cpf),
+            returnBlob: true
+          });
+          return b instanceof Blob ? b : null;
+        }
+        if (isTcle) {
+          const b = await generateTclePDF(msg.tcleData?.patientName || userName, {
+            customPatientName: msg.tcleData?.patientName || userName,
+            cpf: msg.tcleData?.cpf || userCpf || (answers && answers.cpf),
+            birthDate: msg.tcleData?.birthDate || userBirthDate || (answers && answers.birthDate),
+            emissionDate: msg.tcleData?.emissionDate || format(new Date(), 'dd/MM/yyyy'),
+            diagnosis: msg.tcleData?.diagnosis || (answers?.objectives && answers.objectives.length > 0 ? answers.objectives.join(', ') : ''),
+            doctorName: msg.tcleData?.doctorName || 'DR GUILHERME TAVEIRA DIAS',
+            doctorCrm: msg.tcleData?.doctorCrm || 'CRM/MT 17259',
+            legalRepresentativeName: msg.tcleData?.legalRepresentativeName,
+            legalRepresentativeCpf: msg.tcleData?.legalRepresentativeCpf,
+            patientSignature: msg.tcleData?.patientSignature || msg.tcleData?.patientName || userName,
+            acceptedAt: msg.tcleData?.acceptedAt,
+            status: msg.tcleData?.status,
             returnBlob: true
           });
           return b instanceof Blob ? b : null;
@@ -1330,6 +1352,247 @@ export function ChatScreen() {
                   </button>
                 </div>
               </motion.div>
+            ) : msg.type === 'tcle_consent' && msg.tcleData ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-[95%] sm:w-[90%] bg-gradient-to-br from-[#0F1B26] via-[#0B131C] to-[#080D14] border-2 border-cyan-500/45 rounded-3xl p-5 sm:p-6 mb-2 shadow-[0_10px_35px_rgba(6,182,212,0.18)] relative overflow-hidden"
+              >
+                <div className="relative z-10 space-y-4">
+                  {/* Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/35 flex items-center justify-center text-cyan-400 shrink-0">
+                        <FileCheck className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                          Documento Obrigatório • TCLE
+                        </span>
+                        <h3 className="text-white font-bold text-base sm:text-lg mt-1">
+                          Termo de Consentimento Livre e Esclarecido
+                        </h3>
+                        <p className="text-xs text-mecura-silver">
+                          Utilização dos derivados da Cannabis para fins exclusivamente medicinais / terapêuticos
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      {msg.tcleData.status === 'accepted' ? (
+                        <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5">
+                          <CheckCircle className="w-4 h-4 text-emerald-400" />
+                          Lido e Aceito ✓
+                        </span>
+                      ) : (
+                        <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 animate-pulse">
+                          <Clock className="w-4 h-4" />
+                          Aguardando Leitura e De Acordo
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Patient Identification Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3.5 rounded-2xl bg-black/40 border border-white/10 text-xs">
+                    <div>
+                      <span className="text-mecura-silver">Paciente: </span>
+                      <strong className="text-white">{msg.tcleData.patientName || userName || 'Paciente'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-mecura-silver">Data: </span>
+                      <strong className="text-white">{msg.tcleData.emissionDate}</strong>
+                    </div>
+                    <div>
+                      <span className="text-mecura-silver">CPF: </span>
+                      <strong className="text-white">{msg.tcleData.cpf || userCpf || 'Não informado'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-mecura-silver">Data de Nascimento: </span>
+                      <strong className="text-white">{msg.tcleData.birthDate || userBirthDate || 'Não informada'}</strong>
+                    </div>
+                  </div>
+
+                  {/* Full TCLE Document Content Box */}
+                  <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3 text-xs text-mecura-pearl leading-relaxed">
+                    <p className="text-justify">
+                      Após detalhada avaliação e investigação diagnóstica realizada em seu paciente, o mesmo foi devidamente informado sobre as possíveis opções de tratar sua enfermidade (doença), e aceitou, através de sua liberdade de escolha, o plano terapêutico à base de Cannabis, concordando com seu médico, <strong>{msg.tcleData.doctorName || 'DR GUILHERME TAVEIRA DIAS'}, {msg.tcleData.doctorCrm || 'CRM/MT 17259'}</strong>.
+                    </p>
+                    <p className="text-justify">
+                      <strong className="text-white">VOCÊ SABE O QUE É O CONSENTIMENTO INFORMADO?</strong> É o processo pelo qual você dá permissão ou recusa a participar como paciente em um procedimento.
+                    </p>
+                    <div className="p-3 rounded-xl bg-cyan-950/35 border border-cyan-500/30">
+                      <p className="text-justify text-cyan-100">
+                        <strong>1.</strong> Durante as consultas, foi-se verificado a seguinte enfermidade/condição em minha pessoa:{' '}
+                        <strong className="text-white underline">{msg.tcleData.diagnosis}</strong>
+                      </p>
+                    </div>
+                    <p className="text-justify">
+                      <strong>2.</strong> O médico assistente esclareceu e me informou sobre os pontos positivos e negativos e sobre as consequências em interromper o tratamento sem comunicar a médico.
+                    </p>
+                    <p className="text-justify">
+                      <strong>3.</strong> O médico assistente tirou todas as dúvidas sobre os seguintes pontos:
+                    </p>
+
+                    <div className={`space-y-2 overflow-y-auto pr-1 custom-scrollbar ${expandedTcleIds[msg.id] ? 'max-h-[420px]' : 'max-h-52'}`}>
+                      <ul className="list-disc pl-5 space-y-2 text-justify">
+                        <li>As possibilidades terapêuticas adequadas foram adotadas anteriormente e, esta proposta de tratamento que estou escolhendo, que consiste na utilização de produtos derivados da Cannabis com fins medicinais, é viável por estarem esgotadas ou por serem ineficazes as opções terapêuticas disponíveis no mercado brasileiro, bem como, a possibilidade de benefícios a minha saúde sem a ocorrência de efeitos colaterais agressivos.</li>
+                        <li>Alguns estudos científicos sugerem que este produto a base de Cannabis pode vir a melhorar os sintomas que venho apresentando, sendo necessário e indispensável o cumprimento efetivo do plano terapêutico devidamente esclarecido durante a consulta médica.</li>
+                        <li>Fui igualmente informado(a) e devidamente esclarecido(a) de que, a exemplo de quaisquer outros procedimentos / medicamentos / terapias médicas que podem agravar minha saúde, o produto de Cannabis também não tem esta isenção.</li>
+                        <li>Podem existir efeitos colaterais indesejáveis, os mais conhecidos, até o momento, são: sonolência, tontura, boca seca, diminuição da pressão arterial, euforia, visão turva, cefaleia (dor de cabeça), sensação de fadiga ou fraqueza, distúrbios do sono, náusea, diarreia, vômito em excesso, taquicardia, no entanto, efeitos em prazo mais longo ainda não foram adequadamente estudados.</li>
+                        <li>Além disso, o produto de Cannabis pode interferir com certas medicações, o que pode diminuir a eficiência dos mesmos ou aumentar seus possíveis efeitos adversos e me responsabilizo por descrever as medicações em uso e comunicar a médica caso haja alteração. Comprometo-me também a não me automedicar durante meu tratamento.</li>
+                        <li>Estou ciente que devo agir com a máxima cautela nas orientações médicas caso eu possua histórico de AVC hemorrágico ou isquêmico, seja idoso ou debilitado, arritmias (fibrilação atrial), faça uso de hipotensores, anticoagulantes, antiplaquetários, benzodiazepinicos, opióides, antidepressivos e barbitúricos.</li>
+                        <li>Estou ciente que durante o tratamento podem surgir complicações de diferentes naturezas, como possíveis efeitos adversos ainda não descritos na literatura médica ou reações alérgicas inesperadas.</li>
+                        <li>Estou ciente de que o THC, um dos canabinóides presentes em alguns produtos à base de Cannabis, pode ser detectado em exames toxicológicos ou exames antidoping, podendo esta presença gerar repercussões negativas frente aos órgãos responsáveis, tanto em questões laborais, questões de direção de veículos automotivos, quanto em questões esportivas.</li>
+                        <li>Quanto a viagens internacionais, estou ciente também de que existem países que não autorizam a entrada com os produtos derivados de Cannabis e devo informar a médica meus planos de viagens e não sair do país sem orientação da mesma.</li>
+                        <li>Fui informado (a) que o produto de Cannabis ainda não é registrado como medicamento, mas que segue o estabelecido pela ANVISA através da autorização de importação (RDC nº 660/2022) e que seu uso está sendo feito em caráter excepcional, devido à ausência de resposta satisfatória de minha doença às outras medicações disponíveis no mercado nacional.</li>
+                        <li>Estou ciente que o presente termo não é suficiente para esclarecer todas as possibilidades acerca do tratamento proposto podendo ser feitas complementações posteriores.</li>
+                        <li>Estou ciente que a utilização do produto indicado tem caráter personalíssimo e intransferível, devendo ser utilizado exclusivamente conforme a prescrição e orientação da médica.</li>
+                        <li>A equipe médica não se responsabiliza pelo mau uso do produto.</li>
+                        <li>Também fui informado que o médico responsável poderá responder as minhas dúvidas, pelo site ou Whatsapp, quando necessário, em dias e horários úteis/comerciais, enquanto estiver em acompanhamento, ou através do agendamento de uma nova consulta médica.</li>
+                        <li>Sou igualmente sabedor que, apesar do empenho do meu médico, não existe garantia absoluta no resultado dos derivados da Cannabis com relação à melhora dos sintomas da minha doença.</li>
+                        <li>Por fim, estou ciente que, em caso de Urgência/Emergência, devo imediatamente suspender a medicação, procurar a unidade de pronto atendimento mais próxima e avisar a equipe médica.</li>
+                      </ul>
+
+                      <p className="font-bold text-white pt-2">EM CASOS DE GESTAÇÃO:</p>
+                      <ul className="list-disc pl-5 space-y-2 text-justify">
+                        <li>Estou ciente também, se for sexo biológico feminino, que no momento não desejo gestar e não amamento, e que tomarei as medidas necessárias para prevenção de gestação durante meu tratamento uma vez que estou ciente de que não há segurança dos produtos derivados de cannabis na gestação e amamentação.</li>
+                        <li>É de responsabilidade minha comunicar a equipe médica em caso de gestação inesperada (ficar grávida), devendo o uso do medicamento ser interrompido, caso o médico ache necessário.</li>
+                        <li>As medicações à base de Cannabis atravessam a barreira placentária, gerando repercussões no feto, e aumentam risco de desfechos desfavoráveis na gestação (os mais comuns: parto prematuro, restrição de crescimento e malformações fetais).</li>
+                      </ul>
+
+                      <p className="text-justify pt-2 font-medium text-white">
+                        Sendo assim, mais uma vez declaro que li, compreendi e aceito livremente todas as colocações do presente Termo de Consentimento Livre e Esclarecido e, através de decisão conjunta, estou disposto (a) a iniciar sem qualquer sujeição/constrangimento o uso compassivo do plano terapêutico proposto pela médica.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTcleIds(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                      className="text-xs font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                    >
+                      {expandedTcleIds[msg.id] ? 'Recolher texto completo do termo' : 'Expandir para ler o termo completo (3 páginas)'}
+                    </button>
+                  </div>
+
+                  {/* Action Area: Mark as Read & Agree */}
+                  {msg.tcleData.status !== 'accepted' ? (
+                    <div className="space-y-2.5 pt-1">
+                      <button
+                        type="button"
+                        disabled={isConfirmingTcle === msg.id}
+                        onClick={async () => {
+                          try {
+                            setIsConfirmingTcle(msg.id);
+                            await confirmTcleConsent(msg.id, effectiveConsultationId);
+                            await addMessage({
+                              text: `✅ Li, compreendi e estou de acordo com o Termo de Consentimento Livre e Esclarecido (TCLE) para utilização medicinal dos derivados da Cannabis.`,
+                              sender: 'user'
+                            }, effectiveConsultationId);
+                          } catch (err) {
+                            console.error("Erro ao confirmar TCLE:", err);
+                          } finally {
+                            setIsConfirmingTcle(null);
+                          }
+                        }}
+                        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-cyan-400 hover:from-emerald-400 hover:to-cyan-300 text-black font-extrabold text-sm sm:text-base rounded-2xl shadow-[0_4px_25px_rgba(16,185,129,0.35)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isConfirmingTcle === msg.id ? (
+                          <span className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                            Registrando seu Consentimento...
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5 text-black" />
+                            Marcar como Lido — Estou de Acordo com o Termo
+                          </span>
+                        )}
+                      </button>
+                      <p className="text-[11px] text-center text-mecura-silver">
+                        Ao marcar como lido, você confirma que está de acordo e autoriza o médico a emitir seu Termo Preenchido e Assinado.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 pt-1">
+                      <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/35 rounded-2xl flex items-center justify-between gap-2 text-xs text-emerald-300">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                          <span>
+                            <strong>Consentimento registrado!</strong> Você marcou o termo como lido e está de acordo
+                            {msg.tcleData.acceptedAt ? ` em ${msg.tcleData.acceptedAt}` : ''}.
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => handleDownloadAttachment(msg)}
+                        disabled={downloadingMsgId === msg.id}
+                        className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl h-11 cursor-pointer flex items-center justify-center text-xs shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                      >
+                        {downloadingMsgId === msg.id ? (
+                          <span className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                            Gerando PDF Preenchido...
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <Download className="w-4 h-4 mr-1.5" /> Baixar Termo Preenchido (PDF)
+                          </span>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ) : (msg.type === 'tcle_document' || msg.docType === 'tcle') ? (
+              <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#0D1E28] to-[#071016] border border-cyan-500/45 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-14 h-14 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 rounded-2xl flex items-center justify-center">
+                      <FileCheck className="w-7 h-7" />
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-cyan-400 uppercase tracking-widest font-mono">TCLE Oficial</span>
+                      <p className="text-xs text-white font-medium flex items-center gap-1 justify-end">
+                        <CheckCheck className="w-3 h-3 text-cyan-400" /> Preenchido & Assinado
+                      </p>
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-bold text-xl sm:text-2xl mb-1">
+                    Termo de Consentimento Livre e Esclarecido (TCLE)
+                  </h3>
+                  <p className="text-cyan-200/80 text-xs mb-6">
+                    {msg.attachment?.name || 'Termo oficial preenchido para utilização medicinal de derivados da Cannabis.'}
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <Button
+                      onClick={() => handleDownloadAttachment(msg)}
+                      disabled={downloadingMsgId === msg.id}
+                      className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black font-bold shadow-[0_0_20px_rgba(6,182,212,0.3)] rounded-xl h-12 cursor-pointer flex items-center justify-center transition-all active:scale-[0.98]"
+                    >
+                      {downloadingMsgId === msg.id ? (
+                        <span className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          Abrindo Termo PDF...
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <Download className="w-4 h-4 mr-2" /> Baixar Termo Preenchido (PDF)
+                        </span>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate('/protocol')}
+                      className="border-white/15 text-white hover:bg-white/5 rounded-xl h-12 cursor-pointer flex items-center justify-center text-xs px-4"
+                    >
+                      Ver na Minha Área
+                    </Button>
+                  </div>
+                </div>
+              </div>
             ) : (msg.type === 'prescription' || msg.docType === 'receita') ? (
               <div className="w-[90%] sm:w-[80%] bg-gradient-to-br from-[#1A1A26] to-[#0A0A0F] border border-mecura-neon/40 rounded-3xl p-6 mb-2 relative overflow-hidden group shadow-2xl">
                 {/* Holographic/Scanner background effect */}

@@ -98,13 +98,14 @@ import { PrescriptionEditorModal } from '../components/PrescriptionEditorModal';
 import { MedicalReportEditorModal } from '../components/MedicalReportEditorModal';
 import { PsychomotorReportEditorModal } from '../components/PsychomotorReportEditorModal';
 import { AgronomicReportEditorModal } from '../components/AgronomicReportEditorModal';
+import { TcleEditorModal } from '../components/TcleEditorModal';
 import { StandaloneDocumentModal, StandalonePatientData } from '../components/StandaloneDocumentModal';
 import { AreaPasswordModal } from '../components/AreaPasswordModal';
 import { ProgrammedPrescriptionsModal } from '../components/ProgrammedPrescriptionsModal';
 import { ProgrammedPrescriptionProfile, getProgrammedProfiles, getDoctorCustomModel } from '../data/programmedPrescriptions';
 import { NeurodivergentTestsCard } from '../components/tools/NeurodivergentTestsCard';
 
-import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
+import { generatePrescriptionPDF, generateMedicalReportPDF, generatePsychomotorReportPDF, generateAgronomicReportPDF, generateTclePDF, PrescriptionItemData, isNationalProduct } from '../utils/pdfGenerator';
 import { generatePersonalizedClinicalReport, buildAgronomicArtisanalMedications, syncAgronomicTextWithParameters } from '../utils/clinicalReportGenerator';
 import { downloadOrGenerateAttachment } from '../utils/downloadHelper';
 
@@ -603,6 +604,21 @@ export function DoctorDashboardScreen() {
   const [isSendingPsychomotorToChat, setIsSendingPsychomotorToChat] = useState(false);
   const [isSendingAgronomicToChat, setIsSendingAgronomicToChat] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+
+  // TCLE (Termo de Consentimento Livre e Esclarecido) States
+  const [showTcleEditorModal, setShowTcleEditorModal] = useState(false);
+  const [tclePatientName, setTclePatientName] = useState('');
+  const [tcleCpf, setTcleCpf] = useState('');
+  const [tcleBirthDate, setTcleBirthDate] = useState('');
+  const [tcleEmissionDate, setTcleEmissionDate] = useState('');
+  const [tcleDiagnosis, setTcleDiagnosis] = useState('');
+  const [tcleDoctorName, setTcleDoctorName] = useState('DR GUILHERME TAVEIRA DIAS');
+  const [tcleDoctorCrm, setTcleDoctorCrm] = useState('CRM/MT 17259');
+  const [tcleLegalRepName, setTcleLegalRepName] = useState('');
+  const [tcleLegalRepCpf, setTcleLegalRepCpf] = useState('');
+  const [tclePatientSignature, setTclePatientSignature] = useState('');
+  const [isSendingTclePdf, setIsSendingTclePdf] = useState(false);
+
   const [showNeuroTestsBanner, setShowNeuroTestsBanner] = useState(true);
   const [actionToastMessage, setActionToastMessage] = useState<string | null>(null);
 
@@ -4049,6 +4065,258 @@ export function DoctorDashboardScreen() {
     }
   };
 
+  // --- TCLE (Termo de Consentimento Livre e Esclarecido) Handlers ---
+  const buildTcleDefaults = () => {
+    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
+    const patientAnswers = resolveCompletePatientAnswers(currentPatient?.id || null);
+    const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
+    const pEmissionDate = format(new Date(), 'dd/MM/yyyy');
+
+    const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+      ? patientAnswers.objectives
+      : (patientAnswers?.objective ? [String(patientAnswers.objective)] : []);
+    const extras: string[] = [];
+    if (patientAnswers?.pathology) extras.push(String(patientAnswers.pathology));
+    if (patientAnswers?.mainSymptoms) extras.push(String(patientAnswers.mainSymptoms));
+    if (patientAnswers?.doenca_cronica_details) extras.push(String(patientAnswers.doenca_cronica_details));
+    if (patientAnswers?.ansiedade_diag_details) extras.push(String(patientAnswers.ansiedade_diag_details));
+
+    const combinedConditions = Array.from(new Set([...objectivesArray, ...extras].map(s => s.trim()).filter(Boolean)));
+    const defaultCondition = combinedConditions.length > 0
+      ? combinedConditions.join(', ')
+      : 'Ansiedade, Distúrbios do Sono / Insônia e Dor Crônica refratários a terapias convencionais';
+
+    // Check if there is an existing TCLE message in chat
+    const existingTcleMsg = [...messages].reverse().find(m => m.type === 'tcle_consent' || m.type === 'tcle_document');
+    const existingData = existingTcleMsg?.tcleData;
+
+    return {
+      patientName: existingData?.patientName || pName,
+      cpf: existingData?.cpf || pCpf,
+      birthDate: existingData?.birthDate || pBirthDate,
+      emissionDate: existingData?.emissionDate || pEmissionDate,
+      diagnosis: existingData?.diagnosis || defaultCondition,
+      doctorName: existingData?.doctorName || 'DR GUILHERME TAVEIRA DIAS',
+      doctorCrm: existingData?.doctorCrm || 'CRM/MT 17259',
+      legalRepresentativeName: existingData?.legalRepresentativeName || '',
+      legalRepresentativeCpf: existingData?.legalRepresentativeCpf || '',
+      patientSignature: existingData?.patientSignature || pName,
+      status: existingData?.status || ((qPatient as any)?.tcleConsent?.status === 'accepted' ? 'accepted' : 'pending_signature') as 'pending_signature' | 'accepted',
+      acceptedAt: existingData?.acceptedAt || (qPatient as any)?.tcleConsent?.acceptedAt
+    };
+  };
+
+  const handleOpenTcleEditor = (overrideData?: Partial<ReturnType<typeof buildTcleDefaults>>) => {
+    const defs = { ...buildTcleDefaults(), ...(overrideData || {}) };
+    setTclePatientName(defs.patientName);
+    setTcleCpf(defs.cpf);
+    setTcleBirthDate(defs.birthDate);
+    setTcleEmissionDate(defs.emissionDate);
+    setTcleDiagnosis(defs.diagnosis);
+    setTcleDoctorName(defs.doctorName);
+    setTcleDoctorCrm(defs.doctorCrm);
+    setTcleLegalRepName(defs.legalRepresentativeName);
+    setTcleLegalRepCpf(defs.legalRepresentativeCpf);
+    setTclePatientSignature(defs.patientSignature);
+    setShowTcleEditorModal(true);
+  };
+
+  const handleResetTcleFromTriage = () => {
+    const qPatient = currentPatient?.id ? queue.find(p => p.id === currentPatient.id) : null;
+    const patientAnswers = resolveCompletePatientAnswers(currentPatient?.id || null);
+    const pName = (currentPatient?.patientName || (currentPatient as any)?.name || qPatient?.patientName || (!currentPatient ? userName : '') || 'Paciente').trim();
+    const pBirthDate = currentPatient?.birthDate || patientAnswers?.birthDate || qPatient?.birthDate || (!currentPatient ? userBirthDate : '') || 'Não informada';
+    const pCpf = currentPatient?.cpf || patientAnswers?.cpf || qPatient?.cpf || (!currentPatient ? userCpf : '') || 'Não informado';
+    const objectivesArray = (Array.isArray(patientAnswers?.objectives) && patientAnswers.objectives.length > 0)
+      ? patientAnswers.objectives
+      : (patientAnswers?.objective ? [String(patientAnswers.objective)] : []);
+    const extras: string[] = [];
+    if (patientAnswers?.pathology) extras.push(String(patientAnswers.pathology));
+    if (patientAnswers?.mainSymptoms) extras.push(String(patientAnswers.mainSymptoms));
+    if (patientAnswers?.doenca_cronica_details) extras.push(String(patientAnswers.doenca_cronica_details));
+    const combinedConditions = Array.from(new Set([...objectivesArray, ...extras].map(s => s.trim()).filter(Boolean)));
+    setTclePatientName(pName);
+    setTcleCpf(pCpf);
+    setTcleBirthDate(pBirthDate);
+    setTcleEmissionDate(format(new Date(), 'dd/MM/yyyy'));
+    setTcleDiagnosis(combinedConditions.length > 0 ? combinedConditions.join(', ') : 'Ansiedade, Distúrbios do Sono / Insônia e Dor Crônica refratários a terapias convencionais');
+    setTclePatientSignature(pName);
+    showActionToast('Dados do TCLE recarregados da triagem do paciente!');
+  };
+
+  const handleSendTcleConsentToChat = async (directFromQuickBar = false) => {
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast("Selecione um paciente na fila para enviar o Termo de Consentimento.");
+      return;
+    }
+
+    const defs = buildTcleDefaults();
+    const pName = directFromQuickBar ? defs.patientName : (tclePatientName || defs.patientName);
+    const pCpf = directFromQuickBar ? defs.cpf : (tcleCpf || defs.cpf);
+    const pBirth = directFromQuickBar ? defs.birthDate : (tcleBirthDate || defs.birthDate);
+    const pDate = directFromQuickBar ? defs.emissionDate : (tcleEmissionDate || defs.emissionDate);
+    const pDiag = directFromQuickBar ? defs.diagnosis : (tcleDiagnosis || defs.diagnosis);
+    const pDocName = directFromQuickBar ? defs.doctorName : (tcleDoctorName || defs.doctorName);
+    const pDocCrm = directFromQuickBar ? defs.doctorCrm : (tcleDoctorCrm || defs.doctorCrm);
+
+    try {
+      await addMessage({
+        sender: 'doctor',
+        type: 'tcle_consent',
+        text: `📋 **Termo de Consentimento Livre e Esclarecido (TCLE)**\n\nPor gentileza, leia atentamente o Termo de Consentimento para utilização medicinal dos derivados da Cannabis abaixo e clique no botão **"Marcar como Lido — Estou de Acordo com o Termo"** para que eu possa emitir e enviar o seu documento oficial preenchido.`,
+        tcleData: {
+          patientName: pName,
+          cpf: pCpf,
+          birthDate: pBirth,
+          emissionDate: pDate,
+          diagnosis: pDiag,
+          doctorName: pDocName,
+          doctorCrm: pDocCrm,
+          legalRepresentativeName: tcleLegalRepName || undefined,
+          legalRepresentativeCpf: tcleLegalRepCpf || undefined,
+          status: 'pending_signature',
+          patientSignature: pName
+        }
+      }, targetPatientId);
+
+      showActionToast(`Termo (TCLE) enviado no chat para leitura e aceite de ${pName}!`);
+    } catch (err: any) {
+      console.error("Erro ao enviar TCLE no chat:", err);
+      showActionToast(`Erro ao enviar TCLE: ${err?.message || 'Tente novamente'}`);
+    }
+  };
+
+  const handleDownloadTcleFromEditor = async (overrideTcleData?: any) => {
+    const defs = buildTcleDefaults();
+    const pName = overrideTcleData?.patientName || tclePatientName || defs.patientName;
+    await generateTclePDF(pName, {
+      customPatientName: pName,
+      cpf: overrideTcleData?.cpf || tcleCpf || defs.cpf,
+      birthDate: overrideTcleData?.birthDate || tcleBirthDate || defs.birthDate,
+      emissionDate: overrideTcleData?.emissionDate || tcleEmissionDate || defs.emissionDate,
+      diagnosis: overrideTcleData?.diagnosis || tcleDiagnosis || defs.diagnosis,
+      doctorName: overrideTcleData?.doctorName || tcleDoctorName || defs.doctorName,
+      doctorCrm: overrideTcleData?.doctorCrm || tcleDoctorCrm || defs.doctorCrm,
+      legalRepresentativeName: overrideTcleData?.legalRepresentativeName ?? tcleLegalRepName,
+      legalRepresentativeCpf: overrideTcleData?.legalRepresentativeCpf ?? tcleLegalRepCpf,
+      patientSignature: overrideTcleData?.patientSignature || tclePatientSignature || pName,
+      acceptedAt: overrideTcleData?.acceptedAt || defs.acceptedAt,
+      status: overrideTcleData?.status || defs.status
+    });
+  };
+
+  const handleSendTclePdfToChat = async (overrideTcleData?: any) => {
+    const targetPatientId = standaloneTargetPatientId || currentPatient?.id || activeConsultationId || (queue.find(p => p.status === 'in-consultation' || p.status === 'waiting')?.id);
+    if (!targetPatientId) {
+      showActionToast("Nenhum paciente selecionado para envio do Termo Preenchido.");
+      return;
+    }
+
+    const defs = buildTcleDefaults();
+    const pName = overrideTcleData?.patientName || tclePatientName || defs.patientName;
+    const pCpf = overrideTcleData?.cpf || tcleCpf || defs.cpf;
+    const pBirth = overrideTcleData?.birthDate || tcleBirthDate || defs.birthDate;
+    const pDate = overrideTcleData?.emissionDate || tcleEmissionDate || defs.emissionDate;
+    const pDiag = overrideTcleData?.diagnosis || tcleDiagnosis || defs.diagnosis;
+    const pDocName = overrideTcleData?.doctorName || tcleDoctorName || defs.doctorName;
+    const pDocCrm = overrideTcleData?.doctorCrm || tcleDoctorCrm || defs.doctorCrm;
+    const pSig = overrideTcleData?.patientSignature || tclePatientSignature || pName;
+    const pAcceptedAt = overrideTcleData?.acceptedAt || defs.acceptedAt || new Date().toLocaleString('pt-BR');
+    const pLegalName = overrideTcleData?.legalRepresentativeName ?? tcleLegalRepName;
+    const pLegalCpf = overrideTcleData?.legalRepresentativeCpf ?? tcleLegalRepCpf;
+
+    try {
+      setIsSendingTclePdf(true);
+
+      const pdfBlob = await generateTclePDF(pName, {
+        customPatientName: pName,
+        cpf: pCpf,
+        birthDate: pBirth,
+        emissionDate: pDate,
+        diagnosis: pDiag,
+        doctorName: pDocName,
+        doctorCrm: pDocCrm,
+        legalRepresentativeName: pLegalName,
+        legalRepresentativeCpf: pLegalCpf,
+        patientSignature: pSig,
+        acceptedAt: pAcceptedAt,
+        status: 'accepted',
+        returnBlob: true
+      }) as Blob;
+
+      let fileUrl = '';
+      const cleanPatientName = (pName || 'Paciente').replace(/\s+/g, '_');
+      const fileName = `TCLE_Termo_Consentimento_${cleanPatientName}.pdf`;
+
+      if (pdfBlob) {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(pdfBlob);
+        });
+        const base64Data = await base64Promise;
+        fileUrl = base64Data;
+
+        try {
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: fileName,
+              data: base64Data,
+              type: 'application/pdf'
+            })
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            if (upData?.url) fileUrl = upData.url;
+          }
+        } catch (uploadErr) {
+          console.warn("Upload falhou, mantendo base64:", uploadErr);
+        }
+      }
+
+      await addMessage({
+        sender: 'doctor',
+        type: 'tcle_document',
+        docType: 'tcle',
+        text: `📄 **Termo de Consentimento Livre e Esclarecido (TCLE) Preenchido e Emitido**\n\nO seu Termo de Consentimento oficial, devidamente preenchido e assinado em conformidade com o ${pDocName} (${pDocCrm}), já está disponível para download aqui no chat e na sua **Área do Paciente (Protocolo Terapêutico)**.`,
+        tcleData: {
+          patientName: pName,
+          cpf: pCpf,
+          birthDate: pBirth,
+          emissionDate: pDate,
+          diagnosis: pDiag,
+          doctorName: pDocName,
+          doctorCrm: pDocCrm,
+          legalRepresentativeName: pLegalName || undefined,
+          legalRepresentativeCpf: pLegalCpf || undefined,
+          status: 'accepted',
+          acceptedAt: pAcceptedAt,
+          patientSignature: pSig
+        },
+        attachment: {
+          name: fileName,
+          url: fileUrl || '',
+          type: 'application/pdf',
+          docType: 'tcle',
+          title: 'Termo de Consentimento Livre e Esclarecido (TCLE)'
+        }
+      }, targetPatientId);
+
+      setShowTcleEditorModal(false);
+      showActionToast(`Termo (TCLE) Preenchido enviado com sucesso para a área de ${pName}!`);
+    } catch (err: any) {
+      console.error("Erro ao gerar/enviar TCLE PDF:", err);
+      showActionToast(`Erro ao enviar TCLE preenchido: ${err?.message || 'Tente novamente'}`);
+    } finally {
+      setIsSendingTclePdf(false);
+    }
+  };
+
   const buildTriageAgronomicDefaults = (targetPatientIdOverride?: string | null) => {
     const resolvedId = targetPatientIdOverride !== undefined
       ? targetPatientIdOverride
@@ -6576,6 +6844,13 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                   <Sprout className="w-3 h-3 md:w-4 md:h-4 text-emerald-400" /> <span className="hidden md:inline">Laudo Agronômico</span><span className="md:hidden">Agron.</span>
                 </button>
                 <button 
+                  onClick={() => handleOpenTcleEditor()}
+                  className="px-3 md:px-4 py-2 md:py-2.5 bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 rounded-xl text-xs md:text-sm font-semibold hover:bg-cyan-500/25 hover:border-cyan-400 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap shadow-[0_0_15px_rgba(6,182,212,0.15)] cursor-pointer"
+                  title="Abrir Termo de Consentimento Livre e Esclarecido (TCLE)"
+                >
+                  <FileSignature className="w-3 h-3 md:w-4 md:h-4 text-cyan-400" /> <span className="hidden md:inline">Termo (TCLE)</span><span className="md:hidden">TCLE</span>
+                </button>
+                <button 
                   onClick={handleFinishConsultation}
                   className="px-3 md:px-5 py-2 md:py-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs md:text-sm font-bold hover:bg-emerald-500/20 transition-colors flex items-center gap-1 md:gap-2 whitespace-nowrap"
                   title="Concluir consulta médica com sucesso"
@@ -7070,6 +7345,144 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                         </div>
                       </div>
                     </div>
+                  ) : msg.type === 'tcle_consent' && msg.tcleData ? (
+                    <div className="w-[85%] max-w-2xl bg-gradient-to-br from-[#0E1B26] to-[#081018] border-2 border-cyan-500/40 rounded-3xl p-5 sm:p-6 mb-2 shadow-xl relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Termo de Consentimento (TCLE)');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover termo de consentimento"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+
+                      <div className="relative z-10 space-y-4">
+                        <div className="flex items-start justify-between gap-3 pr-20">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/35 flex items-center justify-center text-cyan-400 shrink-0">
+                              <FileSignature className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-white font-bold text-base">
+                                Termo de Consentimento Livre e Esclarecido (TCLE)
+                              </h3>
+                              <p className="text-xs text-mecura-silver">
+                                Paciente: <strong className="text-white">{msg.tcleData.patientName}</strong> • CPF: {msg.tcleData.cpf}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            {msg.tcleData.status === 'accepted' ? (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.25)]">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                Lido e Aceito pelo Paciente ✓
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 animate-pulse">
+                                <Clock className="w-3.5 h-3.5" />
+                                Aguardando Leitura do Paciente
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="p-3.5 bg-black/40 border border-white/10 rounded-2xl text-xs text-mecura-pearl space-y-1">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 block">
+                            Item 1 • Enfermidade / Condição Verificada:
+                          </span>
+                          <p className="font-semibold text-white">{msg.tcleData.diagnosis}</p>
+                          {msg.tcleData.acceptedAt && (
+                            <p className="text-[11px] text-emerald-400 pt-1">
+                              ✓ Paciente marcou como lido e de acordo em {msg.tcleData.acceptedAt} (Assinatura: {msg.tcleData.patientSignature || msg.tcleData.patientName})
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTcleEditor(msg.tcleData)}
+                            className="px-3.5 py-2 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Editar / Visualizar Termo</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadTcleFromEditor(msg.tcleData)}
+                            className="px-3.5 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 rounded-xl text-xs font-bold border border-cyan-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Baixar Termo Preenchido (PDF)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isSendingTclePdf}
+                            onClick={() => handleSendTclePdfToChat(msg.tcleData)}
+                            className="px-4 py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-black rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>
+                              {isSendingTclePdf
+                                ? 'Enviando PDF...'
+                                : 'Gerar e Enviar Termo Preenchido (Área do Paciente)'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (msg.type === 'tcle_document' || msg.docType === 'tcle') ? (
+                    <div className="w-[75%] max-w-xl bg-gradient-to-r from-[#0C1D26] to-[#112633] border border-cyan-500/40 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveDoctorMessage(msg.id, 'Termo Preenchido (TCLE)');
+                        }}
+                        className="absolute top-4 right-4 px-2.5 py-1 bg-red-500/15 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all z-20 shadow-sm cursor-pointer active:scale-95"
+                        title="Remover termo preenchido"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
+                        <span className="pointer-events-none">Remover</span>
+                      </button>
+                      <div className="flex items-start gap-4 relative z-10">
+                        <div className="w-12 h-12 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center border border-cyan-500/30 shrink-0">
+                          <FileCheck className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 pr-16">
+                          <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full inline-block mb-1">
+                            Termo de Consentimento Preenchido (TCLE)
+                          </span>
+                          <h3 className="text-white font-bold text-sm mb-0.5">{msg.attachment?.name || 'TCLE_Termo_Consentimento.pdf'}</h3>
+                          <p className="text-mecura-silver text-xs">Termo oficial preenchido e enviado para o chat e Área do Paciente.</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            <button
+                              type="button"
+                              onClick={() => downloadOrGenerateAttachment(msg.attachment, () => handleDownloadTcleFromEditor(msg.tcleData), msg.attachment?.name || 'TCLE_Termo_Consentimento.pdf')}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/15 border border-cyan-500/35 hover:bg-cyan-500 hover:text-black text-cyan-300 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Baixar Anexo PDF
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenTcleEditor(msg.tcleData)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/15 hover:bg-white/10 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-cyan-400" /> Abrir Editor
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ) : (msg.type === 'document' || msg.attachment) ? (
                     <div className="w-[75%] max-w-xl bg-gradient-to-r from-mecura-surface to-mecura-surface-light border border-white/15 rounded-2xl p-5 mb-2 shadow-lg relative overflow-hidden group">
                       <button
@@ -7458,9 +7871,27 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
               </button>
               <button 
                 onClick={() => handleDoctorAction('acompanhamento')}
-                className="whitespace-nowrap px-4 py-2 rounded-full bg-mecura-neon/10 border border-mecura-neon/50 text-xs text-mecura-neon hover:bg-mecura-neon/20 transition-colors"
+                className="whitespace-nowrap px-4 py-2 rounded-full bg-mecura-neon/10 border border-mecura-neon/50 text-xs text-mecura-neon hover:bg-mecura-neon/20 transition-colors cursor-pointer"
               >
                 Acompanhamento (Oferta)
+              </button>
+              <button 
+                type="button"
+                onClick={() => handleSendTcleConsentToChat(true)}
+                className="whitespace-nowrap px-4 py-2 rounded-full bg-cyan-500/15 border border-cyan-400/60 text-xs font-bold text-cyan-300 hover:bg-cyan-500/25 transition-colors flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.2)] cursor-pointer"
+                title="Envia o Termo de Consentimento (TCLE) no chat para o paciente ler e marcar que está de acordo"
+              >
+                <FileSignature className="w-3.5 h-3.5 text-cyan-400" />
+                Enviar Termo (TCLE)
+              </button>
+              <button 
+                type="button"
+                onClick={() => handleOpenTcleEditor()}
+                className="whitespace-nowrap px-4 py-2 rounded-full bg-emerald-500/15 border border-emerald-400/50 text-xs font-bold text-emerald-300 hover:bg-emerald-500/25 transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Abre o Termo Preenchido (TCLE) para gerar e enviar o PDF na área do paciente"
+              >
+                <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
+                Gerar Termo Preenchido (PDF)
               </button>
             </div>
 
@@ -11399,6 +11830,39 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
         onSendToChat={handleSendAgronomicReportToChat}
         onSave={handleSaveAgronomicReport}
         isSendingToChat={isSendingAgronomicToChat}
+      />
+
+      {/* TCLE (Termo de Consentimento Livre e Esclarecido) View & Edit Modal */}
+      <TcleEditorModal
+        isOpen={showTcleEditorModal}
+        onClose={() => setShowTcleEditorModal(false)}
+        patientName={tclePatientName}
+        setPatientName={setTclePatientName}
+        cpf={tcleCpf}
+        setCpf={setTcleCpf}
+        birthDate={tcleBirthDate}
+        setBirthDate={setTcleBirthDate}
+        emissionDate={tcleEmissionDate}
+        setEmissionDate={setTcleEmissionDate}
+        diagnosis={tcleDiagnosis}
+        setDiagnosis={setTcleDiagnosis}
+        doctorName={tcleDoctorName}
+        setDoctorName={setTcleDoctorName}
+        doctorCrm={tcleDoctorCrm}
+        setDoctorCrm={setTcleDoctorCrm}
+        legalRepresentativeName={tcleLegalRepName}
+        setLegalRepresentativeName={setTcleLegalRepName}
+        legalRepresentativeCpf={tcleLegalRepCpf}
+        setLegalRepresentativeCpf={setTcleLegalRepCpf}
+        patientSignature={tclePatientSignature}
+        setPatientSignature={setTclePatientSignature}
+        consentStatus={buildTcleDefaults().status}
+        acceptedAt={buildTcleDefaults().acceptedAt}
+        onSendConsentRequestToChat={() => handleSendTcleConsentToChat(false)}
+        onDownloadPDF={() => handleDownloadTcleFromEditor()}
+        onSendFilledPdfToChat={() => handleSendTclePdfToChat()}
+        onResetFromTriage={handleResetTcleFromTriage}
+        isSendingPdf={isSendingTclePdf}
       />
 
       {/* Standalone Document Generator Modal (Receitas e Laudos Avulsos) */}
