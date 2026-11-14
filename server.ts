@@ -10,6 +10,14 @@ import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
+process.on("uncaughtException", (err) => {
+  console.error("[SERVER] Uncaught Exception (prevented crash):", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[SERVER] Unhandled Rejection (prevented crash):", reason);
+});
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
@@ -204,10 +212,18 @@ async function startServer() {
     }
   });
 
-  const vapidPublic = process.env.VAPID_PUBLIC_KEY || "BNhGkh4NPQdL5-v97cIGWleXsEuVlZiW6YGu3866y33lZuMB_INQ-nJh0Ff-DECy-uIO-E2X4KdDvEw2oo0--Aw";
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY || "qQnw0dxc2m0c1fFN444rwuE0mWbZrrYeiQcbTKeXy8M";
-  webpush.setVapidDetails('mailto:lucasdanieltrader@gmail.com', vapidPublic, vapidPrivate);
+  const vapidPublic = (process.env.VAPID_PUBLIC_KEY || "BNhGkh4NPQdL5-v97cIGWleXsEuVlZiW6YGu3866y33lZuMB_INQ-nJh0Ff-DECy-uIO-E2X4KdDvEw2oo0--Aw").trim();
+  const vapidPrivate = (process.env.VAPID_PRIVATE_KEY || "qQnw0dxc2m0c1fFN444rwuE0mWbZrrYeiQcbTKeXy8M").trim();
+  try {
+    webpush.setVapidDetails('mailto:lucasdanieltrader@gmail.com', vapidPublic, vapidPrivate);
+  } catch (vapidErr) {
+    console.warn("[PUSH] Aviso ao configurar chaves VAPID:", vapidErr);
+  }
   
+  app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', uptime: process.uptime() });
+  });
+
   app.get('/api/vapid-public-key', (req, res) => {
     res.send(vapidPublic);
   });
@@ -2015,8 +2031,11 @@ app.post('/api/send-admin-push', async (req, res) => {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // Only use Vite dev middleware when explicitly running `tsx server.ts` in development.
+  // When running from compiled `dist/server.cjs` or `server.js` (e.g. on Hostinger), always serve static `dist/`.
+  const isDevTsx = process.env.NODE_ENV !== "production" && process.argv.some(arg => arg.endsWith("server.ts"));
+
+  if (isDevTsx) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2024,16 +2043,26 @@ app.post('/api/send-admin-push', async (req, res) => {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))
+      ? path.join(process.cwd(), 'dist')
+      : process.cwd();
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // Support both numeric TCP ports and LiteSpeed (Hostinger lsnode) UNIX domain sockets
+  const numericPort = Number(PORT);
+  if (!isNaN(numericPort) && numericPort > 0) {
+    app.listen(numericPort, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${numericPort}`);
+    });
+  } else {
+    app.listen(PORT, () => {
+      console.log(`Server running on socket ${PORT}`);
+    });
+  }
 }
 
 startServer();

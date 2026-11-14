@@ -29,13 +29,14 @@ async function deploy() {
     // Tenta criar a pasta se não existir (opcional)
     try { await sftp.mkdir(remotePath, true); } catch (e) {}
 
-    console.log('📦 Enviando pasta dist (Frontend)...');
+    console.log('📦 Enviando pasta dist (Frontend + dist/server.cjs)...');
+    await sftp.uploadDir(path.join(process.cwd(), 'dist'), `${remotePath}/dist`);
     await sftp.uploadDir(path.join(process.cwd(), 'dist'), remotePath);
     
     console.log('⚙️ Enviando arquivos do servidor (Backend)...');
     try {
-      // Enviamos o server.js (compilado pelo esbuild no npm run build)
       await sftp.put(path.join(process.cwd(), 'server.js'), `${remotePath}/server.js`);
+      await sftp.put(path.join(process.cwd(), 'dist', 'server.cjs'), `${remotePath}/server.cjs`);
       await sftp.put(path.join(process.cwd(), 'package.json'), `${remotePath}/package.json`);
       // Enviar o arquivo .env para que o servidor tenha as chaves de API
       await sftp.put(path.join(process.cwd(), '.env'), `${remotePath}/.env`);
