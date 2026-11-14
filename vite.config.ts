@@ -21,6 +21,8 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
     build: {
+      copyPublicDir: false,
+      sourcemap: false,
       chunkSizeWarningLimit: 3000,
       rollupOptions: {
         output: {
@@ -29,6 +31,8 @@ export default defineConfig(({mode}) => {
             'vendor-pdf': ['jspdf', 'html2pdf.js'],
             'vendor-icons': ['lucide-react'],
             'vendor-firebase': ['firebase/app', 'firebase/firestore', 'firebase/auth'],
+            'vendor-charts': ['recharts'],
+            'vendor-motion': ['motion', 'remotion', '@remotion/player'],
           },
         },
       },

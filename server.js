@@ -1,22 +1,20 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+const path = require('node:path');
+const fs = require('node:fs');
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const require = createRequire(import.meta.url);
 
 const distServerPath = path.join(__dirname, 'dist', 'server.cjs');
 const rootServerCjsPath = path.join(__dirname, 'server.cjs');
 
+let loadedApp = null;
+
 if (fs.existsSync(distServerPath)) {
-  require(distServerPath);
+  loadedApp = require(distServerPath);
 } else if (fs.existsSync(rootServerCjsPath)) {
-  require(rootServerCjsPath);
+  loadedApp = require(rootServerCjsPath);
 } else {
-  console.error('❌ Bundle do servidor (dist/server.cjs) não encontrado. Execute "npm run build" antes de iniciar.');
+  console.error('❌ Bundle do servidor (dist/server.cjs ou server.cjs) não encontrado.');
   process.exit(1);
 }
+
+module.exports = loadedApp?.default || loadedApp;

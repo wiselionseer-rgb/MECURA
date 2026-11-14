@@ -18,8 +18,9 @@ process.on("unhandledRejection", (reason) => {
   console.error("[SERVER] Unhandled Rejection (prevented crash):", reason);
 });
 
-async function startServer() {
-  const app = express();
+const app = express();
+
+function startServer() {
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json({ limit: "50mb" }));
@@ -2006,40 +2007,30 @@ Regras:
     return res.json({ text: null, fallback: true });
   });
 
-app.post('/api/send-admin-push', async (req, res) => {
+  app.post('/api/send-admin-push', async (req, res) => {
     const { title, body, url } = req.body;
     try {
-      const { collection, query, where, getDocs } = await import('firebase/firestore');
-      // For doctors/admins, we might not have 'role'=='admin' in users collection reliably.
-      // Let's broadcast to anyone who has pushSubscription AND (maybe we just send to all admins, but wait)
-      // Actually, if the doctor registered, maybe they don't have role='admin' in their doc.
-      // Let's check how the doctor document is structured.
-      
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('role', '==', 'admin'));
-      let querySnapshot = await getDocs(q);
-      
-      // Fallback: If no 'admin' role found, we might want to check the specific doctor uid if we know it.
-      // For now, let's just broadcast to all admins.
-      const promises = [];
-      querySnapshot.forEach((doc) => {
-        const userData = doc.data();
+      const querySnapshot = await getDocs(q);
+
+      const promises: Promise<any>[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const userData = docSnap.data();
         if (userData.pushSubscription) {
           promises.push(webpush.sendNotification(userData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 }).catch(e => console.error('Admin push error', e)));
         }
       });
-      
-      // If no admin was found with role=admin, we can broadcast to the first user with a pushSubscription as a fallback for testing (but better to properly set role='admin' when doctor subscribes)
-      if (promises.length === 0) {
-          const allUsersSnapshot = await getDocs(usersRef);
-          allUsersSnapshot.forEach(doc => {
-              const uData = doc.data();
-              if (uData.pushSubscription) {
-                 promises.push(webpush.sendNotification(uData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 }).catch(e => console.error('Admin push error', e)));
-              }
-          });
-      }
 
+      if (promises.length === 0) {
+        const allUsersSnapshot = await getDocs(usersRef);
+        allUsersSnapshot.forEach(docSnap => {
+          const uData = docSnap.data();
+          if (uData.pushSubscription) {
+            promises.push(webpush.sendNotification(uData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: 'high', TTL: 86400 }).catch(e => console.error('Admin push error', e)));
+          }
+        });
+      }
 
       await Promise.all(promises);
       res.json({ success: true, count: promises.length });
@@ -2049,16 +2040,14 @@ app.post('/api/send-admin-push', async (req, res) => {
     }
   });
 
-  
   app.get('/api/debug-users', async (req, res) => {
     try {
-      const { collection, getDocs } = await import('firebase/firestore');
       const usersRef = collection(db, 'users');
       const snapshot = await getDocs(usersRef);
-      const users = [];
-      snapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
+      const users: any[] = [];
+      snapshot.forEach(docSnap => users.push({ id: docSnap.id, ...docSnap.data() }));
       res.json(users);
-    } catch (error) {
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
@@ -2093,37 +2082,58 @@ app.post('/api/send-admin-push', async (req, res) => {
   });
 
   // Only use Vite dev middleware when explicitly running `tsx server.ts` in development.
-  // When running from compiled `dist/server.cjs` or `server.js` (e.g. on Hostinger), always serve static `dist/`.
+  // When running from compiled `dist/server.cjs` or `server.js` (e.g. on Hostinger), always serve static `dist/` and `public/` synchronously.
   const isDevTsx = process.env.NODE_ENV !== "production" && process.argv.some(arg => arg.endsWith("server.ts"));
 
   if (isDevTsx) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    import("vite").then(async ({ createServer: createViteServer }) => {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      const numericPort = Number(PORT);
+      app.listen(numericPort || 3000, "0.0.0.0", () => {
+        console.log(`Dev server running on http://localhost:${numericPort || 3000}`);
+      });
     });
-    app.use(vite.middlewares);
   } else {
-    const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))
-      ? path.join(process.cwd(), 'dist')
-      : process.cwd();
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+    const baseDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+    const candidateDistDirs = [
+      path.join(process.cwd(), "dist"),
+      path.join(baseDir, "dist"),
+      baseDir,
+      process.cwd()
+    ];
+    const distPath = candidateDistDirs.find(dir => fs.existsSync(path.join(dir, "index.html"))) || path.join(process.cwd(), "dist");
 
-  // Support both numeric TCP ports and LiteSpeed (Hostinger lsnode) UNIX domain sockets
-  const numericPort = Number(PORT);
-  if (!isNaN(numericPort) && numericPort > 0) {
-    app.listen(numericPort, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${numericPort}`);
+    const candidatePublicDirs = [
+      path.join(process.cwd(), "public"),
+      path.join(baseDir, "public"),
+      path.join(baseDir, "..", "public")
+    ];
+    const publicPath = candidatePublicDirs.find(dir => fs.existsSync(dir));
+
+    app.use(express.static(distPath, { index: false }));
+    if (publicPath) {
+      app.use(express.static(publicPath, { index: false }));
+    }
+
+    app.get("*", (req, res) => {
+      const indexFile = path.join(distPath, "index.html");
+      if (fs.existsSync(indexFile)) {
+        return res.sendFile(indexFile);
+      }
+      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='2'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Carregando Mecura...</body></html>");
     });
-  } else {
+
+    // Synchronous listen for LiteSpeed (lsnode.js) and standard Node environments
     app.listen(PORT, () => {
-      console.log(`Server running on socket ${PORT}`);
+      console.log(`Production server running on port/socket ${PORT} (serving from ${distPath})`);
     });
   }
 }
 
 startServer();
+
+export default app;

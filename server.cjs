@@ -4,6 +4,10 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -20,14 +24,20 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // server.ts
-var import_express = __toESM(require("express"), 1);
-var import_web_push = __toESM(require("web-push"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
-var import_node_fs = __toESM(require("node:fs"), 1);
+var server_exports = {};
+__export(server_exports, {
+  default: () => server_default
+});
+module.exports = __toCommonJS(server_exports);
+var import_express = __toESM(require("express"));
+var import_web_push = __toESM(require("web-push"));
+var import_node_path = __toESM(require("node:path"));
+var import_node_fs = __toESM(require("node:fs"));
 var import_mercadopago = require("mercadopago");
-var import_dotenv = __toESM(require("dotenv"), 1);
+var import_dotenv = __toESM(require("dotenv"));
 
 // src/firebase.ts
 var import_app = require("firebase/app");
@@ -47,22 +57,25 @@ var firebase_applet_config_default = {
 };
 
 // src/firebase.ts
+var isBrowser = typeof window !== "undefined";
 var app = (0, import_app.initializeApp)(firebase_applet_config_default);
 var db = (0, import_firestore.getFirestore)(app, firebase_applet_config_default.firestoreDatabaseId);
-var auth = (0, import_auth.getAuth)();
-async function testConnection() {
-  try {
-    await (0, import_firestore.getDocFromServer)((0, import_firestore.doc)(db, "settings", "exchangeRate"));
-    console.log("Firestore connection successful");
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("the client is offline")) {
-      console.error("Please check your Firebase configuration. The client is offline.");
-    } else {
-      console.error("Firestore connection test error:", error);
+var auth = isBrowser ? (0, import_auth.getAuth)(app) : {};
+if (isBrowser) {
+  async function testConnection() {
+    try {
+      await (0, import_firestore.getDocFromServer)((0, import_firestore.doc)(db, "settings", "exchangeRate"));
+      console.log("Firestore connection successful");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("the client is offline")) {
+        console.error("Please check your Firebase configuration. The client is offline.");
+      } else {
+        console.error("Firestore connection test error:", error);
+      }
     }
   }
+  testConnection();
 }
-testConnection();
 
 // server.ts
 var import_firestore2 = require("firebase/firestore");
@@ -73,8 +86,8 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   console.error("[SERVER] Unhandled Rejection (prevented crash):", reason);
 });
-async function startServer() {
-  const app2 = (0, import_express.default)();
+var app2 = (0, import_express.default)();
+function startServer() {
   const PORT = process.env.PORT || 3e3;
   app2.use(import_express.default.json({ limit: "50mb" }));
   app2.use(import_express.default.urlencoded({ limit: "50mb", extended: true }));
@@ -1849,21 +1862,20 @@ ${prompt}`);
   app2.post("/api/send-admin-push", async (req, res) => {
     const { title, body, url } = req.body;
     try {
-      const { collection: collection2, query: query2, where: where2, getDocs: getDocs2 } = await import("firebase/firestore");
-      const usersRef = collection2(db, "users");
-      const q = query2(usersRef, where2("role", "==", "admin"));
-      let querySnapshot = await getDocs2(q);
+      const usersRef = (0, import_firestore2.collection)(db, "users");
+      const q = (0, import_firestore2.query)(usersRef, (0, import_firestore2.where)("role", "==", "admin"));
+      const querySnapshot = await (0, import_firestore2.getDocs)(q);
       const promises = [];
-      querySnapshot.forEach((doc3) => {
-        const userData = doc3.data();
+      querySnapshot.forEach((docSnap) => {
+        const userData = docSnap.data();
         if (userData.pushSubscription) {
           promises.push(import_web_push.default.sendNotification(userData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: "high", TTL: 86400 }).catch((e) => console.error("Admin push error", e)));
         }
       });
       if (promises.length === 0) {
-        const allUsersSnapshot = await getDocs2(usersRef);
-        allUsersSnapshot.forEach((doc3) => {
-          const uData = doc3.data();
+        const allUsersSnapshot = await (0, import_firestore2.getDocs)(usersRef);
+        allUsersSnapshot.forEach((docSnap) => {
+          const uData = docSnap.data();
           if (uData.pushSubscription) {
             promises.push(import_web_push.default.sendNotification(uData.pushSubscription, JSON.stringify({ title, body, url }), { urgency: "high", TTL: 86400 }).catch((e) => console.error("Admin push error", e)));
           }
@@ -1878,11 +1890,10 @@ ${prompt}`);
   });
   app2.get("/api/debug-users", async (req, res) => {
     try {
-      const { collection: collection2, getDocs: getDocs2 } = await import("firebase/firestore");
-      const usersRef = collection2(db, "users");
-      const snapshot = await getDocs2(usersRef);
+      const usersRef = (0, import_firestore2.collection)(db, "users");
+      const snapshot = await (0, import_firestore2.getDocs)(usersRef);
       const users = [];
-      snapshot.forEach((doc3) => users.push({ id: doc3.id, ...doc3.data() }));
+      snapshot.forEach((docSnap) => users.push({ id: docSnap.id, ...docSnap.data() }));
       res.json(users);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -1912,28 +1923,47 @@ ${prompt}`);
   });
   const isDevTsx = process.env.NODE_ENV !== "production" && process.argv.some((arg) => arg.endsWith("server.ts"));
   if (isDevTsx) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa"
+    import("vite").then(async ({ createServer: createViteServer }) => {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa"
+      });
+      app2.use(vite.middlewares);
+      const numericPort = Number(PORT);
+      app2.listen(numericPort || 3e3, "0.0.0.0", () => {
+        console.log(`Dev server running on http://localhost:${numericPort || 3e3}`);
+      });
     });
-    app2.use(vite.middlewares);
   } else {
-    const distPath = import_node_fs.default.existsSync(import_node_path.default.join(process.cwd(), "dist", "index.html")) ? import_node_path.default.join(process.cwd(), "dist") : process.cwd();
-    app2.use(import_express.default.static(distPath));
+    const baseDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
+    const candidateDistDirs = [
+      import_node_path.default.join(process.cwd(), "dist"),
+      import_node_path.default.join(baseDir, "dist"),
+      baseDir,
+      process.cwd()
+    ];
+    const distPath = candidateDistDirs.find((dir) => import_node_fs.default.existsSync(import_node_path.default.join(dir, "index.html"))) || import_node_path.default.join(process.cwd(), "dist");
+    const candidatePublicDirs = [
+      import_node_path.default.join(process.cwd(), "public"),
+      import_node_path.default.join(baseDir, "public"),
+      import_node_path.default.join(baseDir, "..", "public")
+    ];
+    const publicPath = candidatePublicDirs.find((dir) => import_node_fs.default.existsSync(dir));
+    app2.use(import_express.default.static(distPath, { index: false }));
+    if (publicPath) {
+      app2.use(import_express.default.static(publicPath, { index: false }));
+    }
     app2.get("*", (req, res) => {
-      res.sendFile(import_node_path.default.join(distPath, "index.html"));
+      const indexFile = import_node_path.default.join(distPath, "index.html");
+      if (import_node_fs.default.existsSync(indexFile)) {
+        return res.sendFile(indexFile);
+      }
+      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='2'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Carregando Mecura...</body></html>");
     });
-  }
-  const numericPort = Number(PORT);
-  if (!isNaN(numericPort) && numericPort > 0) {
-    app2.listen(numericPort, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${numericPort}`);
-    });
-  } else {
     app2.listen(PORT, () => {
-      console.log(`Server running on socket ${PORT}`);
+      console.log(`Production server running on port/socket ${PORT} (serving from ${distPath})`);
     });
   }
 }
 startServer();
+var server_default = app2;
