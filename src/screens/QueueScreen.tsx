@@ -40,20 +40,28 @@ export function QueueScreen() {
   // Find if current user has an entry in Firestore queue
   const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
   
-  // Look for current user's entry: prioritize exact UID match, and if matching by phone, prioritize active/waiting status over old finished records
+  // Look for current user's entry: prioritize exact UID match, then real email match
   const myQueueEntry = (() => {
     if (currentUserId) {
       const byId = queue.find(p => p.id === currentUserId);
       if (byId) return byId;
     }
-    const cleanPhone = (userPhone || '').replace(/\D/g, '');
-    if (cleanPhone && cleanPhone.length >= 8) {
-      // Find entries matching phone, prioritize waiting or in-consultation
-      const matches = queue.filter(p => p.phone && p.phone.replace(/\D/g, '') === cleanPhone);
-      const activeMatch = matches.find(p => p.status === 'waiting' || p.status === 'in-consultation');
-      if (activeMatch) return activeMatch;
-      // If none active, fallback to first match
-      return matches[0];
+    const rawEmail = (auth.currentUser?.email || useStore.getState().userEmail || '').trim().toLowerCase();
+    const isRealEmail = !!(rawEmail && !rawEmail.includes('sem-email') && rawEmail !== 'paciente@mecura.com' && rawEmail !== 'paciente@mercura.com' && rawEmail !== 'paciente.consulta@mecura.com');
+    if (isRealEmail) {
+      const emailMatches = queue.filter(p => p.email && p.email.trim().toLowerCase() === rawEmail);
+      const activeByEmail = emailMatches.find(p => p.status === 'waiting' || p.status === 'in-consultation');
+      if (activeByEmail) return activeByEmail;
+      if (emailMatches[0]) return emailMatches[0];
+    }
+    if (!auth.currentUser?.uid) {
+      const cleanPhone = (userPhone || '').replace(/\D/g, '');
+      if (cleanPhone && cleanPhone.length >= 8) {
+        const matches = queue.filter(p => p.phone && p.phone.replace(/\D/g, '') === cleanPhone);
+        const activeMatch = matches.find(p => p.status === 'waiting' || p.status === 'in-consultation');
+        if (activeMatch) return activeMatch;
+        return matches[0];
+      }
     }
     return undefined;
   })();

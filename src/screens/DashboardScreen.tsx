@@ -75,25 +75,29 @@ export function DashboardScreen() {
   
   // Find current user's queue entry in Firestore
   const currentUserId = auth.currentUser?.uid || patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : '') || '';
-  const myQueueEntry = queue.find(p => 
-    (currentUserId && p.id === currentUserId) ||
-    (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase()) ||
-    (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase()) ||
-    (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
-  );
+  const rawUserEmail = (auth.currentUser?.email || userEmail || '').trim().toLowerCase();
+  const isRealEmail = !!(rawUserEmail && !rawUserEmail.includes('sem-email') && rawUserEmail !== 'paciente@mecura.com' && rawUserEmail !== 'paciente@mercura.com' && rawUserEmail !== 'paciente.consulta@mecura.com');
+  const myQueueEntry = queue.find(p => {
+    if (currentUserId && p.id === currentUserId) return true;
+    const pEmail = (p.email || '').trim().toLowerCase();
+    if (isRealEmail && pEmail && pEmail === rawUserEmail) return true;
+    if (!auth.currentUser?.uid && userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8) {
+      return true;
+    }
+    return false;
+  });
 
   // Check if admin approved a post-consultation pharmacy order for this patient
   const myApprovedPharmacyOrder = pharmacyOrders.find(o => {
     if (o.status !== 'approved' && o.status !== 'requested') return false;
     if (currentUserId && o.patientId === currentUserId) return true;
-    const cleanEmail = (auth.currentUser?.email || userEmail || '').trim().toLowerCase();
-    if (cleanEmail && o.patientEmail && o.patientEmail.trim().toLowerCase() === cleanEmail) return true;
-    const cleanCpf = (userCpf || '').replace(/\D/g, '');
-    if (cleanCpf.length >= 11 && o.patientCpf && o.patientCpf.replace(/\D/g, '') === cleanCpf) return true;
-    const cleanPhone = (userPhone || '').replace(/\D/g, '');
-    if (cleanPhone.length >= 8 && o.patientPhone && o.patientPhone.replace(/\D/g, '') === cleanPhone) return true;
-    const cleanName = (userName || '').trim().toLowerCase();
-    if (cleanName && cleanName !== 'paciente' && o.patientName && o.patientName.trim().toLowerCase() === cleanName) return true;
+    if (isRealEmail && o.patientEmail && o.patientEmail.trim().toLowerCase() === rawUserEmail) return true;
+    if (!auth.currentUser?.uid) {
+      const cleanCpf = (userCpf || '').replace(/\D/g, '');
+      if (cleanCpf.length >= 11 && o.patientCpf && o.patientCpf.replace(/\D/g, '') === cleanCpf) return true;
+      const cleanPhone = (userPhone || '').replace(/\D/g, '');
+      if (cleanPhone.length >= 8 && o.patientPhone && o.patientPhone.replace(/\D/g, '') === cleanPhone) return true;
+    }
     return false;
   });
 

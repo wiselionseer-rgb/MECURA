@@ -2549,11 +2549,16 @@ export const useStore = create<AppState>((set, get) => ({
     if (!isProfessionalView) {
       const authUid = auth.currentUser?.uid;
       const storedPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null;
-      if (authUid) subscribeSingleTarget(authUid);
-      if (state.patientId) subscribeSingleTarget(state.patientId);
-      if (storedPid) subscribeSingleTarget(storedPid);
+      if (authUid) {
+        subscribeSingleTarget(authUid);
+      } else {
+        if (state.patientId) subscribeSingleTarget(state.patientId);
+        if (storedPid) subscribeSingleTarget(storedPid);
+      }
 
-      const myEmail = (auth.currentUser?.email || state.userEmail || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_email') : '') || '').trim().toLowerCase();
+      const rawEmail = (auth.currentUser?.email || state.userEmail || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_email') : '') || '').trim().toLowerCase();
+      const isPlaceholderEmail = !rawEmail || rawEmail.includes('sem-email') || rawEmail === 'paciente@mecura.com' || rawEmail === 'paciente@mercura.com' || rawEmail === 'paciente.consulta@mecura.com';
+      const myEmail = isPlaceholderEmail ? '' : rawEmail;
       const myCpf = cleanDigits(state.userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '');
       const myPhone = cleanDigits(state.userPhone || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_phone') : '') || '');
 
@@ -2561,10 +2566,10 @@ export const useStore = create<AppState>((set, get) => ({
         const pEmail = (p.email || '').trim().toLowerCase();
         const pCpf = cleanDigits(p.cpf);
         const pPhone = cleanDigits(p.phone);
-        const idMatch = p.id === consultationId || p.id === authUid || p.id === state.patientId || p.id === storedPid;
-        const emailMatch = myEmail && !myEmail.includes('sem-email') && pEmail === myEmail;
-        const cpfMatch = myCpf && myCpf.length >= 11 && pCpf === myCpf;
-        const phoneMatch = myPhone && myPhone.length >= 10 && pPhone === myPhone;
+        const idMatch = p.id === consultationId || (authUid ? p.id === authUid : (p.id === state.patientId || p.id === storedPid));
+        const emailMatch = myEmail && pEmail === myEmail;
+        const cpfMatch = !authUid && myCpf && myCpf.length >= 11 && pCpf === myCpf;
+        const phoneMatch = !authUid && myPhone && myPhone.length >= 10 && pPhone === myPhone;
         if (idMatch || emailMatch || cpfMatch || phoneMatch) {
           if (p.id) subscribeSingleTarget(p.id);
           if ((p as any).uid) subscribeSingleTarget((p as any).uid);
@@ -2572,8 +2577,8 @@ export const useStore = create<AppState>((set, get) => ({
         }
       });
 
-      // Also query Firestore queue & users by email / cpf for any historical consultation IDs
-      if (myEmail && !myEmail.includes('sem-email')) {
+      // Also query Firestore queue & users by email for any historical consultation IDs of the same email
+      if (myEmail) {
         getDocs(query(collection(db, 'queue'), where('email', '==', myEmail))).then(snap => {
           snap.forEach(d => {
             subscribeSingleTarget(d.id);
@@ -2587,17 +2592,6 @@ export const useStore = create<AppState>((set, get) => ({
           });
         }).catch(() => {});
       }
-      if (myCpf && myCpf.length >= 11) {
-        const rawCpf = state.userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '';
-        if (rawCpf) {
-          getDocs(query(collection(db, 'queue'), where('cpf', '==', rawCpf))).then(snap => {
-            snap.forEach(d => {
-              subscribeSingleTarget(d.id);
-              inspectDocumentDataForSynthesizedMessages(d.id, d.data());
-            });
-          }).catch(() => {});
-        }
-      }
     } else {
       // Professional view: also subscribe to any linked IDs for the selected patient in state.queue
       const targetEntry = state.queue.find(p => p.id === consultationId);
@@ -2605,11 +2599,12 @@ export const useStore = create<AppState>((set, get) => ({
         if ((targetEntry as any).uid) subscribeSingleTarget((targetEntry as any).uid);
         if ((targetEntry as any).patientId) subscribeSingleTarget((targetEntry as any).patientId);
         const tEmail = (targetEntry.email || '').trim().toLowerCase();
+        const isPlaceholder = !tEmail || tEmail.includes('sem-email') || tEmail === 'paciente@mecura.com' || tEmail === 'paciente@mercura.com' || tEmail === 'paciente.consulta@mecura.com';
         const tCpf = cleanDigits(targetEntry.cpf);
         state.queue.forEach(p => {
           const pEmail = (p.email || '').trim().toLowerCase();
           const pCpf = cleanDigits(p.cpf);
-          if ((tEmail && !tEmail.includes('sem-email') && pEmail === tEmail) || (tCpf && tCpf.length >= 11 && pCpf === tCpf)) {
+          if ((!isPlaceholder && pEmail === tEmail) || (tCpf && tCpf.length >= 11 && pCpf === tCpf)) {
             if (p.id) subscribeSingleTarget(p.id);
           }
         });
@@ -2678,6 +2673,8 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.removeItem('mecura_queue_display_pos');
       localStorage.removeItem('mecura_queue_entered_at');
       localStorage.removeItem('mecura_queue_notified_10m');
+      localStorage.removeItem('mecura_payment_approved_at');
+      localStorage.removeItem('mecura_pending_payment_id');
     }
     return set((state) => ({
       // Preserve existing triage answers so the patient's triage history is never wiped out
@@ -2698,6 +2695,8 @@ export const useStore = create<AppState>((set, get) => ({
   reset: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('mecura_patientId');
+      localStorage.removeItem('patient_id');
+      localStorage.removeItem('mecura_user_id');
       localStorage.removeItem('mecura_patient_name');
       localStorage.removeItem('mecura_patient_email');
       localStorage.removeItem('mecura_patient_phone');
@@ -2707,6 +2706,8 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.removeItem('mecura_triage_answers');
       localStorage.removeItem('mecura_pagamento');
       localStorage.removeItem('mecura_premium');
+      localStorage.removeItem('mecura_payment_approved_at');
+      localStorage.removeItem('mecura_pending_payment_id');
       localStorage.removeItem('last_offer');
       localStorage.removeItem('mecura_applied_coupon');
       localStorage.removeItem('mecura_consultation_finished');
@@ -2716,6 +2717,7 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.removeItem('mecura_queue_notified_10m');
     }
     return set({
+      patientId: '',
       userName: '',
       userEmail: '',
       userPhone: '',

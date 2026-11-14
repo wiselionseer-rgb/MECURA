@@ -130,15 +130,44 @@ export default function App() {
       if (user) {
         if (typeof window !== 'undefined') {
           const prevPatientId = localStorage.getItem('mecura_patientId');
-          if (prevPatientId && prevPatientId !== user.uid) {
+          const prevEmail = (localStorage.getItem('mecura_patient_email') || '').trim().toLowerCase();
+          const currentAuthEmail = (user.email || '').trim().toLowerCase();
+          const isDifferentUser =
+            (prevPatientId && prevPatientId !== user.uid) ||
+            (prevEmail && currentAuthEmail && prevEmail !== currentAuthEmail);
+
+          if (isDifferentUser) {
+            localStorage.removeItem('mecura_patient_name');
+            localStorage.removeItem('mecura_patient_email');
+            localStorage.removeItem('mecura_patient_phone');
+            localStorage.removeItem('mecura_patient_cpf');
+            localStorage.removeItem('mecura_patient_birthdate');
+            localStorage.removeItem('mecura_triage_answers');
+            localStorage.removeItem('mecura_onboarding_done');
             localStorage.removeItem('mecura_pagamento');
             localStorage.removeItem('mecura_premium');
+            localStorage.removeItem('mecura_payment_approved_at');
+            localStorage.removeItem('mecura_pending_payment_id');
             localStorage.removeItem('mecura_consultation_active');
             localStorage.removeItem('mecura_consultation_finished');
             localStorage.removeItem('mecura_queue_display_pos');
             localStorage.removeItem('mecura_queue_entered_at');
             localStorage.removeItem('mecura_queue_notified_10m');
+            localStorage.setItem('mecura_patientId', user.uid);
+            if (currentAuthEmail) {
+              localStorage.setItem('mecura_patient_email', currentAuthEmail);
+            }
             useStore.setState({
+              patientId: user.uid,
+              activeConsultationId: user.uid,
+              userName: '',
+              userEmail: user.email || '',
+              userPhone: '',
+              userCpf: '',
+              userBirthDate: '',
+              answers: { objectives: [] },
+              messages: [],
+              hasCompletedOnboarding: false,
               pagamento_consulta: false,
               pagamento_premium: false,
               inQueue: false,
@@ -174,7 +203,7 @@ export default function App() {
           })
             .then(r => r.ok ? r.json() : null)
             .then(vData => {
-              if (!vData) return;
+              if (!vData || auth.currentUser?.uid !== user.uid) return;
               const u = vData.userData || vData.queueEntry;
               if (u) {
                 if (u.name && typeof u.name === 'string' && u.name.trim() !== '' && u.name.toLowerCase() !== 'paciente') {

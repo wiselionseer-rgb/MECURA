@@ -202,6 +202,66 @@ const STEPS = [
     const [hasOpenQueueConsultation, setHasOpenQueueConsultation] = useState(false);
     const [isDoctorCallingNow, setIsDoctorCallingNow] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const isSubmittingAuthRef = useRef(false);
+
+    // Helper to wipe any previous patient's cached identity, triage answers, and payment flags
+    const clearOtherPatientData = (newUid?: string, newEmail?: string) => {
+      const cleanNewEmail = (newEmail || '').trim();
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('mecura_patient_name');
+        localStorage.removeItem('mecura_patient_phone');
+        localStorage.removeItem('mecura_patient_cpf');
+        localStorage.removeItem('mecura_patient_birthdate');
+        localStorage.removeItem('mecura_triage_answers');
+        localStorage.removeItem('mecura_onboarding_done');
+        localStorage.removeItem('mecura_pagamento');
+        localStorage.removeItem('mecura_premium');
+        localStorage.removeItem('mecura_payment_approved_at');
+        localStorage.removeItem('mecura_pending_payment_id');
+        localStorage.removeItem('mecura_consultation_active');
+        localStorage.removeItem('mecura_consultation_finished');
+        localStorage.removeItem('mecura_queue_display_pos');
+        localStorage.removeItem('mecura_queue_entered_at');
+        localStorage.removeItem('mecura_queue_notified_10m');
+        if (newUid) {
+          localStorage.setItem('mecura_patientId', newUid);
+        } else {
+          localStorage.removeItem('mecura_patientId');
+          localStorage.removeItem('patient_id');
+        }
+        if (cleanNewEmail) {
+          localStorage.setItem('mecura_patient_email', cleanNewEmail);
+        } else {
+          localStorage.removeItem('mecura_patient_email');
+        }
+      }
+      setUserName('');
+      setUserPhone('');
+      setUserCpf('');
+      setUserBirthDate('');
+      if (cleanNewEmail !== undefined) {
+        setUserEmail(cleanNewEmail);
+      }
+      setPagamentoConsulta(false);
+      setPagamentoPremium(false);
+      useStore.setState({
+        patientId: newUid || '',
+        activeConsultationId: newUid || null,
+        userName: '',
+        userEmail: cleanNewEmail,
+        userPhone: '',
+        userCpf: '',
+        userBirthDate: '',
+        answers: { objectives: [] },
+        messages: [],
+        hasCompletedOnboarding: false,
+        pagamento_consulta: false,
+        pagamento_premium: false,
+        inQueue: false,
+        consultationActive: false,
+        isConsultationFinished: false
+      });
+    };
 
     // Helper to check if patient currently has an open/active consultation in queue (not yet finished)
     const checkPatientOpenQueueStatus = async (uid: string, userData: any) => {
@@ -408,19 +468,30 @@ const STEPS = [
         if (typeof window !== 'undefined' && localStorage.getItem('mecura_logged_out') === 'true') {
           return;
         }
-        if (isLoading || showExistingAccountPrompt) {
+        if (isSubmittingAuthRef.current || isLoading || showExistingAccountPrompt) {
           return;
         }
         if (user && currentStep === 0) {
           try {
+            const cleanUserEmail = (user.email || '').trim().toLowerCase();
+            const storedPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || '') : '';
+            const storedEmail = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_email') || '').trim().toLowerCase() : '';
+            const isLocalFromDifferentPatient =
+              (storedPid && storedPid !== user.uid) ||
+              (storedEmail && cleanUserEmail && storedEmail !== cleanUserEmail);
+
+            if (isLocalFromDifferentPatient) {
+              clearOtherPatientData(user.uid, user.email || '');
+            }
+
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             let data: Record<string, any> = userDoc.exists() ? userDoc.data() : {};
 
             // Se o documento principal não tiver respostas da triagem, buscar por e-mail em outros documentos do mesmo paciente
-            const cleanUserEmail = (user.email || data.email || '').trim().toLowerCase();
-            if (cleanUserEmail && (!data.answers || Object.keys(data.answers).length === 0)) {
+            const resolvedLookupEmail = (user.email || data.email || '').trim().toLowerCase();
+            if (resolvedLookupEmail && (!data.answers || Object.keys(data.answers).length === 0)) {
               try {
-                const emailSnap = await getDocs(query(collection(db, 'users'), where('email', '==', cleanUserEmail)));
+                const emailSnap = await getDocs(query(collection(db, 'users'), where('email', '==', resolvedLookupEmail)));
                 emailSnap.docs.forEach((d) => {
                   const dData = d.data();
                   data = {
@@ -442,13 +513,21 @@ const STEPS = [
             const resolvedName = data.name || data.patientName || queueData?.patientName || queueData?.name;
             if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente') {
               setUserName(resolvedName.trim());
+            } else if (isLocalFromDifferentPatient) {
+              setUserName('');
             }
             if (data.email || queueData?.email || user.email) setUserEmail(data.email || queueData?.email || user.email || '');
             if (data.phone || queueData?.phone) setUserPhone(data.phone || queueData?.phone);
             if (data.cpf || queueData?.cpf) setUserCpf(data.cpf || queueData?.cpf);
             if (data.birthDate || queueData?.birthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
-            const localStoreAnswers = useStore.getState().answers || {};
+
+            // Só mescla respostas locais se pertencerem comprovadamente ao mesmo paciente (mesmo UID ou mesmo e-mail)
+            const isSamePatientLocal =
+              !isLocalFromDifferentPatient &&
+              ((storedPid && storedPid === user.uid) || (storedEmail && cleanUserEmail && storedEmail === cleanUserEmail));
+            const localStoreAnswers = isSamePatientLocal ? (useStore.getState().answers || {}) : {};
             const mergedAnswers = mergeAllTriageAndTestAnswers(localStoreAnswers, queueData?.answers, data.answers);
+
             if (Object.keys(mergedAnswers).length > 0) {
               Object.entries(mergedAnswers).forEach(([key, value]) => {
                 setAnswer(key, value);
@@ -456,8 +535,7 @@ const STEPS = [
               if (mergedAnswers.birthDate && !data.birthDate) setUserBirthDate(mergedAnswers.birthDate);
               if (mergedAnswers.cpf && !data.cpf) setUserCpf(mergedAnswers.cpf);
               if (mergedAnswers.phone && !data.phone) setUserPhone(mergedAnswers.phone);
-              // Se o paciente acabou de realizar algum teste individual antes de logar, sincroniza no Firestore
-              if (localStoreAnswers.adhdTestResult || localStoreAnswers.autismTestResult || localStoreAnswers.hcPlantCalculator) {
+              if (isSamePatientLocal && (localStoreAnswers.adhdTestResult || localStoreAnswers.autismTestResult || localStoreAnswers.hcPlantCalculator)) {
                 setDoc(doc(db, 'users', user.uid), { answers: mergedAnswers, lastUpdated: new Date().toISOString() }, { merge: true }).catch(() => {});
               }
             }
@@ -564,6 +642,7 @@ const STEPS = [
           return;
         }
         setIsLoading(true);
+        isSubmittingAuthRef.current = true;
         setAuthError('');
         try {
           if (typeof window !== 'undefined') {
@@ -572,10 +651,23 @@ const STEPS = [
           const trimmedEmail = userEmail.trim();
           const lowerEmail = trimmedEmail.toLowerCase();
 
+          // Verificar se o localStorage atual pertence a outro paciente antes de logar/cadastrar
+          const prevStoredPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || '') : '';
+          const prevStoredEmail = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_email') || '').trim().toLowerCase() : '';
+          const isSwitchingPatient = !!(prevStoredEmail && prevStoredEmail !== lowerEmail);
+
+          if (isSwitchingPatient || !isLogin) {
+            // Limpa todos os dados cadastrais, respostas de triagem e flags de pagamento de outro paciente
+            clearOtherPatientData(undefined, trimmedEmail);
+          }
+
           const handleExistingUserLogin = async (resolvedUid: string, resolvedUserData: any) => {
+            if (prevStoredPid && prevStoredPid !== resolvedUid) {
+              clearOtherPatientData(resolvedUid, trimmedEmail);
+            }
             let data: Record<string, any> = { ...(resolvedUserData || {}) };
 
-            // Buscar também qualquer documento em users ou queue com o mesmo e-mail para nunca perder histórico de triagem
+            // Buscar também qualquer documento em users com o mesmo e-mail para nunca perder histórico de triagem DESTE paciente
             try {
               const usersRef = collection(db, 'users');
               const qEmailSnap = await getDocs(query(usersRef, where('email', '==', trimmedEmail)));
@@ -616,16 +708,27 @@ const STEPS = [
             if (resolvedName && typeof resolvedName === 'string' && resolvedName.trim().toLowerCase() !== 'paciente') {
               setUserName(resolvedName.trim());
               if (typeof window !== 'undefined') localStorage.setItem('mecura_patient_name', resolvedName.trim());
+            } else {
+              setUserName('');
             }
             setUserEmail(data.email || queueData?.email || trimmedEmail);
             if (data.phone || queueData?.phone) setUserPhone(data.phone || queueData?.phone);
+            else setUserPhone('');
             if (data.cpf || queueData?.cpf) setUserCpf(data.cpf || queueData?.cpf);
+            else setUserCpf('');
             if (data.birthDate || queueData?.birthDate) setUserBirthDate(data.birthDate || queueData?.birthDate);
+            else setUserBirthDate('');
+
+            const isSameLocalUser = !isSwitchingPatient && prevStoredPid === resolvedUid;
             const mergedAnswers = mergeAllTriageAndTestAnswers(
-              useStore.getState().answers,
+              isSameLocalUser ? useStore.getState().answers : {},
               queueData?.answers,
               data.answers
             );
+            useStore.setState({ answers: { objectives: [], ...mergedAnswers } });
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('mecura_triage_answers', JSON.stringify({ objectives: [], ...mergedAnswers }));
+            }
             if (Object.keys(mergedAnswers).length > 0) {
               Object.entries(mergedAnswers).forEach(([key, value]) => {
                 setAnswer(key, value);
@@ -680,11 +783,11 @@ const STEPS = [
               if (!isCalling) {
                 await useStore.getState().joinQueue({
                   id: resolvedUid,
-                  patientName: resolvedName || userName || 'Paciente',
+                  patientName: resolvedName || 'Paciente',
                   email: data.email || queueData?.email || trimmedEmail || '',
-                  phone: data.phone || queueData?.phone || userPhone || '',
-                  cpf: data.cpf || queueData?.cpf || userCpf || '',
-                  birthDate: data.birthDate || queueData?.birthDate || userBirthDate || '',
+                  phone: data.phone || queueData?.phone || '',
+                  cpf: data.cpf || queueData?.cpf || '',
+                  birthDate: data.birthDate || queueData?.birthDate || '',
                   answers: mergedAnswers,
                   isPremium: isPrem,
                   plan: data.plan || queueData?.plan || (isPrem ? 'premium' : 'basic'),
@@ -783,7 +886,10 @@ const STEPS = [
             try {
               const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
               try {
-                // Verificar se já existia algum documento com esse e-mail no Firestore para preservar histórico
+                // Garantir limpeza total de qualquer estado anterior para o novo usuário
+                clearOtherPatientData(userCredential.user.uid, trimmedEmail);
+
+                // Verificar se já existia algum documento com EXATAMENTE esse mesmo e-mail no Firestore
                 let existingDataByEmail: Record<string, any> = {};
                 try {
                   const existingSnap = await getDocs(query(collection(db, 'users'), where('email', '==', trimmedEmail)));
@@ -799,10 +905,13 @@ const STEPS = [
                   if (handled) return;
                 }
 
-                const initialAnswers = mergeAllTriageAndTestAnswers(useStore.getState().answers, answers);
                 await setDoc(doc(db, 'users', userCredential.user.uid), {
                   email: trimmedEmail,
                   password: password,
+                  name: '',
+                  phone: '',
+                  cpf: '',
+                  birthDate: '',
                   hasCompletedOnboarding: false,
                   pagamento_consulta: false,
                   pagamento_premium: false,
@@ -812,22 +921,8 @@ const STEPS = [
                   consultationStatus: 'not_started',
                   createdAt: new Date().toISOString(),
                   tier: 'basic',
-                  ...(Object.keys(initialAnswers).length > 0 ? { answers: initialAnswers } : {})
+                  answers: { objectives: [] }
                 }, { merge: true });
-
-                // Reset any stale payment state from localStorage/store
-                setPagamentoConsulta(false);
-                setPagamentoPremium(false);
-                useStore.setState({ inQueue: false, consultationActive: false, isConsultationFinished: false, patientId: userCredential.user.uid });
-                if (typeof window !== 'undefined') {
-                  localStorage.setItem('mecura_patientId', userCredential.user.uid);
-                  localStorage.removeItem('mecura_pagamento');
-                  localStorage.removeItem('mecura_premium');
-                  localStorage.removeItem('mecura_consultation_active');
-                  localStorage.removeItem('mecura_queue_display_pos');
-                  localStorage.removeItem('mecura_queue_entered_at');
-                  localStorage.removeItem('mecura_queue_notified_10m');
-                }
               } catch (e) {
                 console.error("Error creating early user data", e);
               }
@@ -883,6 +978,7 @@ const STEPS = [
             setAuthError(`Ocorreu um erro: ${error.message || 'Tente novamente.'}`);
           }
         } finally {
+          isSubmittingAuthRef.current = false;
           setIsLoading(false);
         }
         return;
@@ -890,26 +986,30 @@ const STEPS = [
 
       if (step.id === 'name') {
         const cleanCpf = (userCpf || '').replace(/\D/g, '');
+        const currentAuthUid = auth.currentUser?.uid;
+        const currentAuthEmail = (auth.currentUser?.email || userEmail || '').trim().toLowerCase();
         if (cleanCpf.length === 11) {
           const activeByCpf = useStore.getState().queue.find(
             (p: any) =>
               (p.status === 'waiting' || p.status === 'in-consultation') &&
-              (p.cpf || p.answers?.cpf || '').replace(/\D/g, '') === cleanCpf
+              (p.cpf || p.answers?.cpf || '').replace(/\D/g, '') === cleanCpf &&
+              (!currentAuthUid || p.id === currentAuthUid || (currentAuthEmail && p.email && p.email.trim().toLowerCase() === currentAuthEmail))
           );
           if (activeByCpf) {
+            const targetId = currentAuthUid || activeByCpf.id;
             const isCalling = activeByCpf.status === 'in-consultation';
             if (activeByCpf.patientName && activeByCpf.patientName.toLowerCase() !== 'paciente') {
               setUserName(activeByCpf.patientName);
             }
             if (typeof window !== 'undefined') {
-              localStorage.setItem('mecura_patientId', activeByCpf.id);
+              localStorage.setItem('mecura_patientId', targetId);
               localStorage.setItem('mecura_pagamento', 'true');
               localStorage.removeItem('mecura_consultation_finished');
             }
             setPagamentoConsulta(true);
             useStore.setState({
-              patientId: activeByCpf.id,
-              activeConsultationId: activeByCpf.id,
+              patientId: targetId,
+              activeConsultationId: targetId,
               pagamento_consulta: true,
               inQueue: !isCalling,
               consultationActive: isCalling,
@@ -1154,7 +1254,13 @@ const STEPS = [
               <div className="flex bg-mecura-surface border border-mecura-elevated rounded-xl p-1 mb-6">
                 <button
                   className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${!isLogin ? 'bg-mecura-neon text-[#0A0A0F]' : 'text-mecura-silver hover:text-mecura-pearl'}`}
-                  onClick={() => { setIsLogin(false); setAuthError(''); }}
+                  onClick={() => {
+                    setIsLogin(false);
+                    setAuthError('');
+                    // Ao selecionar Criar Conta, limpa dados cadastrais de qualquer paciente anterior
+                    clearOtherPatientData(undefined, '');
+                    setPassword('');
+                  }}
                 >
                   Criar Conta
                 </button>
@@ -2132,6 +2238,29 @@ const STEPS = [
                     >
                       Ir para Meu Painel
                     </Button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('mecura_logged_out', 'true');
+                        }
+                        try {
+                          await auth.signOut();
+                        } catch {}
+                        reset();
+                        clearOtherPatientData(undefined, '');
+                        setPassword('');
+                        setIsLogin(false);
+                        setShowExistingAccountPrompt(false);
+                        setHasOpenQueueConsultation(false);
+                        setIsDoctorCallingNow(false);
+                        setCurrentStep(0);
+                        setOnboardingStep(0);
+                      }}
+                      className="w-full py-2.5 text-xs font-semibold text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                    >
+                      Não sou {userName || 'este paciente'} • Cadastrar Nova Conta (Outro E-mail)
+                    </button>
                   </div>
                 </>
               ) : (
@@ -2161,6 +2290,27 @@ const STEPS = [
                     >
                       Revisar / Atualizar Minha Triagem
                     </Button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('mecura_logged_out', 'true');
+                        }
+                        try {
+                          await auth.signOut();
+                        } catch {}
+                        reset();
+                        clearOtherPatientData(undefined, '');
+                        setPassword('');
+                        setIsLogin(false);
+                        setShowExistingAccountPrompt(false);
+                        setCurrentStep(0);
+                        setOnboardingStep(0);
+                      }}
+                      className="w-full py-2.5 text-xs font-semibold text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                    >
+                      Não sou {userName || 'este paciente'} • Cadastrar Nova Conta (Outro E-mail)
+                    </button>
                   </div>
                 </>
               )}

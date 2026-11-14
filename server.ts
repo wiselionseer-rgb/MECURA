@@ -400,7 +400,20 @@ async function startServer() {
       let existingCpf = '';
       let existingBirthDate = '';
 
-      if (!targetPatientId && payerEmail) {
+      // Helper para ignorar e-mails genéricos/placeholders usados no checkout do Mercado Pago
+      const isRealPatientEmail = (em?: string) => {
+        const c = (em || '').trim().toLowerCase();
+        return !!(
+          c &&
+          c.includes('@') &&
+          !c.includes('sem-email') &&
+          c !== 'paciente@mecura.com' &&
+          c !== 'paciente@mercura.com' &&
+          c !== 'paciente.consulta@mecura.com'
+        );
+      };
+
+      if (!targetPatientId && isRealPatientEmail(payerEmail)) {
         try {
           const cleanMail = payerEmail.toLowerCase().trim();
           const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", cleanMail)));
@@ -417,7 +430,7 @@ async function startServer() {
       }
 
       if (!targetPatientId) {
-        targetPatientId = payerEmail ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`;
+        targetPatientId = isRealPatientEmail(payerEmail) ? `user_${payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${payment.id}`;
       }
 
       // Buscar dados existentes se ainda não foram buscados
@@ -548,7 +561,7 @@ async function startServer() {
       // Atualizar também o server queue cache
       try {
         let currentQueue = loadServerQueue();
-        const existingIdx = currentQueue.findIndex(p => p.id === targetPatientId || (payerEmail && p.email && p.email.toLowerCase() === payerEmail.toLowerCase()));
+        const existingIdx = currentQueue.findIndex(p => p.id === targetPatientId || (isRealPatientEmail(payerEmail) && p.email && p.email.toLowerCase() === payerEmail.toLowerCase()));
         if (existingIdx >= 0) {
           currentQueue[existingIdx] = { ...currentQueue[existingIdx], ...queuePayload };
         } else {
@@ -691,10 +704,11 @@ async function startServer() {
       };
 
       let currentQueue = loadServerQueue();
-      const cleanEmail = (cleanPatient.email || '').trim().toLowerCase();
+      const rawForceEmail = (cleanPatient.email || '').trim().toLowerCase();
+      const cleanEmail = (rawForceEmail && !rawForceEmail.includes('sem-email') && rawForceEmail !== 'paciente@mecura.com' && rawForceEmail !== 'paciente@mercura.com' && rawForceEmail !== 'paciente.consulta@mecura.com') ? rawForceEmail : '';
       const existingIdx = currentQueue.findIndex(p => 
         p.id === cleanPatient.id || 
-        (cleanEmail && !cleanEmail.includes('sem-email') && p.email && p.email.trim().toLowerCase() === cleanEmail)
+        (cleanEmail && p.email && p.email.trim().toLowerCase() === cleanEmail)
       );
       if (existingIdx >= 0) {
         const existing = currentQueue[existingIdx];
@@ -859,7 +873,9 @@ async function startServer() {
   app.post("/api/verify-patient-payment", async (req, res) => {
     try {
       const { patientId, email, cpf, name, pendingPaymentId } = req.body || {};
-      const cleanEmail = (email || '').trim().toLowerCase();
+      const rawEmail = (email || '').trim().toLowerCase();
+      const isPlaceholderEmail = !rawEmail || rawEmail.includes('sem-email') || rawEmail === 'paciente@mecura.com' || rawEmail === 'paciente@mercura.com' || rawEmail === 'paciente.consulta@mecura.com';
+      const cleanEmail = isPlaceholderEmail ? '' : rawEmail;
       const cleanCpf = (cpf || '').replace(/\D/g, '');
       let targetId = patientId || '';
       let userData: any = null;
@@ -871,6 +887,7 @@ async function startServer() {
         } catch {}
       }
 
+      // Só busca dados complementares por e-mail se for um e-mail real do paciente
       if ((!userData || !userData.answers || Object.keys(userData.answers || {}).length === 0) && cleanEmail) {
         try {
           const uQuery = await getDocs(query(collection(db, "users"), where("email", "==", cleanEmail)));
@@ -898,12 +915,18 @@ async function startServer() {
 
       // 2. Verificar se o paciente já está na fila ativa (serverQueue ou Firestore queue)
       const serverQueue = loadServerQueue();
-      let activeQueueEntry = serverQueue.find(p =>
-        (p.status === 'waiting' || p.status === 'in-consultation') &&
-        ((targetId && p.id === targetId) ||
-         (cleanEmail && p.email && p.email.trim().toLowerCase() === cleanEmail) ||
-         (cleanCpf.length === 11 && (p.cpf || p.answers?.cpf || '').replace(/\D/g, '') === cleanCpf))
-      );
+      let activeQueueEntry = serverQueue.find(p => {
+        if (p.status !== 'waiting' && p.status !== 'in-consultation') return false;
+        if (targetId && p.id === targetId) return true;
+        // Se targetId foi informado e o item da fila pertence explicitamente a outro ID com outro email, não cruzar pacientes
+        const pEmail = (p.email || '').trim().toLowerCase();
+        const isEmailMatch = !!(cleanEmail && pEmail && pEmail === cleanEmail);
+        if (isEmailMatch) return true;
+        if (!targetId && cleanCpf.length === 11 && (p.cpf || p.answers?.cpf || '').replace(/\D/g, '') === cleanCpf) {
+          return true;
+        }
+        return false;
+      });
 
       if (!activeQueueEntry && targetId) {
         try {
@@ -932,14 +955,15 @@ async function startServer() {
           (userData.pagamento_consulta === true || userData.hasPaid === true || userData.isPaid === true || userData.inQueue === true || userData.consultationStatus === 'waiting' || userData.consultationStatus === 'in-consultation')
         );
 
-        // 3b. Checar coleção payments por patientId ou email nas últimas 48h
+        // 3b. Checar coleção payments por patientId ou email real nas últimas 48h
         let recentUnconsumedPayment: any = null;
         try {
           const paymentsSnap = await getDocs(collection(db, "payments"));
           for (const pDoc of paymentsSnap.docs) {
             const p = pDoc.data();
-            const pIdMatch = targetId && p.patientId === targetId;
-            const pEmailMatch = cleanEmail && ((p.payerEmail || p.patientEmail || '').trim().toLowerCase() === cleanEmail);
+            const pIdMatch = !!(targetId && p.patientId && p.patientId === targetId);
+            const pPayEmail = (p.payerEmail || p.patientEmail || '').trim().toLowerCase();
+            const pEmailMatch = !!(cleanEmail && pPayEmail === cleanEmail && (!targetId || !p.patientId || p.patientId === targetId));
             if (pIdMatch || pEmailMatch) {
               const pDateMs = new Date(p.date || p.createdAt || 0).getTime();
               const isRecent = !isNaN(pDateMs) && (Date.now() - pDateMs < 48 * 3600 * 1000);
@@ -1123,10 +1147,12 @@ async function startServer() {
             let targetId = p.patientId;
             let existingUserData: any = null;
 
-            if (!targetId && p.payerEmail) {
+            const rawSyncMail = (p.payerEmail || '').toLowerCase().trim();
+            const isRealSyncMail = !!(rawSyncMail && !rawSyncMail.includes('sem-email') && rawSyncMail !== 'paciente@mecura.com' && rawSyncMail !== 'paciente@mercura.com' && rawSyncMail !== 'paciente.consulta@mecura.com');
+
+            if (!targetId && isRealSyncMail) {
               try {
-                const cleanMail = p.payerEmail.toLowerCase().trim();
-                const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", cleanMail)));
+                const uSnap = await getDocs(query(collection(db, "users"), where("email", "==", rawSyncMail)));
                 if (!uSnap.empty) {
                   targetId = uSnap.docs[0].id;
                   existingUserData = uSnap.docs[0].data();
@@ -1135,7 +1161,7 @@ async function startServer() {
             }
 
             if (!targetId) {
-              targetId = p.payerEmail ? `user_${p.payerEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${p.mpId}`;
+              targetId = isRealSyncMail ? `user_${rawSyncMail.replace(/[^a-zA-Z0-9]/g, '_')}` : `mp_${p.mpId}`;
             }
 
             if (!existingUserData && targetId) {
