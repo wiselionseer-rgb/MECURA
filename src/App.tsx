@@ -6,6 +6,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useStore } from './store/useStore';
+import { fetchApi } from './utils/apiClient';
 import { AppLayout } from './components/layout/AppLayout';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
@@ -196,7 +197,7 @@ export default function App() {
 
         // Verify payment status with backend (catches Pix/Card payments approved while app was closed)
         try {
-          fetch('/api/verify-patient-payment', {
+          fetchApi('/api/verify-patient-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ patientId: user.uid, email: user.email || '' })

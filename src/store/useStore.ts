@@ -268,6 +268,7 @@ import { useAdminStore } from './useAdminStore';
 import { playNotificationSound } from '../utils/sound';
 import { showNativeNotification, triggerBackgroundPush, triggerAdminBackgroundPush } from '../utils/notifications';
 import { persistAttachmentToCloud } from '../utils/downloadHelper';
+import { fetchApi } from '../utils/apiClient';
 
 export const useStore = create<AppState>((set, get) => ({
   userName: typeof window !== 'undefined' ? (localStorage.getItem('mecura_patient_name') || '') : '',
@@ -823,7 +824,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // Also sync to persistent server queue API so doctor receives patient even when Firestore daily free quota is exceeded
       try {
-        await fetch('/api/queue/force-join', {
+        await fetchApi('/api/queue/force-join', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(queuePayload)
@@ -1042,7 +1043,7 @@ export const useStore = create<AppState>((set, get) => ({
 
     // 4. Sync with server queue
     try {
-      await fetch('/api/queue/force-join', {
+      await fetchApi('/api/queue/force-join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -1076,7 +1077,7 @@ export const useStore = create<AppState>((set, get) => ({
     // Helper to fetch server fallback queue
     const syncWithServerQueue = async () => {
       try {
-        const res = await fetch('/api/queue');
+        const res = await fetchApi('/api/queue');
         if (!res.ok) return;
         const resData = await res.json();
         if (resData.success && Array.isArray(resData.queue) && resData.queue.length > 0) {

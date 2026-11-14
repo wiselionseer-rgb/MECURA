@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { useStore } from '../store/useStore';
 import { useAdminStore, Coupon } from '../store/useAdminStore';
+import { fetchApi } from '../utils/apiClient';
 import { 
   ChevronLeft, 
   CreditCard, 
@@ -241,7 +242,7 @@ export function CheckoutScreen() {
 
     if (paymentMethod === 'pix') {
       try {
-        const response = await fetch('/api/create-pix-payment', {
+        const response = await fetchApi('/api/create-pix-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -294,7 +295,7 @@ export function CheckoutScreen() {
 
     if (paymentMethod === 'card') {
       try {
-        const response = await fetch('/api/create-preference', {
+        const response = await fetchApi('/api/create-preference', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -570,7 +571,7 @@ export function CheckoutScreen() {
       const payId = pixData?.id || (typeof window !== 'undefined' ? localStorage.getItem('mecura_pending_payment_id') : null);
       if (payId) {
         try {
-          const res = await fetch(`/api/payment-status/${payId}`);
+          const res = await fetchApi(`/api/payment-status/${payId}`);
           if (res.ok) {
             const data = await res.json();
             if (data.status === 'approved' || data.status === 'completed') {
@@ -588,7 +589,7 @@ export function CheckoutScreen() {
       const currentUid = auth.currentUser?.uid || useStore.getState().patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
       if (currentUid) {
         try {
-          const vRes = await fetch('/api/verify-patient-payment', {
+          const vRes = await fetchApi('/api/verify-patient-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

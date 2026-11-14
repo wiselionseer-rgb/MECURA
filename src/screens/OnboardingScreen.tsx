@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PasswordResetCpfModal } from '../components/PasswordResetCpfModal';
 import { cbdGuideData, CBDCategory } from '../data/cbdGuide';
 import { getRegisteredManufacturers, mergeProductCatalogs, subscribeToFirestoreCatalog } from '../utils/productCatalog';
+import { fetchApi } from '../utils/apiClient';
 
 // --- HELPERS DE FORMATAÇÃO ---
 const formatBirthDate = (val: string) => {
@@ -283,7 +284,7 @@ const STEPS = [
 
       if (!storeQueueItem) {
         try {
-          const res = await fetch('/api/queue');
+          const res = await fetchApi('/api/queue');
           if (res.ok) {
             const rawQueue = await res.json();
             const serverQueue = Array.isArray(rawQueue) ? rawQueue : (Array.isArray(rawQueue?.queue) ? rawQueue.queue : []);
@@ -302,7 +303,7 @@ const STEPS = [
       let backendPaid = false;
       let backendStatus: string | null = null;
       try {
-        const vRes = await fetch('/api/verify-patient-payment', {
+        const vRes = await fetchApi('/api/verify-patient-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
