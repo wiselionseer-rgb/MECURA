@@ -127,13 +127,8 @@ export function ChatScreen() {
     }
   }, [effectiveConsultationId, subscribeToMessages]);
 
-  // Find if current patient has an active entry in the queue
-  const myQueueEntry = queue.find(p => 
-    (effectiveConsultationId && p.id === effectiveConsultationId) ||
-    (auth.currentUser?.email && p.email && p.email.toLowerCase() === auth.currentUser.email.toLowerCase()) ||
-    (userEmail && p.email && p.email.toLowerCase() === userEmail.toLowerCase()) ||
-    (userPhone && p.phone && p.phone.replace(/\D/g, '') === userPhone.replace(/\D/g, '') && userPhone.length >= 8)
-  );
+  // Strictly match current patient's own queue entry by effectiveConsultationId (never match other patients by shared phone or email)
+  const myQueueEntry = queue.find(p => effectiveConsultationId && p.id === effectiveConsultationId);
 
   const hasPaidConsultation = !!(
     pagamento_consulta || 
@@ -626,10 +621,12 @@ export function ChatScreen() {
         
         const obsText = answers?.description && !answers?.objectives?.length ? ` e as observações que você enviou` : '';
 
+        const pFirstName = (userName || 'Paciente').trim().split(/\s+/)[0] || 'Paciente';
         addMessage({
-          text: `Olá ${userName || 'paciente'}, sou o Dr. Guilherme. Analisei ${problemText}${obsText}. Como você está se sentindo hoje?`,
+          id: `initial_greeting_${effectiveConsultationId}`,
+          text: `Olá ${pFirstName}, sou o Dr. Guilherme. Analisei ${problemText}${obsText}. Como você está se sentindo hoje?`,
           sender: 'doctor'
-        }, effectiveConsultationId);
+        } as any, effectiveConsultationId);
       }, 1200);
       
       return () => clearTimeout(timeoutId);

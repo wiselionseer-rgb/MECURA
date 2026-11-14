@@ -164,7 +164,6 @@ export function QueueScreen() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('mecura_queue_notified_10m', 'true');
       }
-      playNotificationSound();
       showNativeNotification(
         'Fique tranquilo! 💬',
         'Você está há mais de 10 minutos na fila. O médico entrará em contato pelo WhatsApp assim que for a sua vez!',
@@ -299,8 +298,11 @@ export function QueueScreen() {
     if (!currentUserId) return;
 
     let queueDocStatus: string | null = myQueueEntry?.status || null;
+    let hasTriggeredDoctorCall = false;
 
     const handleDoctorCall = () => {
+      if (hasTriggeredDoctorCall) return;
+      hasTriggeredDoctorCall = true;
       useStore.setState({
         consultationActive: true,
         inQueue: false,
@@ -312,7 +314,6 @@ export function QueueScreen() {
         localStorage.setItem('mecura_consultation_active', 'true');
         localStorage.setItem('mecura_pagamento', 'true');
       }
-      playNotificationSound();
       navigate('/chat');
     };
 
@@ -502,7 +503,6 @@ export function QueueScreen() {
         localStorage.setItem('mecura_pagamento', 'true');
         localStorage.removeItem('mecura_consultation_finished');
       }
-      playNotificationSound();
       navigate('/chat');
     }
   }, [myQueueEntry?.status, myQueueEntry?.id, currentUserId, consultationActive, isConsultationFinished, inQueue, pagamento_consulta, navigate]);

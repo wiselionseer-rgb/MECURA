@@ -363,8 +363,8 @@ async function startServer() {
     try {
       if (!payment || payment.status !== "approved" && payment.status !== "completed") return;
       const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, val } = resolvePaymentPlan(payment);
-      const payerEmail = payment.payer?.email;
-      const payerName = payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ""}`.trim() : payment.metadata?.patient_name || "Paciente";
+      const payerEmail = payment.metadata?.patient_email || payment.payer?.email || "";
+      const payerName = payment.metadata?.patient_name || (payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ""}`.trim() : "Paciente");
       const patientId = payment.external_reference || payment.metadata?.patient_id;
       const metaCouponCode = payment.metadata?.coupon_code || "";
       const metaCouponId = payment.metadata?.coupon_id || "";
@@ -1193,9 +1193,27 @@ async function startServer() {
       const numPrice = Math.round(Number(price) * 100) / 100;
       const maxInstallments = req.body.installments ? Number(req.body.installments) : numPrice > 100 ? 5 : 3;
       const preference = new import_mercadopago.Preference(mpInfo.client);
-      const isSellerEmail = payerEmail && (payerEmail.toLowerCase().includes("lucasdanieltrader") || payerEmail.toLowerCase().includes("lucasneres"));
-      const safePayerEmail = isSellerEmail ? "paciente.consulta@mecura.com" : payerEmail || void 0;
-      const isHttps = origin.startsWith("https://");
+      const rawPrefEmail = typeof payerEmail === "string" ? payerEmail.trim().toLowerCase() : "";
+      const isValidPrefEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawPrefEmail);
+      const isSellerEmail = rawPrefEmail.includes("lucasdanieltrader") || rawPrefEmail.includes("lucasneres");
+      const safePayerEmail = !isValidPrefEmail || isSellerEmail ? "paciente.consulta@mecura.com" : rawPrefEmail;
+      const cleanOrigin = String(origin || "").split(",")[0].trim().replace(/\/+$/, "");
+      const isHttps = cleanOrigin.startsWith("https://");
+      const candidateWebhookBase = String(process.env.APP_URL || cleanOrigin).split(",")[0].trim().replace(/\/+$/, "");
+      const validWebhookUrl = candidateWebhookBase.startsWith("https://") ? `${candidateWebhookBase}/api/webhook` : void 0;
+      const prefMetadata = {
+        patient_id: patientId || "",
+        patient_name: payerName || "",
+        patient_email: isValidPrefEmail ? rawPrefEmail : "",
+        is_premium: resolvedIsPrem,
+        plan: resolvedPlan,
+        coupon_code: req.body.couponCode || "",
+        coupon_id: req.body.couponId || "",
+        affiliate_name: req.body.affiliateName || "",
+        commission_percentage: Number(req.body.commissionPercentage || 0),
+        via_link: Boolean(req.body.viaLink),
+        original_price: Number(req.body.originalPrice || numPrice)
+      };
       const result = await preference.create({
         body: {
           items: [{
@@ -1205,32 +1223,21 @@ async function startServer() {
             unit_price: numPrice,
             currency_id: "BRL"
           }],
-          payer: safePayerEmail ? {
+          payer: {
             email: safePayerEmail,
             name: payerName || "Paciente"
-          } : void 0,
-          external_reference: patientId || void 0,
-          metadata: {
-            patient_id: patientId || "",
-            patient_name: payerName || "",
-            is_premium: resolvedIsPrem,
-            plan: resolvedPlan,
-            coupon_code: req.body.couponCode || "",
-            coupon_id: req.body.couponId || "",
-            affiliate_name: req.body.affiliateName || "",
-            commission_percentage: Number(req.body.commissionPercentage || 0),
-            via_link: Boolean(req.body.viaLink),
-            original_price: Number(req.body.originalPrice || numPrice)
           },
+          external_reference: patientId || void 0,
+          metadata: prefMetadata,
           ...isHttps ? {
             back_urls: {
-              success: `${origin}/dashboard?payment=success&plan=${encodeURIComponent(resolvedPlan)}`,
-              failure: `${origin}/checkout?payment=failed&plan=${encodeURIComponent(resolvedPlan)}`,
-              pending: `${origin}/dashboard?payment=pending&plan=${encodeURIComponent(resolvedPlan)}`
+              success: `${cleanOrigin}/dashboard?payment=success&plan=${encodeURIComponent(resolvedPlan)}`,
+              failure: `${cleanOrigin}/checkout?payment=failed&plan=${encodeURIComponent(resolvedPlan)}`,
+              pending: `${cleanOrigin}/dashboard?payment=pending&plan=${encodeURIComponent(resolvedPlan)}`
             },
             auto_return: "approved"
           } : {},
-          notification_url: (process.env.APP_URL || origin).startsWith("https://") ? `${process.env.APP_URL || origin}/api/webhook` : void 0,
+          notification_url: validWebhookUrl,
           statement_descriptor: "MECURA SAUDE"
         }
       });
@@ -1267,46 +1274,77 @@ async function startServer() {
         return res.status(500).json({ error: "Configura\xE7\xE3o do Mercado Pago ausente no servidor." });
       }
       const cleanPrice = Math.round(Number(price) * 100) / 100;
-      if (cleanPrice <= 0) {
+      if (isNaN(cleanPrice) || cleanPrice <= 0) {
         return res.status(400).json({ error: "O valor da transa\xE7\xE3o deve ser maior que R$ 0,00." });
       }
-      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${email} (Plano: ${resolvedPlan})`);
+      const rawInputEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawInputEmail);
+      const isSellerEmail = rawInputEmail.includes("lucasdanieltrader") || rawInputEmail.includes("lucasneres");
+      const safeEmail = !isValidEmail || isSellerEmail ? "paciente.consulta@mecura.com" : rawInputEmail;
+      const cleanFirstName = typeof firstName === "string" && firstName.trim().length > 0 ? firstName.trim() : "Paciente";
+      const cleanLastName = typeof lastName === "string" && lastName.trim().length > 0 ? lastName.trim() : "Mecura";
+      console.log(`Tentando criar pagamento Pix: R$${cleanPrice} para ${safeEmail} (Plano: ${resolvedPlan})`);
       const payment = new import_mercadopago.Payment(mpInfo.client);
-      const isSellerEmail = email && (email.toLowerCase().includes("lucasdanieltrader") || email.toLowerCase().includes("lucasneres"));
-      const safeEmail = isSellerEmail ? "paciente.consulta@mecura.com" : email || "paciente@mercura.com";
-      const host = req.headers["x-forwarded-host"] || req.headers.host;
-      const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-      const origin = req.headers.origin || (host ? `${proto}://${host}` : "") || process.env.APP_URL || "";
-      const result = await payment.create({
-        body: {
-          transaction_amount: cleanPrice,
-          description: title,
-          payment_method_id: "pix",
-          payer: {
-            email: safeEmail,
-            first_name: firstName || "Paciente",
-            last_name: lastName || "Mecura",
-            identification: {
-              type: "CPF",
-              number: "00000000000"
-            }
-          },
-          external_reference: patientId || void 0,
-          metadata: {
-            patient_id: patientId || "",
-            patient_name: firstName || "",
-            is_premium: resolvedIsPrem,
-            plan: resolvedPlan,
-            coupon_code: req.body.couponCode || "",
-            coupon_id: req.body.couponId || "",
-            affiliate_name: req.body.affiliateName || "",
-            commission_percentage: Number(req.body.commissionPercentage || 0),
-            via_link: Boolean(req.body.viaLink),
-            original_price: Number(req.body.originalPrice || cleanPrice)
-          },
-          notification_url: (process.env.APP_URL || origin).startsWith("https://") ? `${process.env.APP_URL || origin}/api/webhook` : void 0
-        }
-      });
+      const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+      const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+      const origin = String(req.headers.origin || (host ? `${proto}://${host}` : "") || process.env.APP_URL || "").split(",")[0].trim().replace(/\/+$/, "");
+      const candidateWebhookBase = String(process.env.APP_URL || origin).split(",")[0].trim().replace(/\/+$/, "");
+      const validWebhookUrl = candidateWebhookBase.startsWith("https://") ? `${candidateWebhookBase}/api/webhook` : void 0;
+      const pixMetadata = {
+        patient_id: patientId || "",
+        patient_name: cleanFirstName,
+        patient_email: isValidEmail ? rawInputEmail : "",
+        is_premium: resolvedIsPrem,
+        plan: resolvedPlan,
+        coupon_code: req.body.couponCode || "",
+        coupon_id: req.body.couponId || "",
+        affiliate_name: req.body.affiliateName || "",
+        commission_percentage: Number(req.body.commissionPercentage || 0),
+        via_link: Boolean(req.body.viaLink),
+        original_price: Number(req.body.originalPrice || cleanPrice)
+      };
+      let result;
+      try {
+        result = await payment.create({
+          body: {
+            transaction_amount: cleanPrice,
+            description: title || "Consulta Mecura",
+            payment_method_id: "pix",
+            payer: {
+              email: safeEmail,
+              first_name: cleanFirstName,
+              last_name: cleanLastName,
+              identification: {
+                type: "CPF",
+                number: "00000000000"
+              }
+            },
+            external_reference: patientId || void 0,
+            metadata: pixMetadata,
+            notification_url: validWebhookUrl
+          }
+        });
+      } catch (firstErr) {
+        console.warn("[MP PIX] Primeira tentativa falhou, tentando com dados de pagador padronizados:", firstErr?.message || firstErr);
+        result = await payment.create({
+          body: {
+            transaction_amount: cleanPrice,
+            description: title || "Consulta Mecura",
+            payment_method_id: "pix",
+            payer: {
+              email: "paciente.consulta@mecura.com",
+              first_name: "Paciente",
+              last_name: "Mecura",
+              identification: {
+                type: "CPF",
+                number: "00000000000"
+              }
+            },
+            external_reference: patientId || void 0,
+            metadata: pixMetadata
+          }
+        });
+      }
       console.log("Pagamento Pix criado com sucesso!", result.id);
       res.json({
         id: result.id,

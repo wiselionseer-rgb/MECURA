@@ -96,65 +96,75 @@ if (typeof window !== 'undefined') {
   initAudioUnlock();
 }
 
+let lastSoundPlayedAt = 0;
+
+const playWebAudioFallback = () => {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.type = 'sine';
+
+    // First beep: 880Hz
+    oscillator.frequency.setValueAtTime(880, now);
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(0.6, now + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+
+    // Second beep: 1320Hz
+    oscillator.frequency.setValueAtTime(1320, now + 0.15);
+    gainNode.gain.setValueAtTime(0.6, now + 0.16);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+    oscillator.start(now);
+    oscillator.stop(now + 0.38);
+  } catch (err) {
+    console.warn('WebAudio playback failed', err);
+  }
+};
+
 export const playNotificationSound = () => {
+  const nowMs = Date.now();
+  // Prevent duplicate/overlapping notification sounds within 1.5 seconds
+  if (nowMs - lastSoundPlayedAt < 1500) {
+    return;
+  }
+  lastSoundPlayedAt = nowMs;
+
   try {
     // 1. Trigger Mobile Haptic Vibration
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
-        navigator.vibrate([200, 100, 200, 100, 300]);
+        navigator.vibrate([200, 100, 200]);
       } catch (_) {}
     }
 
-    // 2. Play via HTML Audio Element (works great in background and mobile)
+    // 2. Play via HTML Audio Element, falling back to WebAudio Oscillator ONLY if HTMLAudio fails
     try {
       if (!cachedAudioElement) {
         cachedAudioElement = new Audio(generateChimeWav());
       }
       cachedAudioElement.currentTime = 0;
-      cachedAudioElement.volume = 1.0;
+      cachedAudioElement.volume = 0.85;
       const playPromise = cachedAudioElement.play();
       if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.log('HTMLAudio autoplay prevented, falling back to WebAudio oscillator:', err);
+        playPromise.catch(() => {
+          playWebAudioFallback();
         });
       }
-    } catch (e) {
-      console.warn('HTMLAudio error:', e);
-    }
-
-    // 3. Play via Web Audio Oscillator as robust fallback
-    try {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-
-      const now = audioCtx.currentTime;
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-
-      oscillator.type = 'sine';
-
-      // First beep: 880Hz
-      oscillator.frequency.setValueAtTime(880, now);
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(0.8, now + 0.02);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
-
-      // Second beep: 1320Hz
-      oscillator.frequency.setValueAtTime(1320, now + 0.15);
-      gainNode.gain.setValueAtTime(0.8, now + 0.16);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-
-      oscillator.start(now);
-      oscillator.stop(now + 0.38);
-    } catch (err) {
-      console.warn('WebAudio playback failed', err);
+    } catch {
+      playWebAudioFallback();
     }
   } catch (error) {
     console.warn('Notification sound failed', error);

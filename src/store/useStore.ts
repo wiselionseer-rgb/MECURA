@@ -774,6 +774,7 @@ export const useStore = create<AppState>((set, get) => ({
       isPaid: true,
       pagamento_premium: isPremium,
       hasUnread: true,
+      ...(patientObj.freshPayment === true && !isAlreadyInActiveQueue ? { greetingSent: false, initialGreetingSent: false } : {}),
       lastMessageText: resolvedQueueType === 'psychologist' ? 'Aguardando atendimento psicológico' : (allowDualChat ? 'Plano Completo 360° (Médico + Psicólogo) — Aguardando atendimento' : 'Aguardando atendimento médico'),
       lastMessageAt: new Date().toISOString()
     };
@@ -805,11 +806,19 @@ export const useStore = create<AppState>((set, get) => ({
       // Clear previous messages from active_consultations ONLY on a brand new payment (never when re-joining an open queue!)
       if (patientObj.freshPayment === true && !isAlreadyInActiveQueue) {
         try {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(`mecura_greeting_sent_${currentUserId}`);
+          }
+          await setDoc(doc(db, 'active_consultations', currentUserId), {
+            greetingSent: false,
+            initialGreetingSent: false,
+            issuedDocuments: null
+          }, { merge: true }).catch(() => {});
           const msgsRef = collection(db, 'active_consultations', currentUserId, 'messages');
           const msgsSnap = await getDocs(msgsRef);
-          msgsSnap.forEach((docSnap) => {
-             deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {});
-          });
+          await Promise.all(
+            msgsSnap.docs.map((docSnap) => deleteDoc(doc(msgsRef, docSnap.id)).catch(() => {}))
+          );
         } catch (err) {
           console.warn("Could not delete old messages:", err);
         }
@@ -1107,11 +1116,15 @@ export const useStore = create<AppState>((set, get) => ({
               const resolvedStatus = (prev.status === 'in-consultation' || prev.status === 'finished') && item.status === 'waiting'
                 ? prev.status
                 : (item.status || prev.status || 'waiting');
+              const resolvedHasUnread = (resolvedStatus === 'in-consultation' || resolvedStatus === 'finished' || prev.hasUnread === false)
+                ? false
+                : (item.hasUnread ?? prev.hasUnread ?? false);
 
               map.set(item.id, {
                 ...prev,
                 ...item,
                 status: resolvedStatus,
+                hasUnread: resolvedHasUnread,
                 patientName: resolvedName,
                 name: resolvedName,
                 cpf: item.cpf || prev.cpf || '',
@@ -1147,6 +1160,7 @@ export const useStore = create<AppState>((set, get) => ({
     const unsubFirestore = onSnapshot(q, (snapshot) => {
       const isDoctorRoute = typeof window !== 'undefined' && (
         window.location.pathname.includes('/doctor') || 
+        window.location.pathname.includes('/psychologist') ||
         window.location.pathname.includes('/admin') ||
         window.location.href.includes('doctor')
       );
@@ -1335,38 +1349,13 @@ export const useStore = create<AppState>((set, get) => ({
       if (!isDoctorRoute) {
         const authUid = auth.currentUser?.uid;
         const storedPatientId = state.patientId || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patientId') : null);
-        const myEmail = (state.userEmail || auth.currentUser?.email || '').trim().toLowerCase();
-        const myPhone = (state.userPhone || state.answers?.phone || '').replace(/\D/g, '');
-        const myCpf = (state.userCpf || state.answers?.cpf || '').replace(/\D/g, '');
 
-        // Prioritize matching by authenticated UID FIRST to avoid cross-patient leakage
+        // Strictly match by authenticated UID first so new users never inherit another patient's queue entry by test CPF/phone/email
         let myIndex = -1;
         if (authUid) {
           myIndex = queueData.findIndex(p => p.id === authUid);
-        }
-        if (myIndex === -1 && storedPatientId && storedPatientId !== 'patient_id') {
+        } else if (storedPatientId && storedPatientId !== 'patient_id') {
           myIndex = queueData.findIndex(p => p.id === storedPatientId);
-        }
-        if (myIndex === -1 && myEmail) {
-          // Check for active waiting/in-consultation with this email first
-          myIndex = queueData.findIndex(p => p.email && p.email.toLowerCase() === myEmail && (p.status === 'waiting' || p.status === 'in-consultation'));
-          if (myIndex === -1) {
-            myIndex = queueData.findIndex(p => p.email && p.email.toLowerCase() === myEmail);
-          }
-        }
-        if (myIndex === -1 && myPhone && myPhone.length >= 8) {
-          // Check for active waiting/in-consultation with this phone first
-          myIndex = queueData.findIndex(p => p.phone && p.phone.replace(/\D/g, '') === myPhone && (p.status === 'waiting' || p.status === 'in-consultation'));
-          if (myIndex === -1) {
-            myIndex = queueData.findIndex(p => p.phone && p.phone.replace(/\D/g, '') === myPhone);
-          }
-        }
-        if (myIndex === -1 && myCpf && myCpf.length >= 9) {
-          // Check for active waiting/in-consultation with this CPF first
-          myIndex = queueData.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === myCpf && (p.status === 'waiting' || p.status === 'in-consultation'));
-          if (myIndex === -1) {
-            myIndex = queueData.findIndex(p => p.cpf && p.cpf.replace(/\D/g, '') === myCpf);
-          }
         }
 
         if (myIndex !== -1) {
@@ -1827,14 +1816,36 @@ export const useStore = create<AppState>((set, get) => ({
   messages: [],
   addMessage: async (msg, customConsultationId?: string) => {
     const state = get();
-    // Add a random suffix to Date.now() to prevent duplicate keys if messages are added in the same millisecond
-    const uniqueId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
+    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
+    const isInitialGreeting = typeof msg.text === 'string' && msg.text.includes('sou o Dr. Guilherme. Analisei');
+
+    // Never allow duplicate initial greeting if one already exists in active messages
+    if (
+      isInitialGreeting &&
+      state.messages.some(
+        (m) =>
+          m.id === `initial_greeting_${consultationId}` ||
+          (typeof m.text === 'string' && m.text.includes('sou o Dr. Guilherme. Analisei'))
+      )
+    ) {
+      return;
+    }
+
+    // Use deterministic ID for initial greeting so concurrent triggers can never create two greeting docs
+    const uniqueId =
+      (msg as any).id ||
+      (isInitialGreeting && consultationId
+        ? `initial_greeting_${consultationId}`
+        : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9));
     let newMessage = { ...msg, id: uniqueId, timestamp: new Date() };
     
     // 1. Optimistic update
-    set((state) => ({
-      messages: [...state.messages, newMessage]
-    }));
+    set((state) => {
+      if (state.messages.some((m) => m.id === uniqueId)) return state;
+      return {
+        messages: [...state.messages, newMessage]
+      };
+    });
 
     // 2. If attachment is a base64 data URL, persist to /api/upload AND Firestore stored_files (chunked) so message doc stays tiny (< 2KB)
     if (newMessage.attachment?.url && newMessage.attachment.url.startsWith('data:')) {
@@ -1854,7 +1865,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     // 3. Save to Firestore if in an active consultation
-    const consultationId = customConsultationId || state.activeConsultationId || state.patientId || auth.currentUser?.uid;
     console.log("addMessage called. consultationId:", consultationId, "msg:", msg);
     
     if (consultationId) {
@@ -1896,13 +1906,9 @@ export const useStore = create<AppState>((set, get) => ({
           }
         }
 
-        // Resolve all linked IDs for this patient (e.g. queue ID vs Firebase Auth UID vs patientId)
+        // Strictly resolve IDs for THIS specific consultation/patient only (never fan out by shared CPF, phone, or email)
         const targetIds = new Set<string>([consultationId]);
-        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
         const matchedQueueEntry = state.queue.find(p => p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId);
-        const patientEmail = (matchedQueueEntry?.email || '').trim().toLowerCase();
-        const patientCpf = cleanDigits(matchedQueueEntry?.cpf);
-        const patientPhone = cleanDigits(matchedQueueEntry?.phone);
 
         if (matchedQueueEntry) {
           if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
@@ -1910,37 +1916,7 @@ export const useStore = create<AppState>((set, get) => ({
           if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
         }
 
-        state.queue.forEach(p => {
-          const pEmail = (p.email || '').trim().toLowerCase();
-          const pCpf = cleanDigits(p.cpf);
-          const pPhone = cleanDigits(p.phone);
-          const emailMatch = patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail;
-          const cpfMatch = patientCpf && patientCpf.length >= 11 && pCpf === patientCpf;
-          const phoneMatch = patientPhone && patientPhone.length >= 10 && pPhone === patientPhone;
-          if (emailMatch || cpfMatch || phoneMatch) {
-            if (p.id) targetIds.add(p.id);
-            if ((p as any).uid) targetIds.add((p as any).uid);
-            if ((p as any).patientId) targetIds.add((p as any).patientId);
-          }
-        });
-
-        // Also check Firestore users collection by email or cpf if doctor is sending a message/document
-        if (newMessage.sender === 'doctor' && (patientEmail || patientCpf)) {
-          try {
-            if (patientEmail && !patientEmail.includes('sem-email')) {
-              const uSnap = await getDocs(query(collection(db, 'users'), where('email', '==', patientEmail)));
-              uSnap.forEach(d => targetIds.add(d.id));
-            }
-            if (patientCpf && patientCpf.length >= 11 && matchedQueueEntry?.cpf) {
-              const uSnapCpf = await getDocs(query(collection(db, 'users'), where('cpf', '==', matchedQueueEntry.cpf)));
-              uSnapCpf.forEach(d => targetIds.add(d.id));
-            }
-          } catch (lookupErr) {
-            console.warn("[addMessage] User lookup warning:", lookupErr);
-          }
-        }
-
-        // Save message to active_consultations/{id}/messages/{newMessage.id} across all linked IDs
+        // Save message to active_consultations/{id}/messages/{newMessage.id}
         const saveMessageToTarget = async (targetId: string) => {
           const messagesRef = collection(db, 'active_consultations', targetId, 'messages');
           try {
@@ -2062,16 +2038,12 @@ export const useStore = create<AppState>((set, get) => ({
     console.log("deleteMessage called. id:", messageId, "consultationId:", consultationId);
     if (consultationId) {
       try {
-        // Resolve all linked IDs for this patient so copies across queue ID / auth UID / patientId are all deleted
+        // Strictly resolve IDs for THIS consultation only
         const targetIds = new Set<string>([consultationId]);
         if (state.activeConsultationId) targetIds.add(state.activeConsultationId);
-        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
         const matchedQueueEntry = state.queue.find(p =>
           p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId
         );
-        const patientEmail = (matchedQueueEntry?.email || '').trim().toLowerCase();
-        const patientCpf = cleanDigits(matchedQueueEntry?.cpf);
-        const patientPhone = cleanDigits(matchedQueueEntry?.phone);
 
         if (matchedQueueEntry) {
           if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
@@ -2079,30 +2051,7 @@ export const useStore = create<AppState>((set, get) => ({
           if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
         }
 
-        state.queue.forEach(p => {
-          const pEmail = (p.email || '').trim().toLowerCase();
-          const pCpf = cleanDigits(p.cpf);
-          const pPhone = cleanDigits(p.phone);
-          const emailMatch = patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail;
-          const cpfMatch = patientCpf && patientCpf.length >= 11 && pCpf === patientCpf;
-          const phoneMatch = patientPhone && patientPhone.length >= 10 && pPhone === patientPhone;
-          if (emailMatch || cpfMatch || phoneMatch) {
-            if (p.id) targetIds.add(p.id);
-            if ((p as any).uid) targetIds.add((p as any).uid);
-            if ((p as any).patientId) targetIds.add((p as any).patientId);
-          }
-        });
-
-        if (patientEmail && !patientEmail.includes('sem-email')) {
-          try {
-            const uSnap = await getDocs(query(collection(db, 'users'), where('email', '==', patientEmail)));
-            uSnap.forEach(d => targetIds.add(d.id));
-          } catch {
-            // ignore
-          }
-        }
-
-        // Delete the message from active_consultations/{tid}/messages/{messageId} across all linked IDs
+        // Delete the message from active_consultations/{tid}/messages/{messageId}
         await Promise.all(
           Array.from(targetIds).map(tid =>
             deleteDoc(doc(db, 'active_consultations', tid, 'messages', messageId)).catch(() => {})
@@ -2190,33 +2139,15 @@ export const useStore = create<AppState>((set, get) => ({
       try {
         const targetIds = new Set<string>([consultationId]);
         if (state.activeConsultationId) targetIds.add(state.activeConsultationId);
-        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
         const matchedQueueEntry = state.queue.find(p =>
           p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId
         );
-        const patientEmail = (matchedQueueEntry?.email || '').trim().toLowerCase();
-        const patientCpf = cleanDigits(matchedQueueEntry?.cpf);
-        const patientPhone = cleanDigits(matchedQueueEntry?.phone);
 
         if (matchedQueueEntry) {
           if (matchedQueueEntry.id) targetIds.add(matchedQueueEntry.id);
           if ((matchedQueueEntry as any).uid) targetIds.add((matchedQueueEntry as any).uid);
           if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
         }
-
-        state.queue.forEach(p => {
-          const pEmail = (p.email || '').trim().toLowerCase();
-          const pCpf = cleanDigits(p.cpf);
-          const pPhone = cleanDigits(p.phone);
-          const emailMatch = patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail;
-          const cpfMatch = patientCpf && patientCpf.length >= 11 && pCpf === patientCpf;
-          const phoneMatch = patientPhone && patientPhone.length >= 10 && pPhone === patientPhone;
-          if (emailMatch || cpfMatch || phoneMatch) {
-            if (p.id) targetIds.add(p.id);
-            if ((p as any).uid) targetIds.add((p as any).uid);
-            if ((p as any).patientId) targetIds.add((p as any).patientId);
-          }
-        });
 
         if (prescriptionMsgIds.length > 0) {
           await Promise.all(
@@ -2297,11 +2228,6 @@ export const useStore = create<AppState>((set, get) => ({
     if (consultationId) {
       try {
         const targetIds = new Set<string>([consultationId]);
-        if (state.activeConsultationId) targetIds.add(state.activeConsultationId);
-        if (state.patientId) targetIds.add(state.patientId);
-        if (auth.currentUser?.uid) targetIds.add(auth.currentUser.uid);
-
-        const cleanDigits = (val?: string) => (val || '').replace(/\D/g, '');
         const matchedQueueEntry = state.queue.find(p =>
           p.id === consultationId || (p as any).uid === consultationId || (p as any).patientId === consultationId
         );
@@ -2310,18 +2236,6 @@ export const useStore = create<AppState>((set, get) => ({
           if ((matchedQueueEntry as any).uid) targetIds.add((matchedQueueEntry as any).uid);
           if ((matchedQueueEntry as any).patientId) targetIds.add((matchedQueueEntry as any).patientId);
         }
-
-        const patientEmail = (matchedQueueEntry?.email || state.userEmail || '').trim().toLowerCase();
-        const patientCpf = cleanDigits(matchedQueueEntry?.cpf || state.userCpf || targetMsg?.tcleData?.cpf);
-        state.queue.forEach(p => {
-          const pEmail = (p.email || '').trim().toLowerCase();
-          const pCpf = cleanDigits(p.cpf);
-          if ((patientEmail && !patientEmail.includes('sem-email') && pEmail === patientEmail) || (patientCpf && patientCpf.length >= 11 && pCpf === patientCpf)) {
-            if (p.id) targetIds.add(p.id);
-            if ((p as any).uid) targetIds.add((p as any).uid);
-            if ((p as any).patientId) targetIds.add((p as any).patientId);
-          }
-        });
 
         await Promise.all(
           Array.from(targetIds).map(tid =>
@@ -2395,11 +2309,12 @@ export const useStore = create<AppState>((set, get) => ({
 
     const parseDoc = (d: any): Message => parseRawMessage(d.id, d.data());
 
-    // Map of targetId -> Message[] so we can merge messages across all linked IDs for this patient
     const messagesByTarget = new Map<string, Message[]>();
     const synthesizedMessagesMap = new Map<string, Message>();
     const activeUnsubscribes: Array<() => void> = [];
     const subscribedIds = new Set<string>();
+    const seenMessageIdsForSound = new Set<string>();
+    let hasCompletedInitialLoad = false;
     let isCancelled = false;
 
     const getDeletedIdsSet = (): Set<string> => {
@@ -2436,29 +2351,74 @@ export const useStore = create<AppState>((set, get) => ({
         });
       }
 
-      const allMsgs = Array.from(mergedMap.values());
-      allMsgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      const rawMsgs = Array.from(mergedMap.values());
+      rawMsgs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      // Filter out any legacy cross-contaminated greeting messages addressed to a different patient name
+      // and ensure at most one initial greeting message is ever displayed
+      const currentQEntry = get().queue.find((p) => p.id === consultationId);
+      const rawExpectedName = (
+        currentQEntry?.patientName ||
+        (currentQEntry as any)?.name ||
+        (!isProfessionalView ? get().userName : '') ||
+        ''
+      ).trim();
+      const expectedFirstName = rawExpectedName.split(/\s+/)[0]?.toLowerCase() || '';
+
+      let seenGreeting = false;
+      const allMsgs: Message[] = [];
+      for (const m of rawMsgs) {
+        const text = typeof m.text === 'string' ? m.text : '';
+        if (text.includes('🔔 SUA VEZ CHEGOU!')) {
+          // Clean up legacy automatic call message from chat history
+          deleteDoc(doc(db, 'active_consultations', consultationId, 'messages', m.id)).catch(() => {});
+          continue;
+        }
+        if (text.includes('sou o Dr. Guilherme. Analisei')) {
+          const greetedMatch = text.match(/^Olá\s+([^,]+),\s*sou o Dr\. Guilherme/i);
+          const greetedFirst = greetedMatch?.[1]?.trim().split(/\s+/)[0]?.toLowerCase() || '';
+          if (
+            expectedFirstName &&
+            expectedFirstName !== 'paciente' &&
+            greetedFirst &&
+            greetedFirst !== 'paciente' &&
+            greetedFirst !== expectedFirstName
+          ) {
+            // Contaminated greeting from another patient — delete from Firestore and skip
+            deleteDoc(doc(db, 'active_consultations', consultationId, 'messages', m.id)).catch(() => {});
+            continue;
+          }
+          if (seenGreeting) {
+            continue;
+          }
+          seenGreeting = true;
+        }
+        allMsgs.push(m);
+      }
 
       // Never wipe existing messages in patient view if we haven't found any messages yet
       if (allMsgs.length === 0 && !isProfessionalView && get().messages.length > 0) {
         return;
       }
 
-      const currentMessages = get().messages;
-      if (allMsgs.length > currentMessages.length && currentMessages.length > 0) {
-        const lastMsg = allMsgs[allMsgs.length - 1];
-        if (lastMsg.sender === 'doctor') {
-          import('../utils/sound').then(({ playNotificationSound }) => {
-            playNotificationSound();
-          });
-          if (typeof document !== 'undefined' && document.hidden) {
-            import('../utils/notifications').then(({ showNativeNotification }) => {
-              showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
+      if (!hasCompletedInitialLoad) {
+        allMsgs.forEach((m) => seenMessageIdsForSound.add(m.id));
+        hasCompletedInitialLoad = true;
+      } else if (allMsgs.length > 0) {
+        const newlyAdded = allMsgs.filter((m) => !seenMessageIdsForSound.has(m.id));
+        allMsgs.forEach((m) => seenMessageIdsForSound.add(m.id));
+        if (newlyAdded.length > 0) {
+          const lastMsg = newlyAdded[newlyAdded.length - 1];
+          // Only notify patient when doctor sends a message, and only notify professional when patient sends a message
+          if (!isProfessionalView && lastMsg.sender === 'doctor') {
+            import('../utils/sound').then(({ playNotificationSound }) => {
+              playNotificationSound();
             });
-          } else if (lastMsg.text && lastMsg.text.includes('SUA VEZ CHEGOU')) {
-            import('../utils/notifications').then(({ showNativeNotification }) => {
-              showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
-            });
+            if (typeof document !== 'undefined' && document.hidden) {
+              import('../utils/notifications').then(({ showNativeNotification }) => {
+                showNativeNotification('Nova mensagem do Médico', lastMsg.text, '/chat');
+              });
+            }
           }
         }
       }
@@ -2498,21 +2458,6 @@ export const useStore = create<AppState>((set, get) => ({
       const messagesCol = collection(db, 'active_consultations', targetId, 'messages');
       const q = query(messagesCol, orderBy('timestamp', 'asc'));
 
-      // Direct one-time fetch
-      getDocs(q).then((snapshot) => {
-        if (!snapshot.empty && !isCancelled) {
-          messagesByTarget.set(targetId, snapshot.docs.map(parseDoc));
-          rebuildAndPublishMessages();
-        }
-      }).catch(() => {
-        getDocs(messagesCol).then((snapshot) => {
-          if (!snapshot.empty && !isCancelled) {
-            messagesByTarget.set(targetId, snapshot.docs.map(parseDoc));
-            rebuildAndPublishMessages();
-          }
-        }).catch(() => {});
-      });
-
       // Real-time listener on messages subcollection
       const unsubMsgs = onSnapshot(q, (snapshot) => {
         if (isCancelled) return;
@@ -2523,92 +2468,38 @@ export const useStore = create<AppState>((set, get) => ({
       });
       activeUnsubscribes.push(unsubMsgs);
 
-      // Real-time listener on active_consultations/{targetId} parent doc + queue/{targetId} + users/{targetId}
-      const unsubActiveDoc = onSnapshot(doc(db, 'active_consultations', targetId), (snap) => {
-        if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
-      }, () => {});
-      activeUnsubscribes.push(unsubActiveDoc);
+      if (!isProfessionalView) {
+        // Real-time listener on active_consultations/{targetId} parent doc + queue/{targetId} + users/{targetId}
+        const unsubActiveDoc = onSnapshot(doc(db, 'active_consultations', targetId), (snap) => {
+          if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
+        }, () => {});
+        activeUnsubscribes.push(unsubActiveDoc);
 
-      const unsubQueueDoc = onSnapshot(doc(db, 'queue', targetId), (snap) => {
-        if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
-      }, () => {});
-      activeUnsubscribes.push(unsubQueueDoc);
+        const unsubQueueDoc = onSnapshot(doc(db, 'queue', targetId), (snap) => {
+          if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
+        }, () => {});
+        activeUnsubscribes.push(unsubQueueDoc);
 
-      const unsubUserDoc = onSnapshot(doc(db, 'users', targetId), (snap) => {
-        if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
-      }, () => {});
-      activeUnsubscribes.push(unsubUserDoc);
+        const unsubUserDoc = onSnapshot(doc(db, 'users', targetId), (snap) => {
+          if (snap.exists()) inspectDocumentDataForSynthesizedMessages(targetId, snap.data());
+        }, () => {});
+        activeUnsubscribes.push(unsubUserDoc);
+      }
     };
 
-    // Subscribe to primary consultationId immediately
+    // Subscribe strictly to the target consultationId only (never merge other patients' messages by CPF, phone, or email)
     subscribeSingleTarget(consultationId);
 
-    // Discover and subscribe to all linked patient IDs
     const state = get();
-    const cleanDigits = (v?: string) => (v || '').replace(/\D/g, '');
-
-    if (!isProfessionalView) {
-      const authUid = auth.currentUser?.uid;
-      const storedPid = typeof window !== 'undefined' ? (localStorage.getItem('mecura_patientId') || localStorage.getItem('patient_id')) : null;
-      if (authUid) {
-        subscribeSingleTarget(authUid);
-      } else {
-        if (state.patientId) subscribeSingleTarget(state.patientId);
-        if (storedPid) subscribeSingleTarget(storedPid);
-      }
-
-      const rawEmail = (auth.currentUser?.email || state.userEmail || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_email') : '') || '').trim().toLowerCase();
-      const isPlaceholderEmail = !rawEmail || rawEmail.includes('sem-email') || rawEmail === 'paciente@mecura.com' || rawEmail === 'paciente@mercura.com' || rawEmail === 'paciente.consulta@mecura.com';
-      const myEmail = isPlaceholderEmail ? '' : rawEmail;
-      const myCpf = cleanDigits(state.userCpf || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_cpf') : '') || '');
-      const myPhone = cleanDigits(state.userPhone || (typeof window !== 'undefined' ? localStorage.getItem('mecura_patient_phone') : '') || '');
-
-      state.queue.forEach(p => {
-        const pEmail = (p.email || '').trim().toLowerCase();
-        const pCpf = cleanDigits(p.cpf);
-        const pPhone = cleanDigits(p.phone);
-        const idMatch = p.id === consultationId || (authUid ? p.id === authUid : (p.id === state.patientId || p.id === storedPid));
-        const emailMatch = myEmail && pEmail === myEmail;
-        const cpfMatch = !authUid && myCpf && myCpf.length >= 11 && pCpf === myCpf;
-        const phoneMatch = !authUid && myPhone && myPhone.length >= 10 && pPhone === myPhone;
-        if (idMatch || emailMatch || cpfMatch || phoneMatch) {
-          if (p.id) subscribeSingleTarget(p.id);
-          if ((p as any).uid) subscribeSingleTarget((p as any).uid);
-          if ((p as any).patientId) subscribeSingleTarget((p as any).patientId);
-        }
-      });
-
-      // Also query Firestore queue & users by email for any historical consultation IDs of the same email
-      if (myEmail) {
-        getDocs(query(collection(db, 'queue'), where('email', '==', myEmail))).then(snap => {
-          snap.forEach(d => {
-            subscribeSingleTarget(d.id);
-            inspectDocumentDataForSynthesizedMessages(d.id, d.data());
-          });
-        }).catch(() => {});
-        getDocs(query(collection(db, 'users'), where('email', '==', myEmail))).then(snap => {
-          snap.forEach(d => {
-            subscribeSingleTarget(d.id);
-            inspectDocumentDataForSynthesizedMessages(d.id, d.data());
-          });
-        }).catch(() => {});
-      }
-    } else {
-      // Professional view: also subscribe to any linked IDs for the selected patient in state.queue
+    if (isProfessionalView) {
       const targetEntry = state.queue.find(p => p.id === consultationId);
       if (targetEntry) {
-        if ((targetEntry as any).uid) subscribeSingleTarget((targetEntry as any).uid);
-        if ((targetEntry as any).patientId) subscribeSingleTarget((targetEntry as any).patientId);
-        const tEmail = (targetEntry.email || '').trim().toLowerCase();
-        const isPlaceholder = !tEmail || tEmail.includes('sem-email') || tEmail === 'paciente@mecura.com' || tEmail === 'paciente@mercura.com' || tEmail === 'paciente.consulta@mecura.com';
-        const tCpf = cleanDigits(targetEntry.cpf);
-        state.queue.forEach(p => {
-          const pEmail = (p.email || '').trim().toLowerCase();
-          const pCpf = cleanDigits(p.cpf);
-          if ((!isPlaceholder && pEmail === tEmail) || (tCpf && tCpf.length >= 11 && pCpf === tCpf)) {
-            if (p.id) subscribeSingleTarget(p.id);
-          }
-        });
+        if ((targetEntry as any).uid && (targetEntry as any).uid === consultationId) {
+          subscribeSingleTarget((targetEntry as any).uid);
+        }
+        if ((targetEntry as any).patientId && (targetEntry as any).patientId === consultationId) {
+          subscribeSingleTarget((targetEntry as any).patientId);
+        }
       }
     }
 

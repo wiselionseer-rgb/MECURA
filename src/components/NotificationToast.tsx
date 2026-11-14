@@ -12,11 +12,18 @@ import { AnimatePresence, motion } from 'motion/react';
 export function NotificationToast() {
   const { notifications, addNotification } = useAdminStore();
   const { patientId } = useStore();
+  const location = useLocation();
   const [visibleNotification, setVisibleNotification] = useState<any>(null);
   const [seenNotifications, setSeenNotifications] = useState<Set<string>>(new Set());
 
-  // Listen to personal notifications
+  const isProfessionalRoute =
+    location.pathname.includes('/doctor') ||
+    location.pathname.includes('/psychologist') ||
+    location.pathname.includes('/admin');
+
+  // Listen to personal notifications ONLY on patient routes (never on /doctor, /psychologist, or /admin)
   useEffect(() => {
+    if (isProfessionalRoute) return;
     const currentId = auth.currentUser?.uid || patientId;
     if (!currentId) return;
 
@@ -27,30 +34,40 @@ export function NotificationToast() {
         isInitial = false;
         return;
       }
+      if (
+        typeof window !== 'undefined' &&
+        (window.location.pathname.includes('/doctor') ||
+          window.location.pathname.includes('/psychologist') ||
+          window.location.pathname.includes('/admin'))
+      ) {
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
+        if (change.type === 'added' || change.type === 'modified') {
           const data = change.doc.data();
-          if (change.doc.id === currentId) {
+          if (change.doc.id === currentId && data?.timestamp) {
+            const notifAge = Date.now() - new Date(data.timestamp).getTime();
+            if (notifAge > 20000) return;
             const notifTitle = data.type === 'next' ? 'Sua vez chegou!' : 'Aviso do Médico';
             const notifMessage = data.text;
             addNotification({
-              id: change.doc.id + '_' + Date.now(),
+              id: change.doc.id + '_' + data.timestamp,
               title: notifTitle,
               message: notifMessage,
               date: new Date(data.timestamp).toISOString()
             });
-            showNativeNotification(notifTitle, notifMessage);
-            
+            showNativeNotification(notifTitle, notifMessage, '/chat');
           }
         }
       });
     });
 
     return () => unsubscribe();
-  }, [addNotification, patientId]);
+  }, [addNotification, patientId, isProfessionalRoute]);
 
-  // Listen to global admin notifications broadcasted to all users
+  // Listen to global admin notifications broadcasted to all users (patient routes only)
   useEffect(() => {
+    if (isProfessionalRoute) return;
     let isInitial = true;
     const q = query(collection(db, 'global_notifications'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -69,16 +86,13 @@ export function NotificationToast() {
               date: data.date || new Date().toISOString()
             });
             showNativeNotification(data.title, data.message);
-            
           }
         }
       });
     });
 
     return () => unsubscribe();
-  }, [addNotification]);
-
-  const location = useLocation();
+  }, [addNotification, isProfessionalRoute]);
 
   useEffect(() => {
     if (notifications.length > 0) {
@@ -86,19 +100,23 @@ export function NotificationToast() {
       if (!seenNotifications.has(latestNotification.id)) {
         setSeenNotifications(prev => new Set(prev).add(latestNotification.id));
         
-        const isDoctorRoute = location.pathname.includes('/doctor') || location.pathname.includes('/admin');
         const isDoctorNotification = latestNotification.title.includes('Novo Paciente') || latestNotification.title.includes('Nova Mensagem');
+        const isPatientNotification = latestNotification.title.includes('Sua vez chegou') || latestNotification.title.includes('Aviso do Médico');
         
-        // Only show doctor-specific notifications if the user is currently on the doctor/admin route
-        if (isDoctorNotification && !isDoctorRoute) {
-           return;
+        // Only show doctor-specific notifications if the user is currently on the doctor/psychologist/admin route
+        if (isDoctorNotification && !isProfessionalRoute) {
+          return;
+        }
+        // Never show patient-specific notifications ('Sua vez chegou!') when on the doctor/psychologist/admin route
+        if (isPatientNotification && isProfessionalRoute) {
+          return;
         }
 
-        // Do not show toasts for notifications older than 1 hour on app reload
+        // Do not show toasts for notifications older than 30 seconds
         const notifDate = new Date(latestNotification.date).getTime();
         const now = Date.now();
         if (now - notifDate > 30 * 1000) {
-            return;
+          return;
         }
 
         setVisibleNotification(latestNotification);
@@ -111,7 +129,7 @@ export function NotificationToast() {
         return () => clearTimeout(timer);
       }
     }
-  }, [notifications, seenNotifications, location.pathname]);
+  }, [notifications, seenNotifications, isProfessionalRoute]);
 
   return (
     <AnimatePresence>

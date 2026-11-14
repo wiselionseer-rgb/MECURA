@@ -1724,11 +1724,8 @@ export function DoctorDashboardScreen() {
 
   useEffect(() => {
     const currentUnreadCount = queue.filter(p => p.hasUnread).length;
-    if (currentUnreadCount > prevUnreadCount) {
-      playNotificationSound();
-    }
     setPrevUnreadCount(currentUnreadCount);
-  }, [queue, prevUnreadCount]);
+  }, [queue]);
 
   useEffect(() => {
     const unsubscribeQueue = subscribeToQueue();
@@ -1836,6 +1833,9 @@ export function DoctorDashboardScreen() {
 
   const handleStartConsultation = async (patient: any) => {
     console.log("Starting consultation for:", patient);
+    if (currentPatient?.id !== patient.id) {
+      useStore.setState({ activeConsultationId: patient.id, messages: [] });
+    }
     
     let enrichedPatient = { ...patient };
     // Fetch answers and real profile data from users, queue, and active_consultations collections
@@ -1943,7 +1943,7 @@ export function DoctorDashboardScreen() {
       if (qd) {
         if (!enrichedPatient.cpf && qd.cpf) enrichedPatient.cpf = qd.cpf;
         if (!enrichedPatient.birthDate && qd.birthDate) enrichedPatient.birthDate = qd.birthDate;
-        if (qd.greetingSent || qd.initialGreetingSent || qd.status === 'in-consultation' || qd.status === 'finished') {
+        if (qd.greetingSent || qd.initialGreetingSent || qd.status === 'finished') {
           enrichedPatient.greetingSent = true;
           enrichedPatient.initialGreetingSent = true;
         }
@@ -2034,8 +2034,8 @@ export function DoctorDashboardScreen() {
     const alreadyGreetedInRef = greetedPatientsRef.current.has(patient.id);
     const alreadyGreetedInPatient = !!(patient.greetingSent || enrichedPatient.greetingSent || (patient as any).initialGreetingSent || enrichedPatient.initialGreetingSent);
 
-    // If patient is not in 'waiting' status OR already greeted anywhere, strictly skip
-    if (patient.status === 'waiting' && !alreadyGreetedInStorage && !alreadyGreetedInRef && !alreadyGreetedInPatient) {
+    // Send the single initial greeting if patient has not been greeted yet
+    if ((patient.status === 'waiting' || patient.status === 'in-consultation') && !alreadyGreetedInStorage && !alreadyGreetedInRef && !alreadyGreetedInPatient) {
       // Immediately flag in memory, storage and Firestore to prevent race conditions when doctor switches or leaves chat
       greetedPatientsRef.current.add(patient.id);
       if (typeof window !== 'undefined') {
@@ -2048,23 +2048,29 @@ export function DoctorDashboardScreen() {
 
       setTimeout(async () => {
         try {
-          // Double-check Firestore messages to ensure NO doctor message was ever sent before
+          const pFirstName = (enrichedPatient.patientName || patient.patientName || 'Paciente').trim().split(/\s+/)[0] || 'Paciente';
+          const pFirstLower = pFirstName.toLowerCase();
+
+          // Double-check Firestore messages to ensure NO valid doctor message for THIS patient was sent before
           const msgsRef = collection(db, 'active_consultations', patient.id, 'messages');
           const snap = await getDocs(msgsRef);
           const hasExistingDoctorMessage = !snap.empty && snap.docs.some(d => {
             const data = d.data();
-            return data.sender === 'doctor' || (data.text && typeof data.text === 'string' && data.text.includes('sou o Dr. Guilherme'));
+            const txt = typeof data.text === 'string' ? data.text : '';
+            if (txt.includes('🔔 SUA VEZ CHEGOU!')) return false;
+            if (txt.includes('sou o Dr. Guilherme. Analisei')) {
+              const m = txt.match(/^Olá\s+([^,]+),\s*sou o Dr\. Guilherme/i);
+              const greetedFirst = m?.[1]?.trim().split(/\s+/)[0]?.toLowerCase() || '';
+              if (pFirstLower !== 'paciente' && greetedFirst && greetedFirst !== 'paciente' && greetedFirst !== pFirstLower) {
+                return false;
+              }
+              return true;
+            }
+            return data.sender === 'doctor';
           });
 
           if (hasExistingDoctorMessage) {
             console.log("[Auto-Greeting] Patient already has doctor message in Firestore. Skipping duplicate greeting.");
-            return;
-          }
-
-          // Double check local store messages as well
-          const currentStoreMsgs = useStore.getState().messages;
-          if (currentStoreMsgs.some(m => m.sender === 'doctor' || (m.text && typeof m.text === 'string' && m.text.includes('sou o Dr. Guilherme')))) {
-            console.log("[Auto-Greeting] Doctor message already exists in local store. Skipping duplicate greeting.");
             return;
           }
 
@@ -2073,60 +2079,32 @@ export function DoctorDashboardScreen() {
             ? rawObjectives.join(", ") 
             : "";
             
-          const pFirstName = (enrichedPatient.patientName || patient.patientName || 'Paciente').split(' ')[0];
           const greetingMsg = objectivesStr
             ? `Olá ${pFirstName}, sou o Dr. Guilherme. Analisei seu histórico e sua queixa de ${objectivesStr}. Como você está se sentindo hoje?`
             : `Olá ${pFirstName}, sou o Dr. Guilherme. Analisei o seu histórico de sintomas e objetivos de tratamento. Como você está se sentindo hoje?`;
           
           await addMessage({
+            id: `initial_greeting_${patient.id}`,
             text: greetingMsg,
             sender: 'doctor',
             type: 'text'
-          }, patient.id);
+          } as any, patient.id);
         } catch (err) {
           console.warn("[Auto-Greeting] Error checking/sending initial greeting:", err);
         }
-      }, 1000);
+      }, 600);
     }
   };
 
   const handleNotifyNext = async (patient: any) => {
     try {
-      // Immediately update local store queue so patient leaves 'waiting' queue
-      useStore.setState((state) => ({
-        queue: state.queue.map(p => p.id === patient.id ? { ...p, status: 'in-consultation', hasUnread: false } : p)
-      }));
-
-      await updateDoc(doc(db, 'queue', patient.id), {
-        status: 'in-consultation',
-        isAlerted: Date.now(),
-        hasUnread: false
-      }).catch(async () => {
-        await setDoc(doc(db, 'queue', patient.id), { status: 'in-consultation', isAlerted: Date.now() }, { merge: true });
-      });
-
-      await setDoc(doc(db, 'users', patient.id), {
-        inQueue: false,
-        consultationStatus: 'in-consultation',
-        consultationActive: true,
-        lastUpdated: new Date().toISOString()
-      }, { merge: true }).catch(() => {});
-
-      fetch('/api/queue/update-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientId: patient.id, status: 'in-consultation', hasUnread: false })
-      }).catch(() => {});
-
-      startConsultation(patient.id);
-      subscribeToMessages(patient.id);
-      setCurrentPatient(patient);
+      await handleStartConsultation(patient);
 
       await setDoc(doc(db, 'notifications', patient.id), {
         text: "O Dr. Guilherme já está pronto para te atender! Entre na sala de consulta.",
         timestamp: new Date().toISOString(),
         type: 'next'
-      });
+      }).catch(() => {});
 
       triggerBackgroundPush(
         patient.id,
@@ -2135,16 +2113,9 @@ export function DoctorDashboardScreen() {
         '/chat'
       ).catch(() => {});
 
-      await addMessage({
-        text: "🔔 SUA VEZ CHEGOU! O Dr. Guilherme já está na sala de consulta aguardando você.",
-        sender: 'doctor',
-        type: 'text'
-      }, patient.id);
-
       showActionToast(`Chamada enviada para ${patient.patientName}: Paciente puxado para consulta!`);
     } catch (error) {
       console.error("Error sending notification", error);
-      alert("Erro ao enviar notificação.");
     }
   };
 
@@ -6727,13 +6698,6 @@ Priorize opções GreenBudzCBD (Calm Vibe Oil 6000mg, Full Balance Oil 3000mg, D
                           'O médico está te chamando no consultório agora. Clique para abrir.',
                           '/chat'
                         ).catch(() => {});
-                        
-                        // 4. Send an automated chat message that will trigger their UI
-                        await addMessage({
-                          text: "🔔 SUA VEZ CHEGOU! O médico está te chamando no consultório agora.",
-                          sender: 'doctor',
-                          type: 'text'
-                        }, targetPatient.id);
 
                         showActionToast(`Chamada enviada para ${targetPatient.patientName || 'o paciente'}! Paciente puxado para consulta.`);
                       } catch (e) {
