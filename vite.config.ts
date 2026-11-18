@@ -23,6 +23,8 @@ export default defineConfig(({mode}) => {
     build: {
       copyPublicDir: false,
       sourcemap: false,
+      reportCompressedSize: false,
+      minify: 'esbuild',
       chunkSizeWarningLimit: 3000,
       rollupOptions: {
         maxParallelFileOps: 2,

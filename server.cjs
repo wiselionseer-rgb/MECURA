@@ -54,7 +54,6 @@ var firebase_applet_config_default = {
 };
 
 // server.ts
-var import_genai = require("@google/genai");
 import_dotenv.default.config();
 var firebaseApp = (0, import_app.initializeApp)(firebase_applet_config_default);
 var db = (0, import_lite.getFirestore)(firebaseApp, firebase_applet_config_default.firestoreDatabaseId);
@@ -105,8 +104,12 @@ function startServer() {
   console.log("CWD:", process.cwd());
   console.log("-----------------------------------------");
   const UPLOADS_DIR = import_node_path.default.join(process.cwd(), "uploads");
-  if (!import_node_fs.default.existsSync(UPLOADS_DIR)) {
-    import_node_fs.default.mkdirSync(UPLOADS_DIR, { recursive: true });
+  try {
+    if (!import_node_fs.default.existsSync(UPLOADS_DIR)) {
+      import_node_fs.default.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+  } catch (dirErr) {
+    console.warn("[UPLOADS] N\xE3o foi poss\xEDvel criar pasta uploads:", dirErr);
   }
   app.post("/api/upload", async (req, res) => {
     try {
@@ -1887,7 +1890,8 @@ ${prompt}`);
     const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
       try {
-        const ai = new import_genai.GoogleGenAI({
+        const { GoogleGenAI } = await Promise.resolve().then(() => __toESM(require("@google/genai")));
+        const ai = new GoogleGenAI({
           apiKey,
           httpOptions: {
             headers: {
@@ -2023,59 +2027,17 @@ ${prompt}`);
     if (publicPath) {
       app.use(import_express.default.static(publicPath, { index: false }));
     }
-    let bgBuildTriggered = false;
-    const ensureFrontendBuiltInBackground = () => {
-      if (bgBuildTriggered) return;
-      if (candidateDistDirs.some(isCompiledHtmlDir)) return;
-      bgBuildTriggered = true;
-      try {
-        const { spawn } = require("node:child_process");
-        const viteCli = import_node_path.default.join(process.cwd(), "node_modules", "vite", "bin", "vite.js");
-        if (import_node_fs.default.existsSync(viteCli)) {
-          console.log("[SERVER] Starting low-memory background Vite build...");
-          const child = spawn(process.execPath, ["--max-old-space-size=1536", "--v8-pool-size=1", viteCli, "build"], {
-            cwd: process.cwd(),
-            env: {
-              ...process.env,
-              RAYON_NUM_THREADS: "1",
-              TOKIO_WORKER_THREADS: "1",
-              UV_THREADPOOL_SIZE: "1",
-              GOMAXPROCS: "1",
-              ESBUILD_MAX_THREADS: "1"
-            },
-            stdio: "inherit"
-          });
-          child.on("exit", (code) => {
-            console.log(`[SERVER] Background Vite build exited with code ${code}`);
-            if (code !== 0) bgBuildTriggered = false;
-          });
-        }
-      } catch (e) {
-        console.warn("[SERVER] Background build error:", e);
-        bgBuildTriggered = false;
-      }
-    };
     app.get("*", (req, res) => {
       const activeDistDir = candidateDistDirs.find(isCompiledHtmlDir);
       if (activeDistDir) {
         return res.sendFile(import_node_path.default.join(activeDistDir, "index.html"));
       }
-      ensureFrontendBuiltInBackground();
-      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Iniciando plataforma Mecura...</body></html>");
+      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Mecura Med API Online</body></html>");
     });
-    const isLsNode = process.argv.some((a) => a.includes("lsnode")) || Boolean(process.env.LSNODE_ROOT || process.env.PASSENGER_APP_ENV);
-    const isNumericPort = /^\d+$/.test(String(PORT));
-    if (!isLsNode && isNumericPort) {
-      app.listen(Number(PORT), "0.0.0.0", () => {
-        console.log(`Production server running on 0.0.0.0:${PORT}`);
-        ensureFrontendBuiltInBackground();
-      });
-    } else {
-      app.listen(PORT, () => {
-        console.log(`Production server running on port/socket ${PORT}`);
-        ensureFrontendBuiltInBackground();
-      });
-    }
+    const listenPort = /^\d+$/.test(String(PORT)) ? Number(PORT) : PORT;
+    app.listen(listenPort, () => {
+      console.log(`Production server running on port/socket ${listenPort}`);
+    });
   }
 }
 startServer();

@@ -51,8 +51,8 @@ if (!isAiStudio) {
   if (isCompiledIndex(distIndex) && (fs.existsSync(rootServer) || fs.existsSync(distServer) || fs.existsSync(prodBundleServer))) {
     const validServerSrc = [rootServer, prodBundleServer, distServer].find(p => fs.existsSync(p));
     if (validServerSrc) {
-      if (!fs.existsSync(distServer)) fs.copyFileSync(validServerSrc, distServer);
-      if (!fs.existsSync(rootServer)) fs.copyFileSync(validServerSrc, rootServer);
+      if (validServerSrc !== distServer) fs.copyFileSync(validServerSrc, distServer);
+      if (validServerSrc !== rootServer) fs.copyFileSync(validServerSrc, rootServer);
     }
     console.log('✅ Pre-built production bundle verified — skipping Vite build on production server.');
     process.exit(0);

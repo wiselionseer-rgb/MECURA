@@ -7,7 +7,6 @@ import dotenv from 'dotenv';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where, addDoc } from "firebase/firestore/lite";
 import firebaseConfig from "./firebase-applet-config.json";
-import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
@@ -74,8 +73,12 @@ function startServer() {
   // API Routes
 
   const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+  } catch (dirErr) {
+    console.warn("[UPLOADS] Não foi possível criar pasta uploads:", dirErr);
   }
 
   // Upload endpoint: accepts file base64, saves to uploads/ and Firestore for durability
@@ -2094,7 +2097,8 @@ Regras:
 
     if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
       try {
-        // Initialize the modern @google/genai SDK
+        // Lazy-load @google/genai so startup stays lightweight and Node-version resilient
+        const { GoogleGenAI } = await import("@google/genai");
         const ai = new GoogleGenAI({
           apiKey,
           httpOptions: {
@@ -2254,62 +2258,19 @@ Regras:
       app.use(express.static(publicPath, { index: false }));
     }
 
-    let bgBuildTriggered = false;
-    const ensureFrontendBuiltInBackground = () => {
-      if (bgBuildTriggered) return;
-      if (candidateDistDirs.some(isCompiledHtmlDir)) return;
-      bgBuildTriggered = true;
-      try {
-        const { spawn } = require("node:child_process");
-        const viteCli = path.join(process.cwd(), "node_modules", "vite", "bin", "vite.js");
-        if (fs.existsSync(viteCli)) {
-          console.log("[SERVER] Starting low-memory background Vite build...");
-          const child = spawn(process.execPath, ["--max-old-space-size=1536", "--v8-pool-size=1", viteCli, "build"], {
-            cwd: process.cwd(),
-            env: {
-              ...process.env,
-              RAYON_NUM_THREADS: "1",
-              TOKIO_WORKER_THREADS: "1",
-              UV_THREADPOOL_SIZE: "1",
-              GOMAXPROCS: "1",
-              ESBUILD_MAX_THREADS: "1"
-            },
-            stdio: "inherit"
-          });
-          child.on("exit", (code: number) => {
-            console.log(`[SERVER] Background Vite build exited with code ${code}`);
-            if (code !== 0) bgBuildTriggered = false;
-          });
-        }
-      } catch (e) {
-        console.warn("[SERVER] Background build error:", e);
-        bgBuildTriggered = false;
-      }
-    };
-
     app.get("*", (req, res) => {
       const activeDistDir = candidateDistDirs.find(isCompiledHtmlDir);
       if (activeDistDir) {
         return res.sendFile(path.join(activeDistDir, "index.html"));
       }
-      ensureFrontendBuiltInBackground();
-      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Iniciando plataforma Mecura...</body></html>");
+      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Mecura Med API Online</body></html>");
     });
 
-    // Synchronous listen supporting both LiteSpeed (lsnode.js) sockets and standard 0.0.0.0 container ports
-    const isLsNode = process.argv.some(a => a.includes("lsnode")) || Boolean(process.env.LSNODE_ROOT || process.env.PASSENGER_APP_ENV);
-    const isNumericPort = /^\d+$/.test(String(PORT));
-    if (!isLsNode && isNumericPort) {
-      app.listen(Number(PORT), "0.0.0.0", () => {
-        console.log(`Production server running on 0.0.0.0:${PORT}`);
-        ensureFrontendBuiltInBackground();
-      });
-    } else {
-      app.listen(PORT, () => {
-        console.log(`Production server running on port/socket ${PORT}`);
-        ensureFrontendBuiltInBackground();
-      });
-    }
+    // Listen with 2-arg signature (port/socket, cb): works identically with LiteSpeed lsnode.js, Phusion Passenger, and dual-stack proxy containers
+    const listenPort = /^\d+$/.test(String(PORT)) ? Number(PORT) : PORT;
+    app.listen(listenPort, () => {
+      console.log(`Production server running on port/socket ${listenPort}`);
+    });
   }
 }
 
