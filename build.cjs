@@ -46,15 +46,21 @@ function isCompiledIndex(filePath) {
   }
 }
 
-function ensureServerBundle() {
-  const esbuildBin = path.join(cwd, 'node_modules', 'esbuild', 'bin', 'esbuild');
-  const esbuildCmd = fs.existsSync(esbuildBin)
-    ? `"${process.execPath}" --max-old-space-size=512 --v8-pool-size=1 "${esbuildBin}" server.ts --bundle --platform=node --target=node20 --format=cjs --packages=external --outfile=server.cjs`
-    : 'npx esbuild server.ts --bundle --platform=node --target=node20 --format=cjs --packages=external --outfile=server.cjs';
-  execSync(esbuildCmd, { stdio: 'inherit', env: { ...process.env } });
+async function ensureServerBundle() {
+  const esbuild = require('esbuild');
+  await esbuild.build({
+    entryPoints: [path.join(cwd, 'server.ts')],
+    bundle: true,
+    platform: 'node',
+    target: 'node20',
+    format: 'cjs',
+    packages: 'external',
+    outfile: rootServer,
+  });
   if (fs.existsSync(rootServer)) {
     fs.copyFileSync(rootServer, distServer);
   }
+  console.log('✅ Server bundle built: server.cjs');
 }
 
 async function buildFrontendWithEsbuild() {
@@ -169,7 +175,7 @@ async function run() {
 
     try {
       console.log('⚙️ [1/2] Building backend (esbuild + firestore/lite)...');
-      ensureServerBundle();
+      await ensureServerBundle();
       console.log('🔨 [2/2] Building frontend (low-memory esbuild + Tailwind v4 for Hostinger)...');
       await buildFrontendWithEsbuild();
       console.log('✅ Hostinger production build completed successfully.');
@@ -193,7 +199,7 @@ async function run() {
 
   try {
     console.log('⚙️ [1/2] Building backend (esbuild + firestore/lite)...');
-    ensureServerBundle();
+    await ensureServerBundle();
 
     console.log('🔨 [2/2] Building frontend (Vite with low-thread CloudLinux settings)...');
     const viteBin = path.join(cwd, 'node_modules', 'vite', 'bin', 'vite.js');
