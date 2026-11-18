@@ -4,11 +4,15 @@ import path from "node:path";
 import fs from "node:fs";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
-import { db } from "./src/firebase";
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where, addDoc } from "firebase/firestore";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where, addDoc } from "firebase/firestore/lite";
+import firebaseConfig from "./firebase-applet-config.json";
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 process.on("uncaughtException", (err) => {
   console.error("[SERVER] Uncaught Exception (prevented crash):", err);
@@ -2090,7 +2094,6 @@ Regras:
 
     if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
       try {
-        const { GoogleGenAI } = await import("@google/genai");
         // Initialize the modern @google/genai SDK
         const ai = new GoogleGenAI({
           apiKey,
@@ -2193,7 +2196,7 @@ Regras:
   });
 
   // Only use Vite dev middleware when explicitly running `tsx server.ts` in development.
-  // When running from compiled `dist/server.cjs` or `server.js` (e.g. on Hostinger), always serve static `dist/` and `public/` synchronously.
+  // When running from compiled `dist/server.cjs` or `server.js` (e.g. on Hostinger), always serve static `dist/` or `prod_bundle/` and `public/` synchronously.
   const isDevTsx = process.env.NODE_ENV !== "production" && process.argv.some(arg => arg.endsWith("server.ts"));
 
   if (isDevTsx) {
@@ -2213,10 +2216,23 @@ Regras:
     const candidateDistDirs = [
       path.join(process.cwd(), "dist"),
       path.join(baseDir, "dist"),
+      path.join(process.cwd(), "prod_bundle"),
+      path.join(baseDir, "prod_bundle"),
+      path.join(baseDir, "..", "prod_bundle"),
       baseDir,
       process.cwd()
     ];
-    const distPath = candidateDistDirs.find(dir => fs.existsSync(path.join(dir, "index.html"))) || path.join(process.cwd(), "dist");
+    const isCompiledHtmlDir = (dir: string) => {
+      const idxPath = path.join(dir, "index.html");
+      if (!fs.existsSync(idxPath)) return false;
+      try {
+        const html = fs.readFileSync(idxPath, "utf-8");
+        return !html.includes("/src/main.tsx");
+      } catch {
+        return false;
+      }
+    };
+    const distPath = candidateDistDirs.find(isCompiledHtmlDir) || path.join(process.cwd(), "prod_bundle");
 
     const candidatePublicDirs = [
       path.join(process.cwd(), "public"),

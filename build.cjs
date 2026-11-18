@@ -5,24 +5,49 @@ const path = require('node:path');
 const cwd = process.cwd();
 const isAiStudio = cwd === '/app/applet' || process.env.FORCE_BUILD === '1';
 const distDir = path.join(cwd, 'dist');
+const prodBundleDir = path.join(cwd, 'prod_bundle');
 const distIndex = path.join(distDir, 'index.html');
+const prodBundleIndex = path.join(prodBundleDir, 'index.html');
 const distServer = path.join(distDir, 'server.cjs');
+const prodBundleServer = path.join(prodBundleDir, 'server.cjs');
 const rootServer = path.join(cwd, 'server.cjs');
+
+function copyDirRecursive(src, dest) {
+  if (!fs.existsSync(src)) return;
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
 
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
-// On Hostinger or external production servers, if the pre-built dist/index.html and server.cjs
-// are already present from Git, skip the heavy Vite build so CloudLinux LVE never runs out of RAM/threads.
-if (!isAiStudio && fs.existsSync(distIndex) && (fs.existsSync(distServer) || fs.existsSync(rootServer))) {
-  if (!fs.existsSync(distServer) && fs.existsSync(rootServer)) {
-    fs.copyFileSync(rootServer, distServer);
-  } else if (fs.existsSync(distServer) && !fs.existsSync(rootServer)) {
-    fs.copyFileSync(distServer, rootServer);
+// On Hostinger or external production servers, restore dist/ from prod_bundle/ if needed
+// and skip the heavy Vite/esbuild compilation so CloudLinux LVE never hits RAM/thread limits.
+if (!isAiStudio) {
+  if (!fs.existsSync(distIndex) && fs.existsSync(prodBundleIndex)) {
+    copyDirRecursive(prodBundleDir, distDir);
   }
-  console.log('✅ Pre-built production bundle verified in dist/ — skipping heavy Vite build on production server.');
-  process.exit(0);
+  if (fs.existsSync(distIndex) && (fs.existsSync(distServer) || fs.existsSync(rootServer) || fs.existsSync(prodBundleServer))) {
+    const validServerSrc = [rootServer, prodBundleServer, distServer].find(p => fs.existsSync(p));
+    if (validServerSrc) {
+      if (!fs.existsSync(distServer)) fs.copyFileSync(validServerSrc, distServer);
+      if (!fs.existsSync(rootServer)) fs.copyFileSync(validServerSrc, rootServer);
+    }
+    console.log('✅ Pre-built production bundle verified in dist/ & prod_bundle/ — skipping heavy build on production server.');
+    process.exit(0);
+  }
 }
 
 // Strict single-thread / low-memory settings so CloudLinux LVE never hits NPROC or RAM limits
@@ -35,30 +60,32 @@ const env = {
 };
 
 try {
-  console.log('⚙️ [1/2] Building backend (esbuild)...');
+  console.log('⚙️ [1/3] Building self-contained backend (esbuild + firestore/lite)...');
   execSync(
-    'npx esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs',
+    'npx esbuild server.ts --bundle --minify --platform=node --target=node18 --format=cjs --external:vite --outfile=server.cjs',
     { stdio: 'inherit', env }
   );
-  if (fs.existsSync(distServer)) {
-    fs.copyFileSync(distServer, rootServer);
-  }
 
-  console.log('🔨 [2/2] Building frontend (Vite)...');
+  console.log('🔨 [2/3] Building frontend (Vite)...');
   execSync('npx vite build', { stdio: 'inherit', env });
 
-  // Re-ensure dist/server.cjs exists after vite build (since vite build cleans dist/)
-  if (fs.existsSync(rootServer) && !fs.existsSync(distServer)) {
+  // Copy self-contained server.cjs into dist/server.cjs
+  if (fs.existsSync(rootServer)) {
     fs.copyFileSync(rootServer, distServer);
   }
 
-  console.log('✅ Build completed successfully.');
+  console.log('📦 [3/3] Mirroring dist/ into persistent prod_bundle/ for Hostinger deployment...');
+  if (fs.existsSync(prodBundleDir)) {
+    fs.rmSync(prodBundleDir, { recursive: true, force: true });
+  }
+  copyDirRecursive(distDir, prodBundleDir);
+
+  console.log('✅ Build completed successfully (dist/ + prod_bundle/ + server.cjs ready).');
 } catch (err) {
   console.error('❌ Build error:', err.message || err);
-  if (!fs.existsSync(distServer) && fs.existsSync(rootServer)) {
+  if (fs.existsSync(prodBundleIndex) && !fs.existsSync(distIndex)) {
     try {
-      if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
-      fs.copyFileSync(rootServer, distServer);
+      copyDirRecursive(prodBundleDir, distDir);
     } catch (_) {}
   }
   process.exit(1);

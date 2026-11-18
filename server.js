@@ -3,17 +3,20 @@ const fs = require('node:fs');
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
-const distServerPath = path.join(__dirname, 'dist', 'server.cjs');
 const rootServerCjsPath = path.join(__dirname, 'server.cjs');
+const prodBundleServerPath = path.join(__dirname, 'prod_bundle', 'server.cjs');
+const distServerPath = path.join(__dirname, 'dist', 'server.cjs');
 
 let loadedApp = null;
 
-if (fs.existsSync(distServerPath)) {
-  loadedApp = require(distServerPath);
-} else if (fs.existsSync(rootServerCjsPath)) {
+if (fs.existsSync(rootServerCjsPath)) {
   loadedApp = require(rootServerCjsPath);
+} else if (fs.existsSync(prodBundleServerPath)) {
+  loadedApp = require(prodBundleServerPath);
+} else if (fs.existsSync(distServerPath)) {
+  loadedApp = require(distServerPath);
 } else {
-  console.error('❌ Bundle do servidor (dist/server.cjs ou server.cjs) não encontrado.');
+  console.error('❌ Bundle do servidor (server.cjs, prod_bundle/server.cjs ou dist/server.cjs) não encontrado.');
   process.exit(1);
 }
 
