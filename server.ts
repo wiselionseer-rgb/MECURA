@@ -2232,7 +2232,17 @@ Regras:
         return false;
       }
     };
-    const distPath = candidateDistDirs.find(isCompiledHtmlDir) || path.join(process.cwd(), "prod_bundle");
+
+    // Mount static middleware for all candidate build directories and public directory
+    const uniqueStaticDirs = Array.from(new Set([
+      path.join(process.cwd(), "dist"),
+      path.join(baseDir, "dist"),
+      path.join(process.cwd(), "prod_bundle"),
+      path.join(baseDir, "prod_bundle")
+    ]));
+    uniqueStaticDirs.forEach(dir => {
+      app.use(express.static(dir, { index: false }));
+    });
 
     const candidatePublicDirs = [
       path.join(process.cwd(), "public"),
@@ -2240,24 +2250,66 @@ Regras:
       path.join(baseDir, "..", "public")
     ];
     const publicPath = candidatePublicDirs.find(dir => fs.existsSync(dir));
-
-    app.use(express.static(distPath, { index: false }));
     if (publicPath) {
       app.use(express.static(publicPath, { index: false }));
     }
 
-    app.get("*", (req, res) => {
-      const indexFile = path.join(distPath, "index.html");
-      if (fs.existsSync(indexFile)) {
-        return res.sendFile(indexFile);
+    let bgBuildTriggered = false;
+    const ensureFrontendBuiltInBackground = () => {
+      if (bgBuildTriggered) return;
+      if (candidateDistDirs.some(isCompiledHtmlDir)) return;
+      bgBuildTriggered = true;
+      try {
+        const { spawn } = require("node:child_process");
+        const viteCli = path.join(process.cwd(), "node_modules", "vite", "bin", "vite.js");
+        if (fs.existsSync(viteCli)) {
+          console.log("[SERVER] Starting low-memory background Vite build...");
+          const child = spawn(process.execPath, ["--max-old-space-size=1536", "--v8-pool-size=1", viteCli, "build"], {
+            cwd: process.cwd(),
+            env: {
+              ...process.env,
+              RAYON_NUM_THREADS: "1",
+              TOKIO_WORKER_THREADS: "1",
+              UV_THREADPOOL_SIZE: "1",
+              GOMAXPROCS: "1",
+              ESBUILD_MAX_THREADS: "1"
+            },
+            stdio: "inherit"
+          });
+          child.on("exit", (code: number) => {
+            console.log(`[SERVER] Background Vite build exited with code ${code}`);
+            if (code !== 0) bgBuildTriggered = false;
+          });
+        }
+      } catch (e) {
+        console.warn("[SERVER] Background build error:", e);
+        bgBuildTriggered = false;
       }
-      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='2'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Carregando Mecura...</body></html>");
+    };
+
+    app.get("*", (req, res) => {
+      const activeDistDir = candidateDistDirs.find(isCompiledHtmlDir);
+      if (activeDistDir) {
+        return res.sendFile(path.join(activeDistDir, "index.html"));
+      }
+      ensureFrontendBuiltInBackground();
+      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Iniciando plataforma Mecura...</body></html>");
     });
 
-    // Synchronous listen for LiteSpeed (lsnode.js) and standard Node environments
-    app.listen(PORT, () => {
-      console.log(`Production server running on port/socket ${PORT} (serving from ${distPath})`);
-    });
+    // Synchronous listen supporting both LiteSpeed (lsnode.js) sockets and standard 0.0.0.0 container ports
+    const isLsNode = process.argv.some(a => a.includes("lsnode")) || Boolean(process.env.LSNODE_ROOT || process.env.PASSENGER_APP_ENV);
+    const isNumericPort = /^\d+$/.test(String(PORT));
+    if (!isLsNode && isNumericPort) {
+      app.listen(Number(PORT), "0.0.0.0", () => {
+        console.log(`Production server running on 0.0.0.0:${PORT}`);
+        ensureFrontendBuiltInBackground();
+      });
+    } else {
+      app.listen(PORT, () => {
+        console.log(`Production server running on port/socket ${PORT}`);
+        ensureFrontendBuiltInBackground();
+      });
+    }
   }
 }
 

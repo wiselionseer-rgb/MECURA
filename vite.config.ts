@@ -25,14 +25,16 @@ export default defineConfig(({mode}) => {
       sourcemap: false,
       chunkSizeWarningLimit: 3000,
       rollupOptions: {
+        maxParallelFileOps: 2,
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-pdf': ['jspdf', 'html2pdf.js'],
-            'vendor-icons': ['lucide-react'],
-            'vendor-firebase': ['firebase/app', 'firebase/firestore', 'firebase/auth'],
-            'vendor-charts': ['recharts'],
-            'vendor-motion': ['motion', 'remotion', '@remotion/player'],
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            if (id.includes('firebase')) return 'vendor-firebase';
+            if (id.includes('jspdf') || id.includes('html2pdf') || id.includes('html2canvas')) return 'vendor-pdf';
+            if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
+            if (id.includes('remotion') || id.includes('motion') || id.includes('framer-motion')) return 'vendor-motion';
+            return 'vendor';
           },
         },
       },

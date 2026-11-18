@@ -29,64 +29,89 @@ function copyDirRecursive(src, dest) {
   }
 }
 
+function isCompiledIndex(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    const html = fs.readFileSync(filePath, 'utf-8');
+    return !html.includes('/src/main.tsx');
+  } catch {
+    return false;
+  }
+}
+
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
-// On Hostinger or external production servers, restore dist/ from prod_bundle/ if needed
-// and skip the heavy Vite/esbuild compilation so CloudLinux LVE never hits RAM/thread limits.
+// On Hostinger or external production servers, restore dist/ from prod_bundle/ if available
 if (!isAiStudio) {
-  if (!fs.existsSync(distIndex) && fs.existsSync(prodBundleIndex)) {
+  if (!isCompiledIndex(distIndex) && isCompiledIndex(prodBundleIndex)) {
     copyDirRecursive(prodBundleDir, distDir);
   }
-  if (fs.existsSync(distIndex) && (fs.existsSync(distServer) || fs.existsSync(rootServer) || fs.existsSync(prodBundleServer))) {
+  if (isCompiledIndex(distIndex) && (fs.existsSync(rootServer) || fs.existsSync(distServer) || fs.existsSync(prodBundleServer))) {
     const validServerSrc = [rootServer, prodBundleServer, distServer].find(p => fs.existsSync(p));
     if (validServerSrc) {
       if (!fs.existsSync(distServer)) fs.copyFileSync(validServerSrc, distServer);
       if (!fs.existsSync(rootServer)) fs.copyFileSync(validServerSrc, rootServer);
     }
-    console.log('✅ Pre-built production bundle verified in dist/ & prod_bundle/ — skipping heavy build on production server.');
+    console.log('✅ Pre-built production bundle verified — skipping Vite build on production server.');
     process.exit(0);
   }
 }
 
-// Strict single-thread / low-memory settings so CloudLinux LVE never hits NPROC or RAM limits
+// Strict single-thread settings so CloudLinux LVE (64-core host with 20 NPROC limit) never hits thread limits
 const env = {
   ...process.env,
   RAYON_NUM_THREADS: '1',
+  TOKIO_WORKER_THREADS: '1',
   UV_THREADPOOL_SIZE: '1',
   GOMAXPROCS: '1',
-  NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=1024',
+  ESBUILD_MAX_THREADS: '1',
+  NODE_OPTIONS: '--max-old-space-size=1536 --v8-pool-size=1',
 };
 
 try {
-  console.log('⚙️ [1/3] Building self-contained backend (esbuild + firestore/lite)...');
-  execSync(
-    'npx esbuild server.ts --bundle --minify --platform=node --target=node18 --format=cjs --external:vite --outfile=server.cjs',
-    { stdio: 'inherit', env }
-  );
-
-  console.log('🔨 [2/3] Building frontend (Vite)...');
-  execSync('npx vite build', { stdio: 'inherit', env });
-
-  // Copy self-contained server.cjs into dist/server.cjs
+  console.log('⚙️ [1/2] Building backend (esbuild + firestore/lite)...');
+  const esbuildBin = path.join(cwd, 'node_modules', 'esbuild', 'bin', 'esbuild');
+  const esbuildCmd = fs.existsSync(esbuildBin)
+    ? `"${process.execPath}" --max-old-space-size=512 --v8-pool-size=1 "${esbuildBin}" server.ts --bundle --platform=node --target=node18 --format=cjs --packages=external --outfile=server.cjs`
+    : 'npx esbuild server.ts --bundle --platform=node --target=node18 --format=cjs --packages=external --outfile=server.cjs';
+  execSync(esbuildCmd, { stdio: 'inherit', env });
   if (fs.existsSync(rootServer)) {
     fs.copyFileSync(rootServer, distServer);
   }
 
-  console.log('📦 [3/3] Mirroring dist/ into persistent prod_bundle/ for Hostinger deployment...');
+  console.log('🔨 [2/2] Building frontend (Vite with low-thread CloudLinux settings)...');
+  const viteBin = path.join(cwd, 'node_modules', 'vite', 'bin', 'vite.js');
+  const viteCmd = fs.existsSync(viteBin)
+    ? `"${process.execPath}" --max-old-space-size=1536 --v8-pool-size=1 "${viteBin}" build`
+    : 'npx vite build';
+  execSync(viteCmd, { stdio: 'inherit', env });
+
+  if (fs.existsSync(rootServer)) {
+    fs.copyFileSync(rootServer, distServer);
+  }
+
   if (fs.existsSync(prodBundleDir)) {
     fs.rmSync(prodBundleDir, { recursive: true, force: true });
   }
   copyDirRecursive(distDir, prodBundleDir);
 
-  console.log('✅ Build completed successfully (dist/ + prod_bundle/ + server.cjs ready).');
+  console.log('✅ Build completed successfully.');
 } catch (err) {
-  console.error('❌ Build error:', err.message || err);
-  if (fs.existsSync(prodBundleIndex) && !fs.existsSync(distIndex)) {
+  console.error('⚠️ Build warning/error:', err.message || err);
+  if (fs.existsSync(rootServer) && !fs.existsSync(distServer)) {
     try {
-      copyDirRecursive(prodBundleDir, distDir);
+      if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+      fs.copyFileSync(rootServer, distServer);
     } catch (_) {}
   }
-  process.exit(1);
+  // In AI Studio, fail on build errors so compile_applet catches any syntax error.
+  // On Hostinger (!isAiStudio), do not abort deployment with exit code 1; server.js will build in background after binding PORT.
+  if (isAiStudio) {
+    process.exit(1);
+  } else {
+    console.log('ℹ️ Continuing deployment; server.js will complete frontend build in background if needed.');
+    process.exit(0);
+  }
 }

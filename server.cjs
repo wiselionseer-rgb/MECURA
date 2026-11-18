@@ -38,11 +38,8 @@ var import_node_path = __toESM(require("node:path"));
 var import_node_fs = __toESM(require("node:fs"));
 var import_mercadopago = require("mercadopago");
 var import_dotenv = __toESM(require("dotenv"));
-
-// src/firebase.ts
 var import_app = require("firebase/app");
-var import_auth = require("firebase/auth");
-var import_firestore = require("firebase/firestore");
+var import_lite = require("firebase/firestore/lite");
 
 // firebase-applet-config.json
 var firebase_applet_config_default = {
@@ -56,42 +53,23 @@ var firebase_applet_config_default = {
   measurementId: ""
 };
 
-// src/firebase.ts
-var isBrowser = typeof window !== "undefined";
-var app = (0, import_app.initializeApp)(firebase_applet_config_default);
-var db = (0, import_firestore.getFirestore)(app, firebase_applet_config_default.firestoreDatabaseId);
-var auth = isBrowser ? (0, import_auth.getAuth)(app) : {};
-if (isBrowser) {
-  async function testConnection() {
-    try {
-      await (0, import_firestore.getDocFromServer)((0, import_firestore.doc)(db, "settings", "exchangeRate"));
-      console.log("Firestore connection successful");
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("the client is offline")) {
-        console.error("Please check your Firebase configuration. The client is offline.");
-      } else {
-        console.error("Firestore connection test error:", error);
-      }
-    }
-  }
-  testConnection();
-}
-
 // server.ts
-var import_firestore2 = require("firebase/firestore");
+var import_genai = require("@google/genai");
 import_dotenv.default.config();
+var firebaseApp = (0, import_app.initializeApp)(firebase_applet_config_default);
+var db = (0, import_lite.getFirestore)(firebaseApp, firebase_applet_config_default.firestoreDatabaseId);
 process.on("uncaughtException", (err) => {
   console.error("[SERVER] Uncaught Exception (prevented crash):", err);
 });
 process.on("unhandledRejection", (reason) => {
   console.error("[SERVER] Unhandled Rejection (prevented crash):", reason);
 });
-var app2 = (0, import_express.default)();
+var app = (0, import_express.default)();
 function startServer() {
   const PORT = process.env.PORT || 3e3;
-  app2.use(import_express.default.json({ limit: "50mb" }));
-  app2.use(import_express.default.urlencoded({ limit: "50mb", extended: true }));
-  app2.use((req, res, next) => {
+  app.use(import_express.default.json({ limit: "50mb" }));
+  app.use(import_express.default.urlencoded({ limit: "50mb", extended: true }));
+  app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
@@ -104,7 +82,7 @@ function startServer() {
     let token = process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
     if (!token || token === "123456" || token === "TEST_TOKEN") {
       try {
-        const snap = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "settings", "mercadopago"));
+        const snap = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "settings", "mercadopago"));
         if (snap.exists() && snap.data()?.accessToken) {
           token = snap.data().accessToken;
         }
@@ -130,7 +108,7 @@ function startServer() {
   if (!import_node_fs.default.existsSync(UPLOADS_DIR)) {
     import_node_fs.default.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
-  app2.post("/api/upload", async (req, res) => {
+  app.post("/api/upload", async (req, res) => {
     try {
       const { filename, data, type } = req.body;
       if (!data) {
@@ -146,7 +124,7 @@ function startServer() {
       const CHUNK_SIZE = 6e5;
       if (base64Data.length <= CHUNK_SIZE) {
         try {
-          await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "stored_files", uniqueFileName), {
+          await (0, import_lite.setDoc)((0, import_lite.doc)(db, "stored_files", uniqueFileName), {
             filename: uniqueFileName,
             originalName: filename || uniqueFileName,
             base64Data,
@@ -164,7 +142,7 @@ function startServer() {
           for (let i = 0; i < base64Data.length; i += CHUNK_SIZE) {
             chunks.push(base64Data.slice(i, i + CHUNK_SIZE));
           }
-          await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "stored_files", uniqueFileName), {
+          await (0, import_lite.setDoc)((0, import_lite.doc)(db, "stored_files", uniqueFileName), {
             filename: uniqueFileName,
             originalName: filename || uniqueFileName,
             chunkCount: chunks.length,
@@ -174,7 +152,7 @@ function startServer() {
           });
           await Promise.all(
             chunks.map(
-              (chunk, idx) => (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "stored_files", uniqueFileName, "chunks", String(idx)), {
+              (chunk, idx) => (0, import_lite.setDoc)((0, import_lite.doc)(db, "stored_files", uniqueFileName, "chunks", String(idx)), {
                 index: idx,
                 data: chunk
               })
@@ -199,7 +177,7 @@ function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
-  app2.get("/api/files/:filename", async (req, res) => {
+  app.get("/api/files/:filename", async (req, res) => {
     try {
       const safeFilename = import_node_path.default.basename(req.params.filename);
       const filePath = import_node_path.default.join(UPLOADS_DIR, safeFilename);
@@ -218,12 +196,12 @@ function startServer() {
         return res.sendFile(filePath);
       }
       try {
-        const fileDoc = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "stored_files", safeFilename));
+        const fileDoc = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "stored_files", safeFilename));
         if (fileDoc.exists()) {
           const fileData = fileDoc.data();
           let fullBase64 = fileData?.base64Data || "";
           if (!fullBase64 && fileData?.chunkCount && Number(fileData.chunkCount) > 0) {
-            const chunksSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.collection)(db, "stored_files", safeFilename, "chunks"));
+            const chunksSnap = await (0, import_lite.getDocs)((0, import_lite.collection)(db, "stored_files", safeFilename, "chunks"));
             if (!chunksSnap.empty) {
               const sortedChunks = chunksSnap.docs.map((d) => d.data()).sort((a, b) => Number(a.index || 0) - Number(b.index || 0));
               fullBase64 = sortedChunks.map((c) => c.data || "").join("");
@@ -258,13 +236,13 @@ function startServer() {
   } catch (vapidErr) {
     console.warn("[PUSH] Aviso ao configurar chaves VAPID:", vapidErr);
   }
-  app2.get("/api/health", (req, res) => {
+  app.get("/api/health", (req, res) => {
     res.status(200).json({ status: "ok", uptime: process.uptime() });
   });
-  app2.get("/api/vapid-public-key", (req, res) => {
+  app.get("/api/vapid-public-key", (req, res) => {
     res.send(vapidPublic);
   });
-  app2.post("/api/send-push", async (req, res) => {
+  app.post("/api/send-push", async (req, res) => {
     const { userId, title, body, url } = req.body;
     console.log("[PUSH] Request received for userId:", userId, "Title:", title);
     if (!userId) {
@@ -272,7 +250,7 @@ function startServer() {
       return res.status(400).json({ error: "No userId" });
     }
     try {
-      const userDoc = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "users", userId));
+      const userDoc = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "users", userId));
       if (!userDoc.exists()) {
         console.warn("[PUSH] User not found in DB:", userId);
         return res.status(404).json({ error: "User not found" });
@@ -435,7 +413,7 @@ function startServer() {
           viaReferralLink: metaViaLink
         } : {}
       };
-      await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "payments", String(payment.id)), paymentDoc, { merge: true });
+      await (0, import_lite.setDoc)((0, import_lite.doc)(db, "payments", String(payment.id)), paymentDoc, { merge: true });
       let targetPatientId = patientId;
       let resolvedPatientName = payerName;
       let existingAnswers = {};
@@ -449,7 +427,7 @@ function startServer() {
       if (!targetPatientId && isRealPatientEmail(payerEmail)) {
         try {
           const cleanMail = payerEmail.toLowerCase().trim();
-          const uSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.query)((0, import_firestore2.collection)(db, "users"), (0, import_firestore2.where)("email", "==", cleanMail)));
+          const uSnap = await (0, import_lite.getDocs)((0, import_lite.query)((0, import_lite.collection)(db, "users"), (0, import_lite.where)("email", "==", cleanMail)));
           if (!uSnap.empty) {
             targetPatientId = uSnap.docs[0].id;
             const uData = uSnap.docs[0].data();
@@ -467,7 +445,7 @@ function startServer() {
       }
       if (existingPhone === "" && targetPatientId) {
         try {
-          const userSnap = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "users", targetPatientId));
+          const userSnap = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "users", targetPatientId));
           if (userSnap.exists()) {
             const uData = userSnap.data();
             if (uData.name) resolvedPatientName = uData.name;
@@ -480,7 +458,7 @@ function startServer() {
           console.warn("[PAYMENT PROCESS] Erro ao buscar user:", err);
         }
       }
-      const queueDocRef = (0, import_firestore2.doc)(db, "queue", targetPatientId);
+      const queueDocRef = (0, import_lite.doc)(db, "queue", targetPatientId);
       const queuePayload = {
         id: targetPatientId,
         patientName: resolvedPatientName,
@@ -506,9 +484,9 @@ function startServer() {
         lastMessageText: resolvedQueueType === "psychologist" ? "Aguardando atendimento psicol\xF3gico" : allowDualChat ? "Plano Completo 360\xB0 (M\xE9dico + Psic\xF3logo) \u2014 Aguardando atendimento" : "Paciente aguardando atendimento m\xE9dico",
         lastMessageAt: (/* @__PURE__ */ new Date()).toISOString()
       };
-      await (0, import_firestore2.setDoc)(queueDocRef, queuePayload, { merge: true });
+      await (0, import_lite.setDoc)(queueDocRef, queuePayload, { merge: true });
       console.log(`[PAYMENT APPROVED] Paciente ${resolvedPatientName} (${targetPatientId}) colocado na fila de espera com plano ${resolvedPlan}!`);
-      await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "users", targetPatientId), {
+      await (0, import_lite.setDoc)((0, import_lite.doc)(db, "users", targetPatientId), {
         pagamento_consulta: true,
         pagamento_premium: isPrem,
         hasPaid: true,
@@ -533,7 +511,7 @@ function startServer() {
       }, { merge: true });
       if (metaCouponCode || metaCouponId) {
         try {
-          const couponsSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.collection)(db, "coupons"));
+          const couponsSnap = await (0, import_lite.getDocs)((0, import_lite.collection)(db, "coupons"));
           let couponDocId = metaCouponId;
           let couponData = null;
           couponsSnap.forEach((cDoc) => {
@@ -569,7 +547,7 @@ function startServer() {
               };
               const primaryIdent = payerEmail && payerEmail.includes("@") ? payerEmail.trim() : targetPatientId;
               const updatedUsedBy = Array.from(/* @__PURE__ */ new Set([...Array.isArray(couponData.usedBy) ? couponData.usedBy : [], primaryIdent]));
-              await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "coupons", couponDocId), {
+              await (0, import_lite.setDoc)((0, import_lite.doc)(db, "coupons", couponDocId), {
                 usedCount: (Number(couponData.usedCount) || 0) + 1,
                 usedBy: updatedUsedBy,
                 usageLogs: [...existingLogs, newUsageEntry],
@@ -594,9 +572,9 @@ function startServer() {
         console.warn("[PAYMENT PROCESS] Erro ao atualizar server queue cache:", cacheErr);
       }
       try {
-        const usersRef = (0, import_firestore2.collection)(db, "users");
-        const qAdmin = (0, import_firestore2.query)(usersRef, (0, import_firestore2.where)("role", "==", "admin"));
-        const adminSnapshot = await (0, import_firestore2.getDocs)(qAdmin);
+        const usersRef = (0, import_lite.collection)(db, "users");
+        const qAdmin = (0, import_lite.query)(usersRef, (0, import_lite.where)("role", "==", "admin"));
+        const adminSnapshot = await (0, import_lite.getDocs)(qAdmin);
         adminSnapshot.forEach((docSnap) => {
           const uData = docSnap.data();
           if (uData.pushSubscription) {
@@ -619,14 +597,14 @@ function startServer() {
       console.error("[PAYMENT PROCESS] Erro:", procErr);
     }
   };
-  app2.get("/api/queue", async (req, res) => {
+  app.get("/api/queue", async (req, res) => {
     try {
       const serverQueue = loadServerQueue();
       try {
         let fsQueue = [];
         try {
           const snap = await Promise.race([
-            (0, import_firestore2.getDocs)((0, import_firestore2.collection)(db, "queue")),
+            (0, import_lite.getDocs)((0, import_lite.collection)(db, "queue")),
             new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 1500))
           ]);
           if (snap && snap.docs) {
@@ -653,7 +631,7 @@ function startServer() {
       res.status(500).json({ success: false, error: e.message });
     }
   });
-  app2.post("/api/queue/force-join", async (req, res) => {
+  app.post("/api/queue/force-join", async (req, res) => {
     try {
       const patient = req.body;
       if (!patient || !patient.id) {
@@ -661,7 +639,7 @@ function startServer() {
       }
       let existingUserDocData = null;
       try {
-        const userSnap = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "users", patient.id));
+        const userSnap = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "users", patient.id));
         if (userSnap.exists()) {
           existingUserDocData = userSnap.data();
         }
@@ -734,7 +712,7 @@ function startServer() {
       saveServerQueue(currentQueue);
       res.json({ success: true, patient: cleanPatient });
       Promise.race([
-        (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "queue", cleanPatient.id), cleanPatient, { merge: true }),
+        (0, import_lite.setDoc)((0, import_lite.doc)(db, "queue", cleanPatient.id), cleanPatient, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2500))
       ]).catch((fsErr) => console.warn("[QUEUE FORCE-JOIN] Firestore queue warning:", fsErr));
       const userSyncPayload = {
@@ -767,7 +745,7 @@ function startServer() {
         userSyncPayload.answers = cleanPatient.answers;
       }
       Promise.race([
-        (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "users", cleanPatient.id), userSyncPayload, { merge: true }),
+        (0, import_lite.setDoc)((0, import_lite.doc)(db, "users", cleanPatient.id), userSyncPayload, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2500))
       ]).catch(() => {
       });
@@ -776,7 +754,7 @@ function startServer() {
       res.status(500).json({ success: false, error: e.message });
     }
   });
-  app2.post("/api/queue/update-status", async (req, res) => {
+  app.post("/api/queue/update-status", async (req, res) => {
     try {
       const { patientId, status, hasUnread, queueType, plan, selectedOffer, isPremium, pagamento_premium, tier, answers } = req.body;
       if (!patientId) return res.status(400).json({ error: "Missing patientId" });
@@ -820,7 +798,7 @@ function startServer() {
       if (tier) updateData.tier = tier;
       if (answers && typeof answers === "object") updateData.answers = answers;
       Promise.race([
-        (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "queue", patientId), updateData, { merge: true }),
+        (0, import_lite.setDoc)((0, import_lite.doc)(db, "queue", patientId), updateData, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2e3))
       ]).catch(() => {
       });
@@ -845,7 +823,7 @@ function startServer() {
         userUpdateData.finishedAt = nowIso;
       }
       Promise.race([
-        (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "users", patientId), userUpdateData, { merge: true }),
+        (0, import_lite.setDoc)((0, import_lite.doc)(db, "users", patientId), userUpdateData, { merge: true }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2e3))
       ]).catch(() => {
       });
@@ -853,7 +831,7 @@ function startServer() {
       res.status(500).json({ success: false, error: e.message });
     }
   });
-  app2.post("/api/verify-patient-payment", async (req, res) => {
+  app.post("/api/verify-patient-payment", async (req, res) => {
     try {
       const { patientId, email, cpf, name, pendingPaymentId } = req.body || {};
       const rawEmail = (email || "").trim().toLowerCase();
@@ -864,14 +842,14 @@ function startServer() {
       let userData = null;
       if (targetId && targetId !== "doctor") {
         try {
-          const uSnap = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "users", targetId));
+          const uSnap = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "users", targetId));
           if (uSnap.exists()) userData = uSnap.data();
         } catch {
         }
       }
       if ((!userData || !userData.answers || Object.keys(userData.answers || {}).length === 0) && cleanEmail) {
         try {
-          const uQuery = await (0, import_firestore2.getDocs)((0, import_firestore2.query)((0, import_firestore2.collection)(db, "users"), (0, import_firestore2.where)("email", "==", cleanEmail)));
+          const uQuery = await (0, import_lite.getDocs)((0, import_lite.query)((0, import_lite.collection)(db, "users"), (0, import_lite.where)("email", "==", cleanEmail)));
           if (!uQuery.empty) {
             const matchedDoc = uQuery.docs.find((d) => d.data()?.answers && Object.keys(d.data().answers).length > 0) || uQuery.docs[0];
             if (!targetId) targetId = matchedDoc.id;
@@ -907,7 +885,7 @@ function startServer() {
       });
       if (!activeQueueEntry && targetId) {
         try {
-          const qSnap = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "queue", targetId));
+          const qSnap = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "queue", targetId));
           if (qSnap.exists()) {
             const qData = qSnap.data();
             if (qData.status === "waiting" || qData.status === "in-consultation") {
@@ -923,7 +901,7 @@ function startServer() {
         const userHasActivePaidFlag = !!(userData && userData.isConsultationFinished !== true && userData.consultationStatus !== "finished" && userData.consultationStatus !== "awaiting_payment" && userData.consultationStatus !== "not_started" && (userData.pagamento_consulta === true || userData.hasPaid === true || userData.isPaid === true || userData.inQueue === true || userData.consultationStatus === "waiting" || userData.consultationStatus === "in-consultation"));
         let recentUnconsumedPayment = null;
         try {
-          const paymentsSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.collection)(db, "payments"));
+          const paymentsSnap = await (0, import_lite.getDocs)((0, import_lite.collection)(db, "payments"));
           for (const pDoc of paymentsSnap.docs) {
             const p = pDoc.data();
             const pIdMatch = !!(targetId && p.patientId && p.patientId === targetId);
@@ -980,9 +958,9 @@ function startServer() {
             serverQueue.unshift(restoredEntry);
           }
           saveServerQueue(serverQueue);
-          await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "queue", resolvedId), restoredEntry, { merge: true }).catch(() => {
+          await (0, import_lite.setDoc)((0, import_lite.doc)(db, "queue", resolvedId), restoredEntry, { merge: true }).catch(() => {
           });
-          await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "users", resolvedId), {
+          await (0, import_lite.setDoc)((0, import_lite.doc)(db, "users", resolvedId), {
             pagamento_consulta: true,
             pagamento_premium: isPrem,
             hasPaid: true,
@@ -1004,9 +982,9 @@ function startServer() {
           serverQueue.unshift(activeQueueEntry);
           saveServerQueue(serverQueue);
         }
-        (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "queue", activeQueueEntry.id), activeQueueEntry, { merge: true }).catch(() => {
+        (0, import_lite.setDoc)((0, import_lite.doc)(db, "queue", activeQueueEntry.id), activeQueueEntry, { merge: true }).catch(() => {
         });
-        (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "users", activeQueueEntry.id), {
+        (0, import_lite.setDoc)((0, import_lite.doc)(db, "users", activeQueueEntry.id), {
           pagamento_consulta: true,
           hasPaid: true,
           isPaid: true,
@@ -1041,7 +1019,7 @@ function startServer() {
       res.status(500).json({ success: false, error: e.message });
     }
   });
-  app2.get("/api/mercadopago-status", async (req, res) => {
+  app.get("/api/mercadopago-status", async (req, res) => {
     try {
       const mpInfo = await getMpClient();
       res.json({
@@ -1052,7 +1030,7 @@ function startServer() {
       res.status(500).json({ configured: false, error: e.message });
     }
   });
-  app2.get("/api/mercadopago-payments", async (req, res) => {
+  app.get("/api/mercadopago-payments", async (req, res) => {
     try {
       const mpInfo = await getMpClient();
       if (!mpInfo) {
@@ -1070,7 +1048,7 @@ function startServer() {
       }
       const data = await response.json();
       const rawResults = (data.results || []).filter((p) => isMecuraPayment(p));
-      const existingSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.collection)(db, "payments"));
+      const existingSnap = await (0, import_lite.getDocs)((0, import_lite.collection)(db, "payments"));
       const existingByMpId = /* @__PURE__ */ new Map();
       existingSnap.docs.forEach((d) => {
         const pd = d.data();
@@ -1130,12 +1108,12 @@ function startServer() {
       const docsToDelete = existingSnap.docs.filter((d) => !validMpIds.has(d.id));
       if (docsToDelete.length > 0) {
         await Promise.all(
-          docsToDelete.map((d) => (0, import_firestore2.deleteDoc)((0, import_firestore2.doc)(db, "payments", d.id)).catch(() => {
+          docsToDelete.map((d) => (0, import_lite.deleteDoc)((0, import_lite.doc)(db, "payments", d.id)).catch(() => {
           }))
         );
       }
       await Promise.all(
-        results.map((p) => (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "payments", p.mpId), p, { merge: true }).catch(() => {
+        results.map((p) => (0, import_lite.setDoc)((0, import_lite.doc)(db, "payments", p.mpId), p, { merge: true }).catch(() => {
         }))
       );
       for (const p of results) {
@@ -1149,7 +1127,7 @@ function startServer() {
             const isRealSyncMail = !!(rawSyncMail && rawSyncMail.includes("@") && !rawSyncMail.includes("xxx") && !rawSyncMail.includes("sem-email") && rawSyncMail !== "paciente@mecura.com" && rawSyncMail !== "paciente@mercura.com" && rawSyncMail !== "paciente.consulta@mecura.com");
             if (!targetId && isRealSyncMail) {
               try {
-                const uSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.query)((0, import_firestore2.collection)(db, "users"), (0, import_firestore2.where)("email", "==", rawSyncMail)));
+                const uSnap = await (0, import_lite.getDocs)((0, import_lite.query)((0, import_lite.collection)(db, "users"), (0, import_lite.where)("email", "==", rawSyncMail)));
                 if (!uSnap.empty) {
                   targetId = uSnap.docs[0].id;
                   existingUserData = uSnap.docs[0].data();
@@ -1162,12 +1140,12 @@ function startServer() {
             }
             if (!existingUserData && targetId) {
               try {
-                const uSnapById = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "users", targetId));
+                const uSnapById = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "users", targetId));
                 if (uSnapById.exists()) existingUserData = uSnapById.data();
               } catch (_) {
               }
             }
-            const queueDoc = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "queue", targetId));
+            const queueDoc = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "queue", targetId));
             const queueData = queueDoc.exists() ? queueDoc.data() : null;
             const queueStatus = queueData?.status || null;
             const finishedAtIso = queueData?.finishedAt || existingUserData?.finishedAt || null;
@@ -1194,7 +1172,7 @@ function startServer() {
                 pagamento_consulta: true,
                 pagamento_premium: p.isPremium
               };
-              await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "users", targetId), {
+              await (0, import_lite.setDoc)((0, import_lite.doc)(db, "users", targetId), {
                 pagamento_consulta: true,
                 pagamento_premium: p.isPremium,
                 hasPaid: true,
@@ -1211,7 +1189,7 @@ function startServer() {
                 lastPaymentDate: p.date || (/* @__PURE__ */ new Date()).toISOString()
               }, { merge: true }).catch(() => {
               });
-              await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "queue", targetId), queuePayload, { merge: true }).catch(() => {
+              await (0, import_lite.setDoc)((0, import_lite.doc)(db, "queue", targetId), queuePayload, { merge: true }).catch(() => {
               });
               try {
                 const srvQ = loadServerQueue();
@@ -1242,13 +1220,13 @@ function startServer() {
       res.status(500).json({ configured: false, error: e.message });
     }
   });
-  app2.post("/api/save-mercadopago-token", async (req, res) => {
+  app.post("/api/save-mercadopago-token", async (req, res) => {
     try {
       const { accessToken } = req.body;
       if (!accessToken || typeof accessToken !== "string" || accessToken.trim().length < 10) {
         return res.status(400).json({ error: "Token inv\xE1lido fornecido." });
       }
-      await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "settings", "mercadopago"), {
+      await (0, import_lite.setDoc)((0, import_lite.doc)(db, "settings", "mercadopago"), {
         accessToken: accessToken.trim(),
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       }, { merge: true });
@@ -1258,7 +1236,7 @@ function startServer() {
       res.status(500).json({ error: "Falha ao salvar no banco", details: e.message });
     }
   });
-  app2.post("/api/create-preference", async (req, res) => {
+  app.post("/api/create-preference", async (req, res) => {
     const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
     const host = req.headers["x-forwarded-host"] || req.headers.host;
     const origin = req.headers.origin || (host ? `${proto}://${host}` : "") || process.env.APP_URL || "http://localhost:3000";
@@ -1336,7 +1314,7 @@ function startServer() {
       });
     }
   });
-  app2.get("/api/check-payment/:id", async (req, res) => {
+  app.get("/api/check-payment/:id", async (req, res) => {
     try {
       const mpInfo = await getMpClient();
       if (!mpInfo) {
@@ -1350,7 +1328,7 @@ function startServer() {
       res.status(500).json({ error: "Failed to check payment" });
     }
   });
-  app2.post("/api/create-pix-payment", async (req, res) => {
+  app.post("/api/create-pix-payment", async (req, res) => {
     try {
       const { title, price, email, firstName, lastName, patientId, isPremium, plan } = req.body;
       const resolvedPlan = plan === "complete" || plan === "premium" || plan === "psychologist" || plan === "basic" ? plan : isPremium ? "premium" : "basic";
@@ -1449,11 +1427,11 @@ function startServer() {
       });
     }
   });
-  app2.get("/api/payment-status/:id", async (req, res) => {
+  app.get("/api/payment-status/:id", async (req, res) => {
     try {
       const paymentId = req.params.id;
       try {
-        const paySnap = await (0, import_firestore2.getDoc)((0, import_firestore2.doc)(db, "payments", String(paymentId)));
+        const paySnap = await (0, import_lite.getDoc)((0, import_lite.doc)(db, "payments", String(paymentId)));
         if (paySnap.exists()) {
           const pData = paySnap.data();
           if (pData.status === "approved" || pData.status === "completed" || pData.type) {
@@ -1488,7 +1466,7 @@ function startServer() {
       res.status(500).json({ error: "Erro ao consultar status." });
     }
   });
-  app2.get("/api/test-env", (req, res) => {
+  app.get("/api/test-env", (req, res) => {
     res.json({
       mp: process.env.MERCADO_PAGO_ACCESS_TOKEN || "MISSING",
       gemini: process.env.GEMINI_API_KEY ? "CONFIGURED" : "MISSING"
@@ -1684,15 +1662,15 @@ ${nationalProducts.map((p) => `**Medicamento**: **${p.name}**
 - **Fase 2 (Evolu\xE7\xE3o Conforme Necessidade e Condi\xE7\xF5es Financeiras)**: Reavalia\xE7\xE3o cl\xEDnica em 30 a 45 dias. Caso o paciente atinja estabilidade satisfat\xF3ria, mant\xE9m-se a monoterapia econ\xF4mica. Havendo queixas residuais e viabilidade or\xE7ament\xE1ria futura, introduzir formula\xE7\xE3o t\xF3pica ou complementar.
 `;
   }
-  app2.post("/api/admin-agronomic-ai", async (req, res) => {
+  app.post("/api/admin-agronomic-ai", async (req, res) => {
     const { medicalReportText, prescriptionText, medicalReportFile, prescriptionFile, agronomistName, agronomistCrea, targetPlants } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
       return res.status(400).json({ error: "Gemini API key n\xE3o configurada. A funcionalidade de IA requer a chave no .env." });
     }
     try {
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({
+      const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
+      const ai = new GoogleGenAI2({
         apiKey,
         httpOptions: { headers: { "User-Agent": "aistudio-build" } }
       });
@@ -1820,15 +1798,15 @@ ${prescriptionText}`);
       return res.status(500).json({ error: errMsg });
     }
   });
-  app2.post("/api/admin-catalog-ai", async (req, res) => {
+  app.post("/api/admin-catalog-ai", async (req, res) => {
     const { prompt, currentCatalog, file } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
       return res.status(400).json({ error: "Gemini API key n\xE3o configurada. A funcionalidade de IA requer a chave no .env." });
     }
     try {
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({
+      const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
+      const ai = new GoogleGenAI2({
         apiKey,
         httpOptions: {
           headers: {
@@ -1904,13 +1882,12 @@ ${prompt}`);
       return res.status(500).json({ error: errMsg });
     }
   });
-  app2.post("/api/analyze-clinical", async (req, res) => {
+  app.post("/api/analyze-clinical", async (req, res) => {
     const { prompt } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
       try {
-        const { GoogleGenAI } = await import("@google/genai");
-        const ai = new GoogleGenAI({
+        const ai = new import_genai.GoogleGenAI({
           apiKey,
           httpOptions: {
             headers: {
@@ -1932,12 +1909,12 @@ ${prompt}`);
     }
     return res.json({ text: null, fallback: true });
   });
-  app2.post("/api/send-admin-push", async (req, res) => {
+  app.post("/api/send-admin-push", async (req, res) => {
     const { title, body, url } = req.body;
     try {
-      const usersRef = (0, import_firestore2.collection)(db, "users");
-      const q = (0, import_firestore2.query)(usersRef, (0, import_firestore2.where)("role", "==", "admin"));
-      const querySnapshot = await (0, import_firestore2.getDocs)(q);
+      const usersRef = (0, import_lite.collection)(db, "users");
+      const q = (0, import_lite.query)(usersRef, (0, import_lite.where)("role", "==", "admin"));
+      const querySnapshot = await (0, import_lite.getDocs)(q);
       const promises = [];
       querySnapshot.forEach((docSnap) => {
         const userData = docSnap.data();
@@ -1946,7 +1923,7 @@ ${prompt}`);
         }
       });
       if (promises.length === 0) {
-        const allUsersSnapshot = await (0, import_firestore2.getDocs)(usersRef);
+        const allUsersSnapshot = await (0, import_lite.getDocs)(usersRef);
         allUsersSnapshot.forEach((docSnap) => {
           const uData = docSnap.data();
           if (uData.pushSubscription) {
@@ -1961,10 +1938,10 @@ ${prompt}`);
       res.status(500).json({ error: "Failed" });
     }
   });
-  app2.get("/api/debug-users", async (req, res) => {
+  app.get("/api/debug-users", async (req, res) => {
     try {
-      const usersRef = (0, import_firestore2.collection)(db, "users");
-      const snapshot = await (0, import_firestore2.getDocs)(usersRef);
+      const usersRef = (0, import_lite.collection)(db, "users");
+      const snapshot = await (0, import_lite.getDocs)(usersRef);
       const users = [];
       snapshot.forEach((docSnap) => users.push({ id: docSnap.id, ...docSnap.data() }));
       res.json(users);
@@ -1972,7 +1949,7 @@ ${prompt}`);
       res.status(500).json({ error: error.message });
     }
   });
-  app2.post("/api/webhook", async (req, res) => {
+  app.post("/api/webhook", async (req, res) => {
     const { action, data, type } = req.body;
     console.log("Notifica\xE7\xE3o Mercado Pago recebida:", { action, type, data, query: req.query });
     try {
@@ -2001,9 +1978,9 @@ ${prompt}`);
         server: { middlewareMode: true },
         appType: "spa"
       });
-      app2.use(vite.middlewares);
+      app.use(vite.middlewares);
       const numericPort = Number(PORT);
-      app2.listen(numericPort || 3e3, "0.0.0.0", () => {
+      app.listen(numericPort || 3e3, "0.0.0.0", () => {
         console.log(`Dev server running on http://localhost:${numericPort || 3e3}`);
       });
     });
@@ -2012,31 +1989,94 @@ ${prompt}`);
     const candidateDistDirs = [
       import_node_path.default.join(process.cwd(), "dist"),
       import_node_path.default.join(baseDir, "dist"),
+      import_node_path.default.join(process.cwd(), "prod_bundle"),
+      import_node_path.default.join(baseDir, "prod_bundle"),
+      import_node_path.default.join(baseDir, "..", "prod_bundle"),
       baseDir,
       process.cwd()
     ];
-    const distPath = candidateDistDirs.find((dir) => import_node_fs.default.existsSync(import_node_path.default.join(dir, "index.html"))) || import_node_path.default.join(process.cwd(), "dist");
+    const isCompiledHtmlDir = (dir) => {
+      const idxPath = import_node_path.default.join(dir, "index.html");
+      if (!import_node_fs.default.existsSync(idxPath)) return false;
+      try {
+        const html = import_node_fs.default.readFileSync(idxPath, "utf-8");
+        return !html.includes("/src/main.tsx");
+      } catch {
+        return false;
+      }
+    };
+    const uniqueStaticDirs = Array.from(/* @__PURE__ */ new Set([
+      import_node_path.default.join(process.cwd(), "dist"),
+      import_node_path.default.join(baseDir, "dist"),
+      import_node_path.default.join(process.cwd(), "prod_bundle"),
+      import_node_path.default.join(baseDir, "prod_bundle")
+    ]));
+    uniqueStaticDirs.forEach((dir) => {
+      app.use(import_express.default.static(dir, { index: false }));
+    });
     const candidatePublicDirs = [
       import_node_path.default.join(process.cwd(), "public"),
       import_node_path.default.join(baseDir, "public"),
       import_node_path.default.join(baseDir, "..", "public")
     ];
     const publicPath = candidatePublicDirs.find((dir) => import_node_fs.default.existsSync(dir));
-    app2.use(import_express.default.static(distPath, { index: false }));
     if (publicPath) {
-      app2.use(import_express.default.static(publicPath, { index: false }));
+      app.use(import_express.default.static(publicPath, { index: false }));
     }
-    app2.get("*", (req, res) => {
-      const indexFile = import_node_path.default.join(distPath, "index.html");
-      if (import_node_fs.default.existsSync(indexFile)) {
-        return res.sendFile(indexFile);
+    let bgBuildTriggered = false;
+    const ensureFrontendBuiltInBackground = () => {
+      if (bgBuildTriggered) return;
+      if (candidateDistDirs.some(isCompiledHtmlDir)) return;
+      bgBuildTriggered = true;
+      try {
+        const { spawn } = require("node:child_process");
+        const viteCli = import_node_path.default.join(process.cwd(), "node_modules", "vite", "bin", "vite.js");
+        if (import_node_fs.default.existsSync(viteCli)) {
+          console.log("[SERVER] Starting low-memory background Vite build...");
+          const child = spawn(process.execPath, ["--max-old-space-size=1536", "--v8-pool-size=1", viteCli, "build"], {
+            cwd: process.cwd(),
+            env: {
+              ...process.env,
+              RAYON_NUM_THREADS: "1",
+              TOKIO_WORKER_THREADS: "1",
+              UV_THREADPOOL_SIZE: "1",
+              GOMAXPROCS: "1",
+              ESBUILD_MAX_THREADS: "1"
+            },
+            stdio: "inherit"
+          });
+          child.on("exit", (code) => {
+            console.log(`[SERVER] Background Vite build exited with code ${code}`);
+            if (code !== 0) bgBuildTriggered = false;
+          });
+        }
+      } catch (e) {
+        console.warn("[SERVER] Background build error:", e);
+        bgBuildTriggered = false;
       }
-      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='2'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Carregando Mecura...</body></html>");
+    };
+    app.get("*", (req, res) => {
+      const activeDistDir = candidateDistDirs.find(isCompiledHtmlDir);
+      if (activeDistDir) {
+        return res.sendFile(import_node_path.default.join(activeDistDir, "index.html"));
+      }
+      ensureFrontendBuiltInBackground();
+      res.status(200).send("<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3'><title>Mecura</title></head><body style='background:#070A0E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Iniciando plataforma Mecura...</body></html>");
     });
-    app2.listen(PORT, () => {
-      console.log(`Production server running on port/socket ${PORT} (serving from ${distPath})`);
-    });
+    const isLsNode = process.argv.some((a) => a.includes("lsnode")) || Boolean(process.env.LSNODE_ROOT || process.env.PASSENGER_APP_ENV);
+    const isNumericPort = /^\d+$/.test(String(PORT));
+    if (!isLsNode && isNumericPort) {
+      app.listen(Number(PORT), "0.0.0.0", () => {
+        console.log(`Production server running on 0.0.0.0:${PORT}`);
+        ensureFrontendBuiltInBackground();
+      });
+    } else {
+      app.listen(PORT, () => {
+        console.log(`Production server running on port/socket ${PORT}`);
+        ensureFrontendBuiltInBackground();
+      });
+    }
   }
 }
 startServer();
-var server_default = app2;
+var server_default = app;

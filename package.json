@@ -12,20 +12,22 @@
     "clean": "node -e \"console.log('Clean skipped to preserve production bundle')\"",
     "lint": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@google/genai": "^1.29.0",
-    "@google/generative-ai": "^0.24.1",
     "@remotion/player": "^4.0.536",
     "@tailwindcss/vite": "^4.1.14",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "esbuild": "^0.28.0",
     "express": "^4.22.1",
     "firebase": "^12.11.0",
-    "firebase-admin": "^14.3.0",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
@@ -38,8 +40,6 @@
     "react-router-dom": "^7.13.2",
     "recharts": "^3.8.1",
     "remotion": "^4.0.536",
-    "autoprefixer": "^10.4.21",
-    "ssh2-sftp-client": "^12.1.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.1.14",
     "vite": "^6.2.0",
