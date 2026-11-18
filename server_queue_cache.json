@@ -1,5 +1,61 @@
 [
   {
+    "id": "dvtSmTI60AcN28I3LfkDGw8cYUB3",
+    "patientName": "Rodrigo Tomio",
+    "name": "Rodrigo Tomio",
+    "email": "XXXXXXXXXXX",
+    "phone": "(47) 98436-1812",
+    "cpf": "087.989.569-14",
+    "birthDate": "05/12/1992",
+    "answers": {
+      "dirige_details": "Trabalho na rua de moto",
+      "preferredTreatmentStatus": "sem_preferencia",
+      "esquizofrenia_parente_details": "Minha mãe tem transtorno afetivo bipolar ",
+      "cpf": "087.989.569-14",
+      "sex": "M",
+      "weight": "68",
+      "esquizofrenia_parente": true,
+      "birthDate": "05/12/1992",
+      "foco": true,
+      "cannabis": true,
+      "preferredBrands": [],
+      "isPremium": true,
+      "preferredNationalAssociation": "",
+      "phone": "(47) 98436-1812",
+      "tier": "premium",
+      "fuma": true,
+      "objectives": [
+        "Ansiedade, Estresse e Transtornos Mentais",
+        "Insônia e Distúrbios do Sono"
+      ],
+      "bebida": true,
+      "irritado": true,
+      "diseaseOrigin": "Eu sou uma pessoa muito elétrica, acelerada, me preocupo com oq ainda não aconteceu e tenho dificuldade pra dormir ",
+      "bebida_details": "Socialmente ",
+      "plan": "premium",
+      "casado": true,
+      "fuma_details": "Fumo cigarro ",
+      "preferredImportedBrand": "",
+      "memoria": true,
+      "selectedOffer": "premium",
+      "duration": "anos",
+      "pagamento_premium": true,
+      "intensity": "8",
+      "trabalha": true,
+      "dirige": true,
+      "height": "1.75"
+    },
+    "tier": "basic",
+    "isPremium": false,
+    "plan": "basic",
+    "selectedOffer": "basic",
+    "queueType": "doctor",
+    "joinedAt": "2026-11-16T11:59:12.000-04:00",
+    "status": "waiting",
+    "pagamento_consulta": true,
+    "pagamento_premium": false
+  },
+  {
     "id": "IBc7BYfid3WLInJAFCfJlsK3Bjl2",
     "patientName": "off",
     "email": "off1@gmail.com",
@@ -55,8 +111,18 @@
         "classification": "Alta Compatibilidade Neurocomportamental (TDAH)",
         "completedAt": "2026-10-18T20:25:00.000Z",
         "answers": {
-          "0": 3, "1": 3, "2": 3, "3": 2, "4": 2, "5": 3,
-          "6": 2, "7": 3, "8": 3, "9": 2, "10": 2, "11": 2
+          "0": 3,
+          "1": 3,
+          "2": 3,
+          "3": 2,
+          "4": 2,
+          "5": 3,
+          "6": 2,
+          "7": 3,
+          "8": 3,
+          "9": 2,
+          "10": 2,
+          "11": 2
         }
       },
       "autismTestResult": {
@@ -68,8 +134,18 @@
         "classification": "Forte Indicativo de Traços do Espectro (TEA) & Hipersensibilidade",
         "completedAt": "2026-10-18T20:28:00.000Z",
         "answers": {
-          "0": 3, "1": 2, "2": 3, "3": 3, "4": 2, "5": 2,
-          "6": 2, "7": 2, "8": 3, "9": 2, "10": 2, "11": 1
+          "0": 3,
+          "1": 2,
+          "2": 3,
+          "3": 3,
+          "4": 2,
+          "5": 2,
+          "6": 2,
+          "7": 2,
+          "8": 3,
+          "9": 2,
+          "10": 2,
+          "11": 1
         }
       }
     },
@@ -156,8 +232,18 @@
         "classification": "Alta Compatibilidade Neurocomportamental (TDAH)",
         "completedAt": "2026-10-15T13:20:00.000Z",
         "answers": {
-          "0": 3, "1": 3, "2": 2, "3": 2, "4": 2, "5": 2,
-          "6": 3, "7": 3, "8": 2, "9": 3, "10": 3, "11": 3
+          "0": 3,
+          "1": 3,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2,
+          "6": 3,
+          "7": 3,
+          "8": 2,
+          "9": 3,
+          "10": 3,
+          "11": 3
         }
       }
     }

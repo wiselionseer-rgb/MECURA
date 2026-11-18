@@ -445,36 +445,40 @@ export function DashboardScreen() {
           console.error("Erro ao atualizar user doc no retorno MP:", e);
         }
 
-        try {
-          await setDoc(doc(db, 'payments', resolvedPaymentId), {
-            mpId: resolvedPaymentId,
-            type: planTitle,
-            value: finalPaidValue,
-            originalValue: planPrice,
-            plan: savedOffer,
-            selectedOffer: savedOffer,
-            queueType: targetQueueType,
-            allowDualChat,
-            isPremium,
-            patientName: patientName || 'Paciente',
-            patientEmail: patientEmail || '',
-            patientPhone: patientPhone || '',
-            patientCpf: patientCpf || '',
-            patientId: patientUid || '',
-            status: 'approved',
-            ...(couponToConsume ? {
-              couponCode: couponToConsume.code,
-              couponId: couponToConsume.id,
-              couponDiscount: couponToConsume.discount,
-              affiliateName: couponToConsume.affiliateName || '',
-              commissionPercentage: commPct,
-              commissionValue: commVal,
-              viaReferralLink: isViaReferralLink
-            } : {}),
-            date: new Date().toISOString()
-          }, { merge: true });
-        } catch (e) {
-          console.error("Erro ao registrar pagamento em payments:", e);
+        if (/^\d+$/.test(resolvedPaymentId) && finalPaidValue > 0) {
+          try {
+            await setDoc(doc(db, 'payments', resolvedPaymentId), {
+              mpId: resolvedPaymentId,
+              type: planTitle,
+              grossValue: finalPaidValue,
+              originalValue: planPrice,
+              plan: savedOffer,
+              selectedOffer: savedOffer,
+              queueType: targetQueueType,
+              allowDualChat,
+              isPremium,
+              isRealMpPayment: true,
+              patientName: patientName || 'Paciente',
+              payerName: patientName || 'Paciente',
+              patientEmail: patientEmail || '',
+              payerEmail: patientEmail || '',
+              patientPhone: patientPhone || '',
+              patientCpf: patientCpf || '',
+              patientId: patientUid || '',
+              status: 'approved',
+              ...(couponToConsume ? {
+                couponCode: couponToConsume.code,
+                couponId: couponToConsume.id,
+                couponDiscount: couponToConsume.discount,
+                affiliateName: couponToConsume.affiliateName || '',
+                commissionPercentage: commPct,
+                commissionValue: commVal,
+                viaReferralLink: isViaReferralLink
+              } : {})
+            }, { merge: true });
+          } catch (e) {
+            console.error("Erro ao registrar pagamento em payments:", e);
+          }
         }
 
         await joinQueue({

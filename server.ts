@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
 import { db } from "./src/firebase";
-import { doc, getDoc, setDoc, collection, getDocs, query, where, addDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where, addDoc } from "firebase/firestore";
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
@@ -322,18 +322,48 @@ function startServer() {
     console.warn("[QUEUE SEED] Warning:", err);
   }
 
+  const isMecuraPayment = (p: any): boolean => {
+    if (!p || (p.status !== 'approved' && p.status !== 'completed')) return false;
+    const idStr = String(p.id || p.mpId || '');
+    if (!/^\d+$/.test(idStr)) return false;
+    const gross = Number(p.transaction_amount ?? p.grossValue ?? p.value ?? 0);
+    const refunded = Number(p.transaction_amount_refunded ?? 0);
+    if (gross <= 0 || refunded >= gross) return false;
+    if (p.operation_type === 'pos_payment' || p.operation_type === 'money_transfer') return false;
+    const desc = (p.description || p.type || '').toLowerCase();
+    const hasMeta = Boolean(
+      p.metadata &&
+      (p.metadata.patient_id ||
+        p.metadata.patient_name ||
+        p.metadata.plan ||
+        p.metadata.is_premium !== undefined ||
+        p.metadata.coupon_code !== undefined)
+    );
+    return (
+      desc.includes('mecura') ||
+      desc.includes('consulta') ||
+      desc.includes('acompanhamento vip') ||
+      desc.includes('acesso vip') ||
+      desc.includes('plano completo') ||
+      hasMeta
+    );
+  };
+
   const resolvePaymentPlan = (payment: any) => {
-    const val = Number(payment.transaction_amount) || 0;
-    const desc = (payment.description || '').toLowerCase();
+    const grossValue = Number(payment.transaction_amount ?? payment.grossValue ?? payment.value) || 0;
+    const netReceivedAmount = Number(payment.transaction_details?.net_received_amount ?? payment.netReceivedAmount ?? grossValue) || 0;
+    const feeAmount = Number(Math.max(0, grossValue - netReceivedAmount).toFixed(2));
+    const val = netReceivedAmount;
+    const desc = (payment.description || payment.type || '').toLowerCase();
     const metaPlan = payment.metadata?.plan || payment.plan || payment.selectedOffer;
     let plan: 'basic' | 'premium' | 'complete' | 'psychologist' = 'basic';
     if (metaPlan === 'complete' || metaPlan === 'premium' || metaPlan === 'psychologist' || metaPlan === 'basic') {
       plan = metaPlan;
-    } else if (desc.includes('completo') || desc.includes('360') || val >= 300) {
+    } else if (desc.includes('completo') || desc.includes('360') || grossValue >= 300) {
       plan = 'complete';
-    } else if (desc.includes('psicólogo') || desc.includes('psicologo') || desc.includes('marco antônio') || (val >= 140 && val <= 180 && !desc.includes('vip') && !desc.includes('premium'))) {
+    } else if (desc.includes('psicólogo') || desc.includes('psicologo') || desc.includes('marco antônio') || (grossValue >= 140 && grossValue <= 180 && !desc.includes('vip') && !desc.includes('premium'))) {
       plan = 'psychologist';
-    } else if (desc.includes('vip') || desc.includes('premium') || desc.includes('acompanhamento') || val >= 200 || payment.metadata?.is_premium === true) {
+    } else if (desc.includes('vip') || desc.includes('premium') || desc.includes('acompanhamento') || grossValue >= 200 || payment.metadata?.is_premium === true) {
       plan = 'premium';
     } else {
       plan = 'basic';
@@ -346,15 +376,18 @@ function startServer() {
       plan === 'premium' ? 'Acompanhamento VIP (Médico)' :
       plan === 'psychologist' ? 'Consulta com Psicólogo + Laudo' :
       'Consulta Essencial (Médico)';
-    return { plan, isPrem, queueType, allowDualChat, typeLabel, val };
+    return { plan, isPrem, queueType, allowDualChat, typeLabel, val, netReceivedAmount, grossValue, feeAmount };
   };
 
   const processApprovedPayment = async (payment: any) => {
     try {
-      if (!payment || (payment.status !== 'approved' && payment.status !== 'completed')) return;
-      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, val } = resolvePaymentPlan(payment);
-      const payerEmail = payment.metadata?.patient_email || payment.payer?.email || '';
-      const payerName = payment.metadata?.patient_name || (payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ''}`.trim() : 'Paciente');
+      if (!isMecuraPayment(payment)) return;
+      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, val, netReceivedAmount, grossValue, feeAmount } = resolvePaymentPlan(payment);
+      const rawPayerEmail = payment.metadata?.patient_email || payment.payer?.email || '';
+      const payerEmail = rawPayerEmail && !String(rawPayerEmail).toLowerCase().includes('xxx') ? rawPayerEmail : '';
+      const rawFirst = payment.payer?.first_name && !String(payment.payer.first_name).toLowerCase().includes('xxx') ? payment.payer.first_name : '';
+      const rawLast = payment.payer?.last_name && !String(payment.payer.last_name).toLowerCase().includes('xxx') ? payment.payer.last_name : '';
+      const payerName = payment.metadata?.patient_name || (rawFirst ? `${rawFirst} ${rawLast}`.trim() : 'Paciente');
       const patientId = payment.external_reference || payment.metadata?.patient_id;
 
       const metaCouponCode = payment.metadata?.coupon_code || '';
@@ -362,19 +395,23 @@ function startServer() {
       const metaAffiliateName = payment.metadata?.affiliate_name || '';
       const metaCommPct = Number(payment.metadata?.commission_percentage || 0);
       const metaViaLink = Boolean(payment.metadata?.via_link);
-      const metaOrigPrice = Number(payment.metadata?.original_price || val);
-      const metaCommVal = metaCommPct > 0 ? Number(((val * metaCommPct) / 100).toFixed(2)) : 0;
+      const metaOrigPrice = Number(payment.metadata?.original_price || grossValue);
+      const metaCommVal = metaCommPct > 0 ? Number(((grossValue * metaCommPct) / 100).toFixed(2)) : 0;
 
       const paymentDoc: Record<string, any> = {
         mpId: String(payment.id),
         type: typeLabel,
-        value: val,
+        value: netReceivedAmount,
+        netReceivedAmount,
+        grossValue,
+        feeAmount,
         originalValue: metaOrigPrice,
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
         allowDualChat: allowDualChat,
         isPremium: isPrem,
+        isRealMpPayment: true,
         status: payment.status || 'approved',
         date: payment.date_approved || payment.date_created || new Date().toISOString(),
         payerEmail: payerEmail || '',
@@ -1115,32 +1152,100 @@ function startServer() {
       }
 
       const data = await response.json();
-      const results = (data.results || []).map((p: any) => {
-        const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, typeLabel, val } = resolvePaymentPlan(p);
-        const patientId = p.external_reference || p.metadata?.patient_id || '';
+      const rawResults = (data.results || []).filter((p: any) => isMecuraPayment(p));
+
+      // Carrega pagamentos atuais do Firestore para preservar dados de pacientes e limpar duplicatas/transações pessoais
+      const existingSnap = await getDocs(collection(db, "payments"));
+      const existingByMpId = new Map<string, any[]>();
+      existingSnap.docs.forEach((d) => {
+        const pd = d.data();
+        const mid = String(pd.mpId || d.id);
+        if (!existingByMpId.has(mid)) existingByMpId.set(mid, []);
+        existingByMpId.get(mid)!.push({ docId: d.id, ...pd });
+      });
+
+      const validMpIds = new Set<string>();
+
+      const results = rawResults.map((p: any) => {
+        const mpId = String(p.id);
+        validMpIds.add(mpId);
+        const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, netReceivedAmount, grossValue, feeAmount } = resolvePaymentPlan(p);
+        const matches = existingByMpId.get(mpId) || [];
+
+        const rawFirst = p.payer?.first_name && !String(p.payer.first_name).toLowerCase().includes('xxx') ? p.payer.first_name : '';
+        const rawLast = p.payer?.last_name && !String(p.payer.last_name).toLowerCase().includes('xxx') ? p.payer.last_name : '';
+        const mpPayerName = p.metadata?.patient_name || (rawFirst ? `${rawFirst} ${rawLast}`.trim() : '');
+        const bestName =
+          matches.map(m => m.patientName || m.payerName).find(n => n && n !== 'Paciente' && n !== 'Paciente VIP' && !String(n).toLowerCase().includes('xxx')) ||
+          mpPayerName ||
+          'Paciente';
+
+        const rawMail = p.metadata?.patient_email || p.payer?.email || '';
+        const mpEmail = rawMail && String(rawMail).includes('@') && !String(rawMail).toLowerCase().includes('xxx') ? rawMail : '';
+        const bestEmail =
+          matches.map(m => m.patientEmail || m.payerEmail).find(em => em && String(em).includes('@') && !String(em).toLowerCase().includes('xxx')) ||
+          mpEmail ||
+          '';
+
+        const bestPatientId =
+          p.external_reference ||
+          p.metadata?.patient_id ||
+          matches.map(m => m.patientId).find(id => id && !String(id).startsWith('mp_')) ||
+          '';
+
+        const bestPhone = matches.map(m => m.patientPhone).find(Boolean) || '';
+        const bestCpf = matches.map(m => m.patientCpf).find(Boolean) || '';
+        const bestCouponCode = p.metadata?.coupon_code || matches.map(m => m.couponCode).find(Boolean) || '';
+        const bestCouponId = p.metadata?.coupon_id || matches.map(m => m.couponId).find(Boolean) || '';
+        const bestAffiliateName = p.metadata?.affiliate_name || matches.map(m => m.affiliateName).find(Boolean) || '';
+
         return {
-          mpId: String(p.id),
+          mpId,
           type: typeLabel,
-          value: val,
+          value: netReceivedAmount,
+          netReceivedAmount,
+          grossValue,
+          feeAmount,
           plan: resolvedPlan,
           selectedOffer: resolvedPlan,
           queueType: resolvedQueueType,
+          allowDualChat,
           isPremium: isPrem,
+          isRealMpPayment: true,
           status: p.status || 'approved',
           date: p.date_approved || p.date_created || new Date().toISOString(),
-          payerEmail: p.payer?.email || '',
-          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ''}`.trim() : (p.metadata?.patient_name || 'Paciente'),
-          patientId: patientId,
-          paymentMethod: p.payment_method_id || ''
+          payerEmail: bestEmail,
+          patientEmail: bestEmail,
+          payerName: bestName,
+          patientName: bestName,
+          patientPhone: bestPhone,
+          patientCpf: bestCpf,
+          patientId: bestPatientId,
+          paymentMethod: p.payment_method_id || 'pix',
+          ...(bestCouponCode ? {
+            couponCode: bestCouponCode,
+            couponId: bestCouponId || bestCouponCode,
+            affiliateName: bestAffiliateName
+          } : {})
         };
       });
 
-      // Sincroniza cada pagamento aprovado no Firestore na coleção 'payments'
+      // Remover documentos duplicados (IDs aleatórios) ou transações que não são compras da Mecura
+      const docsToDelete = existingSnap.docs.filter(d => !validMpIds.has(d.id));
+      if (docsToDelete.length > 0) {
+        await Promise.all(
+          docsToDelete.map(d => deleteDoc(doc(db, "payments", d.id)).catch(() => {}))
+        );
+      }
+
+      // Salvar todos os pagamentos reais da Mecura em paralelo
+      await Promise.all(
+        results.map(p => setDoc(doc(db, "payments", p.mpId), p, { merge: true }).catch(() => {}))
+      );
+
+      // Apenas para pagamentos recentes (últimas 48h), garantir sincronização na fila
       for (const p of results) {
         try {
-          await setDoc(doc(db, "payments", p.mpId), p, { merge: true });
-          
-          // Se tiver patientId ou email e o pagamento for recente (últimas 48h), garantir que está na fila se não estiver finalizado após o pagamento
           const paymentDate = new Date(p.date);
           const isRecent = !isNaN(paymentDate.getTime()) && (Date.now() - paymentDate.getTime() < 48 * 3600 * 1000);
           
@@ -1149,7 +1254,15 @@ function startServer() {
             let existingUserData: any = null;
 
             const rawSyncMail = (p.payerEmail || '').toLowerCase().trim();
-            const isRealSyncMail = !!(rawSyncMail && !rawSyncMail.includes('sem-email') && rawSyncMail !== 'paciente@mecura.com' && rawSyncMail !== 'paciente@mercura.com' && rawSyncMail !== 'paciente.consulta@mecura.com');
+            const isRealSyncMail = !!(
+              rawSyncMail &&
+              rawSyncMail.includes('@') &&
+              !rawSyncMail.includes('xxx') &&
+              !rawSyncMail.includes('sem-email') &&
+              rawSyncMail !== 'paciente@mecura.com' &&
+              rawSyncMail !== 'paciente@mercura.com' &&
+              rawSyncMail !== 'paciente.consulta@mecura.com'
+            );
 
             if (!targetId && isRealSyncMail) {
               try {
@@ -1178,7 +1291,6 @@ function startServer() {
             const finishedAtIso = queueData?.finishedAt || existingUserData?.finishedAt || null;
             const finishedAtMs = finishedAtIso ? new Date(finishedAtIso).getTime() : 0;
 
-            // O pagamento só é considerado já consumido se a consulta foi finalizada DEPOIS da data deste pagamento
             const isPaymentAlreadyConsumed = !!(
               (queueStatus === 'finished' || existingUserData?.isConsultationFinished === true || existingUserData?.consultationStatus === 'finished') &&
               (
@@ -1228,7 +1340,6 @@ function startServer() {
 
               await setDoc(doc(db, "queue", targetId), queuePayload, { merge: true }).catch(() => {});
 
-              // Atualizar cache da fila no servidor também
               try {
                 const srvQ = loadServerQueue();
                 const qIdx = srvQ.findIndex(item => item.id === targetId);
@@ -1248,7 +1359,7 @@ function startServer() {
         }
       }
 
-      console.log(`[MP SYNC] ${results.length} pagamentos aprovados sincronizados do Mercado Pago.`);
+      console.log(`[MP SYNC] ${results.length} compras reais da Mecura sincronizadas do Mercado Pago.`);
       res.json({
         configured: true,
         count: results.length,

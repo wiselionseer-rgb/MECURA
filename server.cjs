@@ -350,18 +350,35 @@ function startServer() {
   } catch (err) {
     console.warn("[QUEUE SEED] Warning:", err);
   }
+  const isMecuraPayment = (p) => {
+    if (!p || p.status !== "approved" && p.status !== "completed") return false;
+    const idStr = String(p.id || p.mpId || "");
+    if (!/^\d+$/.test(idStr)) return false;
+    const gross = Number(p.transaction_amount ?? p.grossValue ?? p.value ?? 0);
+    const refunded = Number(p.transaction_amount_refunded ?? 0);
+    if (gross <= 0 || refunded >= gross) return false;
+    if (p.operation_type === "pos_payment" || p.operation_type === "money_transfer") return false;
+    const desc = (p.description || p.type || "").toLowerCase();
+    const hasMeta = Boolean(
+      p.metadata && (p.metadata.patient_id || p.metadata.patient_name || p.metadata.plan || p.metadata.is_premium !== void 0 || p.metadata.coupon_code !== void 0)
+    );
+    return desc.includes("mecura") || desc.includes("consulta") || desc.includes("acompanhamento vip") || desc.includes("acesso vip") || desc.includes("plano completo") || hasMeta;
+  };
   const resolvePaymentPlan = (payment) => {
-    const val = Number(payment.transaction_amount) || 0;
-    const desc = (payment.description || "").toLowerCase();
+    const grossValue = Number(payment.transaction_amount ?? payment.grossValue ?? payment.value) || 0;
+    const netReceivedAmount = Number(payment.transaction_details?.net_received_amount ?? payment.netReceivedAmount ?? grossValue) || 0;
+    const feeAmount = Number(Math.max(0, grossValue - netReceivedAmount).toFixed(2));
+    const val = netReceivedAmount;
+    const desc = (payment.description || payment.type || "").toLowerCase();
     const metaPlan = payment.metadata?.plan || payment.plan || payment.selectedOffer;
     let plan = "basic";
     if (metaPlan === "complete" || metaPlan === "premium" || metaPlan === "psychologist" || metaPlan === "basic") {
       plan = metaPlan;
-    } else if (desc.includes("completo") || desc.includes("360") || val >= 300) {
+    } else if (desc.includes("completo") || desc.includes("360") || grossValue >= 300) {
       plan = "complete";
-    } else if (desc.includes("psic\xF3logo") || desc.includes("psicologo") || desc.includes("marco ant\xF4nio") || val >= 140 && val <= 180 && !desc.includes("vip") && !desc.includes("premium")) {
+    } else if (desc.includes("psic\xF3logo") || desc.includes("psicologo") || desc.includes("marco ant\xF4nio") || grossValue >= 140 && grossValue <= 180 && !desc.includes("vip") && !desc.includes("premium")) {
       plan = "psychologist";
-    } else if (desc.includes("vip") || desc.includes("premium") || desc.includes("acompanhamento") || val >= 200 || payment.metadata?.is_premium === true) {
+    } else if (desc.includes("vip") || desc.includes("premium") || desc.includes("acompanhamento") || grossValue >= 200 || payment.metadata?.is_premium === true) {
       plan = "premium";
     } else {
       plan = "basic";
@@ -370,32 +387,39 @@ function startServer() {
     const queueType = plan === "psychologist" ? "psychologist" : "doctor";
     const allowDualChat = plan === "complete";
     const typeLabel = plan === "complete" ? "Plano Completo VIP (M\xE9dico + Psic\xF3logo)" : plan === "premium" ? "Acompanhamento VIP (M\xE9dico)" : plan === "psychologist" ? "Consulta com Psic\xF3logo + Laudo" : "Consulta Essencial (M\xE9dico)";
-    return { plan, isPrem, queueType, allowDualChat, typeLabel, val };
+    return { plan, isPrem, queueType, allowDualChat, typeLabel, val, netReceivedAmount, grossValue, feeAmount };
   };
   const processApprovedPayment = async (payment) => {
     try {
-      if (!payment || payment.status !== "approved" && payment.status !== "completed") return;
-      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, val } = resolvePaymentPlan(payment);
-      const payerEmail = payment.metadata?.patient_email || payment.payer?.email || "";
-      const payerName = payment.metadata?.patient_name || (payment.payer?.first_name ? `${payment.payer.first_name} ${payment.payer.last_name || ""}`.trim() : "Paciente");
+      if (!isMecuraPayment(payment)) return;
+      const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, val, netReceivedAmount, grossValue, feeAmount } = resolvePaymentPlan(payment);
+      const rawPayerEmail = payment.metadata?.patient_email || payment.payer?.email || "";
+      const payerEmail = rawPayerEmail && !String(rawPayerEmail).toLowerCase().includes("xxx") ? rawPayerEmail : "";
+      const rawFirst = payment.payer?.first_name && !String(payment.payer.first_name).toLowerCase().includes("xxx") ? payment.payer.first_name : "";
+      const rawLast = payment.payer?.last_name && !String(payment.payer.last_name).toLowerCase().includes("xxx") ? payment.payer.last_name : "";
+      const payerName = payment.metadata?.patient_name || (rawFirst ? `${rawFirst} ${rawLast}`.trim() : "Paciente");
       const patientId = payment.external_reference || payment.metadata?.patient_id;
       const metaCouponCode = payment.metadata?.coupon_code || "";
       const metaCouponId = payment.metadata?.coupon_id || "";
       const metaAffiliateName = payment.metadata?.affiliate_name || "";
       const metaCommPct = Number(payment.metadata?.commission_percentage || 0);
       const metaViaLink = Boolean(payment.metadata?.via_link);
-      const metaOrigPrice = Number(payment.metadata?.original_price || val);
-      const metaCommVal = metaCommPct > 0 ? Number((val * metaCommPct / 100).toFixed(2)) : 0;
+      const metaOrigPrice = Number(payment.metadata?.original_price || grossValue);
+      const metaCommVal = metaCommPct > 0 ? Number((grossValue * metaCommPct / 100).toFixed(2)) : 0;
       const paymentDoc = {
         mpId: String(payment.id),
         type: typeLabel,
-        value: val,
+        value: netReceivedAmount,
+        netReceivedAmount,
+        grossValue,
+        feeAmount,
         originalValue: metaOrigPrice,
         plan: resolvedPlan,
         selectedOffer: resolvedPlan,
         queueType: resolvedQueueType,
         allowDualChat,
         isPremium: isPrem,
+        isRealMpPayment: true,
         status: payment.status || "approved",
         date: payment.date_approved || payment.date_created || (/* @__PURE__ */ new Date()).toISOString(),
         payerEmail: payerEmail || "",
@@ -1045,35 +1069,84 @@ function startServer() {
         return res.json({ configured: true, count: 0, payments: [] });
       }
       const data = await response.json();
-      const results = (data.results || []).map((p) => {
-        const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, typeLabel, val } = resolvePaymentPlan(p);
-        const patientId = p.external_reference || p.metadata?.patient_id || "";
+      const rawResults = (data.results || []).filter((p) => isMecuraPayment(p));
+      const existingSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.collection)(db, "payments"));
+      const existingByMpId = /* @__PURE__ */ new Map();
+      existingSnap.docs.forEach((d) => {
+        const pd = d.data();
+        const mid = String(pd.mpId || d.id);
+        if (!existingByMpId.has(mid)) existingByMpId.set(mid, []);
+        existingByMpId.get(mid).push({ docId: d.id, ...pd });
+      });
+      const validMpIds = /* @__PURE__ */ new Set();
+      const results = rawResults.map((p) => {
+        const mpId = String(p.id);
+        validMpIds.add(mpId);
+        const { plan: resolvedPlan, isPrem, queueType: resolvedQueueType, allowDualChat, typeLabel, netReceivedAmount, grossValue, feeAmount } = resolvePaymentPlan(p);
+        const matches = existingByMpId.get(mpId) || [];
+        const rawFirst = p.payer?.first_name && !String(p.payer.first_name).toLowerCase().includes("xxx") ? p.payer.first_name : "";
+        const rawLast = p.payer?.last_name && !String(p.payer.last_name).toLowerCase().includes("xxx") ? p.payer.last_name : "";
+        const mpPayerName = p.metadata?.patient_name || (rawFirst ? `${rawFirst} ${rawLast}`.trim() : "");
+        const bestName = matches.map((m) => m.patientName || m.payerName).find((n) => n && n !== "Paciente" && n !== "Paciente VIP" && !String(n).toLowerCase().includes("xxx")) || mpPayerName || "Paciente";
+        const rawMail = p.metadata?.patient_email || p.payer?.email || "";
+        const mpEmail = rawMail && String(rawMail).includes("@") && !String(rawMail).toLowerCase().includes("xxx") ? rawMail : "";
+        const bestEmail = matches.map((m) => m.patientEmail || m.payerEmail).find((em) => em && String(em).includes("@") && !String(em).toLowerCase().includes("xxx")) || mpEmail || "";
+        const bestPatientId = p.external_reference || p.metadata?.patient_id || matches.map((m) => m.patientId).find((id) => id && !String(id).startsWith("mp_")) || "";
+        const bestPhone = matches.map((m) => m.patientPhone).find(Boolean) || "";
+        const bestCpf = matches.map((m) => m.patientCpf).find(Boolean) || "";
+        const bestCouponCode = p.metadata?.coupon_code || matches.map((m) => m.couponCode).find(Boolean) || "";
+        const bestCouponId = p.metadata?.coupon_id || matches.map((m) => m.couponId).find(Boolean) || "";
+        const bestAffiliateName = p.metadata?.affiliate_name || matches.map((m) => m.affiliateName).find(Boolean) || "";
         return {
-          mpId: String(p.id),
+          mpId,
           type: typeLabel,
-          value: val,
+          value: netReceivedAmount,
+          netReceivedAmount,
+          grossValue,
+          feeAmount,
           plan: resolvedPlan,
           selectedOffer: resolvedPlan,
           queueType: resolvedQueueType,
+          allowDualChat,
           isPremium: isPrem,
+          isRealMpPayment: true,
           status: p.status || "approved",
           date: p.date_approved || p.date_created || (/* @__PURE__ */ new Date()).toISOString(),
-          payerEmail: p.payer?.email || "",
-          payerName: p.payer?.first_name ? `${p.payer.first_name} ${p.payer.last_name || ""}`.trim() : p.metadata?.patient_name || "Paciente",
-          patientId,
-          paymentMethod: p.payment_method_id || ""
+          payerEmail: bestEmail,
+          patientEmail: bestEmail,
+          payerName: bestName,
+          patientName: bestName,
+          patientPhone: bestPhone,
+          patientCpf: bestCpf,
+          patientId: bestPatientId,
+          paymentMethod: p.payment_method_id || "pix",
+          ...bestCouponCode ? {
+            couponCode: bestCouponCode,
+            couponId: bestCouponId || bestCouponCode,
+            affiliateName: bestAffiliateName
+          } : {}
         };
       });
+      const docsToDelete = existingSnap.docs.filter((d) => !validMpIds.has(d.id));
+      if (docsToDelete.length > 0) {
+        await Promise.all(
+          docsToDelete.map((d) => (0, import_firestore2.deleteDoc)((0, import_firestore2.doc)(db, "payments", d.id)).catch(() => {
+          }))
+        );
+      }
+      await Promise.all(
+        results.map((p) => (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "payments", p.mpId), p, { merge: true }).catch(() => {
+        }))
+      );
       for (const p of results) {
         try {
-          await (0, import_firestore2.setDoc)((0, import_firestore2.doc)(db, "payments", p.mpId), p, { merge: true });
           const paymentDate = new Date(p.date);
           const isRecent = !isNaN(paymentDate.getTime()) && Date.now() - paymentDate.getTime() < 48 * 3600 * 1e3;
           if (isRecent) {
             let targetId = p.patientId;
             let existingUserData = null;
             const rawSyncMail = (p.payerEmail || "").toLowerCase().trim();
-            const isRealSyncMail = !!(rawSyncMail && !rawSyncMail.includes("sem-email") && rawSyncMail !== "paciente@mecura.com" && rawSyncMail !== "paciente@mercura.com" && rawSyncMail !== "paciente.consulta@mecura.com");
+            const isRealSyncMail = !!(rawSyncMail && rawSyncMail.includes("@") && !rawSyncMail.includes("xxx") && !rawSyncMail.includes("sem-email") && rawSyncMail !== "paciente@mecura.com" && rawSyncMail !== "paciente@mercura.com" && rawSyncMail !== "paciente.consulta@mecura.com");
             if (!targetId && isRealSyncMail) {
               try {
                 const uSnap = await (0, import_firestore2.getDocs)((0, import_firestore2.query)((0, import_firestore2.collection)(db, "users"), (0, import_firestore2.where)("email", "==", rawSyncMail)));
@@ -1158,7 +1231,7 @@ function startServer() {
         } catch (fsErr) {
         }
       }
-      console.log(`[MP SYNC] ${results.length} pagamentos aprovados sincronizados do Mercado Pago.`);
+      console.log(`[MP SYNC] ${results.length} compras reais da Mecura sincronizadas do Mercado Pago.`);
       res.json({
         configured: true,
         count: results.length,

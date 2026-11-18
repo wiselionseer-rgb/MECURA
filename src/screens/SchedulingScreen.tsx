@@ -95,18 +95,6 @@ export function SchedulingScreen() {
         isPremium: true,
         plan: 'premium'
       });
-      try {
-        await addDoc(collection(db, 'payments'), {
-          type: 'Consulta Premium',
-          value: 249.90,
-          date: new Date().toISOString(),
-          patientName: userName || 'Paciente',
-          appointmentDate: dateStr,
-          appointmentTime: selectedTime
-        });
-      } catch (e) {
-        console.error("Erro ao registrar pagamento premium do agendamento:", e);
-      }
       navigate('/confirmation');
     }
   };

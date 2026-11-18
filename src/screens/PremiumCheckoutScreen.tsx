@@ -396,37 +396,41 @@ export function PremiumCheckoutScreen() {
       console.error("Erro ao atualizar documento do usuário premium:", e);
     }
 
-    // 2. Record payment in payments collection (merge by ID)
-    try {
-      await setDoc(doc(db, 'payments', resolvedPaymentId), {
-        mpId: resolvedPaymentId,
-        type: 'Consulta Premium',
-        value: paidAmount,
-        originalValue: 249.90,
-        plan: 'premium',
-        selectedOffer: 'premium',
-        queueType: 'doctor',
-        isPremium: true,
-        patientName: patientName || 'Paciente VIP',
-        patientEmail: patientEmail || '',
-        patientPhone: patientPhone || '',
-        patientCpf: patientCpf || '',
-        patientId: patientUid || '',
-        professional: 'Dr. Guilherme T. Dias (CRM 17259)',
-        status: 'approved',
-        ...(couponToConsume ? {
-          couponCode: couponToConsume.code,
-          couponId: couponToConsume.id,
-          couponDiscount: couponToConsume.discount,
-          affiliateName: couponToConsume.affiliateName || '',
-          commissionPercentage: commPct,
-          commissionValue: commVal,
-          viaReferralLink: isViaReferralLink
-        } : {}),
-        date: new Date().toISOString()
-      }, { merge: true });
-    } catch (e) {
-      console.error("Erro ao registrar pagamento premium:", e);
+    // 2. Record payment metadata in payments collection only when a real numeric Mercado Pago ID exists
+    if (/^\d+$/.test(resolvedPaymentId) && paidAmount > 0) {
+      try {
+        await setDoc(doc(db, 'payments', resolvedPaymentId), {
+          mpId: resolvedPaymentId,
+          type: 'Acompanhamento VIP (Médico)',
+          grossValue: paidAmount,
+          originalValue: 249.90,
+          plan: 'premium',
+          selectedOffer: 'premium',
+          queueType: 'doctor',
+          isPremium: true,
+          isRealMpPayment: true,
+          patientName: patientName || 'Paciente VIP',
+          payerName: patientName || 'Paciente VIP',
+          patientEmail: patientEmail || '',
+          payerEmail: patientEmail || '',
+          patientPhone: patientPhone || '',
+          patientCpf: patientCpf || '',
+          patientId: patientUid || '',
+          professional: 'Dr. Guilherme T. Dias (CRM 17259)',
+          status: 'approved',
+          ...(couponToConsume ? {
+            couponCode: couponToConsume.code,
+            couponId: couponToConsume.id,
+            couponDiscount: couponToConsume.discount,
+            affiliateName: couponToConsume.affiliateName || '',
+            commissionPercentage: commPct,
+            commissionValue: commVal,
+            viaReferralLink: isViaReferralLink
+          } : {})
+        }, { merge: true });
+      } catch (e) {
+        console.error("Erro ao registrar pagamento premium:", e);
+      }
     }
 
     // 3. Consume coupon for this user & record affiliate commission

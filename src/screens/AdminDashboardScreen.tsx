@@ -29,8 +29,9 @@ import {
   Bot,
   User,
   X, Key, AlertTriangle, Search, Link2, Copy, Share2, DollarSign, QrCode
-, Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard } from 'lucide-react';
+, Edit3, Check, LogOut, RefreshCw, Scale, Building2, Lock, ShieldCheck, CreditCard, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import QRCode from 'qrcode';
+import { fetchApi } from '../utils/apiClient';
 import { useAdminStore } from '../store/useAdminStore';
 import { cbdGuideData, CBDCategory, CBDProduct } from '../data/cbdGuide';
 import { mergeProductCatalogs, subscribeToFirestoreCatalog, syncCatalogToFirestore } from '../utils/productCatalog';
@@ -180,24 +181,25 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
   const [mpInputToken, setMpInputToken] = useState('');
   const [isSavingMpToken, setIsSavingMpToken] = useState(false);
   const [isSyncingMpPayments, setIsSyncingMpPayments] = useState(false);
+  const [selectedFinanceMonth, setSelectedFinanceMonth] = useState<string>('all');
 
   useEffect(() => {
-    fetch('/api/mercadopago-status')
+    fetchApi('/api/mercadopago-status')
       .then(res => res.json())
       .then(data => setMpStatus(data))
       .catch(() => {});
 
     // Sincroniza pagamentos reais do Mercado Pago automaticamente ao abrir o painel
-    fetch('/api/mercadopago-payments').catch(() => {});
+    fetchApi('/api/mercadopago-payments').catch(() => {});
   }, []);
 
   const handleSyncMpPayments = async () => {
     setIsSyncingMpPayments(true);
     try {
-      const res = await fetch('/api/mercadopago-payments');
+      const res = await fetchApi('/api/mercadopago-payments');
       const data = await res.json();
       if (data.configured) {
-        setSupportToastMessage(`${data.count || 0} pagamentos sincronizados com o Mercado Pago!`);
+        setSupportToastMessage(`${data.count || 0} compras reais sincronizadas com o Mercado Pago!`);
         setShowSupportToast(true);
         setTimeout(() => setShowSupportToast(false), 3000);
       } else {
@@ -1293,31 +1295,159 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
     }
   };
 
-  // Comprehensive payment and revenue calculations strictly from Mercado Pago payments
+  // Comprehensive payment and revenue calculations strictly from real Mercado Pago Mecura purchases
   const isPremiumPayment = (p: any) => {
     const t = (p.type || '').toLowerCase();
-    const pl = (p.plan || '').toLowerCase();
+    const pl = (p.plan || p.selectedOffer || '').toLowerCase();
     const desc = (p.description || '').toLowerCase();
-    return t.includes('premium') || t.includes('vip') || t.includes('acompanhamento') || 
-           pl.includes('premium') || pl.includes('vip') || 
-           desc.includes('premium') || desc.includes('vip') ||
-           p.isPremium === true ||
-           (p.value && Number(p.value) >= 150);
+    if (pl === 'basic' || pl === 'psychologist') return false;
+    if (pl === 'premium' || pl === 'complete' || p.isPremium === true) return true;
+    return (
+      t.includes('premium') ||
+      t.includes('vip') ||
+      t.includes('acompanhamento') ||
+      t.includes('completo') ||
+      desc.includes('premium') ||
+      desc.includes('vip') ||
+      desc.includes('acompanhamento') ||
+      desc.includes('completo')
+    );
   };
 
   const isBasicPayment = (p: any) => !isPremiumPayment(p);
 
-  // Consider strictly approved/recorded payments from Mercado Pago:
-  const recordedBasicPayments = payments.filter(p => isBasicPayment(p) && (!p.status || p.status === 'approved' || p.status === 'completed'));
-  const recordedPremiumPayments = payments.filter(p => isPremiumPayment(p) && (!p.status || p.status === 'approved' || p.status === 'completed'));
+  const getNetReceivedValue = (p: any): number => {
+    const net = Number(p.netReceivedAmount ?? p.value ?? 0);
+    return Number.isFinite(net) && net > 0 ? net : 0;
+  };
+
+  const getGrossValue = (p: any): number => {
+    const gross = Number(p.grossValue ?? p.value ?? 0);
+    return Number.isFinite(gross) && gross > 0 ? gross : getNetReceivedValue(p);
+  };
+
+  const getPaymentYearMonth = (p: any): string => {
+    if (!p?.date) return '';
+    const d = new Date(p.date);
+    if (isNaN(d.getTime())) {
+      const m = String(p.date).match(/^(\d{4}-\d{2})/);
+      return m ? m[1] : '';
+    }
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit'
+      }).formatToParts(d);
+      const yr = parts.find(pt => pt.type === 'year')?.value;
+      const mo = parts.find(pt => pt.type === 'month')?.value;
+      if (yr && mo) return `${yr}-${mo}`;
+    } catch {}
+    return d.toISOString().slice(0, 7);
+  };
+
+  const formatMonthLabel = (ym: string, short = false): string => {
+    if (!ym || ym === 'all') return 'Todo o Período';
+    const [yr, mo] = ym.split('-');
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const shortNames = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+    const mIdx = parseInt(mo, 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return short ? `${shortNames[mIdx]}/${yr}` : `${monthNames[mIdx]} de ${yr}`;
+    }
+    return ym;
+  };
+
+  // Deduplicate by numeric Mercado Pago ID and keep only real approved Mecura purchases
+  const validMpPayments = useMemo(() => {
+    const byMpId = new Map<string, any>();
+    payments.forEach((p) => {
+      const mpIdStr = String(p.mpId || p.id || '');
+      if (!/^\d+$/.test(mpIdStr)) return;
+      if (p.status && p.status !== 'approved' && p.status !== 'completed') return;
+      const netVal = getNetReceivedValue(p);
+      if (netVal <= 0) return;
+      const desc = `${p.type || ''} ${p.description || ''}`.toLowerCase();
+      const isMecura =
+        p.isRealMpPayment === true ||
+        desc.includes('mecura') ||
+        desc.includes('consulta') ||
+        desc.includes('acompanhamento') ||
+        desc.includes('vip') ||
+        desc.includes('completo') ||
+        p.plan === 'basic' ||
+        p.plan === 'premium' ||
+        p.plan === 'complete' ||
+        p.plan === 'psychologist';
+      if (!isMecura) return;
+      byMpId.set(mpIdStr, p);
+    });
+    return Array.from(byMpId.values()).sort((a, b) => {
+      const tA = a.date ? new Date(a.date).getTime() : 0;
+      const tB = b.date ? new Date(b.date).getTime() : 0;
+      return tB - tA;
+    });
+  }, [payments]);
+
+  // Month-by-month summary breakdown
+  const monthlyBreakdown = useMemo(() => {
+    const map = new Map<string, {
+      ym: string;
+      count: number;
+      basicCount: number;
+      premiumCount: number;
+      netTotal: number;
+      grossTotal: number;
+      feeTotal: number;
+    }>();
+
+    validMpPayments.forEach((p) => {
+      const ym = getPaymentYearMonth(p);
+      if (!ym) return;
+      if (!map.has(ym)) {
+        map.set(ym, { ym, count: 0, basicCount: 0, premiumCount: 0, netTotal: 0, grossTotal: 0, feeTotal: 0 });
+      }
+      const entry = map.get(ym)!;
+      const net = getNetReceivedValue(p);
+      const gross = getGrossValue(p);
+      entry.count += 1;
+      if (isPremiumPayment(p)) entry.premiumCount += 1;
+      else entry.basicCount += 1;
+      entry.netTotal = Number((entry.netTotal + net).toFixed(2));
+      entry.grossTotal = Number((entry.grossTotal + gross).toFixed(2));
+      entry.feeTotal = Number(Math.max(0, entry.grossTotal - entry.netTotal).toFixed(2));
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.ym.localeCompare(a.ym));
+  }, [validMpPayments]);
+
+  const filteredMpPayments = useMemo(() => {
+    if (selectedFinanceMonth === 'all') return validMpPayments;
+    return validMpPayments.filter(p => getPaymentYearMonth(p) === selectedFinanceMonth);
+  }, [validMpPayments, selectedFinanceMonth]);
+
+  const recordedBasicPayments = filteredMpPayments.filter(p => isBasicPayment(p));
+  const recordedPremiumPayments = filteredMpPayments.filter(p => isPremiumPayment(p));
 
   const paidBasicCount = recordedBasicPayments.length;
   const paidPremiumCount = recordedPremiumPayments.length;
-  const totalConsultasPagas = paidBasicCount + paidPremiumCount;
+  const totalConsultasPagas = filteredMpPayments.length;
 
-  const revenueFila = recordedBasicPayments.reduce((acc, p) => acc + (Number(p.value) || 49.90), 0);
-  const revenuePremium = recordedPremiumPayments.reduce((acc, p) => acc + (Number(p.value) || 249.90), 0);
-  const revenueTotal = revenueFila + revenuePremium;
+  const revenueFila = Number(recordedBasicPayments.reduce((acc, p) => acc + getNetReceivedValue(p), 0).toFixed(2));
+  const grossFila = Number(recordedBasicPayments.reduce((acc, p) => acc + getGrossValue(p), 0).toFixed(2));
+
+  const revenuePremium = Number(recordedPremiumPayments.reduce((acc, p) => acc + getNetReceivedValue(p), 0).toFixed(2));
+  const grossPremium = Number(recordedPremiumPayments.reduce((acc, p) => acc + getGrossValue(p), 0).toFixed(2));
+
+  const revenueTotal = Number((revenueFila + revenuePremium).toFixed(2));
+  const grossTotal = Number((grossFila + grossPremium).toFixed(2));
+  const totalMpFees = Number(Math.max(0, grossTotal - revenueTotal).toFixed(2));
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-[#0A0A0F] text-white overflow-hidden">
@@ -1464,52 +1594,326 @@ const [agendaTimeFilter, setAgendaTimeFilter] = useState('all');
               </div>
             </div>
             
+            {/* Filtro Financeiro Mês a Mês */}
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-mecura-neon/15 border border-mecura-neon/30 flex items-center justify-center text-mecura-neon shrink-0">
+                    <Filter className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Filtro Financeiro Mês a Mês</span>
+                      <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30">
+                        {formatMonthLabel(selectedFinanceMonth)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#8A8A9E]">
+                      Exibindo somente o valor líquido real que caiu na conta pelas compras feitas na Mecura via Mercado Pago
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (monthlyBreakdown.length === 0) return;
+                      if (selectedFinanceMonth === 'all') {
+                        setSelectedFinanceMonth(monthlyBreakdown[0].ym);
+                      } else {
+                        const idx = monthlyBreakdown.findIndex(m => m.ym === selectedFinanceMonth);
+                        if (idx >= 0 && idx < monthlyBreakdown.length - 1) {
+                          setSelectedFinanceMonth(monthlyBreakdown[idx + 1].ym);
+                        }
+                      }
+                    }}
+                    disabled={monthlyBreakdown.length === 0 || (selectedFinanceMonth !== 'all' && monthlyBreakdown.findIndex(m => m.ym === selectedFinanceMonth) === monthlyBreakdown.length - 1)}
+                    className="p-2 rounded-xl bg-[#0A0A0F] border border-[#262636] text-[#8A8A9E] hover:text-white hover:border-mecura-neon/40 disabled:opacity-40 cursor-pointer transition-colors"
+                    title="Mês anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <select
+                    value={selectedFinanceMonth}
+                    onChange={(e) => setSelectedFinanceMonth(e.target.value)}
+                    className="bg-[#0A0A0F] text-white border border-[#262636] rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-mecura-neon cursor-pointer"
+                  >
+                    <option value="all">Todo o Período ({validMpPayments.length} compras)</option>
+                    {monthlyBreakdown.map((m) => (
+                      <option key={m.ym} value={m.ym}>
+                        {formatMonthLabel(m.ym)} ({m.count} compras • {m.netTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (monthlyBreakdown.length === 0) return;
+                      if (selectedFinanceMonth === 'all') return;
+                      const idx = monthlyBreakdown.findIndex(m => m.ym === selectedFinanceMonth);
+                      if (idx > 0) {
+                        setSelectedFinanceMonth(monthlyBreakdown[idx - 1].ym);
+                      } else {
+                        setSelectedFinanceMonth('all');
+                      }
+                    }}
+                    disabled={selectedFinanceMonth === 'all'}
+                    className="p-2 rounded-xl bg-[#0A0A0F] border border-[#262636] text-[#8A8A9E] hover:text-white hover:border-mecura-neon/40 disabled:opacity-40 cursor-pointer transition-colors"
+                    title="Próximo mês / Todo o período"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Botões rápidos de meses */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedFinanceMonth('all')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    selectedFinanceMonth === 'all'
+                      ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_12px_rgba(166,255,0,0.25)]'
+                      : 'bg-[#0A0A0F] text-[#8A8A9E] border-[#262636] hover:text-white hover:border-white/20'
+                  }`}
+                >
+                  Todos os Meses ({validMpPayments.length})
+                </button>
+                {monthlyBreakdown.map((m) => {
+                  const isSelected = selectedFinanceMonth === m.ym;
+                  return (
+                    <button
+                      key={m.ym}
+                      type="button"
+                      onClick={() => setSelectedFinanceMonth(m.ym)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-mecura-neon text-black border-mecura-neon shadow-[0_0_12px_rgba(166,255,0,0.25)]'
+                          : 'bg-[#0A0A0F] text-[#8A8A9E] border-[#262636] hover:text-white hover:border-white/20'
+                      }`}
+                    >
+                      <span>{formatMonthLabel(m.ym, true)}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-black/20 text-black font-extrabold' : 'bg-white/5 text-mecura-neon'}`}>
+                        {m.netTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Total Consultas Pagas</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Compras Aprovadas ({selectedFinanceMonth === 'all' ? 'Total' : formatMonthLabel(selectedFinanceMonth, true)})</div>
                 <div className="text-3xl font-bold text-white">{totalConsultasPagas}</div>
-                <div className="text-xs text-[#8A8A9E] mt-1">{paidBasicCount} Básicas + {paidPremiumCount} Premium</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">{paidBasicCount} Essenciais + {paidPremiumCount} VIP/Completo</div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Consultas Básicas (Pagas)</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Consultas Essenciais (Pagas)</div>
                 <div className="text-3xl font-bold text-mecura-neon">{paidBasicCount}</div>
-                <div className="text-xs text-[#8A8A9E] mt-1">R$ 49,90 cada</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">
+                  Líquido: {revenueFila.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Consultas Premium (Pagas)</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Consultas VIP / Completo</div>
                 <div className="text-3xl font-bold text-purple-400">{paidPremiumCount}</div>
-                <div className="text-xs text-[#8A8A9E] mt-1">R$ 249,90 cada</div>
+                <div className="text-xs text-[#8A8A9E] mt-1">
+                  Líquido: {revenuePremium.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
               </div>
               <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636]">
-                <div className="text-[#8A8A9E] mb-2">Pacientes Cadastrados</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Pacientes Cadastrados</div>
                 <div className="text-3xl font-bold text-white">{patients.length}</div>
                 <div className="text-xs text-[#8A8A9E] mt-1">Base total cadastrada</div>
               </div>
             </div>
 
-            <h3 className="text-xl font-bold mt-8 mb-4">Faturamento (Lucro - Via Mercado Pago)</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-8 mb-4">
+              <div>
+                <h3 className="text-xl font-bold">
+                  Valor Real que Caiu na Conta (Mercado Pago • {formatMonthLabel(selectedFinanceMonth)})
+                </h3>
+                <p className="text-xs text-[#8A8A9E]">
+                  Valores líquidos reais creditados na conta após descontos de cupons e taxas do Mercado Pago
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-gradient-to-br from-[#161622] to-[#1a2e20] p-6 rounded-2xl border border-mecura-neon/30">
-                <div className="text-[#8A8A9E] mb-2">Receita Fila (Mercado Pago)</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Receita Fila / Essencial (Líquido na Conta)</div>
                 <div className="text-3xl font-bold text-mecura-neon">
                   {revenueFila.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
-                <div className="text-xs text-[#8A8A9E] mt-1">{paidBasicCount} consultas a R$ 49,90</div>
+                <div className="text-xs text-[#8A8A9E] mt-1.5">
+                  {paidBasicCount} {paidBasicCount === 1 ? 'compra real' : 'compras reais'} • Bruto pago: {grossFila.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
               </div>
               <div className="bg-gradient-to-br from-[#161622] to-[#2e1a2b] p-6 rounded-2xl border border-purple-500/30">
-                <div className="text-[#8A8A9E] mb-2">Receita Premium (Mercado Pago)</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Receita VIP / Completo (Líquido na Conta)</div>
                 <div className="text-3xl font-bold text-purple-400">
                   {revenuePremium.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
-                <div className="text-xs text-[#8A8A9E] mt-1">{paidPremiumCount} consultas a R$ 249,90</div>
+                <div className="text-xs text-[#8A8A9E] mt-1.5">
+                  {paidPremiumCount} {paidPremiumCount === 1 ? 'compra real' : 'compras reais'} • Bruto pago: {grossPremium.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
               </div>
               <div className="bg-gradient-to-br from-[#161622] to-[#262636] p-6 rounded-2xl border border-white/20">
-                <div className="text-[#8A8A9E] mb-2">Faturamento Total</div>
+                <div className="text-[#8A8A9E] mb-2 text-sm">Total Real que Caiu na Conta</div>
                 <div className="text-3xl font-bold text-white">
                   {revenueTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
-                <div className="text-xs text-[#8A8A9E] mt-1">{totalConsultasPagas} pagamentos confirmados</div>
+                <div className="text-xs text-[#8A8A9E] mt-1.5">
+                  Bruto: {grossTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} • Taxas MP: -{totalMpFees.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
               </div>
+            </div>
+
+            {/* Resumo Mensal Comparativo (Mês a Mês) */}
+            {monthlyBreakdown.length > 0 && (
+              <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-base font-bold text-white">Resumo Mês a Mês (Compras Mercado Pago)</h4>
+                    <p className="text-xs text-[#8A8A9E]">Clique em qualquer mês para filtrar as métricas e ver o extrato detalhado daquele mês</p>
+                  </div>
+                  {selectedFinanceMonth !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFinanceMonth('all')}
+                      className="text-xs text-mecura-neon hover:underline font-bold cursor-pointer"
+                    >
+                      Ver todos os meses
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {monthlyBreakdown.map((m) => {
+                    const isSelected = selectedFinanceMonth === m.ym;
+                    return (
+                      <div
+                        key={m.ym}
+                        onClick={() => setSelectedFinanceMonth(isSelected ? 'all' : m.ym)}
+                        className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-mecura-neon/10 border-mecura-neon shadow-[0_0_15px_rgba(166,255,0,0.12)]'
+                            : 'bg-[#0A0A0F] border-[#262636] hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-white">
+                            {formatMonthLabel(m.ym)}
+                          </span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-[#8A8A9E]">
+                            {m.count} {m.count === 1 ? 'compra' : 'compras'}
+                          </span>
+                        </div>
+                        <div className="text-xl font-black text-mecura-neon">
+                          {m.netTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </div>
+                        <div className="text-[11px] text-[#8A8A9E] mt-1 flex items-center justify-between">
+                          <span>Bruto: {m.grossTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                          <span>{m.basicCount} Ess. • {m.premiumCount} VIP</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Extrato Detalhado das Compras Reais no Mercado Pago */}
+            <div className="bg-[#161622] border border-[#262636] rounded-2xl p-6 mt-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h4 className="text-base font-bold text-white">
+                    Extrato de Compras no Mercado Pago ({formatMonthLabel(selectedFinanceMonth)})
+                  </h4>
+                  <p className="text-xs text-[#8A8A9E]">
+                    {filteredMpPayments.length} {filteredMpPayments.length === 1 ? 'transação aprovada' : 'transações aprovadas'} • Soma líquida que caiu na conta:{' '}
+                    <strong className="text-mecura-neon">
+                      {revenueTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </strong>
+                  </p>
+                </div>
+              </div>
+
+              {filteredMpPayments.length === 0 ? (
+                <div className="text-center py-8 text-sm text-[#8A8A9E]">
+                  Nenhuma compra registrada no Mercado Pago para o período selecionado.
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-xl border border-[#262636]">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-[#0A0A0F] text-[#8A8A9E] sticky top-0 z-10 border-b border-[#262636]">
+                      <tr>
+                        <th className="py-3 px-3.5 font-bold">Data</th>
+                        <th className="py-3 px-3.5 font-bold">Paciente / Comprador</th>
+                        <th className="py-3 px-3.5 font-bold">Plano / Compra</th>
+                        <th className="py-3 px-3.5 font-bold text-right">Valor Pago (Bruto)</th>
+                        <th className="py-3 px-3.5 font-bold text-right">Taxa MP</th>
+                        <th className="py-3 px-3.5 font-bold text-right text-mecura-neon">Caiu na Conta (Líquido)</th>
+                        <th className="py-3 px-3.5 font-bold text-right">ID MP</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#262636]/60">
+                      {filteredMpPayments.map((p) => {
+                        const netVal = getNetReceivedValue(p);
+                        const grossVal = getGrossValue(p);
+                        const feeVal = Number(Math.max(0, grossVal - netVal).toFixed(2));
+                        const isPrem = isPremiumPayment(p);
+                        const dt = p.date ? new Date(p.date) : null;
+                        const formattedDate = dt && !isNaN(dt.getTime())
+                          ? dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                          : (p.date || '-');
+                        return (
+                          <tr key={String(p.mpId || p.id)} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-2.5 px-3.5 whitespace-nowrap text-[#8A8A9E]">
+                              {formattedDate}
+                            </td>
+                            <td className="py-2.5 px-3.5 font-medium text-white">
+                              <div>{p.patientName || p.payerName || 'Paciente'}</div>
+                              {(p.patientEmail || p.payerEmail) && (
+                                <div className="text-[10px] text-[#8A8A9E]">{p.patientEmail || p.payerEmail}</div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3.5">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                isPrem
+                                  ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                  : 'bg-mecura-neon/15 text-mecura-neon border border-mecura-neon/30'
+                              }`}>
+                                {p.type || (isPrem ? 'Acompanhamento VIP' : 'Consulta Essencial')}
+                              </span>
+                              {p.couponCode && (
+                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px] font-bold">
+                                  Cupom: {p.couponCode}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-right text-white/80 whitespace-nowrap">
+                              {grossVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-right text-red-400/80 whitespace-nowrap">
+                              {feeVal > 0 ? `-${feeVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : 'R$ 0,00'}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-right font-extrabold text-mecura-neon whitespace-nowrap">
+                              {netVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-right text-[10px] text-[#8A8A9E] font-mono whitespace-nowrap">
+                              #{p.mpId || p.id}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
             <h3 className="text-xl font-bold mt-12 mb-4">Configurações Financeiras</h3>
             <div className="bg-[#161622] p-6 rounded-2xl border border-[#262636] max-w-md">
